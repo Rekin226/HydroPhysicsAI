@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hydrophysics-ai"
+version = "0.0.1"
+description = "GPU physics-informed neural operators for groundwater, benchmarked against gray-box ODEs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Abdoul Rachid Ouedraogo" }]
+keywords = [
+    "scientific-machine-learning", "physics-informed", "neural-operator",
+    "groundwater", "hydrology", "pytorch", "physicsnemo", "cuda", "deep-learning",
+]
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+# GPU / deep-learning stack. Install on the CUDA machine.
+gpu = [
+    "torch>=2.0",
+    "torchdiffeq>=0.2",
+]
+# Plotting + spatial maps (optional).
+viz = [
+    "matplotlib>=3.6",
+    "geopandas>=0.12",
+]
+dev = ["pytest>=7.0", "ruff>=0.1"]
+
+[project.urls]
+Repository = "https://github.com/Rekin226/HydroPhysicsAI"
+
+[project.scripts]
+hydrophysics-train = "hydrophysics.train:main"
+hydrophysics-baselines = "hydrophysics.run_baselines:main"
+
+[tool.setuptools.packages.find]
+include = ["hydrophysics*"]
+
+[tool.setuptools.package-data]
+hydrophysics = ["sample_data/**/*.csv"]
+
+[tool.ruff]
+line-length = 100

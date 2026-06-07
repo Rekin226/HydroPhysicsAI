@@ -1,0 +1,116 @@
+"""Train a model and benchmark it against the baselines, in one command.
+
+This is the entry point you run on the GPU box. It wires:
+    load_dataset -> model.fit -> model.simulate -> benchmark_table (vs gray-box).
+
+Examples
+--------
+    # synthetic sample, GRU reference model (no real data needed)
+    python -m hydrophysics.train --model gru --epochs 30
+
+    # real data, physics-informed UDE, on the GPU
+    export HYDROMIND_GW_DATA=/path/to/data
+    python -m hydrophysics.train --model ude \\
+        --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 300
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import pandas as pd
+
+from .baselines import (
+    climatology_prediction,
+    last_value_prediction,
+    load_graybox_baseline,
+    persistence_prediction,
+)
+from .config import Config, default_config
+from .data import load_dataset
+from .eval import benchmark_table, evaluate_predictions
+
+
+def pick_device(requested: str | None = None) -> str:
+    """cuda > mps > cpu, unless overridden."""
+    if requested:
+        return requested
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+    return "cpu"
+
+
+def build_model(name: str, device: str, epochs: int):
+    if name == "gru":
+        from .models.gru import GlobalGRU
+        return GlobalGRU(device=device, epochs=epochs)
+    if name == "ude":
+        from .models.ude import PhysicsUDE
+        return PhysicsUDE(device=device, epochs=epochs)
+    raise ValueError(f"unknown model '{name}' (choose: gru, ude)")
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description="Train + benchmark a groundwater model")
+    ap.add_argument("--model", default="gru", choices=["gru", "ude"])
+    ap.add_argument("--data", default=None, help="data dir (else HYDROMIND_GW_DATA / sample)")
+    ap.add_argument("--baseline", default=None, help="gray-box gw_fit_results.csv")
+    ap.add_argument("--epochs", type=int, default=60)
+    ap.add_argument("--device", default=None, help="cuda|mps|cpu (auto if unset)")
+    ap.add_argument("--out", default=None, help="output dir for predictions/tables")
+    args = ap.parse_args(argv)
+
+    cfg = (
+        Config(
+            data_dir=Path(args.data) if args.data else default_config().data_dir,
+            baseline_results=Path(args.baseline) if args.baseline else None,
+        )
+        if (args.data or args.baseline)
+        else default_config()
+    )
+
+    data = load_dataset(cfg)
+    print(data.summary())
+
+    device = pick_device(args.device)
+    print(f"device: {device} | model: {args.model} | epochs: {args.epochs}")
+
+    model = build_model(args.model, device, args.epochs)
+    model.fit(data)
+    pred = model.simulate(data)
+
+    sim_preds = {
+        model.name: pred,
+        "climatology": climatology_prediction(data),
+        "last_value": last_value_prediction(data),
+    }
+    graybox = None
+    try:
+        graybox = load_graybox_baseline(cfg)
+    except FileNotFoundError:
+        print("(no gray-box baseline configured)")
+
+    table = benchmark_table(data, sim_preds, graybox=graybox, period="val")
+    pd.set_option("display.width", 120)
+    print("\n=== SIMULATION-mode benchmark (validation) ===")
+    print(table.round(3).to_string())
+
+    if args.out:
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        table.round(4).to_csv(out / "benchmark.csv")
+        evaluate_predictions(data, pred, period="val").round(4).to_csv(
+            out / f"per_well_{model.name}.csv"
+        )
+        print(f"\nwrote -> {out}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Envs
+.venv/
+venv/
+env/
+
+# Testing / linters
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Real data is never committed (only the synthetic sample_data/ ships)
+data/
+*.parquet
+checkpoints/
+*.pt
+*.ckpt
+
+# Claude
+.claude/settings.local.json

@@ -1,0 +1,5 @@
+gw_st,st_id,gw_TM_X97,gw_TM_Y97,ups_id,ups_lag_days,rf_id,lag_days,group,active
+7010000,st1,196569.19,2635255.039,st4,1.0,rf1,1,coastal,1
+7010001,st2,192310.917,2644584.526,st1,1.0,rf2,1,inland,1
+7010002,st3,191656.409,2657077.512,st2,1.0,rf3,1,inland,1
+7010003,st4,209257.994,2652996.947,st3,1.0,rf4,1,inland,1
