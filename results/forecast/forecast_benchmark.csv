@@ -1,10 +1,10 @@
 horizon_d,model,kge_median,kge_mean,nse_median,rmse_median,n_wells
-1,forecast_lstm,0.9951,0.9913,0.9962,0.0797,61
+1,forecast_lstm,0.9951,0.9892,0.996,0.0809,61
 1,persistence,0.9971,0.994,0.9947,0.101,61
 1,climatology,0.4465,-0.2026,-0.2004,1.6297,61
-7,forecast_lstm,0.9666,0.9588,0.9571,0.3153,61
+7,forecast_lstm,0.9646,0.9564,0.9561,0.3173,61
 7,persistence,0.946,0.933,0.8921,0.438,61
 7,climatology,0.4465,-0.2026,-0.2004,1.6297,61
-30,forecast_lstm,0.897,0.8542,0.8471,0.5475,61
+30,forecast_lstm,0.899,0.8586,0.849,0.5338,61
 30,persistence,0.7029,0.6794,0.3989,1.0781,61
 30,climatology,0.4465,-0.2026,-0.2004,1.6297,61

@@ -16,8 +16,8 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 |---|---|---|---|
 | **Simulation** (free-running hindcast) | physics-UDE **0.591** | gray-box 0.736 · climatology 0.446 | beats climatology, trails the per-well gray-box |
 | **Generalize to unseen wells** (leave-one-well-out) | **0.236** | climatology 0.446 | open problem — does not yet generalize |
-| **Forecast, 7-day** (operational, assimilated) | LSTM **0.967** | persistence 0.946 | real skill over persistence |
-| **Forecast, 30-day** | LSTM **0.897** | persistence 0.703 | nearly halves the error |
+| **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
+| **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
 | **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
 
 Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row, and it is still unsolved.
@@ -60,8 +60,8 @@ A **separate** track from the simulation benchmark above (do not compare the two
 | Horizon | LSTM KGE | Persistence KGE | LSTM RMSE m | Persistence RMSE m |
 |---|---|---|---|---|
 | 1 day | 0.995 | 0.997 | 0.08 | 0.10 |
-| 7 days | **0.967** | 0.946 | **0.32** | 0.44 |
-| 30 days | **0.897** | 0.703 | **0.55** | 1.08 |
+| 7 days | **0.965** | 0.946 | **0.32** | 0.44 |
+| 30 days | **0.899** | 0.703 | **0.53** | 1.08 |
 
 <sub>Median over 61 wells; climatology scores ~0.45 KGE at every horizon. The LSTM adds real skill over persistence at 7 and 30 days (at 30 days it nearly halves the error); the 1-day row is near-trivial for both and shown only for context. Hyperparameters (learning rate) were tuned on an inner pre-2019 split (inner-train <2018, inner-val 2018), then evaluated once on 2019+. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --horizons 1,7,30`.</sub>
 
@@ -69,9 +69,9 @@ A **separate** track from the simulation benchmark above (do not compare the two
 
 | Horizon | CRPS (LSTM) | CRPS (persistence) | 90% coverage | 90% interval width m |
 |---|---|---|---|---|
-| 1 day | 0.040 | 0.059 | 0.92 | 0.30 |
-| 7 days | **0.138** | 0.260 | 0.89 | 0.78 |
-| 30 days | **0.282** | 0.590 | 0.85 | 1.47 |
+| 1 day | 0.041 | 0.059 | 0.92 | 0.29 |
+| 7 days | **0.143** | 0.260 | 0.89 | 0.78 |
+| 30 days | **0.286** | 0.590 | 0.85 | 1.42 |
 
 <sub>CRPS (lower better) beats the persistence-Gaussian baseline at every horizon — nearly half at 30 days. Empirical coverage (PICP) sits near the nominal 0.90, so the intervals are well calibrated out of the box, and they stay sharp. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --probabilistic`.</sub>
 

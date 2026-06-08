@@ -1,7 +1,7 @@
 horizon_d,model,crps_median,picp90,sharpness90,kge_median,rmse_median,n_wells
-1,forecast_lstm,0.0399,0.9222,0.2987,0.9969,0.0758,61
+1,forecast_lstm,0.0414,0.9217,0.2901,0.997,0.0773,61
 1,persistence_gauss,0.0586,0.9325,,,,61
-7,forecast_lstm,0.1383,0.8914,0.7764,0.9708,0.2626,61
+7,forecast_lstm,0.1429,0.8864,0.7778,0.9719,0.2613,61
 7,persistence_gauss,0.2604,0.9266,,,,61
-30,forecast_lstm,0.2823,0.8479,1.4656,0.8973,0.5466,61
+30,forecast_lstm,0.2856,0.8491,1.4185,0.8955,0.5364,61
 30,persistence_gauss,0.5898,0.9173,,,,61

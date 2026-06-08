@@ -129,12 +129,15 @@ class GlobalForecastLSTM:
 
         if not enc_list:
             raise RuntimeError("no valid forecast windows (check lookback/horizon vs data)")
-        enc = torch.from_numpy(np.asarray(enc_list, dtype="float32")).to(self.device)
-        fut = torch.from_numpy(np.asarray(fut_list, dtype="float32")).to(self.device)
-        tgt = torch.from_numpy(np.asarray(tgt_list, dtype="float32")).to(self.device)
+        # Kept on CPU; minibatches are streamed to the GPU in fit/_predict so GPU memory
+        # is bounded by one batch, not the whole sample set (lets big configs train on a
+        # small card without OOM).
+        enc = torch.from_numpy(np.asarray(enc_list, dtype="float32"))
+        fut = torch.from_numpy(np.asarray(fut_list, dtype="float32"))
+        tgt = torch.from_numpy(np.asarray(tgt_list, dtype="float32"))
         wi = np.asarray(wi)
         t0i = np.asarray(t0i)
-        stat = torch.from_numpy(s["stat_n"][wi]).to(self.device)
+        stat = torch.from_numpy(s["stat_n"][wi])
         return enc, fut, stat, tgt, wi, t0i
 
     # --- fit / forecast --------------------------------------------------------
@@ -152,8 +155,7 @@ class GlobalForecastLSTM:
         s["stat_n"] = ((stat - s["stat_mu"]) / s["stat_sd"]).astype("float32")
 
         origin_ok = np.broadcast_to(tm, data.target.shape).copy()
-        enc, fut, stat_t, tgt, wi, _ = self._build_samples(data, origin_ok)
-        sd_w = torch.from_numpy(s["level_sd"][wi]).to(self.device)   # for per-well weight
+        enc, fut, stat_t, tgt, _, _ = self._build_samples(data, origin_ok)   # CPU tensors
 
         self.net = _ForecastNet(ENC_FEATURES, FUT_FEATURES, stat_t.shape[-1],
                                 self.hidden, self.layers, self.H,
@@ -161,24 +163,25 @@ class GlobalForecastLSTM:
         opt = torch.optim.Adam(self.net.parameters(), lr=self.lr)
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, self.epochs, eta_min=self.lr * 1e-2)
         n = enc.shape[0]
+        dev = self.device
         for _ in range(self.epochs):
-            perm = torch.randperm(n, device=self.device)
+            perm = torch.randperm(n)
             for b in range(0, n, self.batch):
                 idx = perm[b:b + self.batch]
+                eb, fb, sb, tb = (enc[idx].to(dev), fut[idx].to(dev),
+                                  stat_t[idx].to(dev), tgt[idx].to(dev))
                 opt.zero_grad()
-                out = self.net(enc[idx], fut[idx], stat_t[idx])
+                out = self.net(eb, fb, sb)
                 if self.probabilistic:
                     mean, log_var = out
                     # Gaussian NLL in normalized anomaly space (constants dropped).
-                    loss = 0.5 * (log_var + (tgt[idx] - mean) ** 2 / log_var.exp()).mean()
+                    loss = 0.5 * (log_var + (tb - mean) ** 2 / log_var.exp()).mean()
                 else:
-                    # Targets are already per-well normalized, so plain MSE weights wells
-                    # equally; sd_w kept for clarity / future weighting.
-                    loss = ((out - tgt[idx]) ** 2).mean()
+                    # Targets are already per-well normalized, so plain MSE weights wells equally.
+                    loss = ((out - tb) ** 2).mean()
                 loss.backward()
                 opt.step()
             sched.step()
-        del sd_w
         return self
 
     def _predict(self, data: GWData):
@@ -198,11 +201,12 @@ class GlobalForecastLSTM:
         origin_ok = np.ones(data.target.shape, dtype=bool)
         enc, fut, stat_t, _, wi, t0i = self._build_samples(data, origin_ok)
         self.net.eval()
+        dev = self.device
         means, sigmas = [], []
         with torch.no_grad():
             for b in range(0, enc.shape[0], self.batch):
-                out = self.net(enc[b:b + self.batch], fut[b:b + self.batch],
-                               stat_t[b:b + self.batch])
+                out = self.net(enc[b:b + self.batch].to(dev), fut[b:b + self.batch].to(dev),
+                               stat_t[b:b + self.batch].to(dev))
                 if self.probabilistic:
                     m, log_var = out
                     means.append(m.cpu().numpy())
