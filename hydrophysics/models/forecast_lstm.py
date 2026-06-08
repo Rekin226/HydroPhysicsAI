@@ -51,7 +51,7 @@ class GlobalForecastLSTM:
     name = "forecast_lstm"
 
     def __init__(self, lookback: int = 90, horizon: int = 30, hidden: int = 64,
-                 layers: int = 1, epochs: int = 40, lr: float = 1e-3, batch: int = 4096,
+                 layers: int = 1, epochs: int = 40, lr: float = 3e-3, batch: int = 4096,
                  probabilistic: bool = False, device: str | None = None, seed: int = 0):
         _require_torch()
         self.L, self.H = lookback, horizon
