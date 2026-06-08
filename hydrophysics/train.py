@@ -25,7 +25,6 @@ from .baselines import (
     climatology_prediction,
     last_value_prediction,
     load_graybox_baseline,
-    persistence_prediction,
 )
 from .config import Config, default_config
 from .data import load_dataset

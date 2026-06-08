@@ -29,18 +29,43 @@ The bar to beat, computed by the harness in this repo:
 | **Gray-box ODE** (per-well calibrated, baseline) | **0.736** | — | 0.83 | 61 |
 | Climatology (per-well seasonal mean) | 0.446 | -0.20 | 1.63 | 61 |
 | Last-value (constant) | undefined* | -0.57 | 1.83 | 61 |
-| **Physics-informed neural operator** (this project) | *training on GPU* | | | |
+| **Physics-informed neural operator** (this project) | 0.591 | 0.49 | 1.07 | 61 |
 
 <sub>*A constant prediction has zero variance, so KGE is undefined; skill is read from NSE/RMSE. Forecast-mode persistence scores KGE 0.997 but is deliberately excluded: 1-step-ahead prediction of slow-moving groundwater is trivial and not comparable to a free-running simulation. The harness keeps simulation and forecast modes separate so the comparison stays honest.</sub>
+
+The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). It clears the seasonal climatology baseline comfortably (0.591 vs 0.446 KGE, 0.49 vs -0.20 NSE) and beats the per-well-calibrated gray-box on 18 of 61 wells, but still trails it overall (0.591 vs 0.736). All hyperparameters were chosen on an inner split carved from the pre-2019 training period (inner-train <2018, inner-val 2018); the 2019+ benchmark was evaluated exactly once, so the number is not tuned to the test. The remaining gap is a few hard wells, and the operator-generalization headline (leave-one-well-out: predict a held-out well from its attributes alone) is the next milestone.
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
 *Per-well validation KGE across the fan (gray-box baseline). Most wells are well-modeled (green/yellow); the dark wells are the hard cases a single attribute-conditioned operator should rescue.*
 
+## Forecast mode (operational, data-assimilated)
+
+A **separate** track from the simulation benchmark above (do not compare the two — different task). Here a single global attribute-aware LSTM (`hydrophysics/models/forecast_lstm.py`) forecasts the level `h` days ahead using observed levels up to the forecast origin (assimilation) plus forcing, scored on 2019+ against the honest forecast-mode references at each horizon:
+
+| Horizon | LSTM KGE | Persistence KGE | LSTM RMSE m | Persistence RMSE m |
+|---|---|---|---|---|
+| 1 day | 0.995 | 0.997 | 0.09 | 0.10 |
+| 7 days | **0.960** | 0.946 | **0.33** | 0.44 |
+| 30 days | **0.869** | 0.703 | **0.57** | 1.08 |
+
+<sub>Median over 61 wells; climatology scores ~0.45 KGE at every horizon. The LSTM adds real skill over persistence at 7 and 30 days (at 30 days it nearly halves the error); the 1-day row is near-trivial for both and shown only for context. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --horizons 1,7,30`.</sub>
+
+**Probabilistic forecasts.** With `--probabilistic` the LSTM emits a Gaussian per horizon (mean + variance, trained by Gaussian NLL), so each forecast is a calibrated distribution — read off any prediction interval or exceedance probability for early warning.
+
+| Horizon | CRPS (LSTM) | CRPS (persistence) | 90% coverage | 90% interval width m |
+|---|---|---|---|---|
+| 1 day | 0.047 | 0.059 | 0.93 | 0.30 |
+| 7 days | **0.160** | 0.260 | 0.91 | 0.83 |
+| 30 days | **0.314** | 0.590 | 0.88 | 1.54 |
+
+<sub>CRPS (lower better) beats the persistence-Gaussian baseline at every horizon — nearly half at 30 days. Empirical coverage (PICP) sits near the nominal 0.90, so the intervals are well calibrated out of the box, and they stay sharp. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --probabilistic`.</sub>
+
 ## Status
 
 - **Foundation (done, tested, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample for CI.
-- **Models (in progress, GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator skeleton wired to the harness. The UDE forward integration and the PhysicsNeMo port are the active build (see TODOs in `hydrophysics/models/ude.py`).
+- **Models (GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator — hypernetwork + stable semi-implicit ODE rollout + physics-residual loss, trained end-to-end on CUDA and benchmarked above. Active build: closing the gap to the gray-box (per-well level anchoring, leave-one-well-out generalization) and the PhysicsNeMo port.
+- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation, scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 
 ## Quickstart
 
@@ -58,7 +83,7 @@ python -m hydrophysics.train --model gru --epochs 30
 # On real data + GPU:
 export HYDROMIND_GW_DATA=/path/to/data
 python -m hydrophysics.train --model ude \
-    --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 300
+    --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 1500
 ```
 
 The real Zhuoshui groundwater data is **not** redistributed here (agency-data terms). The repo ships a synthetic sample in `hydrophysics/sample_data/` and reads real data via the `HYDROMIND_GW_DATA` path.
