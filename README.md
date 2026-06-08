@@ -39,10 +39,23 @@ The operator is one network across all 61 wells (attribute-conditioned hypernetw
 
 *Per-well validation KGE across the fan (gray-box baseline). Most wells are well-modeled (green/yellow); the dark wells are the hard cases a single attribute-conditioned operator should rescue.*
 
+## Forecast mode (operational, data-assimilated)
+
+A **separate** track from the simulation benchmark above (do not compare the two — different task). Here a single global attribute-aware LSTM (`hydrophysics/models/forecast_lstm.py`) forecasts the level `h` days ahead using observed levels up to the forecast origin (assimilation) plus forcing, scored on 2019+ against the honest forecast-mode references at each horizon:
+
+| Horizon | LSTM KGE | Persistence KGE | LSTM RMSE m | Persistence RMSE m |
+|---|---|---|---|---|
+| 1 day | 0.995 | 0.997 | 0.09 | 0.10 |
+| 7 days | **0.960** | 0.946 | **0.33** | 0.44 |
+| 30 days | **0.869** | 0.703 | **0.57** | 1.08 |
+
+<sub>Median over 61 wells; climatology scores ~0.45 KGE at every horizon. The LSTM adds real skill over persistence at 7 and 30 days (at 30 days it nearly halves the error); the 1-day row is near-trivial for both and shown only for context. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --horizons 1,7,30`.</sub>
+
 ## Status
 
 - **Foundation (done, tested, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample for CI.
 - **Models (GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator — hypernetwork + stable semi-implicit ODE rollout + physics-residual loss, trained end-to-end on CUDA and benchmarked above. Active build: closing the gap to the gray-box (per-well level anchoring, leave-one-well-out generalization) and the PhysicsNeMo port.
+- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation, scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons (see Forecast mode above).
 
 ## Quickstart
 
