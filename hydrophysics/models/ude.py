@@ -95,7 +95,14 @@ class PhysicsUDE(GroundwaterModel):
                 sd[i] = obs.std() if obs.std() > 1e-6 else 1.0
         return mu, sd
 
-    def fit(self, data: GWData) -> "PhysicsUDE":
+    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> "PhysicsUDE":
+        """Train the hypernetwork on the calibration period.
+
+        train_wells: optional boolean mask (n_wells,). When given, only those wells
+        contribute to the loss -- used for leave-one-well-out, where held-out wells must
+        be predicted from their attributes (and own initial condition) alone, never from
+        a fitted parameter set. Their attributes/IC/level-anchor are still available.
+        """
         torch.manual_seed(self.seed)
         stat = _static_features(data)
         self._stats["stat_mu"] = stat.mean(0)
@@ -110,9 +117,10 @@ class PhysicsUDE(GroundwaterModel):
         ).to(self.device)
         dyn = torch.from_numpy(_forcing_features(data)).to(self.device)   # (W,T,4)
         target = torch.from_numpy(np.nan_to_num(data.target).astype("float32")).to(self.device)
-        obs_mask = torch.from_numpy(
-            (np.isfinite(data.target) & data.train_mask[None, :]).astype("float32")
-        ).to(self.device)
+        fit_mask = np.isfinite(data.target) & data.train_mask[None, :]
+        if train_wells is not None:
+            fit_mask = fit_mask & np.asarray(train_wells, dtype=bool)[:, None]
+        obs_mask = torch.from_numpy(fit_mask.astype("float32")).to(self.device)
         h0 = torch.from_numpy(np.nan_to_num(self.initial_condition(data)).astype("float32")).to(self.device)
         anchor = torch.from_numpy(self._stats["anchor"]).to(self.device)   # (W,) level anchor
         scale = torch.from_numpy(sd_h if self.normalize_loss else np.ones_like(sd_h)).to(self.device)
