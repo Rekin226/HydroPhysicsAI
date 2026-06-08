@@ -52,11 +52,15 @@ class GlobalForecastLSTM:
 
     def __init__(self, lookback: int = 90, horizon: int = 30, hidden: int = 64,
                  layers: int = 1, epochs: int = 40, lr: float = 1e-3, batch: int = 4096,
-                 device: str | None = None, seed: int = 0):
+                 probabilistic: bool = False, device: str | None = None, seed: int = 0):
         _require_torch()
         self.L, self.H = lookback, horizon
         self.hidden, self.layers, self.epochs = hidden, layers, epochs
         self.lr, self.batch, self.seed = lr, batch, seed
+        # Probabilistic mode: the head emits a per-horizon mean AND log-variance, trained
+        # by Gaussian NLL, so each forecast is a distribution N(mu, sigma^2). Lets us read
+        # off prediction intervals / exceedance probabilities for early warning.
+        self.probabilistic = probabilistic
         self.device = device or _default_device()
         self.net: nn.Module | None = None
         self._stats: dict = {}
@@ -152,7 +156,8 @@ class GlobalForecastLSTM:
         sd_w = torch.from_numpy(s["level_sd"][wi]).to(self.device)   # for per-well weight
 
         self.net = _ForecastNet(ENC_FEATURES, FUT_FEATURES, stat_t.shape[-1],
-                                self.hidden, self.layers, self.H).to(self.device)
+                                self.hidden, self.layers, self.H,
+                                probabilistic=self.probabilistic).to(self.device)
         opt = torch.optim.Adam(self.net.parameters(), lr=self.lr)
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, self.epochs, eta_min=self.lr * 1e-2)
         n = enc.shape[0]
@@ -161,55 +166,92 @@ class GlobalForecastLSTM:
             for b in range(0, n, self.batch):
                 idx = perm[b:b + self.batch]
                 opt.zero_grad()
-                pred = self.net(enc[idx], fut[idx], stat_t[idx])   # (B, H) normalized
-                # Targets are already per-well normalized (divided by sd), so plain MSE
-                # already weights wells equally; sd_w kept for clarity / future weighting.
-                loss = ((pred - tgt[idx]) ** 2).mean()
+                out = self.net(enc[idx], fut[idx], stat_t[idx])
+                if self.probabilistic:
+                    mean, log_var = out
+                    # Gaussian NLL in normalized anomaly space (constants dropped).
+                    loss = 0.5 * (log_var + (tgt[idx] - mean) ** 2 / log_var.exp()).mean()
+                else:
+                    # Targets are already per-well normalized, so plain MSE weights wells
+                    # equally; sd_w kept for clarity / future weighting.
+                    loss = ((out - tgt[idx]) ** 2).mean()
                 loss.backward()
                 opt.step()
             sched.step()
         del sd_w
         return self
 
-    def forecast(self, data: GWData) -> np.ndarray:
-        """Return (W, T, H) predicted absolute levels: [i, t0, h-1] = level at t0+h.
+    def _predict(self, data: GWData):
+        """Return (mean_cube, sigma_cube) of absolute levels, each (W, T, H).
 
-        NaN where the origin lacks a full finite lookback/horizon span. Origins are not
-        restricted to a period -- the eval harness selects which target days to score.
+        [i, t0, h-1] = forecast of the level at t0+h. sigma_cube is None unless the model
+        is probabilistic. NaN where the origin lacks a full finite lookback/horizon span;
+        origins are not restricted to a period -- the eval harness picks target days.
         """
         if self.net is None:
             raise RuntimeError("call fit() before forecast()")
         s = self._stats
         level = data.target.astype("float32")
-        out = np.full((data.n_wells, data.n_days, self.H), np.nan, dtype="float32")
+        shape = (data.n_wells, data.n_days, self.H)
+        mean_cube = np.full(shape, np.nan, dtype="float32")
+        sigma_cube = np.full(shape, np.nan, dtype="float32") if self.probabilistic else None
         origin_ok = np.ones(data.target.shape, dtype=bool)
         enc, fut, stat_t, _, wi, t0i = self._build_samples(data, origin_ok)
         self.net.eval()
-        preds = []
+        means, sigmas = [], []
         with torch.no_grad():
             for b in range(0, enc.shape[0], self.batch):
-                preds.append(self.net(enc[b:b + self.batch], fut[b:b + self.batch],
-                                      stat_t[b:b + self.batch]).cpu().numpy())
-        pred = np.concatenate(preds, axis=0)            # (N, H) normalized anomaly
+                out = self.net(enc[b:b + self.batch], fut[b:b + self.batch],
+                               stat_t[b:b + self.batch])
+                if self.probabilistic:
+                    m, log_var = out
+                    means.append(m.cpu().numpy())
+                    sigmas.append((0.5 * log_var).exp().cpu().numpy())   # std in norm space
+                else:
+                    means.append(out.cpu().numpy())
+        mean = np.concatenate(means, axis=0)            # (N, H) normalized anomaly
+        sig = np.concatenate(sigmas, axis=0) if self.probabilistic else None
         for k in range(len(wi)):
             i, t0 = wi[k], t0i[k]
-            out[i, t0] = level[i, t0] + pred[k] * s["level_sd"][i]
-        return out
+            sd = s["level_sd"][i]
+            mean_cube[i, t0] = level[i, t0] + mean[k] * sd
+            if self.probabilistic:
+                sigma_cube[i, t0] = sig[k] * sd          # de-normalize std to level units
+        return mean_cube, sigma_cube
+
+    def forecast(self, data: GWData) -> np.ndarray:
+        """Point forecast (W, T, H): [i, t0, h-1] = predicted level at t0+h."""
+        return self._predict(data)[0]
+
+    def forecast_dist(self, data: GWData) -> tuple[np.ndarray, np.ndarray]:
+        """Probabilistic forecast: (mean, sigma) cubes, each (W, T, H). Needs probabilistic=True."""
+        if not self.probabilistic:
+            raise RuntimeError("model was not built with probabilistic=True")
+        mean, sigma = self._predict(data)
+        return mean, sigma
 
 
 if _HAS_TORCH:
     class _ForecastNet(nn.Module):
         def __init__(self, n_enc: int, n_fut: int, n_stat: int, hidden: int,
-                     layers: int, horizon: int):
+                     layers: int, horizon: int, probabilistic: bool = False):
             super().__init__()
+            self.horizon = horizon
+            self.probabilistic = probabilistic
             self.lstm = nn.LSTM(n_enc, hidden, layers, batch_first=True)
             head_in = hidden + n_stat + n_fut * horizon
+            out_dim = horizon * (2 if probabilistic else 1)
             self.head = nn.Sequential(
                 nn.Linear(head_in, hidden), nn.SiLU(),
-                nn.Linear(hidden, horizon),
+                nn.Linear(hidden, out_dim),
             )
 
         def forward(self, enc, fut, stat):
             _, (h, _) = self.lstm(enc)             # h: (layers, B, hidden)
             z = torch.cat([h[-1], stat, fut.flatten(1)], dim=-1)
-            return self.head(z)
+            out = self.head(z)
+            if not self.probabilistic:
+                return out
+            mean, log_var = out[:, :self.horizon], out[:, self.horizon:]
+            # clamp log-variance for numerical stability of the NLL
+            return mean, log_var.clamp(-8.0, 8.0)

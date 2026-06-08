@@ -36,3 +36,21 @@ def test_fit_forecast_and_eval(data):
     assert ("forecast_lstm" in table.index.get_level_values("model"))
     # every reported aggregate should be a real number
     assert np.isfinite(table["rmse_median"].to_numpy()).all()
+
+
+def test_probabilistic_forecast(data):
+    from hydrophysics.forecast_eval import probabilistic_horizon_table
+    from hydrophysics.models.forecast_lstm import GlobalForecastLSTM
+
+    horizons = [1, 7]
+    model = GlobalForecastLSTM(lookback=30, horizon=max(horizons), hidden=16,
+                               epochs=2, probabilistic=True, device="cpu")
+    model.fit(data)
+    mean, sigma = model.forecast_dist(data)
+    assert mean.shape == sigma.shape == (data.n_wells, data.n_days, max(horizons))
+    assert np.nanmin(sigma) > 0   # predictive std is positive where defined
+
+    table = probabilistic_horizon_table(data, mean, sigma, horizons, period="val")
+    lstm = table.xs("forecast_lstm", level="model")
+    assert np.isfinite(lstm["crps_median"].to_numpy()).all()
+    assert ((lstm["picp90"] >= 0) & (lstm["picp90"] <= 1)).all()

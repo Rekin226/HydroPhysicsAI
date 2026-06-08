@@ -51,11 +51,21 @@ A **separate** track from the simulation benchmark above (do not compare the two
 
 <sub>Median over 61 wells; climatology scores ~0.45 KGE at every horizon. The LSTM adds real skill over persistence at 7 and 30 days (at 30 days it nearly halves the error); the 1-day row is near-trivial for both and shown only for context. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --horizons 1,7,30`.</sub>
 
+**Probabilistic forecasts.** With `--probabilistic` the LSTM emits a Gaussian per horizon (mean + variance, trained by Gaussian NLL), so each forecast is a calibrated distribution — read off any prediction interval or exceedance probability for early warning.
+
+| Horizon | CRPS (LSTM) | CRPS (persistence) | 90% coverage | 90% interval width m |
+|---|---|---|---|---|
+| 1 day | 0.047 | 0.059 | 0.93 | 0.30 |
+| 7 days | **0.160** | 0.260 | 0.91 | 0.83 |
+| 30 days | **0.314** | 0.590 | 0.88 | 1.54 |
+
+<sub>CRPS (lower better) beats the persistence-Gaussian baseline at every horizon — nearly half at 30 days. Empirical coverage (PICP) sits near the nominal 0.90, so the intervals are well calibrated out of the box, and they stay sharp. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --probabilistic`.</sub>
+
 ## Status
 
 - **Foundation (done, tested, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample for CI.
 - **Models (GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator — hypernetwork + stable semi-implicit ODE rollout + physics-residual loss, trained end-to-end on CUDA and benchmarked above. Active build: closing the gap to the gray-box (per-well level anchoring, leave-one-well-out generalization) and the PhysicsNeMo port.
-- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation, scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons (see Forecast mode above).
+- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation, scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 
 ## Quickstart
 
