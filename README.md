@@ -8,6 +8,20 @@
 
 ---
 
+## Results at a glance
+
+All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Median KGE (higher is better) unless noted.
+
+| Task | This repo | Reference | Verdict |
+|---|---|---|---|
+| **Simulation** (free-running hindcast) | physics-UDE **0.591** | gray-box 0.736 · climatology 0.446 | beats climatology, trails the per-well gray-box |
+| **Generalize to unseen wells** (leave-one-well-out) | **0.236** | climatology 0.446 | open problem — does not yet generalize |
+| **Forecast, 7-day** (operational, assimilated) | LSTM **0.960** | persistence 0.946 | real skill over persistence |
+| **Forecast, 30-day** | LSTM **0.869** | persistence 0.703 | nearly halves the error |
+| **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
+
+Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row, and it is still unsolved.
+
 ## The idea
 
 Classical hydrology calibrates **one ODE per well**: 33-61 separate parameter fits, each blind to the others. HydroPhysicsAI trains **a single physics-informed neural operator across all wells at once**, conditioned on each well's static attributes, on the NVIDIA GPU stack (PyTorch / PhysicsNeMo / CUDA). It is scored in true **simulation mode** (free-running hindcast from an initial condition + forcing, never seeing observed levels) against the per-well gray-box ODE baseline.
