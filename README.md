@@ -29,9 +29,11 @@ The bar to beat, computed by the harness in this repo:
 | **Gray-box ODE** (per-well calibrated, baseline) | **0.736** | — | 0.83 | 61 |
 | Climatology (per-well seasonal mean) | 0.446 | -0.20 | 1.63 | 61 |
 | Last-value (constant) | undefined* | -0.57 | 1.83 | 61 |
-| **Physics-informed neural operator** (this project) | *training on GPU* | | | |
+| **Physics-informed neural operator** (this project) | 0.505 | 0.09 | 1.42 | 61 |
 
 <sub>*A constant prediction has zero variance, so KGE is undefined; skill is read from NSE/RMSE. Forecast-mode persistence scores KGE 0.997 but is deliberately excluded: 1-step-ahead prediction of slow-moving groundwater is trivial and not comparable to a free-running simulation. The harness keeps simulation and forecast modes separate so the comparison stays honest.</sub>
+
+The operator row is a first single-split GPU pass (one network across all 61 wells, 300 epochs, no per-well tuning). It already clears the seasonal climatology baseline (0.505 vs 0.446 KGE) and beats the per-well-calibrated gray-box on 13 of 61 wells, but trails it overall: a handful of hard wells still miss the absolute level. Closing that gap (per-well level anchoring under a held-out tuning split, and the leave-one-well-out operator-generalization test) is the active work, kept off the validation metric to avoid tuning to the benchmark.
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
@@ -40,7 +42,7 @@ The bar to beat, computed by the harness in this repo:
 ## Status
 
 - **Foundation (done, tested, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample for CI.
-- **Models (in progress, GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator skeleton wired to the harness. The UDE forward integration and the PhysicsNeMo port are the active build (see TODOs in `hydrophysics/models/ude.py`).
+- **Models (GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator — hypernetwork + stable semi-implicit ODE rollout + physics-residual loss, trained end-to-end on CUDA and benchmarked above. Active build: closing the gap to the gray-box (per-well level anchoring, leave-one-well-out generalization) and the PhysicsNeMo port.
 
 ## Quickstart
 
