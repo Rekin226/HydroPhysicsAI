@@ -12,17 +12,18 @@ Why this is the flagship and not the GRU:
   - It amortizes: one network conditions on attributes, so it can predict a well it was
     never calibrated on (leave-one-well-out) -- the operator-learning headline.
 
-This file is a SKELETON. The forward integration is sketched; the parts marked TODO are
-what you implement and tune on the GPU. The class still satisfies the GroundwaterModel
-interface so train.py and the benchmark wire up unchanged.
+The forward integration, the attribute-conditioned hypernetwork, and the
+physics-residual loss are implemented here and satisfy the GroundwaterModel interface,
+so train.py and the benchmark wire up unchanged. The rollout is a stable semi-implicit
+daily integrator; what remains is the GPU/PhysicsNeMo port and tuning.
 
 NVIDIA GPU path:
-  - Replace the hand-rolled Euler loop with a stiff-safe differentiable solver
-    (torchdiffeq.odeint_adjoint) for memory-efficient long rollouts on CUDA.
+  - The class is plain PyTorch and trains as-is on any CUDA GPU (train.py picks cuda).
+  - For very long rollouts where storing every step dominates memory, swap the loop in
+    _rollout for torchdiffeq.odeint_adjoint over the same _decay_and_source ODE
+    (constant-memory backprop on CUDA).
   - Port the hypernetwork + integration to NVIDIA PhysicsNeMo to use its physics-ML
     utilities, mixed-precision, and multi-GPU training. See README "NVIDIA GPU path".
-  - Add a physics-residual loss term (penalize mass-balance violation) alongside the
-    data loss -- the "informed" part of physics-informed.
 """
 
 from __future__ import annotations
@@ -54,9 +55,10 @@ class PhysicsUDE(GroundwaterModel):
     name = "physics_ude"
 
     def __init__(self, hidden: int = 64, epochs: int = 200, lr: float = 1e-2,
-                 device: str | None = None, seed: int = 0):
+                 physics_weight: float = 0.1, device: str | None = None, seed: int = 0):
         _require_torch()
         self.hidden, self.epochs, self.lr, self.seed = hidden, epochs, lr, seed
+        self.physics_weight = physics_weight
         self.device = device or _default_device()
         self.hypernet: nn.Module | None = None
         self._stats: dict = {}
@@ -86,10 +88,13 @@ class PhysicsUDE(GroundwaterModel):
         for _ in range(self.epochs):
             opt.zero_grad()
             params = self.hypernet(stat_n)            # (W, n_params)
-            pred = self._rollout(params, dyn, h0, data.doy)   # (W, T)
+            pred = self._rollout(params, dyn, h0)     # (W, T)
             data_loss = ((pred - target) ** 2 * obs_mask).sum() / obs_mask.sum().clamp_min(1.0)
-            # TODO(GPU): add a physics-residual penalty here (mass-balance consistency).
-            loss = data_loss
+            # Physics-residual: enforce the mass-balance ODE on observed training days,
+            # teacher-forced (decoupled from the free rollout). This is the "informed"
+            # half of physics-informed: it constrains the dynamics, not just the fit.
+            phys_loss = self._physics_residual(params, dyn, target, obs_mask)
+            loss = data_loss + self.physics_weight * phys_loss
             loss.backward()
             opt.step()
         return self
@@ -105,40 +110,84 @@ class PhysicsUDE(GroundwaterModel):
         h0 = torch.from_numpy(np.nan_to_num(self.initial_condition(data)).astype("float32")).to(self.device)
         with torch.no_grad():
             params = self.hypernet(stat_n)
-            pred = self._rollout(params, dyn, h0, data.doy)
+            pred = self._rollout(params, dyn, h0)
         return pred.cpu().numpy()
 
-    def _rollout(self, params, dyn, h0, doy) -> "torch.Tensor":
-        """Free-running daily Euler integration of the gray-box ODE skeleton.
+    def _decay_and_source(self, params, dyn):
+        """Cast the gray-box ODE into the affine form  dh/dt = -g*h + s_t.
 
         params: (W, n_params) -> a, z, b, c, k_link, d_sin, d_cos
         dyn:    (W, T, 4) -> rainfall, upstream, sin(doy), cos(doy)
-        h0:     (W,) initial level
-        Returns (W, T) simulated levels.
 
-        TODO(GPU): this hand-rolled Euler loop is fine on CPU/MPS for prototyping but is
-        slow and memory-heavy for long rollouts. On CUDA, replace with
-        torchdiffeq.odeint_adjoint over a vectorized ODE func for constant-memory
-        backprop, or move the whole thing into PhysicsNeMo.
+        The gray-box mass balance is
+            dh/dt = -a*(h - z) + b*rain + k*(ups - h) + c + d_sin*sin + d_cos*cos
+        Collecting the terms linear in h gives a decay rate g = a + k (>= 0) and an
+        affine forcing s_t that carries everything else. ``c`` is a constant
+        source/sink (baseline recharge), replacing the unused tidal placeholder: the
+        daily forcing here has no tidal series, so we keep the parameter as a physical
+        bias rather than wiring a driver that does not exist.
+
+        Returns ``g`` (W,) and ``s`` (W, T).
         """
         a = torch.nn.functional.softplus(params[:, 0])   # recession >= 0
         z = params[:, 1]
-        b = torch.nn.functional.softplus(params[:, 2])
+        b = torch.nn.functional.softplus(params[:, 2])   # rainfall gain >= 0
         c = params[:, 3]
-        k = torch.sigmoid(params[:, 4])                  # coupling in (0,1)
+        k = torch.sigmoid(params[:, 4])                  # upstream coupling in (0,1)
         d_sin, d_cos = params[:, 5], params[:, 6]
 
-        W, T, _ = dyn.shape
         rain, ups, sin_t, cos_t = dyn[..., 0], dyn[..., 1], dyn[..., 2], dyn[..., 3]
+        g = a + k                                        # (W,) linear decay coefficient
+        s = ((a * z + c)[:, None]
+             + k[:, None] * ups
+             + b[:, None] * rain
+             + d_sin[:, None] * sin_t
+             + d_cos[:, None] * cos_t)                   # (W, T) affine forcing
+        return g, s
+
+    def _rollout(self, params, dyn, h0) -> "torch.Tensor":
+        """Free-running daily integration of the gray-box ODE skeleton.
+
+        params: (W, n_params); dyn: (W, T, 4); h0: (W,) initial level.
+        Returns (W, T) simulated levels.
+
+        Integration is semi-implicit (backward Euler on the linear decay term,
+        explicit on the forcing) with dt = 1 day to match the gray-box. For decay
+        g >= 0 this is unconditionally stable, so a long free-running val hindcast
+        cannot blow up even while the hypernetwork is still learning -- the explicit
+        Euler loop this replaces could diverge to NaN for large early-training g. The
+        update is fully differentiable, so gradients flow through the whole rollout.
+
+        NVIDIA GPU path: for very long rollouts where storing every step is the
+        bottleneck, swap this loop for torchdiffeq.odeint_adjoint over the same
+        ``_decay_and_source`` ODE (constant-memory backprop), or port to PhysicsNeMo.
+        """
+        g, s = self._decay_and_source(params, dyn)
+        denom = 1.0 + g                                  # backward-Euler, dt = 1 day
+        _, T = s.shape
         h = h0.clone()
         out = []
         for t in range(T):
-            dh = (-a * (h - z) + b * rain[:, t] + k * (ups[:, t] - h)
-                  - c * 0.0  # TODO(GPU): wire tidal amplitude AMP[:,t] as a driver
-                  + d_sin * sin_t[:, t] + d_cos * cos_t[:, t])
-            h = h + dh
+            h = (h + s[:, t]) / denom
             out.append(h)
         return torch.stack(out, dim=1)
+
+    def _physics_residual(self, params, dyn, target, obs_mask) -> "torch.Tensor":
+        """Mean squared mass-balance residual on observed consecutive training days.
+
+        Teacher-forced: plug the observed level into the ODE right-hand side and require
+        the one-day finite difference of the observations to match it,
+            (h_obs[t+1] - h_obs[t]) ~= -g*h_obs[t] + s_t.
+        This constrains the learned dynamics independently of the free rollout, which
+        stabilizes early training and is the standard universal-ODE collocation term.
+        Only day-pairs with a finite training observation at both ends contribute.
+        """
+        g, s = self._decay_and_source(params, dyn)
+        h_t, h_tp1 = target[:, :-1], target[:, 1:]
+        rhs = s[:, :-1] - g[:, None] * h_t
+        resid = (h_tp1 - h_t) - rhs
+        pair_mask = obs_mask[:, :-1] * obs_mask[:, 1:]
+        return (resid ** 2 * pair_mask).sum() / pair_mask.sum().clamp_min(1.0)
 
 
 if _HAS_TORCH:
