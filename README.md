@@ -29,11 +29,11 @@ The bar to beat, computed by the harness in this repo:
 | **Gray-box ODE** (per-well calibrated, baseline) | **0.736** | — | 0.83 | 61 |
 | Climatology (per-well seasonal mean) | 0.446 | -0.20 | 1.63 | 61 |
 | Last-value (constant) | undefined* | -0.57 | 1.83 | 61 |
-| **Physics-informed neural operator** (this project) | 0.505 | 0.09 | 1.42 | 61 |
+| **Physics-informed neural operator** (this project) | 0.591 | 0.49 | 1.07 | 61 |
 
 <sub>*A constant prediction has zero variance, so KGE is undefined; skill is read from NSE/RMSE. Forecast-mode persistence scores KGE 0.997 but is deliberately excluded: 1-step-ahead prediction of slow-moving groundwater is trivial and not comparable to a free-running simulation. The harness keeps simulation and forecast modes separate so the comparison stays honest.</sub>
 
-The operator row is a first single-split GPU pass (one network across all 61 wells, 300 epochs, no per-well tuning). It already clears the seasonal climatology baseline (0.505 vs 0.446 KGE) and beats the per-well-calibrated gray-box on 13 of 61 wells, but trails it overall: a handful of hard wells still miss the absolute level. Closing that gap (per-well level anchoring under a held-out tuning split, and the leave-one-well-out operator-generalization test) is the active work, kept off the validation metric to avoid tuning to the benchmark.
+The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). It clears the seasonal climatology baseline comfortably (0.591 vs 0.446 KGE, 0.49 vs -0.20 NSE) and beats the per-well-calibrated gray-box on 18 of 61 wells, but still trails it overall (0.591 vs 0.736). All hyperparameters were chosen on an inner split carved from the pre-2019 training period (inner-train <2018, inner-val 2018); the 2019+ benchmark was evaluated exactly once, so the number is not tuned to the test. The remaining gap is a few hard wells, and the operator-generalization headline (leave-one-well-out: predict a held-out well from its attributes alone) is the next milestone.
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
@@ -60,7 +60,7 @@ python -m hydrophysics.train --model gru --epochs 30
 # On real data + GPU:
 export HYDROMIND_GW_DATA=/path/to/data
 python -m hydrophysics.train --model ude \
-    --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 300
+    --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 1500
 ```
 
 The real Zhuoshui groundwater data is **not** redistributed here (agency-data terms). The repo ships a synthetic sample in `hydrophysics/sample_data/` and reads real data via the `HYDROMIND_GW_DATA` path.
