@@ -40,23 +40,23 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available(), tor
 
 `train.py` auto-selects `cuda > mps > cpu`; pass `--device cuda` to force it.
 
-### 2.2 NVIDIA PhysicsNeMo (for the flagship port)
+### 2.2 NVIDIA PhysicsNeMo (the flagship port)
 
-PhysicsNeMo (formerly Modulus) is the target framework for the operator port. Two
-common install paths; confirm the current package name and version against the official
-docs at https://docs.nvidia.com/physicsnemo/ before pinning:
+PhysicsNeMo (formerly Modulus) hosts the operator port `PhysicsNeMoUDE`
+(`--model ude_nemo`), whose hypernetwork is a native `physicsnemo.Module`. Install it
+into the same CUDA-enabled env (see https://docs.nvidia.com/physicsnemo/):
 
 ```bash
-# pip (into the same CUDA-enabled env)
-pip install nvidia-physicsnemo
-
-# or the maintained container (recommended for matched CUDA/driver/deps)
+pip install -e ".[nemo]"   # adds nvidia-physicsnemo
+# or the maintained container (matched CUDA/driver/deps):
 docker pull nvcr.io/nvidia/physicsnemo/physicsnemo:<tag>
 ```
 
-PhysicsNeMo is optional: the PyTorch models (`GlobalGRU`, `PhysicsUDE`) train on plain
-CUDA without it. PhysicsNeMo is for the GPU-optimized operator port, mixed precision,
-and multi-GPU. Keep it an optional dependency so the repo installs cleanly without it.
+PhysicsNeMo is an **optional** dependency: the pure-PyTorch models (`GlobalGRU`,
+`PhysicsUDE`, `GlobalForecastLSTM`) train on plain CUDA without it, and the smoke test
+for `PhysicsNeMoUDE` skips cleanly when it is absent so CI stays green. Use it for the
+framework port (metadata, `.mdlus` checkpointing) and, going forward, multi-GPU and
+its physics-ML utilities.
 
 ## 3. The model contract
 
@@ -112,10 +112,12 @@ pytest -q                       # tests must pass; add a test with every model/f
 ## 7. Where to start
 
 Good first contributions:
-- Implement the `PhysicsUDE` TODOs: swap the Euler loop for `torchdiffeq.odeint_adjoint`,
-  add a physics-residual loss term, wire the tidal amplitude driver.
-- Add a Fourier Neural Operator / DeepONet model for leave-one-well-out generalization.
-- Add deep-ensemble or MC-dropout uncertainty to the simulate output.
+- Swap the semi-implicit rollout in `PhysicsUDE._rollout` for `torchdiffeq.odeint_adjoint`
+  (constant-memory backprop) and benchmark it against the current loop.
+- Add a Fourier Neural Operator / DeepONet model for leave-one-well-out generalization
+  (the open problem — see the `leave_one_well_out` harness in `hydrophysics.lowo`).
+- Run `PhysicsNeMoUDE` multi-GPU via PhysicsNeMo's distributed utilities.
+- Add deep-ensemble or MC-dropout uncertainty to the `simulate` output.
 - A small Gradio/Streamlit demo that plots observed vs simulated per well.
 
 Questions or ideas: open an issue at

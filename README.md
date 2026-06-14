@@ -20,6 +20,8 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 | **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
 | **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
 | **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
+| **GPU training** (mixed precision) | **14×** over CPU, ~½ the memory | fp32 10.9× | real NVIDIA-stack speedup |
+| **NVIDIA PhysicsNeMo port** | KGE **0.591** (`ude_nemo`) | PyTorch UDE 0.591 | runs on the framework, identical skill |
 
 Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row, and it is still unsolved.
 
@@ -54,6 +56,10 @@ The operator is one network across all 61 wells (attribute-conditioned hypernetw
 
 *Per-well validation KGE across the fan (gray-box baseline). Most wells are well-modeled (green/yellow); the dark wells are the hard cases a single attribute-conditioned operator should rescue.*
 
+![Free-running simulation vs observed](results/figures/simulation_hydrographs.png)
+
+*Free-running PhysicsUDE hindcast vs observed, validation period shaded. Generated from the bundled **synthetic sample** (`python -m hydrophysics.figures`) so the figure reproduces anywhere and ships no real agency series; the same command on real data redraws it for the 61 wells.*
+
 ## Forecast mode (operational, data-assimilated)
 
 A **separate** track from the simulation benchmark above (do not compare the two — different task). Here a single global attribute-aware LSTM (`hydrophysics/models/forecast_lstm.py`) forecasts the level `h` days ahead using observed levels up to the forecast origin (assimilation) plus forcing, scored on 2019+ against the honest forecast-mode references at each horizon:
@@ -76,18 +82,24 @@ A **separate** track from the simulation benchmark above (do not compare the two
 
 <sub>CRPS (lower better) beats the persistence-Gaussian baseline at every horizon — nearly half at 30 days. Empirical coverage (PICP) sits near the nominal 0.90, so the intervals are well calibrated out of the box, and they stay sharp. Reproduce: `python -m hydrophysics.forecast_eval --device cuda --probabilistic`.</sub>
 
+![Probabilistic 30-day forecast with 90% interval](results/figures/forecast_fan.png)
+
+*Probabilistic 30-day forecast from one origin (dashed line): the mean tracks the realized observations and the 90% interval widens with lead time. Bundled-sample figure (`python -m hydrophysics.figures`), reproducible with no real data.*
+
 ## Status
 
-- **Foundation (done, tested, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample for CI.
-- **Models (GPU):** a working `GlobalGRU` reference model, and the `PhysicsUDE` physics-informed operator — hypernetwork + stable semi-implicit ODE rollout + physics-residual loss, trained end-to-end on CUDA and benchmarked above. Active build: closing the gap to the gray-box (per-well level anchoring, leave-one-well-out generalization) and the PhysicsNeMo port.
-- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation, scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
+- **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
+- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Active build: closing the gap to the gray-box and leave-one-well-out generalization.
+- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
+- **Tooling:** `hydrophysics.figures` (reproducible plots) and `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput).
 
 ## Quickstart
 
 ```bash
-pip install -e .                 # foundation only (numpy/pandas)
-pip install -e ".[gpu]"          # + torch, torchdiffeq (on the CUDA machine)
-pip install -e ".[gpu,viz,dev]"  # everything
+pip install -e .                      # foundation only (numpy/pandas)
+pip install -e ".[gpu]"               # + torch, torchdiffeq (on the CUDA machine)
+pip install -e ".[nemo]"              # + NVIDIA PhysicsNeMo (for --model ude_nemo)
+pip install -e ".[gpu,nemo,viz,dev]"  # everything
 
 # Reproduce the baselines on the bundled synthetic sample (no real data, no GPU):
 python -m hydrophysics.run_baselines
@@ -95,22 +107,37 @@ python -m hydrophysics.run_baselines
 # Train + benchmark a model on the sample:
 python -m hydrophysics.train --model gru --epochs 30
 
-# On real data + GPU:
+# Regenerate the figures + the GPU throughput benchmark (reproducible, no real data):
+python -m hydrophysics.figures
+python -m hydrophysics.bench
+
+# On real data + GPU (PhysicsNeMo port of the operator):
 export HYDROMIND_GW_DATA=/path/to/data
-python -m hydrophysics.train --model ude \
-    --baseline /path/to/gw_fit_results.csv --out results/ude --epochs 1500
+python -m hydrophysics.train --model ude_nemo --out results/ude_nemo --epochs 1500
 ```
 
 The real Zhuoshui groundwater data is **not** redistributed here (agency-data terms). The repo ships a synthetic sample in `hydrophysics/sample_data/` and reads real data via the `HYDROMIND_GW_DATA` path.
 
 ## NVIDIA GPU path
 
-The flagship result targets the NVIDIA stack:
+Not aspirational — the flagship runs on the NVIDIA stack today:
 
-1. **CUDA training.** `train.py` auto-selects `cuda > mps > cpu`. The models are standard PyTorch, so they train on any CUDA GPU as-is.
-2. **Differentiable ODE.** Swap the prototype Euler loop in `PhysicsUDE._rollout` for `torchdiffeq.odeint_adjoint` for constant-memory backprop through long rollouts.
-3. **PhysicsNeMo.** Port the hypernetwork + integration to NVIDIA PhysicsNeMo to use its physics-ML utilities, mixed precision, and multi-GPU training, and to add a physics-residual loss. This is what converts "scientific ML" into "scientific ML on NVIDIA's framework".
-4. **Operator generalization.** Evaluate leave-one-well-out: train on N-1 wells, predict the held-out well from its attributes alone.
+1. **PhysicsNeMo port (done).** `PhysicsNeMoUDE` (`--model ude_nemo`) is the operator with its hypernetwork as a native `physicsnemo.Module`. It carries PhysicsNeMo `ModelMetaData` capability flags (AMP / auto-grad), serializes to a single portable `.mdlus` checkpoint (`save_checkpoint` / `load_checkpoint`, architecture + weights together), and reproduces the simulation headline **exactly** — median KGE 0.591 on the real 61-well data, bit-identical to the pure-PyTorch UDE. Install with `pip install -e ".[nemo]"`.
+2. **Mixed precision (done).** The forecaster trains under bf16 autocast (`amp=True`). On an RTX 4070 SUPER it is **14× faster than CPU and uses ~half the GPU memory** of fp32 (see GPU performance below). Reproduce: `python -m hydrophysics.bench`.
+3. **CUDA training (done).** `train.py` auto-selects `cuda > mps > cpu`; all models are standard PyTorch and train on any CUDA GPU as-is.
+4. **Next on the NVIDIA path.** Constant-memory adjoint rollout via `torchdiffeq.odeint_adjoint`, PhysicsNeMo multi-GPU / distributed training, and the leave-one-well-out operator-generalization study.
+
+### GPU performance — forecaster training throughput
+
+| Backend | Throughput | Speedup vs CPU | Peak GPU memory |
+|---|---|---|---|
+| CPU | 18.5k windows/s | 1.0× | — |
+| CUDA fp32 | 201k windows/s | 10.9× | 2682 MB |
+| **CUDA bf16-AMP** | **260k windows/s** | **14.1×** | **1362 MB** |
+
+<sub>RTX 4070 SUPER, 40 wells × 6 years, 8 epochs. Mixed precision is both faster *and* roughly halves memory. Reproduce: `python -m hydrophysics.bench`.</sub>
+
+![Forecaster training throughput by backend](results/bench/gpu_benchmark.png)
 
 ## Project structure
 
@@ -124,12 +151,20 @@ hydrophysics/
   sample.py        synthetic dataset generator (CI / no-data users)
   run_baselines.py freeze + print the baseline tables
   train.py         load -> fit -> simulate -> benchmark (the GPU entry point)
+  forecast_eval.py horizon-wise forecast scoring (point + probabilistic)
+  figures.py       generate the README figures (hydrographs, fan, bars)
+  bench.py         CPU vs CUDA vs CUDA+AMP throughput benchmark
+  viz.py           plotting helpers (lazy matplotlib)
   models/
     base.py        GroundwaterModel interface (fit + simulate)
     gru.py         GlobalGRU reference model (working, GPU-ready)
-    ude.py         PhysicsUDE physics-informed operator skeleton (the new method)
+    ude.py         PhysicsUDE physics-informed operator (the new method)
+    ude_physicsnemo.py  PhysicsNeMoUDE: the UDE on NVIDIA PhysicsNeMo
+    forecast_lstm.py    GlobalForecastLSTM (assimilated, probabilistic, AMP)
 results/phase0/    frozen baselines + spatial map
-tests/             foundation + model-smoke tests
+results/figures/   reproducible figures (from the synthetic sample)
+results/bench/     GPU throughput benchmark
+tests/             foundation + model-smoke + forecast tests (run in CI)
 ```
 
 ## Contributing
