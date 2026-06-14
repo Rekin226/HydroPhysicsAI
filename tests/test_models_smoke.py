@@ -34,3 +34,29 @@ def test_fit_simulate_shapes(data, model_name):
 
     table = benchmark_table(data, {model.name: pred}, period="val")
     assert model.name in table.index
+
+
+def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
+    """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
+    base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a
+    single .mdlus checkpoint. Skips cleanly when nvidia-physicsnemo is not installed."""
+    pytest.importorskip("physicsnemo")
+    import physicsnemo
+
+    from hydrophysics.models.ude import PhysicsUDE
+    from hydrophysics.models.ude_physicsnemo import PhysicsNeMoUDE
+
+    base = PhysicsUDE(epochs=10, device="cpu", seed=0).fit(data)
+    nemo = PhysicsNeMoUDE(epochs=10, device="cpu", seed=0).fit(data)
+
+    assert isinstance(nemo.hypernet, physicsnemo.Module)
+    p_base, p_nemo = base.simulate(data), nemo.simulate(data)
+    assert np.allclose(p_base, p_nemo, atol=1e-5)
+
+    ckpt = tmp_path / "ude_nemo.mdlus"
+    nemo.save_checkpoint(str(ckpt))
+    assert ckpt.exists()
+    reloaded = PhysicsNeMoUDE(epochs=0, device="cpu", seed=0)
+    reloaded._stats = nemo._stats
+    reloaded.load_checkpoint(str(ckpt))
+    assert np.allclose(p_nemo, reloaded.simulate(data), atol=1e-6)
