@@ -38,6 +38,18 @@ def test_fit_forecast_and_eval(data):
     assert np.isfinite(table["rmse_median"].to_numpy()).all()
 
 
+def test_amp_flag_fits(data):
+    """The mixed-precision flag must not break fit/forecast (it is a no-op off CUDA)."""
+    from hydrophysics.models.forecast_lstm import GlobalForecastLSTM
+
+    model = GlobalForecastLSTM(lookback=30, horizon=7, hidden=16, epochs=2,
+                               amp=True, device="cpu")
+    model.fit(data)
+    cube = model.forecast(data)
+    assert cube.shape == (data.n_wells, data.n_days, 7)
+    assert np.isfinite(cube[np.isfinite(cube)]).all()
+
+
 def test_probabilistic_forecast(data):
     from hydrophysics.forecast_eval import probabilistic_horizon_table
     from hydrophysics.models.forecast_lstm import GlobalForecastLSTM

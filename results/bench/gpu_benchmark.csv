@@ -1,0 +1,4 @@
+backend,device,amp,seconds,windows_per_s,peak_gpu_mb,speedup_vs_cpu
+CPU,cpu,False,30.1,18464.74,,1.0
+CUDA fp32 (NVIDIA GeForce RTX 4070 SUPER),cuda,False,2.77,200872.4,2681.7,10.88
+CUDA bf16-AMP (NVIDIA GeForce RTX 4070 SUPER),cuda,True,2.14,260258.22,1362.36,14.09
