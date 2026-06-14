@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (foundation + dev, CPU-only)
+        # The GPU stack (torch) is intentionally not installed in CI: the
+        # foundation (data/metrics/baselines/eval) runs anywhere, and the
+        # torch-dependent model smoke tests skip themselves when torch is absent.
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Test (pytest)
+        run: pytest -q
+
+      - name: Reproduce baselines on the synthetic sample
+        # End-to-end smoke of the public entry point on the bundled sample data
+        # (no real data, no GPU) so a broken pipeline fails CI, not a user.
+        run: python -m hydrophysics.run_baselines
