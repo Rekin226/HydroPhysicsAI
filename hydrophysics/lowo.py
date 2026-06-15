@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .baselines import climatology_prediction
 from .config import Config, default_config
 from .data import GWData, load_dataset
 from .eval import evaluate_predictions
@@ -78,11 +79,20 @@ def main(argv: list[str] | None = None) -> None:
     pred = leave_one_well_out(data, device, args.epochs, folds=args.folds,
                               feature_fn=feature_fn)
     per = evaluate_predictions(data, pred, period="val")
+    # Honest per-well head-to-head against each well's OWN climatology. Median KGE alone
+    # is flattering: it hides KGE's unbounded negative tail (so report a clipped mean) and
+    # it is not the same as per-well superiority (so report the win-rate vs climatology).
+    clim = evaluate_predictions(data, climatology_prediction(data), period="val")["kge"]
+    k = per["kge"]
+    n = int(k.notna().sum())
+    win = int((k > clim).sum())
     print("\n=== LEAVE-ONE-WELL-OUT (held-out wells, validation) ===")
-    print(f"KGE  median {per['kge'].median():.3f} | mean {per['kge'].mean():.3f}")
-    print(f"NSE  median {per['nse'].median():.3f}")
-    print(f"RMSE median {per['rmse'].median():.3f} m")
-    print(f"wells: {int(per['kge'].notna().sum())} | KGE>0.5: {int((per['kge'] > 0.5).sum())}")
+    print(f"KGE  median {k.median():.3f} | mean {k.mean():.2f} "
+          f"| clipped[-1,1] mean {k.clip(-1, 1).mean():.3f}")
+    print(f"NSE  median {per['nse'].median():.3f} | RMSE median {per['rmse'].median():.3f} m")
+    print(f"beats own climatology on {win}/{n} wells ({100 * win / max(n, 1):.0f}%) "
+          f"| KGE>0.5 on {int((k > 0.5).sum())} | KGE<0 on {int((k < 0).sum())}")
+    print(f"(climatology reference: median KGE {clim.median():.3f})")
 
     if args.out:
         out = Path(args.out)
