@@ -36,6 +36,24 @@ def test_fit_simulate_shapes(data, model_name):
     assert model.name in table.index
 
 
+def test_observable_features_and_lowo(data):
+    """Observable signatures are finite (W, F), and LOWO runs with them end-to-end."""
+    from hydrophysics.lowo import leave_one_well_out
+    from hydrophysics.models.ude import enriched_features, observable_features
+
+    obs = observable_features(data)
+    enr = enriched_features(data)
+    assert obs.shape[0] == data.n_wells and obs.shape[1] == 6
+    assert enr.shape[1] == obs.shape[1] + 7  # static (7) + observable (6)
+    assert np.isfinite(obs).all() and np.isfinite(enr).all()
+
+    pred = leave_one_well_out(data, device="cpu", epochs=3, folds=2,
+                              feature_fn=observable_features)
+    assert pred.shape == data.target.shape
+    # every well is predicted exactly once while held out
+    assert np.isfinite(pred).all()
+
+
 def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
     """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
     base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a

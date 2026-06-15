@@ -19,14 +19,14 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 | Task | This repo | Reference | Verdict |
 |---|---|---|---|
 | **Simulation** (free-running hindcast) | physics-UDE **0.591** | gray-box 0.736 · climatology 0.446 | beats climatology, trails the per-well gray-box |
-| **Generalize to unseen wells** (leave-one-well-out) | **0.236** | climatology 0.446 | open problem — does not yet generalize |
+| **Generalize to unseen wells** (leave-one-well-out) | **0.389** (was 0.236) | climatology 0.446 | observed-history signatures nearly close the gap |
 | **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
 | **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
 | **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
 | **GPU training** (mixed precision) | **14×** over CPU, ~½ the memory | fp32 10.9× | real NVIDIA-stack speedup |
 | **NVIDIA PhysicsNeMo port** | KGE **0.591** (`ude_nemo`) | PyTorch UDE 0.591 | runs on the framework, identical skill |
 
-Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row, and it is still unsolved.
+Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row. It is not solved (still below climatology), but feeding the network observable signatures of a held-out well's own history lifts it from 0.236 to **0.389**, nearly closing the gap (see [Generalizing to unseen wells](#generalizing-to-unseen-wells)).
 
 ## The idea
 
@@ -53,7 +53,7 @@ The bar to beat, computed by the harness in this repo:
 
 <sub>*A constant prediction has zero variance, so KGE is undefined; skill is read from NSE/RMSE. Forecast-mode persistence scores KGE 0.997 but is deliberately excluded: 1-step-ahead prediction of slow-moving groundwater is trivial and not comparable to a free-running simulation. The harness keeps simulation and forecast modes separate so the comparison stays honest.</sub>
 
-The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). It clears the seasonal climatology baseline comfortably (0.591 vs 0.446 KGE, 0.49 vs -0.20 NSE) and beats the per-well-calibrated gray-box on 18 of 61 wells, but still trails it overall (0.591 vs 0.736). All hyperparameters were chosen on an inner split carved from the pre-2019 training period (inner-train <2018, inner-val 2018); the 2019+ benchmark was evaluated exactly once, so the number is not tuned to the test. The remaining gap is a few hard wells, and the operator-generalization headline (leave-one-well-out: predict a held-out well from its attributes alone) is the next milestone.
+The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). It clears the seasonal climatology baseline comfortably (0.591 vs 0.446 KGE, 0.49 vs -0.20 NSE) and beats the per-well-calibrated gray-box on 18 of 61 wells, but still trails it overall (0.591 vs 0.736). All hyperparameters were chosen on an inner split carved from the pre-2019 training period (inner-train <2018, inner-val 2018); the 2019+ benchmark was evaluated exactly once, so the number is not tuned to the test. The remaining gap is a few hard wells, and the operator-generalization headline (leave-one-well-out) is below.
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
@@ -62,6 +62,24 @@ The operator is one network across all 61 wells (attribute-conditioned hypernetw
 ![Free-running simulation vs observed](results/figures/simulation_hydrographs.png)
 
 *Free-running PhysicsUDE hindcast vs observed, validation period shaded. Generated from the bundled **synthetic sample** (`python -m hydrophysics.figures`) so the figure reproduces anywhere and ships no real agency series; the same command on real data redraws it for the 61 wells.*
+
+## Generalizing to unseen wells
+
+The operator-learning headline: train on N−1 wells, then predict a **held-out** well that was never calibrated (k-fold, every well held out once, scored on 2019+). The gray-box can't do this at all — it fits one parameter set per well and has nothing to say about a new one.
+
+The raw station data carries no hydrogeology (just coordinates), so conditioning on geographic attributes alone is weak: **KGE 0.236**, with a long tail of wells that blow up. But a held-out well still has a monitoring *history* — so we summarize that history into six physically-meaningful signatures (lag-1 autocorrelation → recession rate, rainfall sensitivity → recharge gain, upstream coupling → `k_link`, seasonal amplitude, level spread, trend), all computed from training days only, and let the shared network place the well from its *observed behavior* instead of its location.
+
+| LOWO features | median KGE | RMSE m | wells KGE>0.4 |
+|---|---|---|---|
+| static geographic attrs | 0.236 | 2.96 | 24 / 61 |
+| **+ observable history signatures** | **0.389** | **2.73** | **29 / 61** |
+| climatology (reference) | 0.446 | — | — |
+
+That is a **+65% lift in median KGE** (0.236 → 0.389) and better on every metric, nearly closing the gap to climatology. It is **not solved** — the median still sits below climatology and a few wells remain badly mismodeled — but it is real, leakage-free progress: the feature set was selected on the inner 2018 split and the 2019+ number was scored exactly once. Reproduce: `python -m hydrophysics.lowo --device cuda --features observable`.
+
+![Leave-one-well-out: static attrs vs observable signatures](results/figures/lowo_improvement.png)
+
+*Per-well held-out KGE. Geographic attributes alone (gray) leave a heavy tail below zero; observable history signatures (green) shift the mass up toward the climatology line and roughly halve the catastrophic cases.*
 
 ## Forecast mode (operational, data-assimilated)
 
@@ -92,7 +110,7 @@ A **separate** track from the simulation benchmark above (do not compare the two
 ## Status
 
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
-- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Active build: closing the gap to the gray-box and leave-one-well-out generalization.
+- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Leave-one-well-out generalization improved from 0.236 to 0.389 via observable history signatures (still below climatology — open). Active build: closing the gap to the gray-box.
 - **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 - **Tooling:** `hydrophysics.figures` (reproducible plots) and `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput).
 

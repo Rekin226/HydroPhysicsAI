@@ -68,10 +68,21 @@ it overall (0.591 vs 0.736). A few hard wells dominate the gap.
 Gaussian head gives calibrated intervals out of the box: empirical 90% coverage sits at
 ~0.90 and CRPS beats a persistence-Gaussian baseline at every horizon.
 
-**The honest miss.** The operator-learning headline — predict a *held-out* well from its
-attributes alone (leave-one-well-out) — scores KGE 0.236, below climatology. The current
-static attributes don't carry enough hydrogeological signal to place an unseen well in
-parameter space. This is the open problem, not a solved one.
+**The hard part: generalizing to unseen wells.** The operator-learning headline —
+predict a *held-out* well that was never calibrated (leave-one-well-out) — started at KGE
+0.236, below climatology. The raw station data carries no hydrogeology (just
+coordinates), so geographic attributes can't place an unseen well in parameter space.
+
+But a held-out well still has a monitoring *history*. Summarizing that history into six
+physically-meaningful signatures — lag-1 autocorrelation (→ recession rate), rainfall
+sensitivity (→ recharge gain), upstream coupling (→ `k_link`), seasonal amplitude, level
+spread, trend — and conditioning the shared network on those instead of geography lifts
+leave-one-well-out from **0.236 to 0.389 median KGE (+65%)**, better on every metric,
+nearly closing the gap to climatology (0.446). The feature set was selected on an inner
+2018 split and the 2019+ number scored exactly once, so it is leakage-free. It is real
+progress, but **not a solved problem**: the median still trails climatology and a tail of
+wells remains badly mismodeled. The lesson is that *observable behavior generalizes where
+geography does not* — which points squarely at the next step.
 
 ## Running on the NVIDIA stack
 
@@ -85,12 +96,14 @@ parameter space. This is the open problem, not a solved one.
 
 ## What's next
 
-The single most valuable thread is **leave-one-well-out generalization**: richer physical
-attributes (aquifer transmissivity, lithology, distance-to-river) feeding either the
-current hypernetwork or a DeepONet/FNO operator head. Closing even part of that gap would
-turn a well-engineered benchmark into a genuinely new result. A constant-memory adjoint
-rollout (`torchdiffeq.odeint_adjoint`) and PhysicsNeMo multi-GPU training are the natural
-systems follow-ups.
+**Push leave-one-well-out past climatology.** Observable signatures got it from 0.236 to
+0.389; the remaining gap is a tail of wells whose free-running simulation diverges. Likely
+levers: richer physical attributes if any can be sourced (aquifer transmissivity,
+lithology, screen depth), a DeepONet/FNO operator head, regularizing the predicted
+parameters toward stable regimes, or robust per-well uncertainty so the bad wells are
+flagged rather than trusted. A constant-memory adjoint rollout
+(`torchdiffeq.odeint_adjoint`) and PhysicsNeMo multi-GPU training are the natural systems
+follow-ups.
 
 ---
 

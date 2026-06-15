@@ -24,7 +24,7 @@ import numpy as np
 from .config import Config, default_config
 from .data import GWData, load_dataset
 from .eval import evaluate_predictions
-from .models.ude import PhysicsUDE, enriched_features
+from .models.ude import PhysicsUDE, enriched_features, observable_features
 from .train import pick_device
 
 
@@ -59,8 +59,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--folds", type=int, default=6)
     ap.add_argument("--epochs", type=int, default=1500)
     ap.add_argument("--device", default=None)
-    ap.add_argument("--features", default="enriched", choices=["static", "enriched"],
-                    help="static geographic attrs only, or + observable history signatures")
+    ap.add_argument("--features", default="observable",
+                    choices=["static", "observable", "enriched"],
+                    help="static geographic attrs, observable history signatures "
+                         "(selected on the inner split), or both")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
@@ -68,7 +70,8 @@ def main(argv: list[str] | None = None) -> None:
     data = load_dataset(cfg)
     print(data.summary())
     device = pick_device(args.device)
-    feature_fn = enriched_features if args.features == "enriched" else None
+    feature_fn = {"static": None, "observable": observable_features,
+                  "enriched": enriched_features}[args.features]
     print(f"device: {device} | LOWO {args.folds}-fold | epochs: {args.epochs} "
           f"| features: {args.features}")
 
