@@ -24,24 +24,27 @@ import numpy as np
 from .config import Config, default_config
 from .data import GWData, load_dataset
 from .eval import evaluate_predictions
-from .models.ude import PhysicsUDE
+from .models.ude import PhysicsUDE, enriched_features
 from .train import pick_device
 
 
 def leave_one_well_out(
-    data: GWData, device: str, epochs: int, folds: int = 6, seed: int = 0
+    data: GWData, device: str, epochs: int, folds: int = 6, seed: int = 0,
+    feature_fn=None,
 ) -> np.ndarray:
     """Return a (W, T) prediction where each well was predicted while held out.
 
     Wells are assigned to folds round-robin by index (deterministic). For each fold the
-    held-out wells contribute no training signal; they are simulated from attributes +
-    initial condition only.
+    held-out wells contribute no training signal; they are simulated from their features +
+    initial condition only. ``feature_fn`` selects the static-feature builder (default the
+    geographic attributes; pass ``enriched_features`` to add observable history
+    signatures, which is what lets the operator place an unseen well).
     """
     assign = np.arange(data.n_wells) % folds
     pred = np.full_like(data.target, np.nan)
     for f in range(folds):
         held = assign == f
-        model = PhysicsUDE(device=device, epochs=epochs, seed=seed)
+        model = PhysicsUDE(device=device, epochs=epochs, seed=seed, feature_fn=feature_fn)
         model.fit(data, train_wells=~held)
         sim = model.simulate(data)
         pred[held] = sim[held]
@@ -56,6 +59,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--folds", type=int, default=6)
     ap.add_argument("--epochs", type=int, default=1500)
     ap.add_argument("--device", default=None)
+    ap.add_argument("--features", default="enriched", choices=["static", "enriched"],
+                    help="static geographic attrs only, or + observable history signatures")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
@@ -63,9 +68,12 @@ def main(argv: list[str] | None = None) -> None:
     data = load_dataset(cfg)
     print(data.summary())
     device = pick_device(args.device)
-    print(f"device: {device} | LOWO {args.folds}-fold | epochs: {args.epochs}")
+    feature_fn = enriched_features if args.features == "enriched" else None
+    print(f"device: {device} | LOWO {args.folds}-fold | epochs: {args.epochs} "
+          f"| features: {args.features}")
 
-    pred = leave_one_well_out(data, device, args.epochs, folds=args.folds)
+    pred = leave_one_well_out(data, device, args.epochs, folds=args.folds,
+                              feature_fn=feature_fn)
     per = evaluate_predictions(data, pred, period="val")
     print("\n=== LEAVE-ONE-WELL-OUT (held-out wells, validation) ===")
     print(f"KGE  median {per['kge'].median():.3f} | mean {per['kge'].mean():.3f}")

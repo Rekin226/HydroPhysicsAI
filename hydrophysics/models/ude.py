@@ -36,6 +36,81 @@ from ..data import GWData
 from .base import GroundwaterModel
 from .gru import _forcing_features, _static_features, _default_device
 
+
+def _seasonal_amp(h: np.ndarray, doy: np.ndarray) -> float:
+    """Amplitude of the annual cycle: least-squares fit of h ~ 1 + sin + cos(2pi doy/365)."""
+    if h.size < 8:
+        return 0.0
+    ang = 2 * np.pi * doy / 365.25
+    X = np.stack([np.ones_like(ang), np.sin(ang), np.cos(ang)], axis=-1)
+    try:
+        coef, *_ = np.linalg.lstsq(X, h, rcond=None)
+    except np.linalg.LinAlgError:
+        return 0.0
+    return float(np.hypot(coef[1], coef[2]))
+
+
+def observable_features(data: GWData) -> np.ndarray:
+    """Per-well signatures read from the *training* observations only -> (W, 6).
+
+    A held-out well is never calibrated (no per-well ODE fit), but its monitoring history
+    is available -- LOWO already uses its training mean (level anchor) and initial
+    condition. These six signatures summarize that same history into quantities that
+    physically proxy the ODE parameters, so the shared hypernetwork can place an unseen
+    well in parameter space from observable behavior rather than geography alone:
+
+      - level std            -> dynamic range / forcing scale
+      - lag-1 autocorrelation -> recession timescale (decay rate a)
+      - seasonal amplitude    -> d_sin/d_cos seasonal forcing
+      - rainfall sensitivity  -> recharge gain b   (corr of dh/dt with rainfall)
+      - upstream coupling     -> k_link            (corr of level with upstream level)
+      - mean trend slope      -> net drift / pumping pressure
+
+    Everything is computed under ``train_mask`` only (no validation leakage); the same
+    function is used for the inner-split development and the final benchmark.
+    """
+    tm = data.train_mask
+    doy_tr = data.doy[tm]
+    W = data.n_wells
+    feats = np.zeros((W, 6), dtype="float32")
+    for i in range(W):
+        h = data.target[i, tm].astype(float)
+        rain = np.nan_to_num(data.rainfall[i, tm]).astype(float)
+        ups = data.upstream[i, tm].astype(float)
+        fin = np.isfinite(h)
+        hh = h[fin]
+        if hh.size < 8:
+            continue
+        feats[i, 0] = hh.std()
+        # lag-1 autocorrelation on consecutive finite days
+        pair = fin[:-1] & fin[1:]
+        if pair.sum() > 4:
+            a0, a1 = h[:-1][pair], h[1:][pair]
+            sd = a0.std() * a1.std()
+            feats[i, 1] = float(np.mean((a0 - a0.mean()) * (a1 - a1.mean())) / sd) if sd > 1e-9 else 0.0
+            # rainfall sensitivity: corr of daily change with that day's rain
+            dh = a1 - a0
+            r = rain[1:][pair]
+            sdr = dh.std() * r.std()
+            feats[i, 3] = float(np.mean((dh - dh.mean()) * (r - r.mean())) / sdr) if sdr > 1e-9 else 0.0
+        feats[i, 2] = _seasonal_amp(hh, doy_tr[fin])
+        # upstream coupling: corr of level with upstream level (finite pairs)
+        finu = fin & np.isfinite(ups)
+        if finu.sum() > 4:
+            hu, uu = h[finu], ups[finu]
+            sdu = hu.std() * uu.std()
+            feats[i, 4] = float(np.mean((hu - hu.mean()) * (uu - uu.mean())) / sdu) if sdu > 1e-9 else 0.0
+        # net trend slope over the training window (per 1000 days, for scale)
+        idx = np.arange(hh.size, dtype=float)
+        if idx.std() > 1e-9:
+            feats[i, 5] = float(np.polyfit(idx, hh, 1)[0] * 1000.0)
+    return np.nan_to_num(feats)
+
+
+def enriched_features(data: GWData) -> np.ndarray:
+    """Geographic static attributes ++ observable training-history signatures -> (W, F)."""
+    return np.concatenate([_static_features(data), observable_features(data)], axis=-1)
+
 try:
     import torch
     from torch import nn
@@ -59,10 +134,14 @@ class PhysicsUDE(GroundwaterModel):
     def __init__(self, hidden: int = 64, epochs: int = 1500, lr: float = 3e-2,
                  physics_weight: float = 0.1, anchor_level: bool = True,
                  normalize_loss: bool = True, lr_min: float | None = 1e-4,
-                 device: str | None = None, seed: int = 0):
+                 feature_fn=None, device: str | None = None, seed: int = 0):
         _require_torch()
         self.hidden, self.epochs, self.lr, self.seed = hidden, epochs, lr, seed
         self.physics_weight = physics_weight
+        # Static feature builder: GWData -> (W, F). Defaults to the geographic attributes;
+        # pass `enriched_features` to add observable training-history signatures (helps the
+        # operator generalize to wells it never calibrated -- see leave-one-well-out).
+        self.feature_fn = feature_fn or _static_features
         # Improvements (validated on an inner pre-2019 tuning split, never on the
         # 2019+ benchmark): anchor each well's level to its training mean, weight every
         # well equally in the loss, and cosine-decay the learning rate to lr_min.
@@ -104,7 +183,7 @@ class PhysicsUDE(GroundwaterModel):
         a fitted parameter set. Their attributes/IC/level-anchor are still available.
         """
         torch.manual_seed(self.seed)
-        stat = _static_features(data)
+        stat = self.feature_fn(data)
         self._stats["stat_mu"] = stat.mean(0)
         self._stats["stat_sd"] = stat.std(0) + 1e-6
         mu_h, sd_h = self._level_stats(data)
@@ -150,7 +229,7 @@ class PhysicsUDE(GroundwaterModel):
     def simulate(self, data: GWData) -> np.ndarray:
         if self.hypernet is None:
             raise RuntimeError("call fit() before simulate()")
-        stat = _static_features(data)
+        stat = self.feature_fn(data)
         stat_n = torch.from_numpy(
             ((stat - self._stats["stat_mu"]) / self._stats["stat_sd"]).astype("float32")
         ).to(self.device)
