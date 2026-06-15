@@ -50,7 +50,10 @@ assimilation is an easier task).
 | Task | Result | Reference |
 |---|---|---|
 | Simulation (free-running) | PhysicsUDE / PhysicsNeMoUDE **KGE 0.591**, NSE 0.49 | gray-box 0.736 · climatology 0.446 |
-| Leave-one-well-out | **KGE 0.236** | climatology 0.446 |
+| Leave-one-well-out (static attrs) | KGE 0.236 | climatology 0.446 |
+| Leave-one-well-out (+ observable signatures) | KGE 0.389 | climatology 0.446 |
+| Leave-one-well-out (+ equilibrium anchoring, operator alone) | KGE 0.491 | climatology 0.446 |
+| Leave-one-well-out (**+ self-consistency gate**) | **KGE 0.565** | climatology 0.446 · in-sample 0.591 |
 | Forecast 7-day | LSTM **KGE 0.965** | persistence 0.946 |
 | Forecast 30-day | LSTM **KGE 0.899** | persistence 0.703 |
 | Forecast probabilistic | CRPS 0.143 / 0.286 (7/30 d), PICP ≈ 0.90 | persistence-Gaussian 0.260 / 0.590 |
@@ -62,9 +65,19 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
 
 - **Trails the classical baseline in simulation:** 0.591 vs the per-well gray-box 0.736.
   The operator wins on 18/61 wells; a few hard wells dominate the gap.
-- **Does not generalize to unseen wells:** leave-one-well-out KGE 0.236 (below
-  climatology). Predicting a held-out well from attributes alone is the open problem; the
-  current static attributes are likely insufficient.
+- **Generalization to unseen wells — improved, with caveats.** Leave-one-well-out median
+  KGE went 0.236 (geographic attrs) → 0.389 (observable history signatures) → 0.491
+  (pinning each well's free-run equilibrium to its observed mean — fixes a 5–15 m level
+  drift) → **0.565** (a self-consistency gate that falls back to climatology where the
+  operator can't reproduce a well's own history). The operator alone now beats climatology
+  (0.491 vs 0.446), and the held-out median (0.565) nearly matches the in-sample operator
+  (0.591); averaging a K=3 ensemble lifts it to ≈0.59, matching in-sample. **But** it is
+  not a clean sweep: the hybrid is *worse* than climatology on ~8 wells, and these resist
+  fixing — an ensemble-disagreement (uncertainty) gate caught only 2, because the rest are
+  **non-stationary** (their 2019+ departs from training; climatology fails them too), which
+  no training-time signal can detect. KGE's unbounded tail means median/clipped-mean are
+  the trustworthy aggregates (raw mean is not). All choices were made on the inner 2018
+  split; 2019+ scored once.
 - **Forecast skill depends on assimilation:** the LSTM uses observed levels up to the
   origin; it is not a free-running model and its scores must not be compared to
   simulation mode.

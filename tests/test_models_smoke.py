@@ -36,6 +36,43 @@ def test_fit_simulate_shapes(data, model_name):
     assert model.name in table.index
 
 
+def test_observable_features_and_lowo(data):
+    """Observable signatures are finite (W, F), and LOWO runs with them end-to-end."""
+    from hydrophysics.lowo import leave_one_well_out
+    from hydrophysics.models.ude import enriched_features, observable_features
+
+    obs = observable_features(data)
+    enr = enriched_features(data)
+    assert obs.shape[0] == data.n_wells and obs.shape[1] == 6
+    assert enr.shape[1] == obs.shape[1] + 7  # static (7) + observable (6)
+    assert np.isfinite(obs).all() and np.isfinite(enr).all()
+
+    pred = leave_one_well_out(data, device="cpu", epochs=3, folds=2,
+                              feature_fn=observable_features)
+    assert pred.shape == data.target.shape
+    # every well is predicted exactly once while held out
+    assert np.isfinite(pred).all()
+
+
+def test_anchor_equilibrium_and_decoded_params(data):
+    """anchor_equilibrium runs and pins the free-run equilibrium to the anchor; the
+    default (off) stays bit-identical; decoded_params exposes per-well ODE params."""
+    from hydrophysics.models.ude import PhysicsUDE
+
+    base = PhysicsUDE(epochs=10, device="cpu", seed=0).fit(data)
+    off = PhysicsUDE(epochs=10, device="cpu", seed=0, anchor_equilibrium=False).fit(data)
+    assert np.allclose(base.simulate(data), off.simulate(data))
+
+    eq = PhysicsUDE(epochs=10, device="cpu", seed=0, anchor_equilibrium=True).fit(data)
+    sim = eq.simulate(data)
+    assert sim.shape == data.target.shape and np.isfinite(sim).all()
+    par = eq.decoded_params(data)
+    for key in ("a", "z", "b", "c", "k_link", "g", "h_star", "anchor"):
+        assert par[key].shape == (data.n_wells,)
+    # equilibrium pinned to the anchor (up to a small seasonal-mean residual)
+    assert np.abs(par["h_star"] - par["anchor"]).max() < 0.5
+
+
 def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
     """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
     base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a
