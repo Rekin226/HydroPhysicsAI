@@ -54,6 +54,25 @@ def test_observable_features_and_lowo(data):
     assert np.isfinite(pred).all()
 
 
+def test_anchor_equilibrium_and_decoded_params(data):
+    """anchor_equilibrium runs and pins the free-run equilibrium to the anchor; the
+    default (off) stays bit-identical; decoded_params exposes per-well ODE params."""
+    from hydrophysics.models.ude import PhysicsUDE
+
+    base = PhysicsUDE(epochs=10, device="cpu", seed=0).fit(data)
+    off = PhysicsUDE(epochs=10, device="cpu", seed=0, anchor_equilibrium=False).fit(data)
+    assert np.allclose(base.simulate(data), off.simulate(data))
+
+    eq = PhysicsUDE(epochs=10, device="cpu", seed=0, anchor_equilibrium=True).fit(data)
+    sim = eq.simulate(data)
+    assert sim.shape == data.target.shape and np.isfinite(sim).all()
+    par = eq.decoded_params(data)
+    for key in ("a", "z", "b", "c", "k_link", "g", "h_star", "anchor"):
+        assert par[key].shape == (data.n_wells,)
+    # equilibrium pinned to the anchor (up to a small seasonal-mean residual)
+    assert np.abs(par["h_star"] - par["anchor"]).max() < 0.5
+
+
 def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
     """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
     base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a

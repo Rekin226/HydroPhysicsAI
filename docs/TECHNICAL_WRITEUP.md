@@ -87,19 +87,28 @@ structure — **the operator and climatology are complementary**: the operator a
 skill on ~46% of wells and is untrustworthy on the rest. An oracle that picked the better
 of the two per well would score 0.54.
 
-That motivates a **self-consistency gate**: trust the operator only on wells where it can
-free-run-reproduce *their own training history* (training-period KGE ≥ τ), and fall back
-to climatology otherwise. The gate signal uses training data only, and τ=0.5 was selected
-on the inner 2018 split — it turns out to be an 89%-precise trust signal. The gated hybrid
-scores **0.530 median KGE, beating climatology (0.446)**, with the bounded clipped-mean
-also higher and the catastrophic tail erased (wells with KGE<0: 18 → 5). It is strictly
-better than climatology on 24 wells, ties (falls back) on 34, and is marginally worse on
-3.
+Two more steps followed, each diagnosed rather than guessed. **First, pin the
+equilibrium.** Inspecting the wells that still free-ran badly showed a clear signature:
+their predicted steady state `h* = mean(source)/g` sat 5–15 m off the well's actual mean
+level (bad wells' median offset 5.75 m vs 1.67 m for good wells). The operator had free
+degrees of freedom in the absolute level (`z`, `c`) that it couldn't pin down for an
+unseen well. The fix is physical: pin each well's free-run equilibrium to its observed
+mean (the anchor — available for a held-out well) and let the ODE drive only *deviations*
+around the training-period mean forcing. That lifts the operator *alone* to 0.491 median —
+**beating climatology head-to-head on 62% of wells**.
 
-This is honest progress, not a conquest: the hybrid *is* climatology on the wells it can't
-model, so the win comes from safely adding skill where the operator earns trust. The
-lessons — *observable behavior generalizes where geography does not*, and *a model should
-know when not to be trusted* — are what carry forward.
+**Second, the self-consistency gate**: trust the operator only on wells where it can
+free-run-reproduce *their own training history* (training-period KGE ≥ τ, τ=0.3 selected
+on the inner split, leakage-free), else fall back to climatology. The final hybrid scores
+**0.565 median KGE** with clipped-mean 0.515 (vs climatology's 0.332) — and the held-out
+median now nearly matches the in-sample operator (0.591), i.e. predicting a *never-seen*
+well is almost as good as having trained on it.
+
+This is honest progress, not a conquest. The full arc is 0.236 → 0.389 → 0.491 → 0.565.
+But the gated hybrid is still *worse* than climatology on 8 wells (the gate misplaced
+trust, by up to ~1.9 KGE) and merely equals it on the 18 it falls back on. The lessons
+that carry forward — *observable behavior generalizes where geography does not*, *respect
+the physics (pin what you can observe)*, and *a model should know when not to be trusted*.
 
 ## Running on the NVIDIA stack
 
@@ -113,14 +122,13 @@ know when not to be trusted* — are what carry forward.
 
 ## What's next
 
-**Push leave-one-well-out past climatology.** Observable signatures got it from 0.236 to
-0.389; the remaining gap is a tail of wells whose free-running simulation diverges. Likely
-levers: richer physical attributes if any can be sourced (aquifer transmissivity,
-lithology, screen depth), a DeepONet/FNO operator head, regularizing the predicted
-parameters toward stable regimes, or robust per-well uncertainty so the bad wells are
-flagged rather than trusted. A constant-memory adjoint rollout
-(`torchdiffeq.odeint_adjoint`) and PhysicsNeMo multi-GPU training are the natural systems
-follow-ups.
+**Close the last LOWO gap.** Leave-one-well-out now beats climatology (0.565 vs 0.446) and
+nearly matches the in-sample operator (0.591), but 8 wells still beat the gate and end up
+worse than climatology. Tighter gating (a learned trust score or per-well predictive
+uncertainty rather than a single τ), richer physical attributes if any can be sourced
+(aquifer transmissivity, lithology, screen depth), or a DeepONet/FNO operator head are the
+levers. A constant-memory adjoint rollout (`torchdiffeq.odeint_adjoint`) and PhysicsNeMo
+multi-GPU training are the natural systems follow-ups.
 
 ---
 

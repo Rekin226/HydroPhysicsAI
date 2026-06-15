@@ -19,14 +19,14 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 | Task | This repo | Reference | Verdict |
 |---|---|---|---|
 | **Simulation** (free-running hindcast) | physics-UDE **0.591** | gray-box 0.736 · climatology 0.446 | beats climatology, trails the per-well gray-box |
-| **Generalize to unseen wells** (leave-one-well-out) | gated hybrid **0.530** (attr-only 0.236) | climatology 0.446 | beats climatology by gating the operator on self-consistency |
+| **Generalize to unseen wells** (leave-one-well-out) | **0.565** (attr-only 0.236) | climatology 0.446 · in-sample 0.591 | now beats climatology, nearly matches in-sample |
 | **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
 | **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
 | **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
 | **GPU training** (mixed precision) | **14×** over CPU, ~½ the memory | fp32 10.9× | real NVIDIA-stack speedup |
 | **NVIDIA PhysicsNeMo port** | KGE **0.591** (`ude_nemo`) | PyTorch UDE 0.591 | runs on the framework, identical skill |
 
-Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row. Conditioning on observable signatures of a held-out well's own history, then gating the operator to climatology where it can't reproduce that history, lifts it from 0.236 to **0.530 — above climatology** (see [Generalizing to unseen wells](#generalizing-to-unseen-wells)).
+Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row. Conditioning on observable signatures of a held-out well's history, pinning its free-run equilibrium to its observed mean, and gating on self-consistency lift it from 0.236 to **0.565 — above climatology (0.446) and near the in-sample 0.591** (see [Generalizing to unseen wells](#generalizing-to-unseen-wells)).
 
 ## The idea
 
@@ -67,23 +67,27 @@ The operator is one network across all 61 wells (attribute-conditioned hypernetw
 
 The operator-learning headline: train on N−1 wells, then predict a **held-out** well that was never calibrated (k-fold, every well held out once, scored on 2019+). The gray-box can't do this at all — it fits one parameter set per well and has nothing to say about a new one.
 
-**Step 1 — condition on observed behavior, not geography.** The raw station data carries no hydrogeology (just coordinates), so geographic attributes alone are weak (KGE 0.236). But a held-out well still has a monitoring *history*, so we summarize it into six physically-meaningful signatures (lag-1 autocorrelation → recession rate, rainfall sensitivity → recharge gain, upstream coupling → `k_link`, seasonal amplitude, level spread, trend), all from training days only. That lifts median KGE to 0.389.
+Three steps took the held-out-well median KGE from 0.236 to **0.565** — past climatology (0.446) and within reach of the in-sample operator (0.591). Each step was selected on an inner 2018 split; the 2019+ numbers were scored exactly once.
 
-**Be honest about the metric.** Median KGE alone is flattering. Per well, the operator still *loses head-to-head to each well's own climatology on 54% of wells*, and KGE's unbounded negative tail (a handful of wells free-run badly) makes the *mean* meaningless. But the same per-well view reveals the real structure: **the operator and climatology are complementary** — the operator adds genuine skill on ~46% of wells and should simply not be trusted on the rest.
+**Step 1 — condition on observed behavior, not geography** (0.236 → 0.389). The raw station data carries no hydrogeology (just coordinates), so geographic attributes alone are weak. But a held-out well still has a monitoring *history*, so we summarize it into six physically-meaningful signatures (lag-1 autocorrelation → recession rate, rainfall sensitivity → recharge gain, upstream coupling → `k_link`, seasonal amplitude, level spread, trend), all from training days only.
 
-**Step 2 — gate on self-consistency.** So trust the operator only on wells where it can reproduce *their own training history* (free-run training-period KGE ≥ τ), and fall back to climatology elsewhere. The gate uses training data only (no validation leakage) and τ=0.5 was selected on the inner 2018 split. It turns out to be an **89%-precise** trust signal.
+**Step 2 — pin the equilibrium** (0.389 → 0.491). Diagnosing the wells that still failed showed they free-run to the *wrong level*: their predicted equilibrium sat 5–15 m off the well's actual mean, because the operator had free degrees of freedom in the absolute level. The fix is physical — pin each well's free-run equilibrium to its observed mean (the anchor, available for held-out wells) and let the ODE model only *deviations* driven by rainfall/upstream anomalies and season. The operator alone now **beats climatology** (0.491 vs 0.446, head-to-head on 62% of wells).
+
+**Step 3 — gate on self-consistency** (0.491 → 0.565). Trust the operator only on wells where it can reproduce *their own training history* (free-run training-period KGE ≥ τ, τ=0.3 selected on the inner split, leakage-free), else fall back to climatology.
 
 | LOWO method | median KGE | clipped-mean | beats climatology per-well | wells KGE<0 |
 |---|---|---|---|---|
 | climatology (reference) | 0.446 | 0.332 | — | 5 |
-| operator only | 0.389 | 0.207 | 28 / 61 | 18 |
-| **gated hybrid** (τ=0.5) | **0.530** | **0.432** | 24 better · 34 tie · **3 worse** | **5** |
+| static attributes only | 0.236 | — | 22 / 61 | 23 |
+| + observable signatures | 0.389 | 0.207 | 28 / 61 | 18 |
+| + equilibrium anchoring (operator) | 0.491 | 0.335 | 38 / 61 | 12 |
+| **+ self-consistency gate (hybrid)** | **0.565** | **0.515** | 35 better · 18 tie · 8 worse | **3** |
 
-The gated hybrid **beats per-well climatology (0.530 vs 0.446 median, +19%)**, is better on the bounded metric too, and erases the catastrophic tail (KGE<0 wells 18 → 5). It is strictly better than climatology on 24 wells, falls back (ties) on 34, and is marginally worse on only 3 (≤0.12). This is leakage-free — gate selected on the inner split, 2019+ scored once. It is *not* a wholesale solution (it equals climatology on the wells it can't model), but it is a deployable rule that genuinely improves on the strong baseline. Reproduce: `python -m hydrophysics.lowo --device cuda --features observable --gate 0.5`.
+The final hybrid **beats per-well climatology (0.565 vs 0.446 median)** and is far better on the bounded clipped-mean (0.515 vs 0.332). Honestly: it is *not* a clean sweep — it is worse than climatology on 8 wells (mean −0.41, worst −1.9) where the gate trusted the operator but shouldn't have, and it equals climatology on the 18 wells it falls back on. But on balance it is a clear, leakage-free improvement on a strong baseline, and the operator *alone* now generalizes well enough to beat climatology. Reproduce: `python -m hydrophysics.lowo --device cuda --features observable --anchor-equilibrium --gate 0.3`.
 
 ![Leave-one-well-out: climatology vs operator vs gated hybrid](results/figures/lowo_improvement.png)
 
-*Per-well held-out KGE. The operator (blue) lifts the median but has a heavy tail of wells that free-run badly; gating it to climatology (green) keeps its wins, drops the tail, and beats the climatology baseline (red line).*
+*Per-well held-out KGE. Equilibrium anchoring lifts the operator (blue) above climatology and shrinks its tail; the self-consistency gate (green) trims most of what remains. The held-out-well median (0.56) now nearly matches the in-sample operator (0.59).*
 
 ## Forecast mode (operational, data-assimilated)
 
@@ -114,7 +118,7 @@ A **separate** track from the simulation benchmark above (do not compare the two
 ## Status
 
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
-- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Leave-one-well-out generalization improved from 0.236 to **0.530** (above climatology) via observable history signatures + a self-consistency gate. Active build: closing the gap to the gray-box.
+- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Leave-one-well-out generalization improved from 0.236 to **0.565** (above climatology, near in-sample) via observable history signatures + equilibrium anchoring + a self-consistency gate. Active build: closing the gap to the gray-box.
 - **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 - **Tooling:** `hydrophysics.figures` (reproducible plots) and `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput).
 
