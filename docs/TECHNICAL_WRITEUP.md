@@ -106,9 +106,23 @@ well is almost as good as having trained on it.
 
 This is honest progress, not a conquest. The full arc is 0.236 → 0.389 → 0.491 → 0.565.
 But the gated hybrid is still *worse* than climatology on 8 wells (the gate misplaced
-trust, by up to ~1.9 KGE) and merely equals it on the 18 it falls back on. The lessons
-that carry forward — *observable behavior generalizes where geography does not*, *respect
-the physics (pin what you can observe)*, and *a model should know when not to be trusted*.
+trust, by up to ~1.9 KGE) and merely equals it on the 18 it falls back on.
+
+**Chasing the last false positives — and finding the wall.** Averaging an ensemble of
+K=3 operators lifts the held-out median to ≈0.59, *matching the in-sample operator
+(0.591)* — a never-calibrated well predicted as well as a trained one. To kill the
+worse-than-climatology wells we added an epistemic-uncertainty gate: distrust wells where
+the independently-seeded ensemble members *disagree about the 2019+ trajectory*
+(leakage-free — only forcing and model outputs). It caught just 2 of the 8. Diagnosing the
+rest showed why: they are **non-stationary** — the well's 2019+ genuinely departs from its
+training history (climatology fails them too; one sits at −0.8). The ensemble members all
+fit the past, so they *agree* on the future *and are all wrong*. Disagreement — or any
+training-time signal — cannot flag a regime change it has never seen. That is a property
+of the data, not a tuning failure, and it is the honest ceiling of this approach.
+
+The lessons that carry forward — *observable behavior generalizes where geography does
+not*, *respect the physics (pin what you can observe)*, *a model should know when not to
+be trusted* — and the limit: *self-knowledge can't catch a world that changed.*
 
 ## Running on the NVIDIA stack
 

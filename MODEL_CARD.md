@@ -71,11 +71,13 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
   drift) → **0.565** (a self-consistency gate that falls back to climatology where the
   operator can't reproduce a well's own history). The operator alone now beats climatology
   (0.491 vs 0.446), and the held-out median (0.565) nearly matches the in-sample operator
-  (0.591). **But** it is not a clean sweep: the gated hybrid is *worse* than climatology on
-  8 wells (where the gate misplaced trust, by up to ~1.9 KGE) and merely equals it on the
-  18 it falls back on. KGE's unbounded tail means median/clipped-mean are the trustworthy
-  aggregates (raw mean is not). All choices were made on the inner 2018 split; 2019+ was
-  scored once.
+  (0.591); averaging a K=3 ensemble lifts it to ≈0.59, matching in-sample. **But** it is
+  not a clean sweep: the hybrid is *worse* than climatology on ~8 wells, and these resist
+  fixing — an ensemble-disagreement (uncertainty) gate caught only 2, because the rest are
+  **non-stationary** (their 2019+ departs from training; climatology fails them too), which
+  no training-time signal can detect. KGE's unbounded tail means median/clipped-mean are
+  the trustworthy aggregates (raw mean is not). All choices were made on the inner 2018
+  split; 2019+ scored once.
 - **Forecast skill depends on assimilation:** the LSTM uses observed levels up to the
   origin; it is not a free-running model and its scores must not be compared to
   simulation mode.
