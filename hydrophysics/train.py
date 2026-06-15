@@ -53,12 +53,15 @@ def build_model(name: str, device: str, epochs: int):
     if name == "ude":
         from .models.ude import PhysicsUDE
         return PhysicsUDE(device=device, epochs=epochs)
-    raise ValueError(f"unknown model '{name}' (choose: gru, ude)")
+    if name == "ude_nemo":
+        from .models.ude_physicsnemo import PhysicsNeMoUDE
+        return PhysicsNeMoUDE(device=device, epochs=epochs)
+    raise ValueError(f"unknown model '{name}' (choose: gru, ude, ude_nemo)")
 
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Train + benchmark a groundwater model")
-    ap.add_argument("--model", default="gru", choices=["gru", "ude"])
+    ap.add_argument("--model", default="gru", choices=["gru", "ude", "ude_nemo"])
     ap.add_argument("--data", default=None, help="data dir (else HYDROMIND_GW_DATA / sample)")
     ap.add_argument("--baseline", default=None, help="gray-box gw_fit_results.csv")
     ap.add_argument("--epochs", type=int, default=60)

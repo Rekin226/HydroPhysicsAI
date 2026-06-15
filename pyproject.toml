@@ -25,6 +25,10 @@ gpu = [
     "torch>=2.0",
     "torchdiffeq>=0.2",
 ]
+# NVIDIA PhysicsNeMo framework port (PhysicsNeMoUDE, run with `--model ude_nemo`).
+nemo = [
+    "nvidia-physicsnemo>=2.0",
+]
 # Plotting + spatial maps (optional).
 viz = [
     "matplotlib>=3.6",

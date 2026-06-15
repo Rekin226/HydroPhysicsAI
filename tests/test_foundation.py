@@ -8,7 +8,6 @@ import pytest
 from hydrophysics import (
     Config,
     benchmark_table,
-    evaluate_predictions,
     kge,
     load_dataset,
     load_graybox_baseline,

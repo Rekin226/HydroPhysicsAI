@@ -52,7 +52,8 @@ class GlobalForecastLSTM:
 
     def __init__(self, lookback: int = 90, horizon: int = 30, hidden: int = 64,
                  layers: int = 1, epochs: int = 40, lr: float = 3e-3, batch: int = 4096,
-                 probabilistic: bool = False, device: str | None = None, seed: int = 0):
+                 probabilistic: bool = False, amp: bool = False,
+                 device: str | None = None, seed: int = 0):
         _require_torch()
         self.L, self.H = lookback, horizon
         self.hidden, self.layers, self.epochs = hidden, layers, epochs
@@ -61,6 +62,10 @@ class GlobalForecastLSTM:
         # by Gaussian NLL, so each forecast is a distribution N(mu, sigma^2). Lets us read
         # off prediction intervals / exceedance probabilities for early warning.
         self.probabilistic = probabilistic
+        # Mixed precision: run the forward/loss under bfloat16 autocast on CUDA. bf16 keeps
+        # the fp32 exponent range, so it is numerically safe here without a GradScaler;
+        # it speeds up the matmul-heavy LSTM + heads on tensor-core GPUs. No-op off CUDA.
+        self.amp = amp
         self.device = device or _default_device()
         self.net: nn.Module | None = None
         self._stats: dict = {}
@@ -164,6 +169,7 @@ class GlobalForecastLSTM:
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, self.epochs, eta_min=self.lr * 1e-2)
         n = enc.shape[0]
         dev = self.device
+        use_amp = self.amp and str(dev).startswith("cuda")
         for _ in range(self.epochs):
             perm = torch.randperm(n)
             for b in range(0, n, self.batch):
@@ -171,14 +177,15 @@ class GlobalForecastLSTM:
                 eb, fb, sb, tb = (enc[idx].to(dev), fut[idx].to(dev),
                                   stat_t[idx].to(dev), tgt[idx].to(dev))
                 opt.zero_grad()
-                out = self.net(eb, fb, sb)
-                if self.probabilistic:
-                    mean, log_var = out
-                    # Gaussian NLL in normalized anomaly space (constants dropped).
-                    loss = 0.5 * (log_var + (tb - mean) ** 2 / log_var.exp()).mean()
-                else:
-                    # Targets are already per-well normalized, so plain MSE weights wells equally.
-                    loss = ((out - tb) ** 2).mean()
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
+                    out = self.net(eb, fb, sb)
+                    if self.probabilistic:
+                        mean, log_var = out
+                        # Gaussian NLL in normalized anomaly space (constants dropped).
+                        loss = 0.5 * (log_var + (tb - mean) ** 2 / log_var.exp()).mean()
+                    else:
+                        # Targets are per-well normalized, so plain MSE weights wells equally.
+                        loss = ((out - tb) ** 2).mean()
                 loss.backward()
                 opt.step()
             sched.step()
