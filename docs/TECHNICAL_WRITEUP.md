@@ -77,12 +77,29 @@ But a held-out well still has a monitoring *history*. Summarizing that history i
 physically-meaningful signatures — lag-1 autocorrelation (→ recession rate), rainfall
 sensitivity (→ recharge gain), upstream coupling (→ `k_link`), seasonal amplitude, level
 spread, trend — and conditioning the shared network on those instead of geography lifts
-leave-one-well-out from **0.236 to 0.389 median KGE (+65%)**, better on every metric,
-nearly closing the gap to climatology (0.446). The feature set was selected on an inner
-2018 split and the 2019+ number scored exactly once, so it is leakage-free. It is real
-progress, but **not a solved problem**: the median still trails climatology and a tail of
-wells remains badly mismodeled. The lesson is that *observable behavior generalizes where
-geography does not* — which points squarely at the next step.
+leave-one-well-out from 0.236 to **0.389 median KGE**.
+
+Then a methodological check worth dwelling on: **is median KGE even the right metric?**
+It is flattering. Per well, the operator still *loses head-to-head to each well's own
+climatology on 54% of wells*, and KGE's unbounded negative tail makes the *mean* useless
+(a few wells free-run to large negative KGE). But that same per-well view exposes the real
+structure — **the operator and climatology are complementary**: the operator adds genuine
+skill on ~46% of wells and is untrustworthy on the rest. An oracle that picked the better
+of the two per well would score 0.54.
+
+That motivates a **self-consistency gate**: trust the operator only on wells where it can
+free-run-reproduce *their own training history* (training-period KGE ≥ τ), and fall back
+to climatology otherwise. The gate signal uses training data only, and τ=0.5 was selected
+on the inner 2018 split — it turns out to be an 89%-precise trust signal. The gated hybrid
+scores **0.530 median KGE, beating climatology (0.446)**, with the bounded clipped-mean
+also higher and the catastrophic tail erased (wells with KGE<0: 18 → 5). It is strictly
+better than climatology on 24 wells, ties (falls back) on 34, and is marginally worse on
+3.
+
+This is honest progress, not a conquest: the hybrid *is* climatology on the wells it can't
+model, so the win comes from safely adding skill where the operator earns trust. The
+lessons — *observable behavior generalizes where geography does not*, and *a model should
+know when not to be trusted* — are what carry forward.
 
 ## Running on the NVIDIA stack
 

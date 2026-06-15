@@ -1,9 +1,9 @@
-"""Plot the leave-one-well-out improvement: per-well KGE distribution, static vs the
-observable-signature features. Reads the per-well CSVs written by the LOWO run.
+"""Plot leave-one-well-out per-well KGE for climatology vs the operator vs the
+confidence-gated hybrid. Reads the consolidated per-well CSV written by the hybrid run
+(columns: clim, operator, hybrid).
 
     python -m hydrophysics.lowo_figure \
-        --static results/ude/per_well_lowo_static.csv \
-        --observable results/ude/per_well_lowo_observable.csv \
+        --csv results/ude/lowo_hybrid_per_well.csv \
         --out results/figures/lowo_improvement.png
 """
 
@@ -16,11 +16,8 @@ import pandas as pd
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="LOWO improvement figure")
-    ap.add_argument("--static", default="results/ude/per_well_lowo_static.csv")
-    ap.add_argument("--observable", default="results/ude/per_well_lowo_observable.csv")
-    ap.add_argument("--climatology", type=float, default=0.446,
-                    help="climatology median KGE reference line")
+    ap = argparse.ArgumentParser(description="LOWO comparison figure")
+    ap.add_argument("--csv", default="results/ude/lowo_hybrid_per_well.csv")
     ap.add_argument("--out", default="results/figures/lowo_improvement.png")
     args = ap.parse_args(argv)
 
@@ -28,29 +25,30 @@ def main(argv: list[str] | None = None) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    s = pd.read_csv(args.static)["kge"].dropna().to_numpy()
-    o = pd.read_csv(args.observable)["kge"].dropna().to_numpy()
-    s = np.clip(s, -1, 1)
-    o = np.clip(o, -1, 1)
+    df = pd.read_csv(args.csv, index_col=0)
+    cols = [("clim", "climatology\n(baseline)", "0.6"),
+            ("operator", "operator only", "#5b9bd5"),
+            ("hybrid", "gated hybrid", "#76b900")]
+    data = [np.clip(df[c].dropna().to_numpy(), -1, 1) for c, _, _ in cols]
+    clim_med = float(np.median(df["clim"].dropna()))
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    parts = ax.violinplot([s, o], showmedians=True, showextrema=False)
-    for pc, c in zip(parts["bodies"], ["0.6", "#76b900"]):
-        pc.set_facecolor(c)
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    parts = ax.violinplot(data, showmedians=True, showextrema=False)
+    for pc, (_, _, color) in zip(parts["bodies"], cols):
+        pc.set_facecolor(color)
         pc.set_alpha(0.7)
     parts["cmedians"].set_color("k")
-    # jittered points
     rng = np.random.default_rng(0)
-    for x, vals in [(1, s), (2, o)]:
-        ax.scatter(x + rng.uniform(-0.06, 0.06, vals.size), vals, s=12,
-                   color="k", alpha=0.4, zorder=3)
-    ax.axhline(args.climatology, color="tab:red", ls="--", lw=1.2,
-               label=f"climatology median {args.climatology:.2f}")
-    ax.set_xticks([1, 2])
-    ax.set_xticklabels([f"static attrs\nmedian {np.median(s):.2f}",
-                        f"+ observable signatures\nmedian {np.median(o):.2f}"])
+    for x, vals in enumerate(data, start=1):
+        ax.scatter(x + rng.uniform(-0.06, 0.06, vals.size), vals, s=11,
+                   color="k", alpha=0.35, zorder=3)
+    ax.axhline(clim_med, color="tab:red", ls="--", lw=1.1,
+               label=f"climatology median {clim_med:.2f}")
+    ax.set_xticks([1, 2, 3])
+    ax.set_xticklabels([f"{lbl}\nmedian {np.median(d):.2f}"
+                        for (_, lbl, _), d in zip(cols, data)])
     ax.set_ylabel("held-out well KGE (clipped to [-1, 1])")
-    ax.set_title("Leave-one-well-out generalization: observed-history signatures")
+    ax.set_title("Leave-one-well-out: gating the operator to climatology beats both")
     ax.legend(fontsize=9, loc="lower right")
     ax.set_ylim(-1.05, 1.05)
     fig.tight_layout()

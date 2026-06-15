@@ -31,3 +31,6 @@ checkpoints/
 
 # Claude
 .claude/settings.local.json
+
+# Prediction arrays (regenerate via the LOWO/forecast runs)
+*.npy

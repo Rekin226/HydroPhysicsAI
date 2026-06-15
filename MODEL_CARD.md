@@ -51,7 +51,8 @@ assimilation is an easier task).
 |---|---|---|
 | Simulation (free-running) | PhysicsUDE / PhysicsNeMoUDE **KGE 0.591**, NSE 0.49 | gray-box 0.736 · climatology 0.446 |
 | Leave-one-well-out (static attrs) | KGE 0.236 | climatology 0.446 |
-| Leave-one-well-out (**+ observable signatures**) | **KGE 0.389** | climatology 0.446 |
+| Leave-one-well-out (+ observable signatures) | KGE 0.389 | climatology 0.446 |
+| Leave-one-well-out (**+ self-consistency gate**) | **KGE 0.530** | climatology 0.446 |
 | Forecast 7-day | LSTM **KGE 0.965** | persistence 0.946 |
 | Forecast 30-day | LSTM **KGE 0.899** | persistence 0.703 |
 | Forecast probabilistic | CRPS 0.143 / 0.286 (7/30 d), PICP ≈ 0.90 | persistence-Gaussian 0.260 / 0.590 |
@@ -63,13 +64,15 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
 
 - **Trails the classical baseline in simulation:** 0.591 vs the per-well gray-box 0.736.
   The operator wins on 18/61 wells; a few hard wells dominate the gap.
-- **Generalization to unseen wells is improved but not solved:** leave-one-well-out
-  median KGE rose from 0.236 (geographic attributes) to 0.389 by conditioning on
-  observable signatures of the held-out well's own training history (recession autocorr,
-  rainfall sensitivity, upstream coupling, seasonal amplitude). That nearly closes the gap
-  to climatology (0.446) but does not beat it, and a tail of wells remains badly
-  mismodeled (negative mean KGE). The feature set was chosen on an inner 2018 split; the
-  2019+ number was scored once.
+- **Generalization to unseen wells — improved, with caveats.** Leave-one-well-out median
+  KGE went 0.236 (geographic attrs) → 0.389 (observable history signatures) → **0.530**
+  (adding a self-consistency gate: trust the operator only where it reproduces a well's
+  own training history, else fall back to climatology). The gated hybrid beats climatology
+  (0.446) and erases the catastrophic tail. **But** it is not a wholesale model of unseen
+  wells: it equals climatology on the 34/61 wells it can't model, the operator alone still
+  loses head-to-head to climatology on most wells, and KGE's unbounded tail means median
+  is the trustworthy aggregate (mean is not). Gate threshold and feature set were chosen on
+  the inner 2018 split; 2019+ was scored once.
 - **Forecast skill depends on assimilation:** the LSTM uses observed levels up to the
   origin; it is not a free-running model and its scores must not be compared to
   simulation mode.

@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> None:
                     choices=["static", "observable", "enriched"],
                     help="static geographic attrs, observable history signatures "
                          "(selected on the inner split), or both")
+    ap.add_argument("--gate", type=float, default=None, metavar="TAU",
+                    help="confidence-gated hybrid: trust the operator only on wells whose "
+                         "free-run training-period KGE >= TAU, else fall back to that "
+                         "well's climatology. TAU=0.5 was selected on the inner 2018 split.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
@@ -78,21 +82,40 @@ def main(argv: list[str] | None = None) -> None:
 
     pred = leave_one_well_out(data, device, args.epochs, folds=args.folds,
                               feature_fn=feature_fn)
-    per = evaluate_predictions(data, pred, period="val")
+    clim_pred = climatology_prediction(data)
     # Honest per-well head-to-head against each well's OWN climatology. Median KGE alone
     # is flattering: it hides KGE's unbounded negative tail (so report a clipped mean) and
     # it is not the same as per-well superiority (so report the win-rate vs climatology).
-    clim = evaluate_predictions(data, climatology_prediction(data), period="val")["kge"]
-    k = per["kge"]
-    n = int(k.notna().sum())
-    win = int((k > clim).sum())
-    print("\n=== LEAVE-ONE-WELL-OUT (held-out wells, validation) ===")
-    print(f"KGE  median {k.median():.3f} | mean {k.mean():.2f} "
-          f"| clipped[-1,1] mean {k.clip(-1, 1).mean():.3f}")
-    print(f"NSE  median {per['nse'].median():.3f} | RMSE median {per['rmse'].median():.3f} m")
-    print(f"beats own climatology on {win}/{n} wells ({100 * win / max(n, 1):.0f}%) "
-          f"| KGE>0.5 on {int((k > 0.5).sum())} | KGE<0 on {int((k < 0).sum())}")
-    print(f"(climatology reference: median KGE {clim.median():.3f})")
+    clim = evaluate_predictions(data, clim_pred, period="val")["kge"]
+
+    def summary(name, p):
+        per = evaluate_predictions(data, p, period="val")
+        k = per["kge"]
+        n = int(k.notna().sum())
+        win = int((k > clim).sum())
+        print(f"\n=== {name} (held-out wells, validation) ===")
+        print(f"KGE  median {k.median():.3f} | mean {k.mean():.2f} "
+              f"| clipped[-1,1] mean {k.clip(-1, 1).mean():.3f}")
+        print(f"NSE  median {per['nse'].median():.3f} | RMSE median {per['rmse'].median():.3f} m")
+        print(f"beats own climatology on {win}/{n} wells ({100 * win / max(n, 1):.0f}%) "
+              f"| KGE>0.5 on {int((k > 0.5).sum())} | KGE<0 on {int((k < 0).sum())}")
+        return per
+
+    print(f"\n(climatology reference: median KGE {clim.median():.3f})")
+    per = summary("LEAVE-ONE-WELL-OUT", pred)
+
+    if args.gate is not None:
+        # Trust the operator only where it reproduces a well's OWN training history;
+        # otherwise fall back to climatology. The gate signal uses training days only, so
+        # it leaks no validation information; TAU is selected on the inner 2018 split.
+        train_kge = evaluate_predictions(data, pred, period="train")["kge"]
+        trust = (train_kge >= args.gate).to_numpy()
+        hybrid = clim_pred.copy()
+        hybrid[trust] = pred[trust]
+        print(f"\n[gate TAU={args.gate}] trusting operator on {int(trust.sum())}/"
+              f"{data.n_wells} wells (rest -> climatology)")
+        per = summary(f"GATED HYBRID (TAU={args.gate})", hybrid)
+        pred = hybrid
 
     if args.out:
         out = Path(args.out)
