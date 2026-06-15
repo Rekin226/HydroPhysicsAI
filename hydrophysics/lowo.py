@@ -31,7 +31,7 @@ from .train import pick_device
 
 def leave_one_well_out(
     data: GWData, device: str, epochs: int, folds: int = 6, seed: int = 0,
-    feature_fn=None,
+    feature_fn=None, anchor_equilibrium: bool = False,
 ) -> np.ndarray:
     """Return a (W, T) prediction where each well was predicted while held out.
 
@@ -45,7 +45,8 @@ def leave_one_well_out(
     pred = np.full_like(data.target, np.nan)
     for f in range(folds):
         held = assign == f
-        model = PhysicsUDE(device=device, epochs=epochs, seed=seed, feature_fn=feature_fn)
+        model = PhysicsUDE(device=device, epochs=epochs, seed=seed, feature_fn=feature_fn,
+                           anchor_equilibrium=anchor_equilibrium)
         model.fit(data, train_wells=~held)
         sim = model.simulate(data)
         pred[held] = sim[held]
@@ -68,6 +69,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="confidence-gated hybrid: trust the operator only on wells whose "
                          "free-run training-period KGE >= TAU, else fall back to that "
                          "well's climatology. TAU=0.5 was selected on the inner 2018 split.")
+    ap.add_argument("--anchor-equilibrium", action="store_true",
+                    help="pin each well's free-run equilibrium to its observed mean and "
+                         "model only deviations (fixes held-out-well level drift).")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
@@ -81,7 +85,8 @@ def main(argv: list[str] | None = None) -> None:
           f"| features: {args.features}")
 
     pred = leave_one_well_out(data, device, args.epochs, folds=args.folds,
-                              feature_fn=feature_fn)
+                              feature_fn=feature_fn,
+                              anchor_equilibrium=args.anchor_equilibrium)
     clim_pred = climatology_prediction(data)
     # Honest per-well head-to-head against each well's OWN climatology. Median KGE alone
     # is flattering: it hides KGE's unbounded negative tail (so report a clipped mean) and
