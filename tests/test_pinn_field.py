@@ -118,3 +118,12 @@ def test_spatial_pinn_lowo_no_leakage(data):
     rows = model._obs_rows(data, train_wells=~held)
     # well index 0 must never appear among the observation-row well indices
     assert (rows["well"] != 0).all()
+
+
+def test_build_model_registers_pinn():
+    from hydrophysics.train import build_model
+    from hydrophysics.models.pinn_field import SpatialPINN
+
+    model = build_model("pinn", device="cpu", epochs=3)
+    assert isinstance(model, SpatialPINN)
+    assert model.name == "pinn"
