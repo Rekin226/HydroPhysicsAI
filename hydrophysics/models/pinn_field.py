@@ -40,3 +40,30 @@ def positional_encoding(coords, n_bands: int):
         feats.append(torch.sin(freq * coords))
         feats.append(torch.cos(freq * coords))
     return torch.cat(feats, dim=-1)
+
+
+def _grad(outputs, inputs):
+    """d(outputs)/d(inputs), summed over the batch, with graph kept for higher orders."""
+    return torch.autograd.grad(
+        outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
+    )[0]
+
+
+def pde_residual(h_fn, X, Y, tau, rain, *, T_fn, alpha_fn, d_fn, S):
+    """2D depth-averaged groundwater-flow residual in normalized coordinates.
+
+        res = S * dH/dtau - div(T grad H) - alpha * R + d
+
+    h_fn(X, Y, tau) -> (N, 1) head; T_fn/alpha_fn/d_fn(X, Y) -> (N, 1) spatial fields;
+    S: scalar or (N,1). X, Y, tau must be leaf tensors with requires_grad=True. rain:
+    (N, 1). Returns (N, 1). Used by both training and the analytic test.
+    """
+    h = h_fn(X, Y, tau)
+    hX = _grad(h, X)
+    hY = _grad(h, Y)
+    ht = _grad(h, tau)
+    T = T_fn(X, Y)
+    fx = T * hX
+    fy = T * hY
+    div = _grad(fx, X) + _grad(fy, Y)
+    return S * ht - div - alpha_fn(X, Y) * rain + d_fn(X, Y)

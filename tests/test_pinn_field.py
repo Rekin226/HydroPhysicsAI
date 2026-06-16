@@ -66,3 +66,30 @@ def test_positional_encoding_shape_and_grad():
     assert enc.shape == (5, 3 + 3 * 2 * 4)
     enc.sum().backward()
     assert coords.grad is not None and torch.isfinite(coords.grad).all()
+
+
+def test_pde_residual_matches_analytic_solution():
+    """For h = sin(pi X) sin(pi Y) exp(-lam tau) with T=1, S=1, lam=2pi^2, the
+    diffusion residual dh/dt - (h_xx + h_yy) is identically zero."""
+    from hydrophysics.models.pinn_field import pde_residual
+
+    lam = 2.0 * (np.pi ** 2)
+
+    def h_fn(X, Y, tau):
+        return torch.sin(np.pi * X) * torch.sin(np.pi * Y) * torch.exp(-lam * tau)
+
+    n = 64
+    X = torch.rand(n, 1, dtype=torch.float64, requires_grad=True)
+    Y = torch.rand(n, 1, dtype=torch.float64, requires_grad=True)
+    tau = torch.rand(n, 1, dtype=torch.float64, requires_grad=True)
+    rain = torch.zeros(n, 1, dtype=torch.float64)
+
+    res = pde_residual(
+        h_fn, X, Y, tau, rain,
+        T_fn=lambda X, Y: torch.ones_like(X),
+        alpha_fn=lambda X, Y: torch.zeros_like(X),
+        d_fn=lambda X, Y: torch.zeros_like(X),
+        S=1.0,
+    )
+    assert res.shape == (n, 1)
+    assert torch.allclose(res, torch.zeros_like(res), atol=1e-6)
