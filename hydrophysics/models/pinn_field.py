@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..data import GWData  # noqa: F401
-from ..field_inputs import Normalizer, RainfallField, well_coords_norm  # noqa: F401
-from .base import GroundwaterModel  # noqa: F401
-from .gru import _default_device  # noqa: F401
+from ..data import GWData
+from ..field_inputs import Normalizer, RainfallField, well_coords_norm
+from .base import GroundwaterModel
+from .gru import _default_device
 
 try:
     import torch
-    from torch import nn  # noqa: F401
+    from torch import nn
     _HAS_TORCH = True
 except ImportError:  # pragma: no cover
     _HAS_TORCH = False
@@ -72,3 +72,174 @@ def pde_residual(h_fn, X, Y, tau, rain, *, T_fn, alpha_fn, d_fn, S):
     fy = T * hY
     div = _grad(fx, X) + _grad(fy, Y)
     return S * ht - div - alpha_fn(X, Y) * rain + d_fn(X, Y)
+
+
+def _require_torch() -> None:
+    if not _HAS_TORCH:
+        raise ImportError("SpatialPINN requires torch. Install with: pip install 'torch>=2.0'")
+
+
+class _MLP(nn.Module):
+    def __init__(self, in_dim: int, hidden: int, out_dim: int, depth: int = 4):
+        super().__init__()
+        layers = [nn.Linear(in_dim, hidden), nn.Tanh()]
+        for _ in range(depth - 1):
+            layers += [nn.Linear(hidden, hidden), nn.Tanh()]
+        layers += [nn.Linear(hidden, out_dim)]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SpatialPINN(GroundwaterModel):
+    """Physics-informed continuous head field h(x, y, t). See module docstring."""
+
+    name = "pinn"
+
+    def __init__(self, hidden: int = 64, n_bands: int = 6, epochs: int = 1500,
+                 lr: float = 1e-3, n_collocation: int = 2048, physics_weight: float = 0.1,
+                 smooth_weight: float = 1e-3, depth: int = 4,
+                 device: str | None = None, seed: int = 0):
+        _require_torch()
+        self.hidden, self.n_bands, self.epochs, self.lr = hidden, n_bands, epochs, lr
+        self.n_collocation = n_collocation
+        self.physics_weight, self.smooth_weight = physics_weight, smooth_weight
+        self.depth, self.seed = depth, seed
+        self.device = device or _default_device()
+        self.norm: Normalizer | None = None
+        self.h_net: nn.Module | None = None
+        self.field_net: nn.Module | None = None
+        self.log_S = None
+        self._wc: np.ndarray | None = None
+
+    # --- helpers -----------------------------------------------------------
+    def _obs_rows(self, data: GWData, train_wells: np.ndarray | None):
+        """Observation rows entering the data loss: training days, finite obs, and
+        (for LOWO) only wells in ``train_wells``. Returns a dict of int/float arrays."""
+        keep_well = (np.ones(data.n_wells, dtype=bool) if train_wells is None
+                     else np.asarray(train_wells, dtype=bool))
+        day_idx = np.flatnonzero(data.train_mask)
+        wi, ti, hv = [], [], []
+        for i in range(data.n_wells):
+            if not keep_well[i]:
+                continue
+            h = data.target[i, day_idx]
+            fin = np.isfinite(h)
+            wi.append(np.full(int(fin.sum()), i))
+            ti.append(day_idx[fin])
+            hv.append(h[fin])
+        return {"well": np.concatenate(wi), "day": np.concatenate(ti),
+                "h": np.concatenate(hv)}
+
+    def _build(self):
+        enc_dim3 = 3 + 3 * 2 * self.n_bands
+        enc_dim2 = 2 + 2 * 2 * self.n_bands
+        self.h_net = _MLP(enc_dim3, self.hidden, 1, self.depth).to(self.device)
+        # field net outputs [log_T, alpha_raw, d_raw]
+        self.field_net = _MLP(enc_dim2, self.hidden, 3, depth=2).to(self.device)
+        self.log_S = nn.Parameter(torch.zeros(1, device=self.device))
+
+    def _h_forward(self, X, Y, tau):
+        enc = positional_encoding(torch.cat([X, Y, tau], dim=-1), self.n_bands)
+        return self.h_net(enc)
+
+    def _fields(self, X, Y):
+        enc = positional_encoding(torch.cat([X, Y], dim=-1), self.n_bands)
+        out = self.field_net(enc)
+        log_T = out[:, 0:1]
+        T = torch.nn.functional.softplus(log_T) + 1e-3
+        alpha = torch.nn.functional.softplus(out[:, 1:2])
+        d = out[:, 2:3]
+        return T, alpha, d, log_T
+
+    # --- interface ---------------------------------------------------------
+    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> "SpatialPINN":
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        self.norm = Normalizer.from_data(data)
+        self._wc = well_coords_norm(data, self.norm)            # (W, 2)
+        rain_field = RainfallField(self._wc, np.nan_to_num(data.rainfall))
+        rain_std = float(np.nan_to_num(data.rainfall)[:, data.train_mask].std()) + 1e-6
+        self._build()
+
+        rows = self._obs_rows(data, train_wells)
+        obs_X = torch.tensor(self._wc[rows["well"], 0:1], dtype=torch.float32, device=self.device)
+        obs_Y = torch.tensor(self._wc[rows["well"], 1:2], dtype=torch.float32, device=self.device)
+        obs_tau = torch.tensor(self.norm.tau(rows["day"])[:, None], dtype=torch.float32, device=self.device)
+        obs_H = torch.tensor(self.norm.h_to_norm(rows["h"])[:, None], dtype=torch.float32, device=self.device)
+
+        train_days = np.flatnonzero(data.train_mask)
+        opt = torch.optim.Adam(
+            list(self.h_net.parameters()) + list(self.field_net.parameters()) + [self.log_S],
+            lr=self.lr,
+        )
+        for _ in range(self.epochs):
+            opt.zero_grad()
+            # data loss (no autograd on coords needed)
+            h_pred = self._h_forward(obs_X, obs_Y, obs_tau)
+            data_loss = torch.mean((h_pred - obs_H) ** 2)
+
+            # physics loss on random collocation points
+            n = self.n_collocation
+            cx = torch.rand(n, 1, device=self.device, requires_grad=True)
+            cy = torch.rand(n, 1, device=self.device, requires_grad=True)
+            cdays = np.random.choice(train_days, size=n)
+            ctau = torch.tensor(self.norm.tau(cdays)[:, None], dtype=torch.float32,
+                                device=self.device).requires_grad_(True)
+            crain = torch.tensor(
+                rain_field.at(np.concatenate([cx.detach().cpu().numpy(),
+                                              cy.detach().cpu().numpy()], axis=1), cdays)[:, None] / rain_std,
+                dtype=torch.float32, device=self.device,
+            )
+            S = torch.nn.functional.softplus(self.log_S)
+            res = pde_residual(
+                self._h_forward, cx, cy, ctau, crain,
+                T_fn=lambda X, Y: self._fields(X, Y)[0],
+                alpha_fn=lambda X, Y: self._fields(X, Y)[1],
+                d_fn=lambda X, Y: self._fields(X, Y)[2],
+                S=S,
+            )
+            phys_loss = torch.mean(res ** 2)
+
+            # L2 smoothness prior on log T (keeps the field near baseline; 61 pts is thin)
+            _, _, _, log_T = self._fields(cx.detach(), cy.detach())
+            smooth = torch.mean(log_T ** 2)
+
+            loss = data_loss + self.physics_weight * phys_loss + self.smooth_weight * smooth
+            loss.backward()
+            opt.step()
+        return self
+
+    def simulate(self, data: GWData) -> np.ndarray:
+        if self.h_net is None or self.norm is None:
+            raise RuntimeError("call fit() before simulate()")
+        W, T = data.target.shape
+        days = np.arange(T)
+        wc = self._wc
+        Xs, Ys, taus = [], [], []
+        for i in range(W):
+            Xs.append(np.full(T, wc[i, 0]))
+            Ys.append(np.full(T, wc[i, 1]))
+            taus.append(self.norm.tau(days))
+        X = torch.tensor(np.concatenate(Xs)[:, None], dtype=torch.float32, device=self.device)
+        Y = torch.tensor(np.concatenate(Ys)[:, None], dtype=torch.float32, device=self.device)
+        tau = torch.tensor(np.concatenate(taus)[:, None], dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            Hn = self._h_forward(X, Y, tau).cpu().numpy().reshape(W, T)
+        return self.norm.h_from_norm(Hn)
+
+    def head_field(self, points_xy_phys: np.ndarray, day_index: int) -> np.ndarray:
+        """Head at arbitrary physical (x, y) points on one day -> (M,). For maps."""
+        if self.h_net is None or self.norm is None:
+            raise RuntimeError("call fit() before head_field()")
+        x = np.asarray(points_xy_phys)[:, 0]
+        y = np.asarray(points_xy_phys)[:, 1]
+        X, Y = self.norm.xy(x, y)
+        tau = self.norm.tau(np.full(len(x), day_index))
+        Xt = torch.tensor(X[:, None], dtype=torch.float32, device=self.device)
+        Yt = torch.tensor(Y[:, None], dtype=torch.float32, device=self.device)
+        Tt = torch.tensor(tau[:, None], dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            Hn = self._h_forward(Xt, Yt, Tt).cpu().numpy().ravel()
+        return self.norm.h_from_norm(Hn)

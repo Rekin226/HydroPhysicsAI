@@ -93,3 +93,28 @@ def test_pde_residual_matches_analytic_solution():
     )
     assert res.shape == (n, 1)
     assert torch.allclose(res, torch.zeros_like(res), atol=1e-6)
+
+
+def test_spatial_pinn_fit_simulate_shapes_and_benchmark(data):
+    from hydrophysics import benchmark_table
+    from hydrophysics.models.pinn_field import SpatialPINN
+
+    model = SpatialPINN(device="cpu", epochs=3, n_collocation=128, seed=0)
+    model.fit(data)
+    pred = model.simulate(data)
+    assert pred.shape == data.target.shape
+    assert np.isfinite(pred).all()
+    table = benchmark_table(data, {model.name: pred}, period="val")
+    assert model.name in table.index
+
+
+def test_spatial_pinn_lowo_no_leakage(data):
+    """A held-out well contributes no observation rows to the data loss."""
+    from hydrophysics.models.pinn_field import SpatialPINN
+
+    held = np.zeros(data.n_wells, dtype=bool)
+    held[0] = True
+    model = SpatialPINN(device="cpu", epochs=1, n_collocation=32, seed=0)
+    rows = model._obs_rows(data, train_wells=~held)
+    # well index 0 must never appear among the observation-row well indices
+    assert (rows["well"] != 0).all()
