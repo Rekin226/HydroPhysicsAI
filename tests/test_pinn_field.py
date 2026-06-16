@@ -52,3 +52,17 @@ def test_rainfall_field_idw(data):
     assert np.isfinite(v).all()
     assert v[0] >= np.nan_to_num(data.rainfall)[:, day].min() - 1e-6
     assert v[0] <= np.nan_to_num(data.rainfall)[:, day].max() + 1e-6
+
+
+torch = pytest.importorskip("torch")  # torch tests below skip if torch is absent
+
+
+def test_positional_encoding_shape_and_grad():
+    from hydrophysics.models.pinn_field import positional_encoding
+
+    coords = torch.rand(5, 3, requires_grad=True)
+    enc = positional_encoding(coords, n_bands=4)
+    # original dims + sin/cos for each dim and band
+    assert enc.shape == (5, 3 + 3 * 2 * 4)
+    enc.sum().backward()
+    assert coords.grad is not None and torch.isfinite(coords.grad).all()
