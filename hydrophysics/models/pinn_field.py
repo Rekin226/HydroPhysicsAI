@@ -93,12 +93,25 @@ class _MLP(nn.Module):
 
 
 class SpatialPINN(GroundwaterModel):
-    """Physics-informed continuous head field h(x, y, t). See module docstring."""
+    """Physics-informed continuous head field h(x, y, t). See module docstring.
+
+    Outcome on the 61-well Zhuoshui data (documented baseline, not the headline model):
+    a *pure spatial-coordinate* operator is not competitive here. With the residual
+    enforced over the full record and ``physics_weight`` selected on the inner pre-2019
+    split (3e-3), it reaches in-sample KGE ~0.33 and leave-one-well-out KGE ~0.10 --
+    below the per-well gray-box (0.74), the lumped UDE (0.59), and even climatology
+    (0.45). The reason is structural: a single field conditioned only on (x, y) cannot
+    match per-well dynamics or place an unseen well from coordinates alone, whereas the
+    UDE conditions on each well's observable history and anchors to its observed mean
+    (LOWO 0.565). Kept as an honest continuous-field baseline and for the head-field map;
+    a competitive field model would need per-well conditioning (i.e. the UDE + a spatial
+    deviation field). See docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md.
+    """
 
     name = "pinn"
 
     def __init__(self, hidden: int = 64, n_bands: int = 6, epochs: int = 1500,
-                 lr: float = 1e-3, n_collocation: int = 2048, physics_weight: float = 0.1,
+                 lr: float = 1e-3, n_collocation: int = 2048, physics_weight: float = 3e-3,
                  smooth_weight: float = 1e-3, depth: int = 4,
                  device: str | None = None, seed: int = 0):
         _require_torch()
@@ -176,7 +189,13 @@ class SpatialPINN(GroundwaterModel):
         obs_tau = torch.tensor(self.norm.tau(rows["day"])[:, None], dtype=torch.float32, device=self.device)
         obs_H = torch.tensor(self.norm.h_to_norm(rows["h"])[:, None], dtype=torch.float32, device=self.device)
 
-        train_days = np.flatnonzero(data.train_mask)
+        # Physics is enforced over the FULL record: collocation in time spans both the
+        # training and forecast periods. The residual uses no observed levels -- only the
+        # PDE and the always-available rainfall forcing -- so this respects the no-leakage
+        # contract, and it is what gives the field any constraint in the forecast window
+        # (sampling only training days, as an earlier version did, left 2019+ unconstrained
+        # and collapsed forecast skill).
+        colloc_days = np.arange(data.n_days)
         opt = torch.optim.Adam(
             list(self.h_net.parameters()) + list(self.field_net.parameters()) + [self.log_S],
             lr=self.lr,
@@ -191,7 +210,7 @@ class SpatialPINN(GroundwaterModel):
             n = self.n_collocation
             cx = torch.rand(n, 1, device=self.device, requires_grad=True)
             cy = torch.rand(n, 1, device=self.device, requires_grad=True)
-            cdays = np.random.choice(train_days, size=n)
+            cdays = np.random.choice(colloc_days, size=n)
             ctau = torch.tensor(self.norm.tau(cdays)[:, None], dtype=torch.float32,
                                 device=self.device).requires_grad_(True)
             crain = torch.tensor(
