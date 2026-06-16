@@ -1,7 +1,7 @@
 # Spatial PINN Head Field — Design
 
 **Date:** 2026-06-16
-**Status:** Approved (brainstorming), pending spec review
+**Status:** Implemented; concluded as a documented negative/neutral baseline (see "Outcome" at end)
 **Author:** brainstormed with Claude
 
 ## Summary
@@ -186,3 +186,55 @@ is a product deliverable; its credibility is the LOWO numbers, not eyeballing.
 - Pumping/ET reconstruction beyond the lumped `d(x,y)` sink.
 - Real-time data assimilation (that's the separate forecast track).
 - FNO / gridded-operator approach (61 scattered points → fabricated grid).
+
+---
+
+## Outcome (2026-06-16, post-implementation)
+
+The model was built (Tasks 1–8, 22 tests green incl. an analytic PDE-residual check)
+and evaluated on the real 61-well Zhuoshui data. **Conclusion: a pure spatial-coordinate
+field is not competitive on this dataset.** Kept as an honest baseline + map tool, not a
+benchmark contender.
+
+### What was measured (2019+ validation, simulation mode)
+
+`physics_weight` selected on the inner pre-2019 split (3e-3); residual enforced over the
+full record; evaluated on 2019+ once.
+
+| Model | KGE median | beats climatology | reference |
+|---|---|---|---|
+| climatology | 0.446 | — | — |
+| **SpatialPINN** in-sample | 0.334 | 21/61 | gray-box 0.736 · UDE 0.591 |
+| **SpatialPINN** LOWO unanchored (headline) | 0.105 | 13/61 | UDE LOWO 0.565 |
+| SpatialPINN LOWO anchored | 0.189 | 13/61 | — |
+| SpatialPINN LOWO unanchored, 3× ensemble | 0.091 | 10/61 | (ensembling did not help) |
+
+RMSE is more flattering (in-sample 2.10 m median, LOWO anchored 1.88 m — near climatology's
+1.63 m), but KGE and NSE show the field does not match per-well variability or generalize to
+unseen wells.
+
+### Why (the useful finding)
+
+1. **A single field conditioned only on `(x, y)` cannot match per-well dynamics.** Each well
+   has its own recession constant, seasonal response, and local pumping; one shared, smooth
+   field amortizes these away.
+2. **Spatial proximity alone is weakly predictive on this fan.** Wells are 5–10 km apart with
+   genuinely different local behavior, so interpolating an unseen well from neighbors (LOWO)
+   is hard — hence KGE ~0.10.
+3. **The UDE wins LOWO (0.565) precisely because it uses per-well information** the pure field
+   forgoes: observable training-history signatures as input features, plus equilibrium
+   anchoring to the observed mean. Adding only the observed mean back here (the anchored row)
+   lifts LOWO 0.10 → 0.19, confirming the per-well signal is what carries skill.
+4. **Two real bugs were found and fixed during evaluation:** (a) `_grad` needed
+   `allow_unused=True`; (b) collocation originally sampled only training days, leaving the
+   forecast window physically unconstrained (KGE −0.63) — fixed to enforce the PDE over the
+   full record (no observed levels used → no leakage).
+
+### Decision
+
+Wind down the pure-field approach. The committed `SpatialPINN` is the fair, inner-tuned
+version and is documented as a continuous-field baseline. The **continuous head-field map**
+(`results/pinn/head_field_map.png`, via `viz.plot_head_field`) is retained: it shows a
+physically plausible inland→coast head gradient and is the genuine deliverable. A competitive
+field model would require per-well conditioning — i.e. the UDE plus a spatial deviation field
+(considered as future work, not pursued here).

@@ -12,6 +12,7 @@ the [README](README.md) for the full tables.
 | **PhysicsUDE** | Universal Differential Equation: a gray-box mass-balance ODE skeleton (recession + rainfall + upstream coupling + seasonal) whose per-well parameters are produced by a shared attribute → parameter **hypernetwork**, trained end-to-end through a stable semi-implicit rollout with a physics-residual loss. | Simulation |
 | **PhysicsNeMoUDE** | The same operator with its hypernetwork as a native `physicsnemo.Module` (NVIDIA PhysicsNeMo): metadata, AMP capability flags, `.mdlus` checkpointing. Bit-identical results to PhysicsUDE. | Simulation |
 | **GlobalForecastLSTM** | One global, attribute-aware seq2seq LSTM that forecasts the level *h* days ahead from observed levels up to the origin (data assimilation) + future forcing. Optional Gaussian head for probabilistic output. | Forecast |
+| **SpatialPINN** | Physics-informed neural network learning a continuous head field `h(x, y, t)` over the fan, regularized by the 2D depth-averaged groundwater-flow PDE (autodiff residual) with learned `T(x,y)/α(x,y)/d(x,y)` fields. **Documented negative result**: not competitive with the per-well models on this data (see Limitations); retained as a continuous-field baseline and for the head-field map. | Simulation |
 
 ## Intended use
 
@@ -81,6 +82,14 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
 - **Forecast skill depends on assimilation:** the LSTM uses observed levels up to the
   origin; it is not a free-running model and its scores must not be compared to
   simulation mode.
+- **SpatialPINN is a negative result, not a contender.** The continuous-field PINN reaches
+  in-sample KGE 0.334 and leave-one-well-out 0.105 — below climatology (0.446), the UDE
+  (0.591/LOWO 0.565), and the gray-box (0.736). A field conditioned only on `(x, y)` cannot
+  match per-well dynamics, and on this fan coordinates alone barely place an unseen well; the
+  UDE wins by conditioning on per-well observable history and anchoring to the observed mean.
+  Its head-field *map* is physically plausible and is the retained deliverable. A competitive
+  field model would be the UDE plus a spatial deviation field (future work). `physics_weight`
+  was selected on the inner pre-2019 split; 2019+ scored once.
 - **Synthetic demo:** the live Space does not reflect real-well accuracy.
 
 ## Reproduce
