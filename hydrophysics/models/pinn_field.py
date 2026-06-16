@@ -110,7 +110,7 @@ class SpatialPINN(GroundwaterModel):
         self.norm: Normalizer | None = None
         self.h_net: nn.Module | None = None
         self.field_net: nn.Module | None = None
-        self.log_S = None
+        self.log_S: "nn.Parameter | None" = None
         self._wc: np.ndarray | None = None
 
     # --- helpers -----------------------------------------------------------
@@ -119,6 +119,7 @@ class SpatialPINN(GroundwaterModel):
         (for LOWO) only wells in ``train_wells``. Returns a dict of int/float arrays."""
         keep_well = (np.ones(data.n_wells, dtype=bool) if train_wells is None
                      else np.asarray(train_wells, dtype=bool))
+        assert len(keep_well) == data.n_wells, "train_wells must be a length-n_wells boolean mask"
         day_idx = np.flatnonzero(data.train_mask)
         wi, ti, hv = [], [], []
         for i in range(data.n_wells):
@@ -129,6 +130,10 @@ class SpatialPINN(GroundwaterModel):
             wi.append(np.full(int(fin.sum()), i))
             ti.append(day_idx[fin])
             hv.append(h[fin])
+        if not wi:
+            empty_i = np.array([], dtype=int)
+            return {"well": empty_i, "day": empty_i.copy(),
+                    "h": np.array([], dtype=float)}
         return {"well": np.concatenate(wi), "day": np.concatenate(ti),
                 "h": np.concatenate(hv)}
 
@@ -164,6 +169,8 @@ class SpatialPINN(GroundwaterModel):
         self._build()
 
         rows = self._obs_rows(data, train_wells)
+        if rows["h"].size == 0:
+            raise ValueError("No finite training observations for the selected wells.")
         obs_X = torch.tensor(self._wc[rows["well"], 0:1], dtype=torch.float32, device=self.device)
         obs_Y = torch.tensor(self._wc[rows["well"], 1:2], dtype=torch.float32, device=self.device)
         obs_tau = torch.tensor(self.norm.tau(rows["day"])[:, None], dtype=torch.float32, device=self.device)
