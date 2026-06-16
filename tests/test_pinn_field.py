@@ -31,3 +31,24 @@ def test_normalizer_roundtrips_coords_and_head(data):
     assert np.allclose(norm.h_from_norm(norm.h_to_norm(h)), h, atol=1e-5)
     # time in years
     assert np.isclose(norm.tau(np.array([365.25]))[0], 1.0)
+
+
+def test_rainfall_field_idw(data):
+    from hydrophysics.field_inputs import Normalizer, RainfallField, well_coords_norm
+
+    norm = Normalizer.from_data(data)
+    wc = well_coords_norm(data, norm)            # (W, 2)
+    field = RainfallField(wc, np.nan_to_num(data.rainfall))
+
+    # querying exactly at a well coordinate returns that well's rainfall that day
+    day = int(np.flatnonzero(data.train_mask)[10])
+    pts = wc[:1]                                  # first well
+    val = field.at(pts, np.array([day]))
+    assert np.isclose(val[0], np.nan_to_num(data.rainfall)[0, day], atol=1e-4)
+
+    # interpolating between wells is finite and within the data range
+    mid = wc.mean(axis=0, keepdims=True)
+    v = field.at(mid, np.array([day]))
+    assert np.isfinite(v).all()
+    assert v[0] >= np.nan_to_num(data.rainfall)[:, day].min() - 1e-6
+    assert v[0] <= np.nan_to_num(data.rainfall)[:, day].max() + 1e-6
