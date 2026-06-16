@@ -144,3 +144,15 @@ def test_leave_one_well_out_field_modes(data):
     obs = obs[np.isfinite(obs)]
     anc_mean = anc[i, data.train_mask].mean()
     assert abs(anc_mean - obs.mean()) <= abs(raw[i, data.train_mask].mean() - obs.mean()) + 1e-6
+
+
+def test_plot_head_field_returns_grid(data):
+    from hydrophysics.models.pinn_field import SpatialPINN
+    from hydrophysics.viz import head_field_grid
+
+    model = SpatialPINN(device="cpu", epochs=2, n_collocation=32, seed=0)
+    model.fit(data)
+    XX, YY, HH = head_field_grid(model, data, day_index=int(np.flatnonzero(data.val_mask)[0]),
+                                 n=16)
+    assert XX.shape == (16, 16) and HH.shape == (16, 16)
+    assert np.isfinite(HH).all()

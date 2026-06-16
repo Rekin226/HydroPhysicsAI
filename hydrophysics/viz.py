@@ -119,3 +119,33 @@ def plot_benchmark_bars(scores: dict, out_path, ylabel="median KGE (higher is be
     fig.savefig(out_path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     return out_path
+
+
+def head_field_grid(model, data, day_index: int, n: int = 80):
+    """Evaluate the PINN head field on an n x n grid over the well bounding box.
+
+    Returns (XX, YY, HH) physical-coordinate meshgrids and head values (n, n).
+    """
+    x = data.attrs["tm_x"].astype(float).fillna(0.0).to_numpy()
+    y = data.attrs["tm_y"].astype(float).fillna(0.0).to_numpy()
+    xs = np.linspace(x.min(), x.max(), n)
+    ys = np.linspace(y.min(), y.max(), n)
+    XX, YY = np.meshgrid(xs, ys)
+    pts = np.stack([XX.ravel(), YY.ravel()], axis=-1)
+    HH = model.head_field(pts, day_index).reshape(n, n)
+    return XX, YY, HH
+
+
+def plot_head_field(model, data, day_index: int, n: int = 80, ax=None):
+    """Filled contour of the head field with wells overplotted. Lazy matplotlib."""
+    import matplotlib.pyplot as plt
+
+    XX, YY, HH = head_field_grid(model, data, day_index, n=n)
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7, 8))
+    cf = ax.contourf(XX, YY, HH, levels=20, cmap="viridis")
+    ax.scatter(data.attrs["tm_x"].astype(float), data.attrs["tm_y"].astype(float),
+               c="white", edgecolor="black", s=20, zorder=3)
+    ax.set_title(f"PINN head field, day index {day_index}")
+    ax.figure.colorbar(cf, ax=ax, label="head (m)")
+    return ax
