@@ -43,10 +43,15 @@ def positional_encoding(coords, n_bands: int):
 
 
 def _grad(outputs, inputs):
-    """d(outputs)/d(inputs), summed over the batch, with graph kept for higher orders."""
-    return torch.autograd.grad(
-        outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
+    """Elementwise d(output_i)/d(input_i) via the grad_outputs=1 trick, with the graph
+    kept for higher-order derivatives. Assumes a pointwise network (no cross-sample
+    coupling such as batch norm). Returns zeros if the term is structurally independent.
+    """
+    g = torch.autograd.grad(
+        outputs, inputs, grad_outputs=torch.ones_like(outputs),
+        create_graph=True, allow_unused=True,
     )[0]
+    return torch.zeros_like(inputs) if g is None else g
 
 
 def pde_residual(h_fn, X, Y, tau, rain, *, T_fn, alpha_fn, d_fn, S):
