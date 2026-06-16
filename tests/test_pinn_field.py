@@ -127,3 +127,20 @@ def test_build_model_registers_pinn():
     model = build_model("pinn", device="cpu", epochs=3)
     assert isinstance(model, SpatialPINN)
     assert model.name == "pinn"
+
+
+def test_leave_one_well_out_field_modes(data):
+    from hydrophysics.models.pinn_field import leave_one_well_out_field
+
+    raw = leave_one_well_out_field(data, device="cpu", epochs=2, folds=2,
+                                   n_collocation=32, anchor=False)
+    anc = leave_one_well_out_field(data, device="cpu", epochs=2, folds=2,
+                                   n_collocation=32, anchor=True)
+    assert raw.shape == data.target.shape and anc.shape == data.target.shape
+    assert np.isfinite(raw).all() and np.isfinite(anc).all()
+    # anchoring shifts each well's train-period mean toward its observed mean
+    i = 0
+    obs = data.target[i, data.train_mask]
+    obs = obs[np.isfinite(obs)]
+    anc_mean = anc[i, data.train_mask].mean()
+    assert abs(anc_mean - obs.mean()) <= abs(raw[i, data.train_mask].mean() - obs.mean()) + 1e-6

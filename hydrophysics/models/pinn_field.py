@@ -250,3 +250,75 @@ class SpatialPINN(GroundwaterModel):
         with torch.no_grad():
             Hn = self._h_forward(Xt, Yt, Tt).cpu().numpy().ravel()
         return self.norm.h_from_norm(Hn)
+
+
+def leave_one_well_out_field(
+    data: GWData, device: str, epochs: int, folds: int = 6, seed: int = 0,
+    anchor: bool = False, **model_kwargs,
+) -> np.ndarray:
+    """(W, T) prediction where each well was predicted while held out of the data loss.
+
+    Wells are assigned to folds round-robin by index. For each fold the held-out wells
+    contribute no observation rows; their head is read from the field the other wells +
+    physics built. ``anchor=False`` (the headline) returns the raw field; ``anchor=True``
+    shifts each held-out well's series so its training-period mean matches the well's
+    observed training mean (comparable to the lumped-UDE anchored LOWO).
+    """
+    assign = np.arange(data.n_wells) % folds
+    pred = np.full_like(data.target, np.nan)
+    for f in range(folds):
+        held = assign == f
+        model = SpatialPINN(device=device, epochs=epochs, seed=seed, **model_kwargs)
+        model.fit(data, train_wells=~held)
+        pred[held] = model.simulate(data)[held]
+        print(f"fold {f + 1}/{folds}: trained on {int((~held).sum())} wells, "
+              f"predicted {int(held.sum())} held-out")
+    if anchor:
+        for i in range(data.n_wells):
+            obs = data.target[i, data.train_mask]
+            obs = obs[np.isfinite(obs)]
+            if obs.size:
+                pred[i] += obs.mean() - pred[i, data.train_mask].mean()
+    return pred
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+    from pathlib import Path
+
+    from ..baselines import climatology_prediction
+    from ..config import Config, default_config
+    from ..data import load_dataset
+    from ..eval import evaluate_predictions
+    from ..train import pick_device
+
+    ap = argparse.ArgumentParser(description="Spatial-PINN leave-one-well-out generalization")
+    ap.add_argument("--data", default=None)
+    ap.add_argument("--folds", type=int, default=6)
+    ap.add_argument("--epochs", type=int, default=1500)
+    ap.add_argument("--device", default=None)
+    ap.add_argument("--anchor", action="store_true",
+                    help="report the anchored variant (held-out well's observed mean) "
+                         "instead of the unanchored headline.")
+    args = ap.parse_args(argv)
+
+    cfg = (Config(data_dir=Path(args.data)) if args.data else default_config())
+    data = load_dataset(cfg)
+    print(data.summary())
+    device = pick_device(args.device)
+    pred = leave_one_well_out_field(data, device, args.epochs, folds=args.folds,
+                                    anchor=args.anchor)
+    clim = evaluate_predictions(data, climatology_prediction(data), period="val")["kge"]
+    per = evaluate_predictions(data, pred, period="val")
+    k = per["kge"]
+    n = int(k.notna().sum())
+    mode = "anchored" if args.anchor else "unanchored (headline)"
+    print(f"\n=== spatial PINN LOWO [{mode}] (held-out wells, validation) ===")
+    print(f"KGE  median {k.median():.3f} | clipped[-1,1] mean {k.clip(-1, 1).mean():.3f}")
+    print(f"NSE  median {per['nse'].median():.3f} | RMSE median {per['rmse'].median():.3f} m")
+    print(f"beats own climatology on {int((k > clim).sum())}/{n} wells "
+          f"(climatology median KGE {clim.median():.3f})")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
