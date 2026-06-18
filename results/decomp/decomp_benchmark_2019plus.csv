@@ -1,0 +1,6 @@
+model,kge_median,kge_clipmean,win_vs_clim,n
+climatology,0.4465,0.3315,0.0,61
+decomp PRIMARY (damp.99 rain3 lag5),0.7525,0.6602,0.9672,61
+decomp notrend,0.7736,0.6657,0.9672,61
+decomp notrend rain3 lag5,0.7798,0.6672,0.9672,61
+decomp linear-trend (ablation),0.7583,0.668,0.9672,61
