@@ -50,3 +50,28 @@ def test_monthly_heads_shapes(gwdata):
     assert H.shape[1] == len(dates)
     assert isinstance(dates, pd.DatetimeIndex)
     assert well_xy(gwdata).shape == (gwdata.n_wells, 2)
+
+
+def test_mlcw_compaction_decodes_and_signs(tmp_path):
+    from hydrophysics.subsidence import mlcw_compaction
+
+    name = "僑義國小"
+    enc = "".join(f"_{b:02X}" for b in name.encode("utf-8"))
+    d = tmp_path / "ls_cache" / "clean"
+    d.mkdir(parents=True)
+    dates = pd.date_range("2014-01-31", periods=6, freq="ME")
+    df = pd.DataFrame(
+        {"NO1": [1.00, 1.00, 1.00, 1.00, 1.00, 1.00],
+         "NO2": [50.0, 50.0, 50.0, 50.0, 50.0, 50.0],
+         "NO3": [100.0, 99.8, 99.6, 99.4, 99.2, 99.0]},
+        index=pd.Index(dates, name="datetime"),
+    )
+    df.to_parquet(d / f"ls-wra-mlcw-obs__{enc}.parquet")
+
+    series = mlcw_compaction(str(tmp_path))
+    assert name in series
+    s = series[name]
+    assert len(s) == 6
+    assert np.isclose(s.iloc[0], 0.0)
+    assert s.iloc[-1] > 0
+    assert np.isclose(s.iloc[-1], 1.0, atol=1e-6)

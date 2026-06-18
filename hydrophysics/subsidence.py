@@ -7,9 +7,9 @@ docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md.
 
 from __future__ import annotations
 
-import glob  # noqa: F401
-import os  # noqa: F401
-import re  # noqa: F401
+import glob
+import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -60,3 +60,33 @@ def cumulative_drawdown(h_monthly: np.ndarray) -> np.ndarray:
     h = np.asarray(h_monthly, dtype="float64")
     runmin = np.minimum.accumulate(h, axis=-1)
     return h[..., :1] - runmin
+
+
+def _decode_mlcw_name(filename: str) -> str:
+    """Decode a percent-hex MLCW filename (UTF-8 bytes as _XX) back to the Chinese name."""
+    core = os.path.basename(filename).split("ls-wra-mlcw-obs__")[-1].replace(".parquet", "")
+    hexes = re.findall(r"_([0-9A-Fa-f]{2})", core)
+    try:
+        return bytes(int(h, 16) for h in hexes).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return core
+
+
+def mlcw_compaction(data_dir: str) -> dict[str, pd.Series]:
+    """Per-site total compaction (m), re-zeroed to the first observation, monthly.
+
+    Each MLCW parquet holds magnetic-ring positions ``NO1..NO31`` (m) at increasing depth.
+    Total compaction = shortening of the monitored interval = (separation between the
+    shallowest and deepest ring at t0) - (separation at t). Positive = subsidence.
+    """
+    pattern = os.path.join(data_dir, "ls_cache", "clean", "ls-wra-mlcw-obs__*.parquet")
+    out: dict[str, pd.Series] = {}
+    for f in sorted(glob.glob(pattern)):
+        name = _decode_mlcw_name(f)
+        df = pd.read_parquet(f).sort_index()
+        order = df.mean().sort_values().index            # shallow (small) -> deep (large)
+        shallow, deep = df[order[0]], df[order[-1]]
+        sep = deep - shallow                             # interval thickness over time
+        comp = (sep.iloc[0] - sep).rename("compaction_m")  # >0 as the interval compacts
+        out[name] = comp
+    return out
