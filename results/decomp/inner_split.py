@@ -1,6 +1,5 @@
 """Inner-split evaluation: inner-train < 2018, inner-val = 2018. Used to choose variants.
 Never touches the 2019+ benchmark."""
-import os
 import numpy as np
 import pandas as pd
 from copy import copy

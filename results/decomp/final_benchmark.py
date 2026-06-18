@@ -6,7 +6,6 @@ linear per-well trend is known to be unsafe over that horizon. We also report th
 linear-trend and no-trend variants as ablations to expose the horizon risk -- but the
 headline verdict uses the pre-committed robust config only.
 """
-import numpy as np
 import pandas as pd
 
 from hydrophysics.config import default_config
