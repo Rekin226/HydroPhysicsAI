@@ -357,14 +357,54 @@ def on_slider(label: str, origin_frac: float):
     return make_forecast(well_id, origin_frac)
 
 
+def on_click(station_id: str, origin_frac: float):
+    """Click-to-select handler. A plotly_click on a station marker writes that station's
+    id into a hidden textbox (via BIND_JS below); this syncs the dropdown and redraws.
+    No-op for clicks that aren't on a station marker."""
+    if station_id not in WELL_IDS:
+        return gr.update(), gr.update(), gr.update(), gr.update()
+    label = _label(station_id)
+    return (gr.update(value=label), make_map(station_id),
+            make_sim(station_id), make_forecast(station_id, origin_frac))
+
+
+# JS bridge: gr.Plot (plotly) has no native click event in Gradio 6.18, so we bind
+# plotly's own `plotly_click` on the map markers and push the clicked station id into a
+# hidden textbox, whose .change drives selection. A MutationObserver re-binds after every
+# re-render (Gradio recreates the plot div). Station markers carry customdata = [name, id,
+# group, dist, kge]; we read index 1 (the st_id) and ignore non-station clicks.
+BIND_JS = """
+() => {
+  const findBox = () => document.querySelector('#wellclick textarea, #wellclick input');
+  const bind = (gd) => {
+    if (!gd || gd.__wbound || !gd.on) return;
+    gd.__wbound = true;
+    gd.on('plotly_click', (ev) => {
+      const pt = ev && ev.points && ev.points[0];
+      const cd = pt && pt.customdata;
+      const sid = Array.isArray(cd) ? cd[1] : null;
+      if (!sid || typeof sid !== 'string') return;
+      const box = findBox();
+      if (!box) return;
+      box.value = sid;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const scan = () => document.querySelectorAll('.js-plotly-plot').forEach(bind);
+  scan();
+  new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+}
+"""
+
+
 INTRO = """
 # HydroPhysicsAI - live demo
 
 One GPU-trained **physics-informed neural operator** across the 61 groundwater
 monitoring stations of Taiwan's Zhuoshui alluvial fan.
 
-**Pick a station** from the descriptive dropdown (its true location lights up on the
-map), then choose a forecast origin:
+**Pick a station** by clicking it on the map, or from the descriptive dropdown (its true
+location lights up with an orange star), then choose a forecast origin:
 
 - **Map (real geography):** all 61 stations at their actual TWD97 coordinates on the
   real alluvial fan, with the fan outline, rivers, and coastline as a backdrop.
@@ -396,21 +436,27 @@ def build_ui():
         gr.Markdown(INTRO)
         with gr.Row():
             with gr.Column(scale=1):
-                map_plot = gr.Plot(label="Station map (real locations)")
+                map_plot = gr.Plot(label="Station map (real locations) - click a station")
                 well = gr.Dropdown(WELL_LABELS, value=WELL_LABELS[0],
-                                   label="Select a station (highlighted on the map)")
+                                   label="Select a station (or click it on the map)")
                 origin = gr.Slider(0.0, 1.0, value=0.1, step=0.02,
                                    label="Forecast origin (position in validation period)")
             with gr.Column(scale=2):
                 sim_plot = gr.Plot(label="Simulation (free-running, synthetic)")
                 fc_plot = gr.Plot(label="Probabilistic forecast (synthetic)")
 
+        # Hidden bridge: BIND_JS writes the clicked station id here; its change selects.
+        clicked = gr.Textbox(visible=False, elem_id="wellclick")
+
         # dropdown -> redraw map (re-highlight) + both charts
         well.change(on_dropdown, [well, origin], [map_plot, sim_plot, fc_plot])
+        # map marker click -> sync dropdown + redraw (click-to-select)
+        clicked.change(on_click, [clicked, origin], [well, map_plot, sim_plot, fc_plot])
         # slider only affects the forecast panel
         origin.change(on_slider, [well, origin], fc_plot)
-        # initial draw
+        # initial draw + install the plotly_click -> hidden-textbox JS bridge
         demo.load(on_dropdown, [well, origin], [map_plot, sim_plot, fc_plot])
+        demo.load(js=BIND_JS)
     return demo
 
 
