@@ -87,6 +87,8 @@ def mlcw_compaction(data_dir: str) -> dict[str, pd.Series]:
         order = df.mean().sort_values().index            # shallow (small) -> deep (large)
         shallow, deep = df[order[0]], df[order[-1]]
         sep = deep - shallow                             # interval thickness over time
-        comp = (sep.iloc[0] - sep).rename("compaction_m")  # >0 as the interval compacts
+        fvi = sep.first_valid_index()                    # re-zero to first valid sep (NaN-safe)
+        base = sep.loc[fvi] if fvi is not None else 0.0
+        comp = (base - sep).rename("compaction_m")        # >0 as the interval compacts
         out[name] = comp
     return out
