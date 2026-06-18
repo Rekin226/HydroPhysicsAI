@@ -107,3 +107,18 @@ def test_head_and_subsidence_grid(gwdata):
     fin = np.isfinite(SS)
     assert (SS[fin] >= -1e-9).all()
     assert np.nanmax(SS[-1] - SS[0]) >= -1e-9
+
+
+def test_build_explorer_writes_html(gwdata, tmp_path):
+    from shapely.geometry import box
+    from hydrophysics.explorer import build_explorer
+
+    wx = gwdata.attrs["tm_x"].astype(float)
+    wy = gwdata.attrs["tm_y"].astype(float)
+    poly = box(wx.min(), wy.min(), wx.max(), wy.max())
+    out = tmp_path / "explorer.html"
+    path = build_explorer(gwdata, poly, stations=None, compaction=None,
+                          out_html=str(out), n=10)
+    assert path == str(out)
+    assert out.exists() and out.stat().st_size > 1000
+    assert "plotly" in out.read_text(errors="ignore").lower()
