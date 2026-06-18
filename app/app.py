@@ -303,24 +303,34 @@ def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     look = 90
     h0 = max(0, t0 - look)
     hist_dates = DATA.dates[h0:t0 + 1]
+    # Anchor the forecast to the last observed point (the origin t0) so the mean line and
+    # the 90% band emanate from the data with no visual gap. The band has zero width at
+    # the origin (the level there is observed, not predicted).
+    o_date = DATA.dates[t0]
+    o_val = float(DATA.target[i, t0])
+    fc_x = [o_date] + fut_dates
+    mean_a = np.concatenate([[o_val], mean])
+    lo_a = np.concatenate([[o_val], lo])
+    hi_a = np.concatenate([[o_val], hi])
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=hist_dates, y=DATA.target[i, h0:t0 + 1], mode="lines",
         name="synthetic history", line=dict(color="#444", width=1.5),
         hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f} m<extra></extra>",
     ))
-    # 90% band: lower bound then upper with fill='tonexty'
+    # 90% band (anchored at the origin): lower bound then upper with fill='tonexty'
     fig.add_trace(go.Scatter(
-        x=fut_dates, y=lo, mode="lines", line=dict(width=0),
+        x=fc_x, y=lo_a, mode="lines", line=dict(width=0),
         showlegend=False, hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
-        x=fut_dates, y=hi, mode="lines", line=dict(width=0),
+        x=fc_x, y=hi_a, mode="lines", line=dict(width=0),
         fill="tonexty", fillcolor="rgba(31,119,180,0.20)",
         name="90% interval", hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
-        x=fut_dates, y=mean, mode="lines", name="forecast mean",
+        x=fc_x, y=mean_a, mode="lines", name="forecast mean",
         line=dict(color="#1f77b4", width=2.2),
         hovertemplate="%{x|%Y-%m-%d}<br>mean: %{y:.2f} m<extra></extra>",
     ))
