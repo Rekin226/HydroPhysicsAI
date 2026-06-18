@@ -34,3 +34,8 @@ checkpoints/
 
 # Prediction arrays (regenerate via the LOWO/forecast runs)
 *.npy
+.gstack/
+
+# Interactive explorer HTML (large generated artifact; regenerate via
+# `python -m hydrophysics.explorer`)
+results/explorer/*.html

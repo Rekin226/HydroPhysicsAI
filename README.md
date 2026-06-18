@@ -110,6 +110,31 @@ The genuine deliverable that survives is the **continuous map**: the learned fie
 
 *Learned head field `h(x,y,t)` on a 2020 validation day. High head inland (SE, ~+65 m) declining toward the coast (NW, ~−23 m) — physically sensible interpolation between the 61 wells (white dots). Full write-up: [`docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md`](docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md).*
 
+## Interactive explorer: head + land subsidence
+
+```bash
+python -m hydrophysics.explorer --n 50   # writes results/explorer/choushui_explorer.html
+```
+
+Builds a standalone, self-contained HTML — a date-slider animation over the real Zhuoshui
+fan with a **Head / Subsidence** toggle:
+
+- **Head** surface: monthly IDW interpolation of the 61 **observed** wells (labelled
+  interpolation, not a model), masked to the fan polygon, with wells and the 14 multi-layer
+  compaction wells (MLCW) marked.
+- **Subsidence** surface: `S(x,y,t) = Sk · cumulative head drawdown`, with the single
+  coefficient `Sk` calibrated against the real MLCW compaction at the 14 georeferenced
+  sites.
+
+A validation panel plots predicted vs observed compaction at those sites. **Honest result:
+the single-coefficient coupling does not fit** — pooling all 14 sites gives `Sk ≈ 0.019`
+but **R² = −0.28** (worse than the mean), i.e. one basin-wide coefficient cannot capture
+the site-to-site heterogeneity (different aquitard storativity, lagged consolidation,
+non-stationarity). The observed-head animation and the real MLCW compaction it shows are
+trustworthy; the subsidence *surface* is an illustrative proxy and is labelled as such. A
+per-site `Sk` (or a lagged/heterogeneous coupling) is the natural next step. Design:
+[`docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md`](docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md).
+
 ## Forecast mode (operational, data-assimilated)
 
 A **separate** track from the simulation benchmark above (do not compare the two — different task). Here a single global attribute-aware LSTM (`hydrophysics/models/forecast_lstm.py`) forecasts the level `h` days ahead using observed levels up to the forecast origin (assimilation) plus forcing, scored on 2019+ against the honest forecast-mode references at each horizon:
