@@ -92,3 +92,53 @@ def mlcw_compaction(data_dir: str) -> dict[str, pd.Series]:
         comp = (base - sep).rename("compaction_m")        # >0 as the interval compacts
         out[name] = comp
     return out
+
+
+def calibrate_sk_from_pairs(per_site: dict[str, tuple[np.ndarray, np.ndarray]]) -> dict:
+    """Least-squares-through-origin slope Sk over pooled (drawdown, compaction) pairs.
+
+    per_site: {name -> (D, C)} aligned monthly arrays. Returns {sk, r2, per_site, D, C}.
+    """
+    if not per_site:
+        return {"sk": 0.0, "r2": float("nan"), "per_site": {},
+                "D": np.array([]), "C": np.array([])}
+    Ds = [np.asarray(D, float) for D, _ in per_site.values()]
+    Cs = [np.asarray(C, float) for _, C in per_site.values()]
+    D = np.concatenate(Ds)
+    C = np.concatenate(Cs)
+    sk = float(D @ C / (D @ D + 1e-12))
+    pred = sk * D
+    ss_res = float(((C - pred) ** 2).sum())
+    ss_tot = float(((C - C.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
+    return {"sk": sk, "r2": r2, "per_site": per_site, "D": D, "C": C}
+
+
+def calibrate_sk(data: GWData, stations: pd.DataFrame,
+                 compaction: dict[str, pd.Series]) -> dict:
+    """Pair each MLCW site's monthly compaction with the IDW head drawdown at its (x,y),
+    then fit one Sk. Returns the calibrate_sk_from_pairs result plus per-site monthly index.
+    """
+    H, dates = monthly_heads(data)                       # (W, Tm)
+    wxy = well_xy(data)
+    per_site: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for _, row in stations.iterrows():
+        name = row["sub_id"]
+        if name not in compaction:
+            continue
+        h_site = idw_interp(np.array([[row["x"], row["y"]]]), wxy, H)[0]   # (Tm,)
+        hser = pd.Series(h_site, index=dates)
+        comp = compaction[name].resample("ME").mean()        # align to month-end heads
+        idx = hser.index.intersection(comp.index)
+        if len(idx) < 6:
+            continue
+        hh = hser.reindex(idx).to_numpy()
+        cc = comp.reindex(idx).to_numpy()
+        mask = np.isfinite(hh) & np.isfinite(cc)             # drop months missing either
+        if mask.sum() < 6:
+            continue
+        hh, cc = hh[mask], cc[mask]
+        D = hh[:1] - np.minimum.accumulate(hh)               # cumulative drawdown
+        C = cc - cc[0]                                       # re-zero compaction
+        per_site[name] = (D, C)
+    return calibrate_sk_from_pairs(per_site)

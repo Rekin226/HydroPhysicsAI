@@ -75,3 +75,17 @@ def test_mlcw_compaction_decodes_and_signs(tmp_path):
     assert np.isclose(s.iloc[0], 0.0)
     assert s.iloc[-1] > 0
     assert np.isclose(s.iloc[-1], 1.0, atol=1e-6)
+
+
+def test_calibrate_sk_recovers_slope():
+    from hydrophysics.subsidence import calibrate_sk_from_pairs
+
+    rng = np.random.default_rng(0)
+    per_site = {}
+    for s in ("A", "B"):
+        D = np.linspace(0, 5, 12)
+        C = 0.02 * D + rng.normal(0, 1e-4, size=D.size)
+        per_site[s] = (D, C)
+    res = calibrate_sk_from_pairs(per_site)
+    assert abs(res["sk"] - 0.02) < 1e-3
+    assert res["r2"] > 0.99
