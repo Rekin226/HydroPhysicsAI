@@ -1,7 +1,11 @@
 # HF Spaces (CPU) runtime deps for the demo. The package itself is pulled from GitHub;
 # torch is the CPU wheel. PhysicsNeMo is NOT needed here (the demo uses PhysicsUDE).
+# geopandas is NOT a runtime dep: the GIS layers are pre-converted to plain JSON under
+# app/geo/ and loaded with the stdlib json module.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.2
 hydrophysics-ai @ git+https://github.com/Rekin226/HydroPhysicsAI.git@main
+numpy>=1.24
+pandas>=2.0
 plotly>=5.20
 gradio>=6.0
