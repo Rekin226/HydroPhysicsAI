@@ -170,12 +170,28 @@ def make_sim(well_id: str) -> go.Figure:
         line_width=0, annotation_text="validation", annotation_position="top left",
     )
     fig.update_layout(
-        title=f"Free-running simulation - {_label(well_id)}",
-        xaxis_title="date", yaxis_title="level (m)",
-        template="plotly_white", height=360,
-        margin=dict(l=60, r=20, t=50, b=45),
+        title=f"Free-running simulation - {_label(well_id)}  "
+              "(drag the bar below to scrub the record)",
+        yaxis_title="level (m)",
+        template="plotly_white", height=440,
+        margin=dict(l=60, r=20, t=50, b=40),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        # Scrubber: a draggable overview bar + quick-range buttons to slide a zoom
+        # window across the multi-year record.
+        xaxis=dict(
+            title="date",
+            rangeslider=dict(visible=True, thickness=0.09),
+            rangeselector=dict(
+                buttons=[
+                    dict(count=6, label="6m", step="month", stepmode="backward"),
+                    dict(count=1, label="1y", step="year", stepmode="backward"),
+                    dict(count=3, label="3y", step="year", stepmode="backward"),
+                    dict(step="all", label="all"),
+                ],
+                x=0, y=1.08,
+            ),
+        ),
     )
     return fig
 
