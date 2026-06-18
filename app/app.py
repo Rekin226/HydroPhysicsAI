@@ -103,6 +103,14 @@ def _well_meta(well_id: str) -> dict:
 
 META = {w: _well_meta(w) for w in WELL_IDS}
 
+# Per-well validation KGE of the PhysicsUDE simulation, surfaced on map hover so a station
+# shows its skill at a glance.
+KGE_BY_WELL = {
+    w: float(kge(DATA.target[DATA.well_index(w), DATA.val_mask],
+                 SIM[DATA.well_index(w), DATA.val_mask]))
+    for w in WELL_IDS
+}
+
 
 def _label(well_id: str) -> str:
     m = META[well_id]
@@ -170,7 +178,13 @@ def make_map(well_id: str) -> go.Figure:
         ))
         riv_named = True
 
-    # Station markers, colored by group, with real names on hover.
+    # Station markers, colored by group. Hover gives the full station info (the
+    # "click a station for details" the map provides natively).
+    def _hover_row(w):
+        d = META[w]["dist_km"]
+        dist = f"{d:.1f} km to coast" if d is not None else "distance n/a"
+        return [META[w]["name"], w, META[w]["group"], dist, KGE_BY_WELL[w]]
+
     for group, color in (("coastal", COASTAL_COLOR), ("inland", INLAND_COLOR)):
         members = [w for w in WELL_IDS if META[w]["group"] == group]
         if not members:
@@ -181,32 +195,45 @@ def make_map(well_id: str) -> go.Figure:
             mode="markers",
             marker=dict(size=9, color=color, line=dict(color="white", width=1)),
             name=f"{group} ({len(members)})",
-            customdata=[[META[w]["name"], w, META[w]["group"]] for w in members],
+            customdata=[_hover_row(w) for w in members],
             hovertemplate=(
                 "<b>%{customdata[0]}</b> (%{customdata[1]})<br>"
-                "%{customdata[2]}<br>"
-                "TM_X=%{x:.0f}  TM_Y=%{y:.0f}<extra></extra>"
+                "%{customdata[2]} · %{customdata[3]}<br>"
+                "sim val KGE %{customdata[4]:.2f}<br>"
+                "TM_X %{x:.0f}, TM_Y %{y:.0f}"
+                "<extra></extra>"
             ),
         ))
 
+    # Selected station: orange star, same rich hover.
     m = META[well_id]
     fig.add_trace(go.Scatter(
         x=[m["x"]], y=[m["y"]], mode="markers",
         marker=dict(size=20, color=SELECT_COLOR, symbol="star",
                     line=dict(color="black", width=1)),
         name="selected", showlegend=True,
-        hovertemplate=f"<b>{m['name']}</b> ({well_id})<br>selected<extra></extra>",
+        customdata=[_hover_row(well_id)],
+        hovertemplate=(
+            "<b>%{customdata[0]}</b> (%{customdata[1]}) — selected<br>"
+            "%{customdata[2]} · %{customdata[3]}<br>"
+            "sim val KGE %{customdata[4]:.2f}<extra></extra>"
+        ),
     ))
 
     fig.update_layout(
-        title="Real station locations on the Zhuoshui alluvial fan "
-              "(displayed series are synthetic illustrations)",
+        title=dict(
+            text="Real station locations on the Zhuoshui alluvial fan<br>"
+                 "<sub>Displayed series are synthetic illustrations · "
+                 "drag to zoom, hover a station for details</sub>",
+            x=0.5, xanchor="center", y=0.97, yanchor="top", font=dict(size=15),
+        ),
         xaxis_title="TM_X97 (m, TWD97)",
         yaxis_title="TM_Y97 (m, TWD97)",
         template="plotly_white",
-        height=460,
-        margin=dict(l=60, r=20, t=50, b=50),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        height=560,
+        margin=dict(l=65, r=25, t=75, b=80),
+        # Legend along the bottom so it never collides with the title.
+        legend=dict(orientation="h", yanchor="top", y=-0.12, x=0.5, xanchor="center"),
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)  # equal aspect (true geography)
     return fig
