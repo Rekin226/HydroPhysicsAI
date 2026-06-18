@@ -89,3 +89,21 @@ def test_calibrate_sk_recovers_slope():
     res = calibrate_sk_from_pairs(per_site)
     assert abs(res["sk"] - 0.02) < 1e-3
     assert res["r2"] > 0.99
+
+
+def test_head_and_subsidence_grid(gwdata):
+    from shapely.geometry import box
+    from hydrophysics.explorer import head_grid, subsidence_grid
+
+    wx = gwdata.attrs["tm_x"].astype(float)
+    wy = gwdata.attrs["tm_y"].astype(float)
+    poly = box(wx.min(), wy.min(), wx.max(), wy.max())  # rectangle covering the wells
+    XX, YY, HH, dates = head_grid(gwdata, poly, n=12)
+    assert XX.shape == (12, 12)
+    assert HH.shape == (len(dates), 12, 12)
+    assert np.isfinite(HH).any()
+    SS = subsidence_grid(HH, sk=0.01)
+    assert SS.shape == HH.shape
+    fin = np.isfinite(SS)
+    assert (SS[fin] >= -1e-9).all()
+    assert np.nanmax(SS[-1] - SS[0]) >= -1e-9
