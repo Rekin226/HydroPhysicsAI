@@ -53,10 +53,13 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
                    n: int = 60) -> str:
     """Assemble the interactive HTML and write it to ``out_html``. Returns the path.
 
-    ``stations`` (DataFrame[sub_id,x,y]) and ``compaction`` (dict name->Series) may be None
-    when MLCW data is unavailable (e.g. the synthetic sample); then Sk falls back to 0 and
-    the validation panel is omitted.
+    A Head/Subsidence toggle switches between the IDW observed-head surface and the
+    Sk-scaled subsidence surface; both animate over months via the slider. ``stations``
+    (DataFrame[sub_id,x,y]) and ``compaction`` (dict name->Series) may be None when MLCW
+    data is unavailable; then Sk falls back to 0 and the validation panel is omitted.
     """
+    import os
+
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
@@ -68,7 +71,7 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
     else:
         cal = {"sk": 0.0, "r2": float("nan"), "per_site": {}, "D": np.array([]),
                "C": np.array([])}
-    _SS = subsidence_grid(HH, cal["sk"])  # noqa: F841  (available for future subsidence panel)
+    SS = subsidence_grid(HH, cal["sk"])
     wxy = well_xy(data)
     zmark = float(np.nanmax(HH)) if np.isfinite(HH).any() else 0.0
 
@@ -79,8 +82,11 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
                         f"MLCW validation (Sk={cal['sk']:.4g}, R²={cal['r2']:.2f})"),
     )
 
+    # trace 0: head surface (visible); trace 1: subsidence surface (hidden until toggled)
     fig.add_trace(go.Surface(x=XX, y=YY, z=HH[0], colorscale="Viridis",
                              colorbar=dict(title="head m", x=0.62)), row=1, col=1)
+    fig.add_trace(go.Surface(x=XX, y=YY, z=SS[0], colorscale="Reds", visible=False,
+                             showscale=False), row=1, col=1)
     fig.add_trace(go.Scatter3d(x=wxy[:, 0], y=wxy[:, 1], z=zmark * np.ones(len(wxy)),
                                mode="markers", marker=dict(size=2, color="white"),
                                name="wells"), row=1, col=1)
@@ -95,7 +101,7 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
     if cal["D"].size:
         fig.add_trace(go.Scatter(x=cal["sk"] * cal["D"], y=cal["C"], mode="markers",
                                  marker=dict(size=5, color="firebrick"),
-                                 name="MLCW sites"), row=1, col=2)
+                                 name="MLCW pairs"), row=1, col=2)
         lim = float(max(cal["C"].max(), (cal["sk"] * cal["D"]).max(), 1e-6))
         fig.add_trace(go.Scatter(x=[0, lim], y=[0, lim], mode="lines",
                                  line=dict(dash="dash", color="gray"), name="1:1"),
@@ -106,8 +112,9 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
     frames = []
     for t, dt in enumerate(dates):
         frames.append(go.Frame(name=str(dt.date()),
-                               data=[go.Surface(x=XX, y=YY, z=HH[t])],
-                               traces=[0]))
+                               data=[go.Surface(x=XX, y=YY, z=HH[t]),
+                                     go.Surface(x=XX, y=YY, z=SS[t])],
+                               traces=[0, 1]))
     fig.frames = frames
     steps = [dict(method="animate", label=str(dt.date()),
                   args=[[str(dt.date())], dict(mode="immediate",
@@ -117,12 +124,16 @@ def build_explorer(data: GWData, poly, stations, compaction, out_html: str,
         title="Choushui groundwater head + land subsidence (observed, 2010–2022)",
         sliders=[dict(active=0, steps=steps, x=0.05, len=0.6,
                       currentvalue=dict(prefix="month: "))],
+        updatemenus=[dict(type="buttons", direction="right", x=0.05, y=1.12, buttons=[
+            dict(label="Head", method="restyle", args=[{"visible": [True, False]}, [0, 1]]),
+            dict(label="Subsidence", method="restyle",
+                 args=[{"visible": [False, True]}, [0, 1]]),
+        ])],
         scene=dict(xaxis_title="TM_X97 (m)", yaxis_title="TM_Y97 (m)",
-                   zaxis_title="head (m)", aspectmode="auto"),
-        margin=dict(l=0, r=0, t=60, b=0),
+                   zaxis_title="head (m) / subsidence (m)", aspectmode="auto"),
+        margin=dict(l=0, r=0, t=80, b=0),
     )
 
-    import os
     os.makedirs(os.path.dirname(out_html) or ".", exist_ok=True)
     fig.write_html(out_html, include_plotlyjs="cdn", auto_play=False)
     return out_html
