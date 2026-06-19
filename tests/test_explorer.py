@@ -122,3 +122,14 @@ def test_build_explorer_writes_html(gwdata, tmp_path):
     assert path == str(out)
     assert out.exists() and out.stat().st_size > 1000
     assert "plotly" in out.read_text(errors="ignore").lower()
+
+
+def test_distances_to_geom():
+    from shapely.geometry import LineString
+    from hydrophysics.subsidence import _distances_to_geom
+
+    coast = LineString([(0.0, 0.0), (0.0, 100.0)])  # the y-axis
+    stations = pd.DataFrame({"sub_id": ["a", "b"], "x": [10.0, 30.0], "y": [50.0, 50.0]})
+    d = _distances_to_geom(stations, coast)
+    assert abs(d["a"] - 10.0) < 1e-6
+    assert abs(d["b"] - 30.0) < 1e-6

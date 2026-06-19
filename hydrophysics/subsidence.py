@@ -142,3 +142,19 @@ def calibrate_sk(data: GWData, stations: pd.DataFrame,
         C = cc - cc[0]                                       # re-zero compaction
         per_site[name] = (D, C)
     return calibrate_sk_from_pairs(per_site)
+
+
+def _distances_to_geom(stations: pd.DataFrame, geom) -> dict[str, float]:
+    """Distance from each station (x, y) to a shapely geometry. Pure shapely (testable)."""
+    from shapely.geometry import Point
+
+    return {row["sub_id"]: float(Point(row["x"], row["y"]).distance(geom))
+            for _, row in stations.iterrows()}
+
+
+def site_distance_to_coast(stations: pd.DataFrame, coast_shp) -> dict[str, float]:
+    """Distance (m, EPSG:3826) from each MLCW site to the coastline polygon/line."""
+    import geopandas as gpd
+
+    geom = gpd.read_file(coast_shp).geometry.union_all()
+    return _distances_to_geom(stations, geom)
