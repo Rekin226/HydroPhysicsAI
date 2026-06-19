@@ -25,6 +25,7 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 | **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
 | **GPU training** (mixed precision) | **14×** over CPU, ~½ the memory | fp32 10.9× | real NVIDIA-stack speedup |
 | **NVIDIA PhysicsNeMo port** | KGE **0.591** (`ude_nemo`) | PyTorch UDE 0.591 | runs on the framework, identical skill |
+| **Per-well signal decomposition** (simulation) | **0.75** | gray-box 0.736 · UDE 0.591 | reaches the gray-box accuracy class |
 
 Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row. Conditioning on observable signatures of a held-out well's history, pinning its free-run equilibrium to its observed mean, and gating on self-consistency lift it from 0.236 to **0.565 — above climatology (0.446) and near the in-sample 0.591** (see [Generalizing to unseen wells](#generalizing-to-unseen-wells)).
 
@@ -57,11 +58,24 @@ The operator is one network across all 61 wells (attribute-conditioned hypernetw
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
-*Per-well validation KGE across the fan (gray-box baseline). Most wells are well-modeled (green/yellow); the dark wells are the hard cases a single attribute-conditioned operator should rescue.*
+*Per-well validation KGE (gray-box baseline) over the real study area — the Zhuoshui alluvial-fan outline, rivers, and coastline (from the project shapefiles, TWD97). Each dot is a station at its true coordinates, colored by validation KGE; most wells are well-modeled (green/yellow), the dark wells are the hard cases a single attribute-conditioned operator should rescue. Reproduce: `python -m hydrophysics.maps --kge`.*
 
 ![Free-running simulation vs observed](results/figures/simulation_hydrographs.png)
 
 *Free-running PhysicsUDE hindcast vs observed, validation period shaded. Generated from the bundled **synthetic sample** (`python -m hydrophysics.figures`) so the figure reproduces anywhere and ships no real agency series; the same command on real data redraws it for the 61 wells.*
+
+## Per-well signal decomposition — reaching the gray-box accuracy class
+
+A different angle on the simulation task: instead of predicting the raw level, **decompose each well's signal and model the components** — `level(t) = harmonic seasonal + (damped) trend + forcing-driven anomaly + anchor`, where rainfall enters through multi-timescale exponential recharge-memory filters and upstream as a lagged term (ridge-fit on the training residual). Every component is fit on training days only and projected from known forcing, so it is scored in the same leakage-free simulation mode as the gray-box.
+
+| Model (2019+, simulation mode) | median KGE |
+|---|---|
+| climatology | 0.446 |
+| physics-UDE (neural operator) | 0.591 |
+| **decomposition** | **0.75** (no-trend variant 0.78) |
+| gray-box ODE (reported) | 0.736 |
+
+This lands in the **same accuracy class as the gray-box** and is well above our UDE and climatology on the identical harness. It is *not* a head-to-head win over the gray-box — that 0.736 is from the original project's own evaluation and is not re-scored here — and it is a **per-well** model (the gray-box's class), not the shared operator, so it answers "how accurately can we simulate?", not "does one operator generalize to unseen wells?". Verified leakage-free: corrupting every validation value leaves predictions unchanged (`tests/test_decomp_smoke.py`). Reproduce: `python results/decomp/final_benchmark.py`.
 
 ## Generalizing to unseen wells
 
@@ -108,7 +122,7 @@ The genuine deliverable that survives is the **continuous map**: the learned fie
 
 ![PINN continuous head field over the fan](results/pinn/head_field_map.png)
 
-*Learned head field `h(x,y,t)` on a 2020 validation day. High head inland (SE, ~+65 m) declining toward the coast (NW, ~−23 m) — physically sensible interpolation between the 61 wells (white dots). Full write-up: [`docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md`](docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md).*
+*Learned head field `h(x,y,t)` on **2020-12-31 (day index 3287)**, masked to the real fan polygon (study-area shapefiles). High head inland (SE, ~+63 m) declining toward the coast (NW, ~−23 m) — a physically sensible interpolation between the 61 wells (markers). Reproduce: `python -m hydrophysics.maps --headfield --day 3287`. Full write-up: [`docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md`](docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md).*
 
 ## Interactive explorer: head + land subsidence
 
@@ -166,7 +180,8 @@ A **separate** track from the simulation benchmark above (do not compare the two
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
 - **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Leave-one-well-out generalization improved from 0.236 to **0.565** (above climatology, near in-sample) via observable history signatures + equilibrium anchoring + a self-consistency gate. Active build: closing the gap to the gray-box.
 - **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
-- **Tooling:** `hydrophysics.figures` (reproducible plots) and `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput).
+- **Simulation baselines:** a per-well **signal-decomposition** model (`hydrophysics/decomp.py`) reaching the gray-box accuracy class (median KGE 0.75, leakage-free), and the `SpatialPINN` continuous head field (documented negative result, but a hydrogeologically plausible map).
+- **Tooling:** `hydrophysics.figures` (reproducible plots), `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput), and `hydrophysics.maps` (study-area KGE + PINN head-field maps over the real fan/river/coast shapefiles).
 
 ## Quickstart
 
