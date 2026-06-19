@@ -154,3 +154,33 @@ def test_distances_to_geom():
     d = _distances_to_geom(stations, coast)
     assert abs(d["a"] - 10.0) < 1e-6
     assert abs(d["b"] - 30.0) < 1e-6
+
+
+def test_loso_discriminates_signal_from_noise():
+    from hydrophysics.subsidence import loso_sk_regression
+
+    rng = np.random.default_rng(1)
+    D = np.linspace(0.5, 5.0, 20)
+
+    # (a) real coast gradient: Sk depends on distance -> LOSO should be positive
+    grad = {}
+    grad_dist = {}
+    for i in range(10):
+        dc = 0.3 * i
+        sk = np.exp(-2.0 - 1.2 * dc)
+        name = f"g{i}"
+        grad_dist[name] = dc
+        grad[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
+    res_grad = loso_sk_regression(grad, grad_dist)
+    assert res_grad["r2"] > 0.3
+
+    # (b) Sk independent of distance (random) -> LOSO should NOT be positive
+    rnd = {}
+    rnd_dist = {}
+    for i in range(10):
+        sk = float(rng.uniform(0.02, 0.1))
+        name = f"r{i}"
+        rnd_dist[name] = float(rng.uniform(0, 3))
+        rnd[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
+    res_rnd = loso_sk_regression(rnd, rnd_dist)
+    assert res_rnd["r2"] <= 0.3

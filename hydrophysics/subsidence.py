@@ -202,3 +202,29 @@ def site_distance_to_coast(stations: pd.DataFrame, coast_shp) -> dict[str, float
 
     geom = gpd.read_file(coast_shp).geometry.union_all()
     return _distances_to_geom(stations, geom)
+
+
+def loso_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
+                       dist: dict[str, float]) -> dict:
+    """Leave-one-site-out gate: predict each held-out site's Sk from the others' fit,
+    score per-site Sk R². Returns {r2, n_sites, per_site_pred}.
+    """
+    names = [n for n in per_site if n in dist]
+    sk_true, sk_pred_list, per_pred = [], [], {}
+    for held in names:
+        train = {n: per_site[n] for n in names if n != held}
+        fit = fit_sk_regression(train, dist)
+        sk_pred = float(fit["predict_sk"](dist[held]))
+        D = np.asarray(per_site[held][0], float)
+        C = np.asarray(per_site[held][1], float)
+        # estimate true Sk for held-out site via OLS slope through origin
+        sk_obs = float((D @ C) / (D @ D))
+        sk_true.append(sk_obs)
+        sk_pred_list.append(sk_pred)
+        per_pred[held] = sk_pred
+    sk_true_arr = np.asarray(sk_true, float)
+    sk_pred_arr = np.asarray(sk_pred_list, float)
+    ss_res = float(((sk_true_arr - sk_pred_arr) ** 2).sum())
+    ss_tot = float(((sk_true_arr - sk_true_arr.mean()) ** 2).sum())
+    return {"r2": 1.0 - ss_res / max(ss_tot, 1e-12), "n_sites": len(names),
+            "per_site_pred": per_pred}
