@@ -18,7 +18,7 @@ All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Media
 
 | Task | This repo | Reference | Verdict |
 |---|---|---|---|
-| **Simulation** (free-running hindcast) | physics-UDE **0.591** | gray-box 0.736 · climatology 0.446 | beats climatology, trails the per-well gray-box |
+| **Simulation** (free-running hindcast) | physics-UDE **0.704** (recharge-memory; 0.591 baseline) | gray-box 0.736 · climatology 0.446 | one shared operator nearly matches the per-well gray-box |
 | **Generalize to unseen wells** (leave-one-well-out) | **0.565** (attr-only 0.236) | climatology 0.446 · in-sample 0.591 | now beats climatology, nearly matches in-sample |
 | **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
 | **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
@@ -50,11 +50,12 @@ The bar to beat, computed by the harness in this repo:
 | **Gray-box ODE** (per-well calibrated, baseline) | **0.736** | — | 0.83 | 61 |
 | Climatology (per-well seasonal mean) | 0.446 | -0.20 | 1.63 | 61 |
 | Last-value (constant) | undefined* | -0.57 | 1.83 | 61 |
-| **Physics-informed neural operator** (this project) | 0.591 | 0.49 | 1.07 | 61 |
+| Physics-informed neural operator (baseline) | 0.591 | 0.49 | 1.07 | 61 |
+| **+ rainfall recharge-memory** (this project) | **0.704** | **0.57** | **0.95** | 61 |
 
 <sub>*A constant prediction has zero variance, so KGE is undefined; skill is read from NSE/RMSE. Forecast-mode persistence scores KGE 0.997 but is deliberately excluded: 1-step-ahead prediction of slow-moving groundwater is trivial and not comparable to a free-running simulation. The harness keeps simulation and forecast modes separate so the comparison stays honest.</sub>
 
-The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). It clears the seasonal climatology baseline comfortably (0.591 vs 0.446 KGE, 0.49 vs -0.20 NSE) and beats the per-well-calibrated gray-box on 18 of 61 wells, but still trails it overall (0.591 vs 0.736). All hyperparameters were chosen on an inner split carved from the pre-2019 training period (inner-train <2018, inner-val 2018); the 2019+ benchmark was evaluated exactly once, so the number is not tuned to the test. The remaining gap is a few hard wells, and the operator-generalization headline (leave-one-well-out) is below.
+The operator is one network across all 61 wells (attribute-conditioned hypernetwork to ODE parameters, level anchored to each well's training mean, per-well-weighted data + physics-residual loss, 1500 epochs on CUDA). The original instantaneous `b·rain` recharge term underfit the response — aquifers integrate rainfall over weeks to months — so we replaced it with **multi-timescale recharge memory**: the hypernetwork predicts one gain per causal memory state `api_k[t] = decay_k·api_k[t-1] + rain[t]` (decays 0.99/0.95/0.85 ≈ 100/20/6-day timescales). That single change lifts the operator from **0.591 to 0.704 median KGE** (NSE 0.49→0.57, RMSE 1.07→0.95, better on every metric), so **one shared, amortized operator now nearly matches the 61 hand-calibrated gray-box ODEs (0.704 vs 0.736)** — the gap closed from 0.145 to 0.032. The memory timescales were selected on an inner pre-2019 split (inner-train <2018, inner-val 2018); the 2019+ benchmark was scored exactly once, and the baseline reproduces at 0.591. Reproduce: `python -m hydrophysics.train --model ude --rain-memory 0.99,0.95,0.85 --epochs 1500`. (The ingredient is borrowed from the per-well [decomposition](#per-well-signal-decomposition--reaching-the-gray-box-accuracy-class) below, now folded into the shared operator.)
 
 ![Per-well gray-box KGE across the Zhuoshui fan](results/phase0/spatial_kge_graybox.png)
 
@@ -71,9 +72,12 @@ A different angle on the simulation task: instead of predicting the raw level, *
 | Model (2019+, simulation mode) | median KGE |
 |---|---|
 | climatology | 0.446 |
-| physics-UDE (neural operator) | 0.591 |
-| **decomposition** | **0.75** (no-trend variant 0.78) |
+| physics-UDE operator (baseline) | 0.591 |
+| **decomposition** (per-well) | **0.75** (no-trend variant 0.78) |
 | gray-box ODE (reported) | 0.736 |
+| physics-UDE operator + recharge-memory | 0.704 |
+
+Its winning ingredient — multi-timescale rainfall recharge-memory — is exactly what we then folded into the shared operator above (lifting it 0.591 → 0.704). So the per-well experiment both reaches gray-box accuracy *and* points the way to improving the headline operator.
 
 This lands in the **same accuracy class as the gray-box** and is well above our UDE and climatology on the identical harness. It is *not* a head-to-head win over the gray-box — that 0.736 is from the original project's own evaluation and is not re-scored here — and it is a **per-well** model (the gray-box's class), not the shared operator, so it answers "how accurately can we simulate?", not "does one operator generalize to unseen wells?". Verified leakage-free: corrupting every validation value leaves predictions unchanged (`tests/test_decomp_smoke.py`). Reproduce: `python results/decomp/final_benchmark.py`.
 
@@ -188,7 +192,7 @@ A **separate** track from the simulation benchmark above (do not compare the two
 ## Status
 
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
-- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline KGE 0.591 on CUDA. Leave-one-well-out generalization improved from 0.236 to **0.565** (above climatology, near in-sample) via observable history signatures + equilibrium anchoring + a self-consistency gate. Active build: closing the gap to the gray-box.
+- **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline simulation result on CUDA. Multi-timescale rainfall **recharge-memory** lifts the operator's simulation KGE from 0.591 to **0.704**, nearly matching the per-well gray-box (0.736) with one shared network. Leave-one-well-out generalization improved from 0.236 to **0.565** (above climatology, near in-sample) via observable history signatures + equilibrium anchoring + a self-consistency gate.
 - **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 - **Simulation baselines:** a per-well **signal-decomposition** model (`hydrophysics/decomp.py`) reaching the gray-box accuracy class (median KGE 0.75, leakage-free), and the `SpatialPINN` continuous head field (documented negative result, but a hydrogeologically plausible map).
 - **Tooling:** `hydrophysics.figures` (reproducible plots), `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput), and `hydrophysics.maps` (study-area KGE + PINN head-field maps over the real fan/river/coast shapefiles).
