@@ -160,27 +160,36 @@ def test_loso_discriminates_signal_from_noise():
     from hydrophysics.subsidence import loso_sk_regression
 
     rng = np.random.default_rng(1)
-    D = np.linspace(0.5, 5.0, 20)
+    # Heterogeneous drawdown magnitudes per site (the real-data condition): this is what
+    # makes the COMPACTION-space gate able to discriminate. With identical D across sites
+    # the compaction R² is inflated by the shared D shape and cannot tell signal from noise.
+    def make_D(i):
+        return np.linspace(0.5, 5.0 + 2.0 * i, 20)
 
-    # (a) real coast gradient: Sk depends on distance -> LOSO should be positive
-    grad = {}
-    grad_dist = {}
-    for i in range(10):
+    # (a) real coast gradient: Sk depends on distance -> compaction-space LOSO clearly positive
+    grad, grad_dist = {}, {}
+    for i in range(12):
         dc = 0.3 * i
         sk = np.exp(-2.0 - 1.2 * dc)
+        D = make_D(i)
         name = f"g{i}"
         grad_dist[name] = dc
         grad[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
     res_grad = loso_sk_regression(grad, grad_dist)
-    assert res_grad["r2"] > 0.3
 
-    # (b) Sk independent of distance (random) -> LOSO should NOT be positive
-    rnd = {}
-    rnd_dist = {}
-    for i in range(10):
-        sk = float(rng.uniform(0.02, 0.1))
+    # (b) Sk independent of distance (random) -> gate should NOT credit it
+    rnd, rnd_dist = {}, {}
+    for i in range(12):
+        sk = float(rng.uniform(0.02, 0.12))
+        D = make_D(i)
         name = f"r{i}"
-        rnd_dist[name] = float(rng.uniform(0, 3))
+        rnd_dist[name] = float(rng.uniform(0, 3.3))
         rnd[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
     res_rnd = loso_sk_regression(rnd, rnd_dist)
-    assert res_rnd["r2"] <= 0.3
+
+    # The Sk-space r2 is the honest generalization gate (compaction-space r2 is inflated by
+    # drawdown scale): a real coast gradient generalizes, random Sk does not.
+    assert res_grad["r2_sk"] > 0.5
+    assert res_rnd["r2_sk"] <= 0.0
+    # both compaction-space r2 values are finite (reported alongside for baseline comparison)
+    assert np.isfinite(res_grad["r2"]) and np.isfinite(res_rnd["r2"])

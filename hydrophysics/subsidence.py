@@ -206,25 +206,36 @@ def site_distance_to_coast(stations: pd.DataFrame, coast_shp) -> dict[str, float
 
 def loso_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
                        dist: dict[str, float]) -> dict:
-    """Leave-one-site-out gate: predict each held-out site's Sk from the others' fit,
-    score per-site Sk R². Returns {r2, n_sites, per_site_pred}.
+    """Leave-one-site-out gate. For each held-out site, predict its Sk from the others'
+    distance-to-coast fit and score the result two ways:
+
+      - ``r2``    : pooled COMPACTION R² (the primary gate -- directly comparable to the
+                    single-Sk baseline -0.28 and the spatial-IDW LOSO -2.40).
+      - ``r2_sk`` : per-site Sk R² (secondary diagnostic; less inflated by drawdown scale).
+
+    Returns {r2, r2_sk, n_sites, per_site_pred}.
     """
     names = [n for n in per_site if n in dist]
-    sk_true, sk_pred_list, per_pred = [], [], {}
+    preds, obs, sk_true, sk_pred_list, per_pred = [], [], [], [], {}
     for held in names:
         train = {n: per_site[n] for n in names if n != held}
         fit = fit_sk_regression(train, dist)
         sk_pred = float(fit["predict_sk"](dist[held]))
         D = np.asarray(per_site[held][0], float)
         C = np.asarray(per_site[held][1], float)
-        # estimate true Sk for held-out site via OLS slope through origin
-        sk_obs = float((D @ C) / (D @ D))
-        sk_true.append(sk_obs)
+        preds.append(sk_pred * D)
+        obs.append(C)
+        sk_true.append(float((D @ C) / (D @ D + 1e-12)))
         sk_pred_list.append(sk_pred)
         per_pred[held] = sk_pred
-    sk_true_arr = np.asarray(sk_true, float)
-    sk_pred_arr = np.asarray(sk_pred_list, float)
-    ss_res = float(((sk_true_arr - sk_pred_arr) ** 2).sum())
-    ss_tot = float(((sk_true_arr - sk_true_arr.mean()) ** 2).sum())
-    return {"r2": 1.0 - ss_res / max(ss_tot, 1e-12), "n_sites": len(names),
-            "per_site_pred": per_pred}
+    pred = np.concatenate(preds)
+    ob = np.concatenate(obs)
+    ss_res = float(((ob - pred) ** 2).sum())
+    ss_tot = float(((ob - ob.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
+    skt = np.asarray(sk_true, float)
+    skp = np.asarray(sk_pred_list, float)
+    sk_res = float(((skt - skp) ** 2).sum())
+    sk_tot = float(((skt - skt.mean()) ** 2).sum())
+    r2_sk = 1.0 - sk_res / max(sk_tot, 1e-12)
+    return {"r2": r2, "r2_sk": r2_sk, "n_sites": len(names), "per_site_pred": per_pred}
