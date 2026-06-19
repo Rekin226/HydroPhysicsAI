@@ -141,13 +141,23 @@ fan with a **Head / Subsidence** toggle:
   sites.
 
 A validation panel plots predicted vs observed compaction at those sites. **Honest result:
-the single-coefficient coupling does not fit** — pooling all 14 sites gives `Sk ≈ 0.019`
-but **R² = −0.28** (worse than the mean), i.e. one basin-wide coefficient cannot capture
-the site-to-site heterogeneity (different aquitard storativity, lagged consolidation,
-non-stationarity). The observed-head animation and the real MLCW compaction it shows are
-trustworthy; the subsidence *surface* is an illustrative proxy and is labelled as such. A
-per-site `Sk` (or a lagged/heterogeneous coupling) is the natural next step. Design:
-[`docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md`](docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md).
+no head→subsidence coupling we tried generalizes** (`python -m hydrophysics.subsidence_report`):
+
+| coupling | leave-one-site-out R² | verdict |
+|---|---|---|
+| single basin-wide `Sk` | −0.28 (compaction) | worse than the mean |
+| spatial IDW of per-site `Sk` | −2.40 (compaction) | worse |
+| `Sk = exp(β₀+β₁·distance_to_coast)` | −0.29 (Sk-space gate) · −2.10 (compaction) | **fails the gate** |
+
+Each MLCW site is individually well-explained (per-site `Sk` in-sample R² = 0.81), and `Sk`
+tracks distance-to-coast in-sample (corr = −0.68, the marine-clay gradient). But with only
+14 widely-spaced sites whose `Sk` spans 28×, **no model predicts a held-out site** — the
+distance-to-coast regression's leave-one-site-out Sk-R² is −0.29 (gate: pass if > 0). So the
+subsidence *surface* stays an **illustrative single-`Sk` proxy, labelled as such**; what is
+trustworthy is the observed-head animation and the real MLCW compaction the panel shows. This
+is the same spatial-sparsity wall the PINN hit. Specs:
+[explorer](docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md) ·
+[coast regression](docs/superpowers/specs/2026-06-19-per-site-sk-coast-regression-design.md).
 
 ## Forecast mode (operational, data-assimilated)
 
