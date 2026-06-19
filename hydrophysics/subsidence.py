@@ -186,3 +186,19 @@ def fit_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
     r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
     return {"b0": b0, "b1": b1, "r2_insample": r2, "predict_sk": predict_sk,
             "sk_per_site": {n: sk_w[n][0] for n in sk_w}}
+
+
+def _distances_to_geom(stations: pd.DataFrame, geom) -> dict[str, float]:
+    """Distance from each station (x, y) to a shapely geometry. Pure shapely (testable)."""
+    from shapely.geometry import Point
+
+    return {row["sub_id"]: float(Point(row["x"], row["y"]).distance(geom))
+            for _, row in stations.iterrows()}
+
+
+def site_distance_to_coast(stations: pd.DataFrame, coast_shp) -> dict[str, float]:
+    """Distance (m, EPSG:3826) from each MLCW site to the coastline polygon/line."""
+    import geopandas as gpd
+
+    geom = gpd.read_file(coast_shp).geometry.union_all()
+    return _distances_to_geom(stations, geom)

@@ -143,3 +143,14 @@ def test_fit_sk_regression_recovers_beta():
     assert abs(fit["b0"] - b0) < 0.1
     assert abs(fit["b1"] - b1) < 0.1
     assert abs(fit["predict_sk"](0.0) - np.exp(b0)) < 1e-2
+
+
+def test_distances_to_geom():
+    from shapely.geometry import LineString
+    from hydrophysics.subsidence import _distances_to_geom
+
+    coast = LineString([(0.0, 0.0), (0.0, 100.0)])  # the y-axis
+    stations = pd.DataFrame({"sub_id": ["a", "b"], "x": [10.0, 30.0], "y": [50.0, 50.0]})
+    d = _distances_to_geom(stations, coast)
+    assert abs(d["a"] - 10.0) < 1e-6
+    assert abs(d["b"] - 30.0) < 1e-6
