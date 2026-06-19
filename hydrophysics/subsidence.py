@@ -142,3 +142,47 @@ def calibrate_sk(data: GWData, stations: pd.DataFrame,
         C = cc - cc[0]                                       # re-zero compaction
         per_site[name] = (D, C)
     return calibrate_sk_from_pairs(per_site)
+
+
+def _per_site_sk(per_site: dict[str, tuple[np.ndarray, np.ndarray]]) -> dict[str, tuple[float, float]]:
+    """Per-site (Sk_i, weight=ΣD²). Sk_i is the through-origin slope of C on D."""
+    out = {}
+    for name, (D, C) in per_site.items():
+        D = np.asarray(D, float)
+        C = np.asarray(C, float)
+        denom = float(D @ D)
+        out[name] = ((D @ C) / (denom + 1e-12), denom)
+    return out
+
+
+def fit_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
+                      dist: dict[str, float]) -> dict:
+    """Weighted least-squares fit of log(Sk_i) on distance-to-coast.
+
+    Sk(dc) = exp(b0 + b1*dc). Only sites with Sk_i > 0 enter the log fit; each is weighted
+    by ΣD² (how well its Sk_i is determined). The predictor is a function of distance ONLY
+    (no compaction-derived feature) -> leakage-safe. Returns {b0, b1, r2_insample,
+    predict_sk, sk_per_site}.
+    """
+    sk_w = _per_site_sk(per_site)
+    use = [n for n in sk_w if n in dist and sk_w[n][0] > 0]
+    dc = np.array([dist[n] for n in use], float)
+    y = np.log(np.array([sk_w[n][0] for n in use], float))
+    w = np.array([sk_w[n][1] for n in use], float)
+    w = w / w.sum()
+    X = np.stack([np.ones_like(dc), dc], axis=1)               # (m, 2)
+    WX = X * w[:, None]
+    beta = np.linalg.solve(X.T @ WX, X.T @ (w * y))            # weighted normal equations
+    b0, b1 = float(beta[0]), float(beta[1])
+
+    def predict_sk(d):
+        d = np.asarray(d, float)
+        return np.exp(b0 + b1 * d)
+
+    sk_true = np.array([sk_w[n][0] for n in use], float)
+    pred = predict_sk(dc)
+    ss_res = float(((sk_true - pred) ** 2).sum())
+    ss_tot = float(((sk_true - sk_true.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
+    return {"b0": b0, "b1": b1, "r2_insample": r2, "predict_sk": predict_sk,
+            "sk_per_site": {n: sk_w[n][0] for n in sk_w}}

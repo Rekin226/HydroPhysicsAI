@@ -122,3 +122,24 @@ def test_build_explorer_writes_html(gwdata, tmp_path):
     assert path == str(out)
     assert out.exists() and out.stat().st_size > 1000
     assert "plotly" in out.read_text(errors="ignore").lower()
+
+
+def test_fit_sk_regression_recovers_beta():
+    from hydrophysics.subsidence import fit_sk_regression
+
+    rng = np.random.default_rng(0)
+    b0, b1 = -3.0, -1.5
+    dist = {}
+    per_site = {}
+    for i in range(8):
+        dc = 0.2 * i
+        sk = np.exp(b0 + b1 * dc)
+        D = np.linspace(0.5, 5.0, 20)
+        C = sk * D + rng.normal(0, 1e-4, size=D.size)
+        name = f"s{i}"
+        dist[name] = dc
+        per_site[name] = (D, C)
+    fit = fit_sk_regression(per_site, dist)
+    assert abs(fit["b0"] - b0) < 0.1
+    assert abs(fit["b1"] - b1) < 0.1
+    assert abs(fit["predict_sk"](0.0) - np.exp(b0)) < 1e-2
