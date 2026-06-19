@@ -22,11 +22,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install (foundation + dev, CPU-only)
+      - name: Install (foundation + dev + explorer, CPU-only)
         # The GPU stack (torch) is intentionally not installed in CI: the
         # foundation (data/metrics/baselines/eval) runs anywhere, and the
         # torch-dependent model smoke tests skip themselves when torch is absent.
-        run: pip install -e ".[dev]"
+        # The [explorer] extra (shapely/pyarrow/plotly) lets the explorer tests run,
+        # which use synthetic/tmp data only -- no real data needed.
+        run: pip install -e ".[dev,explorer]"
 
       - name: Lint (ruff)
         run: ruff check .
