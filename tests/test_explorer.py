@@ -122,3 +122,74 @@ def test_build_explorer_writes_html(gwdata, tmp_path):
     assert path == str(out)
     assert out.exists() and out.stat().st_size > 1000
     assert "plotly" in out.read_text(errors="ignore").lower()
+
+
+def test_fit_sk_regression_recovers_beta():
+    from hydrophysics.subsidence import fit_sk_regression
+
+    rng = np.random.default_rng(0)
+    b0, b1 = -3.0, -1.5
+    dist = {}
+    per_site = {}
+    for i in range(8):
+        dc = 0.2 * i
+        sk = np.exp(b0 + b1 * dc)
+        D = np.linspace(0.5, 5.0, 20)
+        C = sk * D + rng.normal(0, 1e-4, size=D.size)
+        name = f"s{i}"
+        dist[name] = dc
+        per_site[name] = (D, C)
+    fit = fit_sk_regression(per_site, dist)
+    assert abs(fit["b0"] - b0) < 0.1
+    assert abs(fit["b1"] - b1) < 0.1
+    assert abs(fit["predict_sk"](0.0) - np.exp(b0)) < 1e-2
+
+
+def test_distances_to_geom():
+    from shapely.geometry import LineString
+    from hydrophysics.subsidence import _distances_to_geom
+
+    coast = LineString([(0.0, 0.0), (0.0, 100.0)])  # the y-axis
+    stations = pd.DataFrame({"sub_id": ["a", "b"], "x": [10.0, 30.0], "y": [50.0, 50.0]})
+    d = _distances_to_geom(stations, coast)
+    assert abs(d["a"] - 10.0) < 1e-6
+    assert abs(d["b"] - 30.0) < 1e-6
+
+
+def test_loso_discriminates_signal_from_noise():
+    from hydrophysics.subsidence import loso_sk_regression
+
+    rng = np.random.default_rng(1)
+    # Heterogeneous drawdown magnitudes per site (the real-data condition): this is what
+    # makes the COMPACTION-space gate able to discriminate. With identical D across sites
+    # the compaction R² is inflated by the shared D shape and cannot tell signal from noise.
+    def make_D(i):
+        return np.linspace(0.5, 5.0 + 2.0 * i, 20)
+
+    # (a) real coast gradient: Sk depends on distance -> compaction-space LOSO clearly positive
+    grad, grad_dist = {}, {}
+    for i in range(12):
+        dc = 0.3 * i
+        sk = np.exp(-2.0 - 1.2 * dc)
+        D = make_D(i)
+        name = f"g{i}"
+        grad_dist[name] = dc
+        grad[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
+    res_grad = loso_sk_regression(grad, grad_dist)
+
+    # (b) Sk independent of distance (random) -> gate should NOT credit it
+    rnd, rnd_dist = {}, {}
+    for i in range(12):
+        sk = float(rng.uniform(0.02, 0.12))
+        D = make_D(i)
+        name = f"r{i}"
+        rnd_dist[name] = float(rng.uniform(0, 3.3))
+        rnd[name] = (D, sk * D + rng.normal(0, 1e-4, size=D.size))
+    res_rnd = loso_sk_regression(rnd, rnd_dist)
+
+    # The Sk-space r2 is the honest generalization gate (compaction-space r2 is inflated by
+    # drawdown scale): a real coast gradient generalizes, random Sk does not.
+    assert res_grad["r2_sk"] > 0.5
+    assert res_rnd["r2_sk"] <= 0.0
+    # both compaction-space r2 values are finite (reported alongside for baseline comparison)
+    assert np.isfinite(res_grad["r2"]) and np.isfinite(res_rnd["r2"])

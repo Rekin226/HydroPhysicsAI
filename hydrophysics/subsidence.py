@@ -142,3 +142,100 @@ def calibrate_sk(data: GWData, stations: pd.DataFrame,
         C = cc - cc[0]                                       # re-zero compaction
         per_site[name] = (D, C)
     return calibrate_sk_from_pairs(per_site)
+
+
+def _per_site_sk(per_site: dict[str, tuple[np.ndarray, np.ndarray]]) -> dict[str, tuple[float, float]]:
+    """Per-site (Sk_i, weight=ΣD²). Sk_i is the through-origin slope of C on D."""
+    out = {}
+    for name, (D, C) in per_site.items():
+        D = np.asarray(D, float)
+        C = np.asarray(C, float)
+        denom = float(D @ D)
+        out[name] = ((D @ C) / (denom + 1e-12), denom)
+    return out
+
+
+def fit_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
+                      dist: dict[str, float]) -> dict:
+    """Weighted least-squares fit of log(Sk_i) on distance-to-coast.
+
+    Sk(dc) = exp(b0 + b1*dc). Only sites with Sk_i > 0 enter the log fit; each is weighted
+    by ΣD² (how well its Sk_i is determined). The predictor is a function of distance ONLY
+    (no compaction-derived feature) -> leakage-safe. Returns {b0, b1, r2_insample,
+    predict_sk, sk_per_site}.
+    """
+    sk_w = _per_site_sk(per_site)
+    use = [n for n in sk_w if n in dist and sk_w[n][0] > 0]
+    dc = np.array([dist[n] for n in use], float)
+    y = np.log(np.array([sk_w[n][0] for n in use], float))
+    w = np.array([sk_w[n][1] for n in use], float)
+    w = w / w.sum()
+    X = np.stack([np.ones_like(dc), dc], axis=1)               # (m, 2)
+    WX = X * w[:, None]
+    beta = np.linalg.solve(X.T @ WX, X.T @ (w * y))            # weighted normal equations
+    b0, b1 = float(beta[0]), float(beta[1])
+
+    def predict_sk(d):
+        d = np.asarray(d, float)
+        return np.exp(b0 + b1 * d)
+
+    sk_true = np.array([sk_w[n][0] for n in use], float)
+    pred = predict_sk(dc)
+    ss_res = float(((sk_true - pred) ** 2).sum())
+    ss_tot = float(((sk_true - sk_true.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
+    return {"b0": b0, "b1": b1, "r2_insample": r2, "predict_sk": predict_sk,
+            "sk_per_site": {n: sk_w[n][0] for n in sk_w}}
+
+
+def _distances_to_geom(stations: pd.DataFrame, geom) -> dict[str, float]:
+    """Distance from each station (x, y) to a shapely geometry. Pure shapely (testable)."""
+    from shapely.geometry import Point
+
+    return {row["sub_id"]: float(Point(row["x"], row["y"]).distance(geom))
+            for _, row in stations.iterrows()}
+
+
+def site_distance_to_coast(stations: pd.DataFrame, coast_shp) -> dict[str, float]:
+    """Distance (m, EPSG:3826) from each MLCW site to the coastline polygon/line."""
+    import geopandas as gpd
+
+    geom = gpd.read_file(coast_shp).geometry.union_all()
+    return _distances_to_geom(stations, geom)
+
+
+def loso_sk_regression(per_site: dict[str, tuple[np.ndarray, np.ndarray]],
+                       dist: dict[str, float]) -> dict:
+    """Leave-one-site-out gate. For each held-out site, predict its Sk from the others'
+    distance-to-coast fit and score the result two ways:
+
+      - ``r2``    : pooled COMPACTION R² (the primary gate -- directly comparable to the
+                    single-Sk baseline -0.28 and the spatial-IDW LOSO -2.40).
+      - ``r2_sk`` : per-site Sk R² (secondary diagnostic; less inflated by drawdown scale).
+
+    Returns {r2, r2_sk, n_sites, per_site_pred}.
+    """
+    names = [n for n in per_site if n in dist]
+    preds, obs, sk_true, sk_pred_list, per_pred = [], [], [], [], {}
+    for held in names:
+        train = {n: per_site[n] for n in names if n != held}
+        fit = fit_sk_regression(train, dist)
+        sk_pred = float(fit["predict_sk"](dist[held]))
+        D = np.asarray(per_site[held][0], float)
+        C = np.asarray(per_site[held][1], float)
+        preds.append(sk_pred * D)
+        obs.append(C)
+        sk_true.append(float((D @ C) / (D @ D + 1e-12)))
+        sk_pred_list.append(sk_pred)
+        per_pred[held] = sk_pred
+    pred = np.concatenate(preds)
+    ob = np.concatenate(obs)
+    ss_res = float(((ob - pred) ** 2).sum())
+    ss_tot = float(((ob - ob.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / max(ss_tot, 1e-12)
+    skt = np.asarray(sk_true, float)
+    skp = np.asarray(sk_pred_list, float)
+    sk_res = float(((skt - skp) ** 2).sum())
+    sk_tot = float(((skt - skt.mean()) ** 2).sum())
+    r2_sk = 1.0 - sk_res / max(sk_tot, 1e-12)
+    return {"r2": r2, "r2_sk": r2_sk, "n_sites": len(names), "per_site_pred": per_pred}
