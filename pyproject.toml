@@ -34,6 +34,14 @@ viz = [
     "matplotlib>=3.6",
     "geopandas>=0.12",
 ]
+# Choushui head + subsidence explorer (hydrophysics.explorer / hydrophysics.subsidence).
+# Pure runtime deps for the explorer + its tests (parquet engine, geometry, plotting).
+# The real-shapefile CLI path additionally uses geopandas (see [viz]).
+explorer = [
+    "shapely>=2.0",
+    "pyarrow>=12",
+    "plotly>=5.20",
+]
 dev = ["pytest>=7.0", "ruff>=0.1"]
 
 [project.urls]
