@@ -134,11 +134,19 @@ class PhysicsUDE(GroundwaterModel):
     def __init__(self, hidden: int = 64, epochs: int = 1500, lr: float = 3e-2,
                  physics_weight: float = 0.1, anchor_level: bool = True,
                  normalize_loss: bool = True, lr_min: float | None = 1e-4,
-                 anchor_equilibrium: bool = False,
+                 anchor_equilibrium: bool = False, rain_memory: tuple = (),
                  feature_fn=None, device: str | None = None, seed: int = 0):
         _require_torch()
         self.hidden, self.epochs, self.lr, self.seed = hidden, epochs, lr, seed
         self.physics_weight = physics_weight
+        # Rainfall recharge memory: aquifers integrate rainfall over weeks-months, so a
+        # single instantaneous b*rain term underfits the recharge response. With
+        # rain_memory=(decay1, decay2, ...) the rainfall enters through that many causal
+        # memory states api_k[t] = decay_k*api_k[t-1] + rain[t] (timescale ~ -1/ln decay),
+        # each with its own learned per-well gain -- the ingredient the per-well
+        # decomposition baseline used to reach gray-box accuracy. Empty () = the original
+        # instantaneous term, bit-identical.
+        self.rain_memory = tuple(rain_memory)
         # When True, pin the free-run equilibrium to each well's observed mean (anchor) and
         # let the ODE model only deviations driven by rainfall/upstream anomalies + season.
         # This removes the absolute-level degree of freedom that makes held-out wells drift
@@ -158,9 +166,39 @@ class PhysicsUDE(GroundwaterModel):
         self.hypernet: nn.Module | None = None
         self._stats: dict = {}
 
+    def _n_params(self) -> int:
+        """ODE params the hypernetwork predicts. The single rainfall gain b expands to one
+        gain per memory timescale; max(1, K) keeps the no-memory layout (7) unchanged."""
+        return len(PARAM_NAMES) - 1 + max(1, len(self.rain_memory))
+
     def _build(self, n_static: int):
         # Hypernetwork: static attributes -> ODE parameters (one vector per well).
-        self.hypernet = _HyperNet(n_static, self.hidden, len(PARAM_NAMES)).to(self.device)
+        self.hypernet = _HyperNet(n_static, self.hidden, self._n_params()).to(self.device)
+
+    def _rain_memory_states(self, data: GWData) -> np.ndarray | None:
+        """Causal rainfall recharge-memory states as a TRAINING-standardized anomaly
+        -> (W, T, K). None when memory is off.
+
+        api_k[t] = decay_k * api_k[t-1] + rain[t] is a function of the (known) rainfall
+        forcing only, so it is fully causal and leakage-free. It is then centered and
+        scaled by its training-period mean/std (so the learned gains are O(1) and the
+        rainfall term is a zero-training-mean anomaly the constant ``c`` complements). The
+        mean/std are stored on the first call (fit) and reused by simulate()."""
+        if not self.rain_memory:
+            return None
+        rain = np.nan_to_num(data.rainfall).astype("float64")  # (W, T)
+        W, T = rain.shape
+        api = np.zeros((W, T, len(self.rain_memory)), dtype="float64")
+        for j, decay in enumerate(self.rain_memory):
+            acc = np.zeros(W)
+            for t in range(T):
+                acc = decay * acc + rain[:, t]
+                api[:, t, j] = acc
+        if "api_mu" not in self._stats:
+            tm = data.train_mask
+            self._stats["api_mu"] = api[:, tm, :].mean(axis=(0, 1))       # (K,)
+            self._stats["api_sd"] = api[:, tm, :].std(axis=(0, 1)) + 1e-6
+        return ((api - self._stats["api_mu"]) / self._stats["api_sd"]).astype("float32")
 
     def _level_stats(self, data: GWData) -> tuple[np.ndarray, np.ndarray]:
         """Per-well mean and std of the level over the calibration period only.
@@ -210,6 +248,8 @@ class PhysicsUDE(GroundwaterModel):
         anchor = torch.from_numpy(self._stats["anchor"]).to(self.device)   # (W,) level anchor
         scale = torch.from_numpy(sd_h if self.normalize_loss else np.ones_like(sd_h)).to(self.device)
         force_mean = self._force_mean(dyn, data) if self.anchor_equilibrium else None
+        api_np = self._rain_memory_states(data)
+        api = torch.from_numpy(api_np).to(self.device) if api_np is not None else None
 
         opt = torch.optim.Adam(self.hypernet.parameters(), lr=self.lr)
         sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, self.epochs, eta_min=self.lr_min)
@@ -217,7 +257,7 @@ class PhysicsUDE(GroundwaterModel):
         for _ in range(self.epochs):
             opt.zero_grad()
             params = self.hypernet(stat_n)            # (W, n_params)
-            pred = self._rollout(params, dyn, h0, anchor, force_mean)     # (W, T)
+            pred = self._rollout(params, dyn, h0, anchor, force_mean, api)     # (W, T)
             # Per-well scale weights every well equally (matches the per-well-median
             # KGE we report); scale is 1 when normalize_loss is off.
             data_loss = (((pred - target) / scale[:, None]) ** 2 * obs_mask).sum() \
@@ -226,7 +266,7 @@ class PhysicsUDE(GroundwaterModel):
             # teacher-forced (decoupled from the free rollout). This is the "informed"
             # half of physics-informed: it constrains the dynamics, not just the fit.
             phys_loss = self._physics_residual(params, dyn, target, obs_mask, anchor, scale,
-                                               force_mean)
+                                               force_mean, api)
             loss = data_loss + self.physics_weight * phys_loss
             loss.backward()
             opt.step()
@@ -245,9 +285,11 @@ class PhysicsUDE(GroundwaterModel):
         h0 = torch.from_numpy(np.nan_to_num(self.initial_condition(data)).astype("float32")).to(self.device)
         anchor = torch.from_numpy(self._stats["anchor"]).to(self.device)
         force_mean = self._force_mean(dyn, data) if self.anchor_equilibrium else None
+        api_np = self._rain_memory_states(data)
+        api = torch.from_numpy(api_np).to(self.device) if api_np is not None else None
         with torch.no_grad():
             params = self.hypernet(stat_n)
-            pred = self._rollout(params, dyn, h0, anchor, force_mean)
+            pred = self._rollout(params, dyn, h0, anchor, force_mean, api)
         return pred.cpu().numpy()
 
     def decoded_params(self, data: GWData) -> dict:
@@ -267,15 +309,19 @@ class PhysicsUDE(GroundwaterModel):
         dyn = torch.from_numpy(_forcing_features(data)).to(self.device)
         anchor = torch.from_numpy(self._stats["anchor"]).to(self.device)
         force_mean = self._force_mean(dyn, data) if self.anchor_equilibrium else None
+        api_np = self._rain_memory_states(data)
+        api = torch.from_numpy(api_np).to(self.device) if api_np is not None else None
+        nrain = max(1, len(self.rain_memory))
         with torch.no_grad():
             p = self.hypernet(stat_n)
-            g, s = self._decay_and_source(p, dyn, anchor, force_mean)
+            g, s = self._decay_and_source(p, dyn, anchor, force_mean, api)
             a = torch.nn.functional.softplus(p[:, 0])
-            k = torch.sigmoid(p[:, 4])
+            b = torch.nn.functional.softplus(p[:, 2:2 + nrain]).sum(-1)  # total rainfall gain
+            k = torch.sigmoid(p[:, 3 + nrain])
             h_star = s.mean(dim=1) / g.clamp_min(1e-6)
             out = {
-                "a": a, "z": anchor + p[:, 1], "b": torch.nn.functional.softplus(p[:, 2]),
-                "c": p[:, 3], "k_link": k, "g": g, "h_star": h_star,
+                "a": a, "z": anchor + p[:, 1], "b": b,
+                "c": p[:, 2 + nrain], "k_link": k, "g": g, "h_star": h_star,
                 "anchor": anchor,
             }
         return {key: val.cpu().numpy() for key, val in out.items()}
@@ -285,7 +331,7 @@ class PhysicsUDE(GroundwaterModel):
         tm = torch.from_numpy(np.asarray(data.train_mask, dtype=bool)).to(dyn.device)
         return dyn[:, tm, :].mean(dim=1)
 
-    def _decay_and_source(self, params, dyn, anchor, force_mean=None):
+    def _decay_and_source(self, params, dyn, anchor, force_mean=None, api=None):
         """Cast the gray-box ODE into the affine form  dh/dt = -g*h + s_t.
 
         params: (W, n_params) -> a, z, b, c, k_link, d_sin, d_cos
@@ -309,32 +355,42 @@ class PhysicsUDE(GroundwaterModel):
         """
         a = torch.nn.functional.softplus(params[:, 0])   # recession >= 0
         z = anchor + params[:, 1]                         # level as residual around anchor
-        b = torch.nn.functional.softplus(params[:, 2])   # rainfall gain >= 0
-        c = params[:, 3]
-        k = torch.sigmoid(params[:, 4])                  # upstream coupling in (0,1)
-        d_sin, d_cos = params[:, 5], params[:, 6]
+        # The single rainfall gain b expands to one gain per memory timescale. With no
+        # memory, nrain=1 and the layout is exactly [a, z, b, c, k, d_sin, d_cos].
+        nrain = max(1, len(self.rain_memory))
+        b = torch.nn.functional.softplus(params[:, 2:2 + nrain])   # (W, nrain) gain(s) >= 0
+        c = params[:, 2 + nrain]
+        k = torch.sigmoid(params[:, 3 + nrain])          # upstream coupling in (0,1)
+        d_sin, d_cos = params[:, 4 + nrain], params[:, 5 + nrain]
 
         rain, ups, sin_t, cos_t = dyn[..., 0], dyn[..., 1], dyn[..., 2], dyn[..., 3]
         g = a + k                                        # (W,) linear decay coefficient
+
+        # Rainfall recharge term: sum_k b_k * api_k over the precomputed memory states
+        # (api is a training-standardized anomaly), or the original instantaneous b*rain.
+        memory_on = bool(self.rain_memory) and api is not None
+        rain_src = (b.unsqueeze(1) * api).sum(-1) if memory_on else b[:, 0:1] * rain  # (W, T)
+
         if self.anchor_equilibrium and force_mean is not None:
             # Deviation form: equilibrium pinned to the anchor (h* = anchor exactly), the
             # ODE drives only anomalies around the training-period mean forcing. Removes
             # the free DC level (z, c) that lets held-out wells settle at the wrong level.
             rm, um, sm, cm = force_mean[:, 0], force_mean[:, 1], force_mean[:, 2], force_mean[:, 3]
+            rain_term = rain_src if memory_on else b[:, 0:1] * (rain - rm[:, None])
             s = (g[:, None] * anchor[:, None]
-                 + b[:, None] * (rain - rm[:, None])
+                 + rain_term
                  + k[:, None] * (ups - um[:, None])
                  + d_sin[:, None] * (sin_t - sm[:, None])
                  + d_cos[:, None] * (cos_t - cm[:, None]))
         else:
             s = ((a * z + c)[:, None]
                  + k[:, None] * ups
-                 + b[:, None] * rain
+                 + rain_src
                  + d_sin[:, None] * sin_t
                  + d_cos[:, None] * cos_t)               # (W, T) affine forcing
         return g, s
 
-    def _rollout(self, params, dyn, h0, anchor, force_mean=None) -> "torch.Tensor":
+    def _rollout(self, params, dyn, h0, anchor, force_mean=None, api=None) -> "torch.Tensor":
         """Free-running daily integration of the gray-box ODE skeleton.
 
         params: (W, n_params); dyn: (W, T, 4); h0: (W,) initial level;
@@ -352,7 +408,7 @@ class PhysicsUDE(GroundwaterModel):
         bottleneck, swap this loop for torchdiffeq.odeint_adjoint over the same
         ``_decay_and_source`` ODE (constant-memory backprop), or port to PhysicsNeMo.
         """
-        g, s = self._decay_and_source(params, dyn, anchor, force_mean)
+        g, s = self._decay_and_source(params, dyn, anchor, force_mean, api)
         denom = 1.0 + g                                  # backward-Euler, dt = 1 day
         _, T = s.shape
         h = h0.clone()
@@ -363,7 +419,7 @@ class PhysicsUDE(GroundwaterModel):
         return torch.stack(out, dim=1)
 
     def _physics_residual(self, params, dyn, target, obs_mask, anchor, scale,
-                          force_mean=None) -> "torch.Tensor":
+                          force_mean=None, api=None) -> "torch.Tensor":
         """Mean squared mass-balance residual on observed consecutive training days.
 
         Teacher-forced: plug the observed level into the ODE right-hand side and require
@@ -374,7 +430,7 @@ class PhysicsUDE(GroundwaterModel):
         The residual is scaled per well so all wells weigh equally. Only day-pairs with
         a finite training observation at both ends contribute.
         """
-        g, s = self._decay_and_source(params, dyn, anchor, force_mean)
+        g, s = self._decay_and_source(params, dyn, anchor, force_mean, api)
         h_t, h_tp1 = target[:, :-1], target[:, 1:]
         rhs = s[:, :-1] - g[:, None] * h_t
         resid = ((h_tp1 - h_t) - rhs) / scale[:, None]

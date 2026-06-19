@@ -73,6 +73,21 @@ def test_anchor_equilibrium_and_decoded_params(data):
     assert np.abs(par["h_star"] - par["anchor"]).max() < 0.5
 
 
+def test_rain_memory_default_identical_and_runs(data):
+    """rain_memory=() is bit-identical to the original UDE; a non-empty memory grows the
+    hypernetwork output and runs fit/simulate end-to-end."""
+    from hydrophysics.models.ude import PhysicsUDE
+
+    base = PhysicsUDE(epochs=8, device="cpu", seed=0).fit(data)
+    empty = PhysicsUDE(epochs=8, device="cpu", seed=0, rain_memory=()).fit(data)
+    assert np.allclose(base.simulate(data), empty.simulate(data))
+
+    mem = PhysicsUDE(epochs=8, device="cpu", seed=0, rain_memory=(0.98, 0.9, 0.7)).fit(data)
+    assert mem._n_params() == 9  # 6 base + 3 rainfall-memory gains
+    sim = mem.simulate(data)
+    assert sim.shape == data.target.shape and np.isfinite(sim).all()
+
+
 def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
     """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
     base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a

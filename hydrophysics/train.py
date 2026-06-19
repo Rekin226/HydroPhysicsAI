@@ -46,16 +46,16 @@ def pick_device(requested: str | None = None) -> str:
     return "cpu"
 
 
-def build_model(name: str, device: str, epochs: int):
+def build_model(name: str, device: str, epochs: int, rain_memory: tuple = ()):
     if name == "gru":
         from .models.gru import GlobalGRU
         return GlobalGRU(device=device, epochs=epochs)
     if name == "ude":
         from .models.ude import PhysicsUDE
-        return PhysicsUDE(device=device, epochs=epochs)
+        return PhysicsUDE(device=device, epochs=epochs, rain_memory=rain_memory)
     if name == "ude_nemo":
         from .models.ude_physicsnemo import PhysicsNeMoUDE
-        return PhysicsNeMoUDE(device=device, epochs=epochs)
+        return PhysicsNeMoUDE(device=device, epochs=epochs, rain_memory=rain_memory)
     if name == "pinn":
         from .models.pinn_field import SpatialPINN
         return SpatialPINN(device=device, epochs=epochs)
@@ -69,8 +69,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--baseline", default=None, help="gray-box gw_fit_results.csv")
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--device", default=None, help="cuda|mps|cpu (auto if unset)")
+    ap.add_argument("--rain-memory", default="", metavar="D1,D2,...",
+                    help="(ude/ude_nemo) comma-separated recharge-memory decays, e.g. "
+                         "0.99,0.95,0.85 -- lifts simulation KGE 0.591 -> 0.704. Empty = off.")
     ap.add_argument("--out", default=None, help="output dir for predictions/tables")
     args = ap.parse_args(argv)
+    rain_memory = tuple(float(x) for x in args.rain_memory.split(",") if x.strip())
 
     cfg = (
         Config(
@@ -87,7 +91,7 @@ def main(argv: list[str] | None = None) -> None:
     device = pick_device(args.device)
     print(f"device: {device} | model: {args.model} | epochs: {args.epochs}")
 
-    model = build_model(args.model, device, args.epochs)
+    model = build_model(args.model, device, args.epochs, rain_memory=rain_memory)
     model.fit(data)
     pred = model.simulate(data)
 
