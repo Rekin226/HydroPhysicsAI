@@ -177,6 +177,27 @@ def _surface(values: np.ndarray) -> np.ndarray:
     return np.where(FAN_MASK, z, np.nan)
 
 
+# --- live recharge-stress monitor (real Open-Meteo) ------------------------
+# Per-well WGS84 lon/lat (precomputed from TWD97; ships as a tiny npz so the Space
+# needs no pyproj). Enables a live weather pull at each station's true location.
+def _load_lonlat() -> dict:
+    p = APP_DIR / "well_lonlat.npz"
+    if not p.exists():
+        return {}
+    z = np.load(p, allow_pickle=True)
+    return {str(w): (float(la), float(lo))
+            for w, la, lo in zip(z["well_ids"], z["lat"], z["lon"])}
+
+
+WELL_LONLAT = _load_lonlat()
+try:
+    from live import recharge_stress
+    LIVE_OK = bool(WELL_LONLAT)
+except Exception:  # pragma: no cover - defensive
+    recharge_stress = None
+    LIVE_OK = False
+
+
 # --- per-well descriptive metadata (REAL coords/name/group) ----------------
 def _well_meta(well_id: str) -> dict:
     a = DATA.attrs.loc[well_id]
@@ -533,6 +554,77 @@ def make_surface(well_id: str, day_frac: float) -> go.Figure:
     return fig
 
 
+def _stress_prompt(msg: str) -> go.Figure:
+    """A placeholder figure carrying a one-line message (no data yet / fetch failed)."""
+    fig = go.Figure()
+    fig.add_annotation(text=msg, x=0.5, y=0.5, xref="paper", yref="paper",
+                       showarrow=False, font=dict(size=14, color="#555"))
+    fig.update_layout(template="plotly_white", height=360,
+                      xaxis=dict(visible=False), yaxis=dict(visible=False),
+                      margin=dict(l=40, r=20, t=50, b=30),
+                      title="Live recharge-stress monitor (real Open-Meteo)")
+    return fig
+
+
+def make_stress(well_id: str) -> go.Figure:
+    """Live panel: real recent weather -> the operator's recharge-memory anomaly.
+
+    Pulls actual precipitation + ET0 at the station's true coordinates from Open-Meteo's
+    public ERA5 archive, runs net recharge (rain - ET0) through the same ~100-day
+    recharge-memory the operator uses, and standardizes it against this location's own
+    multi-year climatology. Positive (green) = the aquifer is recharging faster than
+    normal; negative (red) = real drought stress right now. Everything here is real public
+    data -- it is the live forcing side of the model, shown where the synthetic level
+    cannot be.
+    """
+    if not LIVE_OK or recharge_stress is None:
+        return _stress_prompt("Live monitor unavailable (coordinate lookup missing).")
+    lat, lon = WELL_LONLAT.get(well_id, (None, None))
+    if lat is None:
+        return _stress_prompt("No coordinates for this station.")
+    r = recharge_stress(lat, lon)
+    if not r.get("ok"):
+        return _stress_prompt(r.get("status", "Live data unavailable — try again."))
+
+    dates = np.array(r["dates"], dtype="datetime64[D]")
+    z = np.asarray(r["z"], float)
+    pos = np.where(z >= 0, z, 0.0)
+    neg = np.where(z < 0, z, 0.0)
+
+    fig = go.Figure()
+    # Recharging (green, above zero) and depleting (red, below zero) filled to baseline.
+    fig.add_trace(go.Scatter(
+        x=dates, y=pos, mode="lines", line=dict(width=0), fill="tozeroy",
+        fillcolor="rgba(44,160,44,0.35)", name="recharging", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=dates, y=neg, mode="lines", line=dict(width=0), fill="tozeroy",
+        fillcolor="rgba(214,39,40,0.35)", name="depleting", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=dates, y=z, mode="lines", line=dict(color="#333", width=1.4),
+        name="recharge anomaly",
+        hovertemplate="%{x|%Y-%m-%d}<br>%{y:+.2f}σ<extra></extra>"))
+    fig.add_hline(y=0, line=dict(color="#888", width=1))
+
+    cur = r["current"]
+    color = "#2ca02c" if cur > 0.5 else "#d62728" if cur < -0.5 else "#555"
+    fig.add_annotation(
+        x=dates[-1], y=z[-1],
+        text=f"<b>now: {cur:+.2f}σ</b><br>{r['label']}",
+        showarrow=True, arrowhead=2, ax=-60, ay=-40,
+        font=dict(size=12, color=color), bordercolor=color, borderwidth=1,
+        bgcolor="rgba(255,255,255,0.85)")
+    m = META[well_id]
+    fig.update_layout(
+        title=f"Live recharge-stress — {m['name']} ({well_id})<br>"
+              f"<sub>real Open-Meteo ERA5 · 100-day recharge-memory anomaly vs local "
+              f"climatology · {r['status']}</sub>",
+        yaxis_title="recharge anomaly (σ vs normal)",
+        xaxis_title="date", template="plotly_white", height=400,
+        margin=dict(l=60, r=20, t=70, b=70), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.22, x=0.5, xanchor="center"))
+    return fig
+
+
 def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     """Panel B: probabilistic forecast from the chosen origin, 90% band shaded."""
     i = DATA.well_index(well_id)
@@ -625,6 +717,12 @@ def on_surface(label: str, day_frac: float):
     """Day-slider handler: re-interpolate the basin surface for the chosen day."""
     well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
     return make_surface(well_id, day_frac)
+
+
+def on_stress(label: str):
+    """Fetch-button handler: pull live Open-Meteo weather for the selected station."""
+    well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
+    return make_stress(well_id)
 
 
 def on_click(station_id: str, origin_frac: float, rain_mult: float, et_mult: float,
@@ -758,6 +856,26 @@ def build_ui():
                             interactive=SURFACE_OK)
             surface_plot = gr.Plot(label="Basin groundwater surface (synthetic, model hindcast)")
 
+        # --- Live recharge-stress monitor (real Open-Meteo) ----------------------
+        with gr.Group():
+            gr.Markdown(
+                "## Live recharge-stress monitor — real-time Open-Meteo\n"
+                "The groundwater series here are synthetic, so we don't fake a real level. "
+                "Instead we show the **real forcing** the operator consumes: click below to "
+                "pull **actual recent weather** (precipitation + ET0) at the selected "
+                "station's true coordinates from Open-Meteo's public ERA5 archive, run it "
+                "through the **same 100-day recharge-memory the operator uses**, and see "
+                "whether the aquifer is **recharging (green)** or under **drought stress "
+                "(red)** right now — versus this location's own multi-year climatology. "
+                "_100% real public data._"
+                + ("" if LIVE_OK else
+                   "\n\n_(Live monitor unavailable in this build: the coordinate lookup is "
+                   "missing.)_")
+            )
+            fetch_btn = gr.Button("🌦  Pull latest weather for the selected station",
+                                  variant="primary", interactive=LIVE_OK)
+            stress_plot = gr.Plot(label="Live recharge-stress (real Open-Meteo)")
+
         # Hidden bridge: BIND_JS writes the clicked station id here; its change selects.
         clicked = gr.Textbox(visible=False, elem_id="wellclick")
 
@@ -774,8 +892,14 @@ def build_ui():
         et_mult.release(on_whatif, [well, rain_mult, et_mult], whatif_plot)
         # day slider -> re-interpolate the basin surface (on release; instant IDW re-weight)
         day.release(on_surface, [well, day], surface_plot)
+        # live monitor: explicit button (one Open-Meteo call, cached) -> recharge-stress
+        fetch_btn.click(on_stress, [well], stress_plot)
         # initial draw + install the plotly_click -> hidden-textbox JS bridge
         demo.load(on_dropdown, sel_inputs, all_plots)
+        demo.load(lambda: _stress_prompt(
+            "Click “Pull latest weather” to fetch live Open-Meteo data for the selected "
+            "station." if LIVE_OK else "Live monitor unavailable in this build."),
+            None, stress_plot)
         demo.load(js=BIND_JS)
     return demo
 
