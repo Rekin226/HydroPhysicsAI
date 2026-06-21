@@ -32,6 +32,7 @@ from .train import pick_device
 def leave_one_well_out(
     data: GWData, device: str, epochs: int, folds: int = 6, seed: int = 0,
     feature_fn=None, anchor_equilibrium: bool = False, ensemble: int = 1,
+    rain_memory: tuple = (),
 ) -> np.ndarray:
     """Return a (W, T) prediction where each well was predicted while held out.
 
@@ -50,7 +51,8 @@ def leave_one_well_out(
         for f in range(folds):
             held = assign == f
             model = PhysicsUDE(device=device, epochs=epochs, seed=seed + s,
-                               feature_fn=feature_fn, anchor_equilibrium=anchor_equilibrium)
+                               feature_fn=feature_fn, anchor_equilibrium=anchor_equilibrium,
+                               rain_memory=rain_memory)
             model.fit(data, train_wells=~held)
             pred[held] = model.simulate(data)[held]
             if ensemble == 1:

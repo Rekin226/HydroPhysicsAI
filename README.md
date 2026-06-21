@@ -114,6 +114,8 @@ The final hybrid **beats per-well climatology (0.565 vs 0.446 median)** and is f
 
 *Per-well held-out KGE. Equilibrium anchoring lifts the operator (blue) above climatology and shrinks its tail; the self-consistency gate (green) trims most of what remains. The held-out-well median (0.56) now nearly matches the in-sample operator (0.59).*
 
+**Do the in-sample forcing wins transfer here? No — instructively.** The recharge-memory and ET that lift the *in-sample* operator to 0.754 do **not** help leave-one-well-out — they slightly *hurt* the gated hybrid (inner-split 0.626 → ~0.61). Two compounding reasons: (1) recharge-memory adds per-well rainfall gains the hypernetwork must predict for an *unseen* well from attributes alone — extra capacity it cannot place; (2) richer forcing lets the operator fit each well's *training* history better, which fools the self-consistency gate into over-trusting wells that don't generalize. The simplest operator generalizes best. A clean **capacity-vs-generalization tradeoff**: forcing that helps when you *have* the well hurts when you *don't*. (`leave_one_well_out` accepts `rain_memory` to reproduce this.)
+
 ## Continuous head field (PINN) — a documented negative result
 
 We also tried the more ambitious "physical AI" framing: a single physics-informed neural network learning a **continuous head field** `h(x, y, t)` over the whole fan (2D depth-averaged groundwater-flow PDE, autodiff residual, learned transmissivity field — the NVIDIA PhysicsNeMo wheelhouse). It is implemented (`hydrophysics/models/pinn_field.py`, `--model pinn`, 22 tests incl. an analytic PDE-residual check) and reported honestly here because **it does not beat the per-well models on this data**, and *why* is the interesting part.
@@ -193,6 +195,8 @@ A **separate** track from the simulation benchmark above (do not compare the two
 ![Probabilistic 30-day forecast with 90% interval](results/figures/forecast_fan.png)
 
 *Probabilistic 30-day forecast from one origin (dashed line): the mean tracks the realized observations and the 90% interval widens with lead time. Bundled-sample figure (`python -m hydrophysics.figures`), reproducible with no real data.*
+
+**Does ET help the forecaster? No — and that is the point.** The ET driver that lifts the *free-running* operator by +0.05 gives the *assimilated* forecaster essentially nothing (2019+: 7-day 0.965 → 0.964, 30-day flat). Same reason the forecaster is strong: it assimilates recent observed levels, which already encode the ET-driven state, so explicit ET is redundant. Put beside the [leave-one-well-out finding](#generalizing-to-unseen-wells) — where the extra forcing actually *hurts* unseen-well generalization — this maps a clean principle: **explicit physics forcing helps most where information is scarcest (free-running operator, +0.05) and least where it is richest (assimilated forecaster, ≈0; or extrapolating to a never-seen well, where the added capacity hurts).**
 
 ## Status
 
