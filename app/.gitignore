@@ -1,0 +1,4 @@
+# The root .gitignore excludes *.pt (training checkpoints), but the demo Space MUST
+# ship the trained operator so the what-if panel can run live inference. Force-track it.
+!models/
+!models/operator.pt

@@ -29,6 +29,7 @@ or moving the slider only re-plots.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,7 @@ from hydrophysics.metrics import kge
 APP_DIR = Path(__file__).resolve().parent
 GEO_DIR = APP_DIR / "geo"
 ARTIFACT = APP_DIR / "artifact.npz"
+OPERATOR_PT = APP_DIR / "models" / "operator.pt"
 
 Z90 = 1.6449   # 90% Gaussian quantile
 
@@ -60,11 +62,44 @@ def _setup():
     # Fallback: build + train live (slower; used only without a shipped artifact).
     from demo_data import _train_and_predict
     data = build_synthetic_data()
-    sim, mean, sigma = _train_and_predict(data, device="cpu", ude_epochs=300, fc_epochs=40)
-    return data, sim, mean, sigma
+    ude, sim, mean, sigma, et0, net_data = _train_and_predict(
+        data, device="cpu", ude_epochs=300, fc_epochs=40)
+    # Hand back the same 6-tuple load_artifact returns (rainfall = raw synthetic rain).
+    rainfall = np.nan_to_num(data.rainfall).astype(float)
+    return net_data, sim, mean, sigma, rainfall, et0
 
 
-DATA, SIM, MEAN, SIGMA = _setup()
+DATA, SIM, MEAN, SIGMA, RAINFALL, ET0 = _setup()
+
+
+def _load_operator():
+    """Load the shipped trained PhysicsUDE operator (CPU-loadable), or None.
+
+    The operator is a picklable PhysicsUDE (a small nn.Module + numpy stats). It is
+    trained on NET recharge (rain - ET0), so its frozen rain-memory stats line up with
+    the baseline forcing reconstructed in DATA.rainfall. Falls back to None (what-if
+    disabled, baseline-only) if the model is missing or unloadable.
+    """
+    if not OPERATOR_PT.exists():
+        return None
+    try:
+        import torch
+        op = torch.load(OPERATOR_PT, map_location="cpu", weights_only=False)
+        op.device = "cpu"
+        return op
+    except Exception as exc:  # pragma: no cover - defensive load
+        print(f"[what-if] operator load failed ({exc}); what-if disabled")
+        return None
+
+
+OPERATOR = _load_operator()
+# Baseline net recharge (synthetic rain - real ET0) the operator was trained on, and the
+# baseline simulation it produces. Computed once; the what-if perturbs around this.
+WHATIF_OK = OPERATOR is not None and np.isfinite(RAINFALL).any() and np.isfinite(ET0).any()
+if WHATIF_OK:
+    BASE_SIM = OPERATOR.simulate(DATA)   # ~1 s CPU forward over all 61 wells
+else:
+    BASE_SIM = SIM
 WELL_IDS = list(DATA.well_ids)
 VAL_IDX = np.where(DATA.val_mask)[0]
 V0, V1 = int(VAL_IDX[0]), int(VAL_IDX[-1])
@@ -288,6 +323,86 @@ def make_sim(well_id: str) -> go.Figure:
     return fig
 
 
+def _whatif_sim(rain_mult: float, et_mult: float) -> np.ndarray:
+    """Live operator forward pass under perturbed forcing -> (W, T) simulated levels.
+
+    Builds net recharge = synthetic_rain*rain_mult - ET0*et_mult, swaps it into a copy of
+    DATA (dataclasses.replace), and re-runs the trained operator over all wells (~1 s on
+    CPU). This is a real forward pass through the recharge-memory ODE, not a lookup -- so
+    cutting rainfall / raising ET propagates through the rain-memory states and the table
+    falls with the aquifer's natural lag.
+    """
+    rain = np.nan_to_num(RAINFALL)
+    et0 = np.nan_to_num(ET0)
+    net = (rain * float(rain_mult) - et0 * float(et_mult)).astype("float32")
+    perturbed = replace(DATA, rainfall=net)
+    return OPERATOR.simulate(perturbed)
+
+
+def make_whatif(well_id: str, rain_mult: float, et_mult: float) -> go.Figure:
+    """What-if panel: baseline hindcast vs a re-simulated drought/wet scenario.
+
+    Plots, for the selected well: the synthetic observed level, the baseline operator
+    simulation (rain x1, ET x1), and the what-if simulation under the slider multipliers.
+    The validation window is shaded. Drag rainfall down (or ET up) to starve recharge and
+    watch the simulated table sink below baseline after the recharge-memory lag.
+    """
+    i = DATA.well_index(well_id)
+    dates = DATA.dates
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=dates, y=DATA.target[i], mode="lines", name="synthetic level",
+        line=dict(color="#888", width=1.1),
+        hovertemplate="%{x|%Y-%m-%d}<br>synthetic: %{y:.2f} m<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates, y=BASE_SIM[i], mode="lines", name="baseline sim (rain x1, ET x1)",
+        line=dict(color="#1f77b4", width=1.8),
+        hovertemplate="%{x|%Y-%m-%d}<br>baseline: %{y:.2f} m<extra></extra>",
+    ))
+
+    perturbed = not (abs(rain_mult - 1.0) < 1e-9 and abs(et_mult - 1.0) < 1e-9)
+    if perturbed:
+        wsim = _whatif_sim(rain_mult, et_mult)
+        drier = rain_mult < 1.0 or et_mult > 1.0
+        color = "#d62728" if drier else "#2ca02c"
+        fig.add_trace(go.Scatter(
+            x=dates, y=wsim[i], mode="lines",
+            name=f"what-if (rain x{rain_mult:.2f}, ET x{et_mult:.2f})",
+            line=dict(color=color, width=2.0),
+            hovertemplate="%{x|%Y-%m-%d}<br>what-if: %{y:.2f} m<extra></extra>",
+        ))
+        # Shade the gap so the drought/wet response reads at a glance.
+        fig.add_trace(go.Scatter(
+            x=dates, y=BASE_SIM[i], mode="lines", line=dict(width=0),
+            showlegend=False, hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=dates, y=wsim[i], mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(214,39,40,0.12)" if drier else "rgba(44,160,44,0.12)",
+            showlegend=False, hoverinfo="skip",
+        ))
+
+    fig.add_vrect(
+        x0=dates[V0], x1=dates[V1], fillcolor="orange", opacity=0.08,
+        line_width=0, annotation_text="validation", annotation_position="top left",
+    )
+    sub = ("baseline only - move a slider to create a scenario" if not perturbed
+           else "drought scenario: less recharge -> lower table (lagged)" if (rain_mult < 1.0 or et_mult > 1.0)
+           else "wetter scenario: more recharge -> higher table (lagged)")
+    fig.update_layout(
+        title=f"What-if physics (synthetic) - {_label(well_id)}<br><sub>{sub}</sub>",
+        yaxis_title="level (m, synthetic)",
+        template="plotly_white", height=420,
+        margin=dict(l=60, r=20, t=66, b=40),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        xaxis=dict(title="date"),
+    )
+    return fig
+
+
 def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     """Panel B: probabilistic forecast from the chosen origin, 90% band shaded."""
     i = DATA.well_index(well_id)
@@ -352,14 +467,15 @@ def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     return fig
 
 
-def render(well_id: str, origin_frac: float):
-    """Re-render the map + both charts from cached arrays. No retraining."""
-    return make_map(well_id), make_sim(well_id), make_forecast(well_id, origin_frac)
+def render(well_id: str, origin_frac: float, rain_mult: float, et_mult: float):
+    """Re-render the map + all charts from cached arrays / one operator pass."""
+    return (make_map(well_id), make_sim(well_id), make_forecast(well_id, origin_frac),
+            make_whatif(well_id, rain_mult, et_mult))
 
 
-def on_dropdown(label: str, origin_frac: float):
+def on_dropdown(label: str, origin_frac: float, rain_mult: float, et_mult: float):
     well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
-    return render(well_id, origin_frac)
+    return render(well_id, origin_frac, rain_mult, et_mult)
 
 
 def on_slider(label: str, origin_frac: float):
@@ -367,15 +483,21 @@ def on_slider(label: str, origin_frac: float):
     return make_forecast(well_id, origin_frac)
 
 
-def on_click(station_id: str, origin_frac: float):
+def on_whatif(label: str, rain_mult: float, et_mult: float):
+    """Slider-release handler: re-simulate the selected well under the perturbed forcing."""
+    well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
+    return make_whatif(well_id, rain_mult, et_mult)
+
+
+def on_click(station_id: str, origin_frac: float, rain_mult: float, et_mult: float):
     """Click-to-select handler. A plotly_click on a station marker writes that station's
     id into a hidden textbox (via BIND_JS below); this syncs the dropdown and redraws.
     No-op for clicks that aren't on a station marker."""
     if station_id not in WELL_IDS:
-        return gr.update(), gr.update(), gr.update(), gr.update()
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
     label = _label(station_id)
-    return (gr.update(value=label), make_map(station_id),
-            make_sim(station_id), make_forecast(station_id, origin_frac))
+    return (gr.update(value=label), make_map(station_id), make_sim(station_id),
+            make_forecast(station_id, origin_frac), make_whatif(station_id, rain_mult, et_mult))
 
 
 # JS bridge: gr.Plot (plotly) has no native click event in Gradio 6.18, so we bind
@@ -455,17 +577,44 @@ def build_ui():
                 sim_plot = gr.Plot(label="Simulation (free-running, synthetic)")
                 fc_plot = gr.Plot(label="Probabilistic forecast (synthetic)")
 
+        # --- Interactive what-if physics panel -----------------------------------
+        with gr.Group():
+            gr.Markdown(
+                "## Interactive what-if physics\n"
+                "Perturb the forcing on the **selected** station and the operator "
+                "**re-simulates live** (a real forward pass through the recharge-memory "
+                "ODE). **Drag rainfall down (or ET up) to create a drought** and watch the "
+                "groundwater table sink below baseline — with the aquifer's natural lag. "
+                "_Series are synthetic; ET0 is real public ERA5._"
+                + ("" if WHATIF_OK else
+                   "\n\n_(What-if is unavailable: the trained operator or forcing is "
+                   "missing from this build — showing the baseline simulation only.)_")
+            )
+            with gr.Row():
+                rain_mult = gr.Slider(0.5, 1.5, value=1.0, step=0.05,
+                                      label="Rainfall x  (drag down for drought)",
+                                      interactive=WHATIF_OK)
+                et_mult = gr.Slider(0.5, 1.5, value=1.0, step=0.05,
+                                    label="ET x  (drag up for drought)",
+                                    interactive=WHATIF_OK)
+            whatif_plot = gr.Plot(label="What-if scenario (baseline vs perturbed, synthetic)")
+
         # Hidden bridge: BIND_JS writes the clicked station id here; its change selects.
         clicked = gr.Textbox(visible=False, elem_id="wellclick")
 
-        # dropdown -> redraw map (re-highlight) + both charts
-        well.change(on_dropdown, [well, origin], [map_plot, sim_plot, fc_plot])
+        sel_inputs = [well, origin, rain_mult, et_mult]
+        all_plots = [map_plot, sim_plot, fc_plot, whatif_plot]
+        # dropdown -> redraw map (re-highlight) + all charts (what-if re-simulated)
+        well.change(on_dropdown, sel_inputs, all_plots)
         # map marker click -> sync dropdown + redraw (click-to-select)
-        clicked.change(on_click, [clicked, origin], [well, map_plot, sim_plot, fc_plot])
-        # slider only affects the forecast panel
+        clicked.change(on_click, [clicked, origin, rain_mult, et_mult], [well] + all_plots)
+        # forecast-origin slider only affects the forecast panel
         origin.change(on_slider, [well, origin], fc_plot)
+        # what-if sliders -> live operator re-simulation (on release, not streaming)
+        rain_mult.release(on_whatif, [well, rain_mult, et_mult], whatif_plot)
+        et_mult.release(on_whatif, [well, rain_mult, et_mult], whatif_plot)
         # initial draw + install the plotly_click -> hidden-textbox JS bridge
-        demo.load(on_dropdown, [well, origin], [map_plot, sim_plot, fc_plot])
+        demo.load(on_dropdown, sel_inputs, all_plots)
         demo.load(js=BIND_JS)
     return demo
 

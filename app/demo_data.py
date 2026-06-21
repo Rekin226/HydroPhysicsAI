@@ -31,6 +31,8 @@ from hydrophysics.sample import write_sample
 APP_DIR = Path(__file__).resolve().parent
 STATIONS_CSV = APP_DIR / "stations.csv"
 ARTIFACT = APP_DIR / "artifact.npz"
+ET_DEMO = APP_DIR / "et_demo.npz"
+OPERATOR_PT = APP_DIR / "models" / "operator.pt"
 
 # Synthetic record span (kept identical to what the precompute used so the cached
 # arrays line up with a freshly built fallback dataset).
@@ -72,24 +74,46 @@ def build_synthetic_data() -> GWData:
 
 
 def _train_and_predict(data: GWData, device: str, ude_epochs: int, fc_epochs: int):
+    """Train the BEST recharge-memory operator on NET recharge (rain - ET0) plus the
+    probabilistic forecaster, and return everything the demo ships.
+
+    Returns ``(ude, sim, mean_cube, sigma_cube, et0, net_data)`` where ``ude`` is the
+    trained PhysicsUDE operator (fit on net recharge), ``sim`` its baseline simulation,
+    ``et0`` the (W, T) demo-period ET0, and ``net_data`` the GWData whose ``rainfall``
+    field is the net recharge the operator consumes (rain - ET0).
+    """
+    from hydrophysics.et import et0_for_data, net_recharge
     from hydrophysics.models.forecast_lstm import GlobalForecastLSTM
     from hydrophysics.models.ude import PhysicsUDE
 
-    ude = PhysicsUDE(device=device, epochs=ude_epochs, seed=0).fit(data)
-    sim = ude.simulate(data)
+    # ET0 for the demo period (Open-Meteo ERA5; cached to app/et_demo.npz).
+    et0 = et0_for_data(data, cache_path=str(ET_DEMO))
+    # Net recharge = synthetic rainfall - ET0: the forcing the BEST operator consumes.
+    net_data = net_recharge(data, et0=et0)
 
+    # BEST operator: recharge-memory hypernetwork, fit on net recharge.
+    ude = PhysicsUDE(rain_memory=(0.99, 0.95, 0.85), device=device,
+                     epochs=ude_epochs, seed=0).fit(net_data)
+    sim = ude.simulate(net_data)
+
+    # Forecaster keeps consuming the raw synthetic series (unchanged).
     fc = GlobalForecastLSTM(lookback=90, horizon=30, hidden=64, epochs=fc_epochs,
                             probabilistic=True, device=device, seed=0).fit(data)
     mean_cube, sigma_cube = fc.forecast_dist(data)
-    return sim, mean_cube, sigma_cube
+    return ude, sim, mean_cube, sigma_cube, et0, net_data
 
 
-def save_artifact(data: GWData, sim, mean, sigma, path: Path = ARTIFACT) -> Path:
+def save_artifact(data: GWData, sim, mean, sigma, et0, path: Path = ARTIFACT) -> Path:
     """Persist ONLY synthetic series + predictions (no real series anywhere).
 
     The forecast panel only ever reads origins inside the validation window, so the
     (W, T, H) mean/sigma cubes are stored sliced to those origins (``fc_t0``) to keep
-    the artifact a few MB. Rainfall is not plotted and is intentionally omitted.
+    the artifact a few MB.
+
+    The what-if panel re-simulates live, so the forcing is now shipped too: the SYNTHETIC
+    rainfall (W, T) and the demo-period ET0 (W, T, real public ERA5). At load time the
+    operator's input field (net recharge = rain - ET0) is reconstructed from them. The
+    groundwater/rainfall TIME SERIES remain synthetic; only ET0 is real.
     """
     H = mean.shape[2]
     val_idx = np.where(data.val_mask)[0]
@@ -97,11 +121,22 @@ def save_artifact(data: GWData, sim, mean, sigma, path: Path = ARTIFACT) -> Path
     # Valid forecast origins: inside the validation window with a full horizon ahead.
     fc_t0 = np.arange(v0, min(v1 - H, data.n_days - H - 1) + 1, dtype=np.int32)
 
+    # The operator conditions its hypernetwork on _static_features(attrs); some of those
+    # columns (dom_amp, ups_lag_days, rf_lag_days) come from the synthetic sample writer
+    # and are NOT reconstructable from stations.csv. Ship the exact static-feature matrix
+    # so the loaded operator sees the identical conditioning it was trained on (otherwise
+    # the standardized features shift and the hypernetwork emits garbage parameters).
+    from hydrophysics.models.gru import _static_features
+    static_feats = _static_features(data).astype(np.float32)
+
     np.savez_compressed(
         path,
         well_ids=np.array(list(data.well_ids)),
         dates=np.array([d.isoformat() for d in data.dates]),
         target=data.target.astype(np.float32),     # SYNTHETIC level series
+        rainfall=np.nan_to_num(data.rainfall).astype(np.float32),  # SYNTHETIC rainfall
+        et0=np.nan_to_num(et0).astype(np.float32),  # REAL public ERA5 ET0 (mm/day)
+        static_feats=static_feats,                  # operator conditioning (W, F_static)
         train_mask=data.train_mask,
         val_mask=data.val_mask,
         sim=sim.astype(np.float32),                 # SYNTHETIC simulation hindcast
@@ -114,10 +149,16 @@ def save_artifact(data: GWData, sim, mean, sigma, path: Path = ARTIFACT) -> Path
 
 
 def load_artifact(path: Path = ARTIFACT):
-    """Reconstruct (GWData, sim, mean, sigma) from the shipped synthetic artifact.
+    """Reconstruct (GWData, sim, mean, sigma, rainfall, et0) from the shipped artifact.
 
     The mean/sigma cubes are re-expanded to full (W, T, H) shape (NaN outside stored
     validation origins) so the app code can index ``MEAN[i, t0]`` unchanged.
+
+    ``data.rainfall`` is set to the BASELINE net recharge (synthetic rain - real ET0) so
+    the trained operator simulates correctly straight from the loaded data; the raw
+    synthetic ``rainfall`` and real ``et0`` arrays are returned alongside so the what-if
+    panel can re-mix ``net = rain*rain_mult - et0*et_mult`` and re-simulate live.
+    Older artifacts without these fields fall back to NaN rainfall (no what-if).
     """
     z = np.load(path, allow_pickle=False)
     well_ids = [str(w) for w in z["well_ids"]]
@@ -132,6 +173,17 @@ def load_artifact(path: Path = ARTIFACT):
     attrs["dist_to_coast_m"] = stations["dist_to_coast_m"].to_numpy(dtype=float)
     attrs["is_coastal"] = (stations["group"].to_numpy() == "coastal").astype(int)
 
+    # Restore the EXACT operator-conditioning columns from the shipped static-feature
+    # matrix (in _static_features' fixed column order). Without this the synthetic-only
+    # columns (dom_amp, ups_lag_days, rf_lag_days) would be zero at load and the loaded
+    # operator's hypernetwork would emit garbage parameters.
+    if "static_feats" in z.files:
+        sf = z["static_feats"].astype(float)
+        for j, col in enumerate(
+                ["tm_x", "tm_y", "is_coastal", "dist_to_coast_m",
+                 "dom_amp", "ups_lag_days", "rf_lag_days"]):
+            attrs[col] = sf[:, j]
+
     target = z["target"].astype(float)
     W, T = target.shape
     H = z["fc_mean"].shape[2]
@@ -141,11 +193,21 @@ def load_artifact(path: Path = ARTIFACT):
     mean[:, fc_t0, :] = z["fc_mean"].astype(float)
     sigma[:, fc_t0, :] = z["fc_sigma"].astype(float)
 
+    # Forcing: synthetic rainfall + real ET0. The operator consumes net recharge.
+    if "rainfall" in z.files and "et0" in z.files:
+        rainfall = z["rainfall"].astype(float)
+        et0 = z["et0"].astype(float)
+        net = (rainfall - et0).astype(float)   # baseline net recharge (operator input)
+    else:
+        rainfall = np.full_like(target, np.nan)
+        et0 = np.full_like(target, np.nan)
+        net = np.full_like(target, np.nan)
+
     data = GWData(
         well_ids=well_ids,
         dates=dates,
         target=target,
-        rainfall=np.full_like(target, np.nan),
+        rainfall=net,
         upstream=np.full_like(target, np.nan),
         doy=dates.dayofyear.to_numpy().astype(int),
         train_mask=z["train_mask"],
@@ -153,7 +215,7 @@ def load_artifact(path: Path = ARTIFACT):
         attrs=attrs,
         split_date=str(z["split_date"]),
     )
-    return data, z["sim"].astype(float), mean, sigma
+    return data, z["sim"].astype(float), mean, sigma, rainfall, et0
 
 
 if __name__ == "__main__":
@@ -172,8 +234,22 @@ if __name__ == "__main__":
     data = build_synthetic_data()
     print(f"built synthetic 61-well data in {time.time() - t0:.1f}s; {data.summary()}")
     t1 = time.time()
-    sim, mean, sigma = _train_and_predict(data, args.device, args.ude_epochs, args.fc_epochs)
+    ude, sim, mean, sigma, et0, net_data = _train_and_predict(
+        data, args.device, args.ude_epochs, args.fc_epochs)
     print(f"trained + predicted on {args.device} in {time.time() - t1:.1f}s")
-    out = save_artifact(data, sim, mean, sigma)
+
+    # Ship the trained operator CPU-loadable. Move the small hypernetwork to CPU so
+    # torch.load(map_location='cpu') works on a CPU-only Space.
+    import torch
+    ude.device = "cpu"
+    ude.hypernet = ude.hypernet.to("cpu")
+    OPERATOR_PT.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(ude, OPERATOR_PT)
+    op_mb = OPERATOR_PT.stat().st_size / 1e6
+    print(f"wrote {OPERATOR_PT} ({op_mb:.3f} MB)")
+
+    out = save_artifact(data, sim, mean, sigma, et0)
     mb = out.stat().st_size / 1e6
     print(f"wrote {out} ({mb:.2f} MB)")
+    if ET_DEMO.exists():
+        print(f"ET0 cache {ET_DEMO} ({ET_DEMO.stat().st_size / 1e6:.2f} MB)")
