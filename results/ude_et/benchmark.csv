@@ -1,0 +1,4 @@
+model,kge_median,kge_mean,rmse_median,nse_median,n_wells
+physics_ude,0.7538,0.3933,0.8107,0.6038,61
+climatology,0.4465,-0.2026,1.6297,-0.2004,61
+last_value,,,1.8296,-0.568,0

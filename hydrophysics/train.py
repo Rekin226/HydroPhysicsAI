@@ -72,6 +72,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--rain-memory", default="", metavar="D1,D2,...",
                     help="(ude/ude_nemo) comma-separated recharge-memory decays, e.g. "
                          "0.99,0.95,0.85 -- lifts simulation KGE 0.591 -> 0.704. Empty = off.")
+    ap.add_argument("--et", action="store_true",
+                    help="use net recharge (rain - ET0) instead of rain, with FAO-56 ET0 "
+                         "from Open-Meteo (cached). With --rain-memory, lifts 0.704 -> 0.754.")
+    ap.add_argument("--et-coef", type=float, default=1.0, help="ET0 subtraction coefficient")
+    ap.add_argument("--et-cache", default="results/et/openmeteo_et0_2012_2022.npz",
+                    help="ET0 .npz cache (fetched from Open-Meteo if absent)")
     ap.add_argument("--out", default=None, help="output dir for predictions/tables")
     args = ap.parse_args(argv)
     rain_memory = tuple(float(x) for x in args.rain_memory.split(",") if x.strip())
@@ -87,6 +93,11 @@ def main(argv: list[str] | None = None) -> None:
 
     data = load_dataset(cfg)
     print(data.summary())
+
+    if args.et:
+        from .et import net_recharge
+        data = net_recharge(data, coef=args.et_coef, cache_path=args.et_cache)
+        print(f"ET driver: rainfall -> net recharge (rain - {args.et_coef}*ET0)")
 
     device = pick_device(args.device)
     print(f"device: {device} | model: {args.model} | epochs: {args.epochs}")
