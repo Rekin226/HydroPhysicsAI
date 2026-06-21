@@ -120,6 +120,63 @@ GEO_RIVERS = _load_geo("rivers.json")
 GEO_SEA = _load_geo("sea.json")
 
 
+# ---------------------------------------------------------------------------
+# Spatial groundwater surface: interpolate the operator's simulated table across
+# the fan on any day. Numpy-only inverse-distance weighting on a grid clipped to
+# the real fan polygon (no scipy / geopandas dependency on the Space).
+# ---------------------------------------------------------------------------
+WELL_X = DATA.attrs["tm_x"].to_numpy(dtype=float)
+WELL_Y = DATA.attrs["tm_y"].to_numpy(dtype=float)
+_FAN_RING = np.array(GEO_FAN["rings"][0], dtype=float) if GEO_FAN.get("rings") else None
+GRID_N = 70   # grid resolution per axis (kept modest so re-interpolation is instant)
+
+
+def _point_in_poly(px, py, poly):
+    """Vectorized ray-casting mask: True where (px, py) falls inside ``poly`` (N, 2)."""
+    x = px.ravel()
+    y = py.ravel()
+    inside = np.zeros(x.shape, dtype=bool)
+    vx, vy = poly[:, 0], poly[:, 1]
+    j = len(poly) - 1
+    for i in range(len(poly)):
+        cond = (vy[i] > y) != (vy[j] > y)
+        xint = (vx[j] - vx[i]) * (y - vy[i]) / (vy[j] - vy[i] + 1e-12) + vx[i]
+        inside ^= cond & (x < xint)
+        j = i
+    return inside.reshape(px.shape)
+
+
+def _build_grid():
+    """Fan-clipped interpolation grid (GX, GY, inside-fan mask). Computed once."""
+    if _FAN_RING is None:
+        return None, None, None
+    x0, x1 = _FAN_RING[:, 0].min(), _FAN_RING[:, 0].max()
+    y0, y1 = _FAN_RING[:, 1].min(), _FAN_RING[:, 1].max()
+    gx, gy = np.meshgrid(np.linspace(x0, x1, GRID_N), np.linspace(y0, y1, GRID_N))
+    return gx, gy, _point_in_poly(gx, gy, _FAN_RING)
+
+
+GRID_X, GRID_Y, FAN_MASK = _build_grid()
+SURFACE_OK = GRID_X is not None
+if SURFACE_OK:
+    # Precompute the k-nearest wells + IDW weights per grid cell ONCE (geometry is
+    # static); each day only re-weights the cached neighbour values -> instant scrub.
+    _gx, _gy = GRID_X.ravel(), GRID_Y.ravel()
+    _d = np.sqrt((_gx[:, None] - WELL_X[None, :]) ** 2
+                 + (_gy[:, None] - WELL_Y[None, :]) ** 2) + 1e-6
+    _K = 12
+    _NN = np.argsort(_d, axis=1)[:, :_K]               # (cells, K) nearest well idx
+    _DK = np.take_along_axis(_d, _NN, axis=1)
+    _W = 1.0 / _DK ** 1.5                              # IDW weights (p=1.5: smoother field)
+    _W /= _W.sum(axis=1, keepdims=True)
+
+
+def _surface(values: np.ndarray) -> np.ndarray:
+    """IDW-interpolate per-well ``values`` (W,) onto the fan grid; NaN outside the fan."""
+    z = (_W * values[_NN]).sum(axis=1).reshape(GRID_X.shape)
+    return np.where(FAN_MASK, z, np.nan)
+
+
 # --- per-well descriptive metadata (REAL coords/name/group) ----------------
 def _well_meta(well_id: str) -> dict:
     a = DATA.attrs.loc[well_id]
@@ -403,6 +460,79 @@ def make_whatif(well_id: str, rain_mult: float, et_mult: float) -> go.Figure:
     return fig
 
 
+def _surface_day(day_frac: float) -> int:
+    """Map a 0..1 slider position to a day index across the full record."""
+    k = int(round(day_frac * (DATA.n_days - 1)))
+    return max(0, min(k, DATA.n_days - 1))
+
+
+def make_surface(well_id: str, day_frac: float) -> go.Figure:
+    """Spatial panel: the operator's simulated water table interpolated across the fan.
+
+    A filled contour of BASE_SIM at the chosen day, clipped to the real fan polygon, with
+    the fan outline, rivers, all 61 stations, and the selected station starred. Scrubbing
+    the day slider re-weights the cached IDW neighbours (instant) so the basin-wide table
+    rises and falls through the seasons. The surface is the operator's hindcast, not raw
+    observations — it is what the model thinks the table looks like everywhere, not just at
+    the wells.
+    """
+    t = _surface_day(day_frac)
+    fig = go.Figure()
+    if SURFACE_OK:
+        z = _surface(BASE_SIM[:, t])
+        x1d = GRID_X[0, :]
+        y1d = GRID_Y[:, 0]
+        fig.add_trace(go.Contour(
+            x=x1d, y=y1d, z=z, colorscale="Viridis", connectgaps=False,
+            colorbar=dict(title="level (m)", thickness=14, len=0.8),
+            contours=dict(coloring="fill"),
+            hovertemplate="TM_X %{x:.0f}, TM_Y %{y:.0f}<br>table %{z:.2f} m<extra></extra>",
+        ))
+    # Fan outline for context.
+    for ring in GEO_FAN.get("rings", []):
+        fig.add_trace(go.Scatter(
+            x=[p[0] for p in ring], y=[p[1] for p in ring], mode="lines",
+            line=dict(color="rgba(80,60,20,0.8)", width=1.4), hoverinfo="skip",
+            showlegend=False,
+        ))
+    # Rivers, faint, for orientation -- all segments in ONE trace (None-separated) so the
+    # figure stays light instead of carrying ~750 separate line traces.
+    riv_x, riv_y = [], []
+    for ln in GEO_RIVERS.get("lines", []):
+        riv_x.extend([p[0] for p in ln] + [None])
+        riv_y.extend([p[1] for p in ln] + [None])
+    if riv_x:
+        fig.add_trace(go.Scatter(
+            x=riv_x, y=riv_y, mode="lines",
+            line=dict(color="rgba(255,255,255,0.45)", width=0.6), hoverinfo="skip",
+            showlegend=False,
+        ))
+    # All stations as small dots; selected one starred.
+    fig.add_trace(go.Scatter(
+        x=WELL_X, y=WELL_Y, mode="markers",
+        marker=dict(size=4, color="rgba(0,0,0,0.55)"), hoverinfo="skip", showlegend=False,
+    ))
+    m = META[well_id]
+    fig.add_trace(go.Scatter(
+        x=[m["x"]], y=[m["y"]], mode="markers",
+        marker=dict(size=16, color=SELECT_COLOR, symbol="star",
+                    line=dict(color="black", width=1)),
+        name="selected", showlegend=False,
+        hovertemplate=f"<b>{m['name']}</b> ({well_id})<extra></extra>",
+    ))
+    note = ("simulated water table across the fan"
+            if SURFACE_OK else "spatial surface unavailable (fan geometry missing)")
+    fig.update_layout(
+        title=f"Basin groundwater surface — {DATA.dates[t].date()} (synthetic)<br>"
+              f"<sub>{note} · drag the day slider to scrub through the seasons</sub>",
+        xaxis_title="TM_X97 (m, TWD97)", yaxis_title="TM_Y97 (m, TWD97)",
+        template="plotly_white", height=520,
+        margin=dict(l=65, r=20, t=70, b=50),
+    )
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    return fig
+
+
 def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     """Panel B: probabilistic forecast from the chosen origin, 90% band shaded."""
     i = DATA.well_index(well_id)
@@ -467,15 +597,17 @@ def make_forecast(well_id: str, origin_frac: float) -> go.Figure:
     return fig
 
 
-def render(well_id: str, origin_frac: float, rain_mult: float, et_mult: float):
+def render(well_id: str, origin_frac: float, rain_mult: float, et_mult: float,
+           day_frac: float):
     """Re-render the map + all charts from cached arrays / one operator pass."""
     return (make_map(well_id), make_sim(well_id), make_forecast(well_id, origin_frac),
-            make_whatif(well_id, rain_mult, et_mult))
+            make_whatif(well_id, rain_mult, et_mult), make_surface(well_id, day_frac))
 
 
-def on_dropdown(label: str, origin_frac: float, rain_mult: float, et_mult: float):
+def on_dropdown(label: str, origin_frac: float, rain_mult: float, et_mult: float,
+                day_frac: float):
     well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
-    return render(well_id, origin_frac, rain_mult, et_mult)
+    return render(well_id, origin_frac, rain_mult, et_mult, day_frac)
 
 
 def on_slider(label: str, origin_frac: float):
@@ -489,15 +621,23 @@ def on_whatif(label: str, rain_mult: float, et_mult: float):
     return make_whatif(well_id, rain_mult, et_mult)
 
 
-def on_click(station_id: str, origin_frac: float, rain_mult: float, et_mult: float):
+def on_surface(label: str, day_frac: float):
+    """Day-slider handler: re-interpolate the basin surface for the chosen day."""
+    well_id = LABEL_TO_ID.get(label, WELL_IDS[0])
+    return make_surface(well_id, day_frac)
+
+
+def on_click(station_id: str, origin_frac: float, rain_mult: float, et_mult: float,
+             day_frac: float):
     """Click-to-select handler. A plotly_click on a station marker writes that station's
     id into a hidden textbox (via BIND_JS below); this syncs the dropdown and redraws.
     No-op for clicks that aren't on a station marker."""
     if station_id not in WELL_IDS:
-        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        return (gr.update(),) * 6
     label = _label(station_id)
     return (gr.update(value=label), make_map(station_id), make_sim(station_id),
-            make_forecast(station_id, origin_frac), make_whatif(station_id, rain_mult, et_mult))
+            make_forecast(station_id, origin_frac), make_whatif(station_id, rain_mult, et_mult),
+            make_surface(station_id, day_frac))
 
 
 # JS bridge: gr.Plot (plotly) has no native click event in Gradio 6.18, so we bind
@@ -599,20 +739,41 @@ def build_ui():
                                     interactive=WHATIF_OK)
             whatif_plot = gr.Plot(label="What-if scenario (baseline vs perturbed, synthetic)")
 
+        # --- Spatial groundwater surface panel -----------------------------------
+        with gr.Group():
+            gr.Markdown(
+                "## Basin groundwater surface\n"
+                "The operator's simulated water table **interpolated across the whole "
+                "alluvial fan** (inverse-distance weighting on the 61 stations, clipped to "
+                "the real fan boundary). **Drag the day slider** to scrub through six years "
+                "and watch the basin recharge in the wet season and draw down in the dry. "
+                "The orange star is the selected station. _Surface is the model hindcast on "
+                "synthetic series; the fan geometry is real._"
+                + ("" if SURFACE_OK else
+                   "\n\n_(Spatial surface unavailable: the fan geometry is missing from "
+                   "this build.)_")
+            )
+            day = gr.Slider(0.0, 1.0, value=0.55, step=0.01,
+                            label="Day (position across the 2014–2019 record)",
+                            interactive=SURFACE_OK)
+            surface_plot = gr.Plot(label="Basin groundwater surface (synthetic, model hindcast)")
+
         # Hidden bridge: BIND_JS writes the clicked station id here; its change selects.
         clicked = gr.Textbox(visible=False, elem_id="wellclick")
 
-        sel_inputs = [well, origin, rain_mult, et_mult]
-        all_plots = [map_plot, sim_plot, fc_plot, whatif_plot]
-        # dropdown -> redraw map (re-highlight) + all charts (what-if re-simulated)
+        sel_inputs = [well, origin, rain_mult, et_mult, day]
+        all_plots = [map_plot, sim_plot, fc_plot, whatif_plot, surface_plot]
+        # dropdown -> redraw map (re-highlight) + all charts (what-if + surface re-rendered)
         well.change(on_dropdown, sel_inputs, all_plots)
         # map marker click -> sync dropdown + redraw (click-to-select)
-        clicked.change(on_click, [clicked, origin, rain_mult, et_mult], [well] + all_plots)
+        clicked.change(on_click, [clicked, origin, rain_mult, et_mult, day], [well] + all_plots)
         # forecast-origin slider only affects the forecast panel
         origin.change(on_slider, [well, origin], fc_plot)
         # what-if sliders -> live operator re-simulation (on release, not streaming)
         rain_mult.release(on_whatif, [well, rain_mult, et_mult], whatif_plot)
         et_mult.release(on_whatif, [well, rain_mult, et_mult], whatif_plot)
+        # day slider -> re-interpolate the basin surface (on release; instant IDW re-weight)
+        day.release(on_surface, [well, day], surface_plot)
         # initial draw + install the plotly_click -> hidden-textbox JS bridge
         demo.load(on_dropdown, sel_inputs, all_plots)
         demo.load(js=BIND_JS)
