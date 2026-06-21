@@ -196,6 +196,8 @@ A **separate** track from the simulation benchmark above (do not compare the two
 
 *Probabilistic 30-day forecast from one origin (dashed line): the mean tracks the realized observations and the 90% interval widens with lead time. Bundled-sample figure (`python -m hydrophysics.figures`), reproducible with no real data.*
 
+**Does ET help the forecaster? No — and that is the point.** The ET driver that lifts the *free-running* operator by +0.05 gives the *assimilated* forecaster essentially nothing (2019+: 7-day 0.965 → 0.964, 30-day flat). Same reason the forecaster is strong: it assimilates recent observed levels, which already encode the ET-driven state, so explicit ET is redundant. Put beside the [leave-one-well-out finding](#generalizing-to-unseen-wells) — where the extra forcing actually *hurts* unseen-well generalization — this maps a clean principle: **explicit physics forcing helps most where information is scarcest (free-running operator, +0.05) and least where it is richest (assimilated forecaster, ≈0; or extrapolating to a never-seen well, where the added capacity hurts).**
+
 ## Status
 
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
