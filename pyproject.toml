@@ -42,6 +42,13 @@ explorer = [
     "pyarrow>=12",
     "plotly>=5.20",
 ]
+# External data collection: the ET driver (hydrophysics.et) fetches FAO-56 ET0 from
+# Open-Meteo via the AquaScope toolkit; pyproj converts the TWD97 well coordinates to
+# WGS84. A committed ET0 cache means the headline result reproduces without fetching.
+data = [
+    "aquascope>=0.5",
+    "pyproj>=3.4",
+]
 dev = ["pytest>=7.0", "ruff>=0.1"]
 
 [project.urls]
