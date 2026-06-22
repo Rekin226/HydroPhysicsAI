@@ -69,19 +69,33 @@ def et0_for_data(data: GWData, cache_path: str | None = None,
     """
     ids = [str(w) for w in data.well_ids]
     dates = np.array([str(d.date()) for d in data.dates])
+
+    def _coords() -> np.ndarray:
+        # WGS84 lat/lon rounded to ~100 m. Computed lazily (it needs pyproj) so an offline
+        # cache hit does not require the optional [data] extra.
+        lon, lat = wells_lonlat(data)
+        return np.round(np.column_stack([lat, lon]), 3).astype("float32")
+
     if cache_path:
         import os
         if os.path.exists(cache_path):
             c = np.load(cache_path, allow_pickle=True)
             cids = [str(x) for x in c["well_ids"]]
-            if cids == ids and list(c["dates"]) == list(dates):
+            # ET0 is a function of location, so verify coordinates too -- a cache matching
+            # only on ids/dates would silently return the wrong series for a different well
+            # set. Legacy caches (no "coords") fall back to id/date match. Short-circuiting
+            # keeps _coords() (pyproj) off the offline-cache-hit path.
+            if (cids == ids and list(c["dates"]) == list(dates)
+                    and ("coords" not in c.files
+                         or np.array_equal(c["coords"].astype("float32"), _coords()))):
                 return c["et0"].astype("float32")
 
     lon, lat = wells_lonlat(data)
+    coords = _coords()
     start, end = dates[0], dates[-1]
     et0 = np.full((data.n_wells, data.n_days), np.nan, "float32")
     for i in range(data.n_wells):
-        for attempt in range(retries):
+        for _attempt in range(retries):
             s = _fetch_one(float(lat[i]), float(lon[i]), start, end)
             if s is not None and s.size:
                 n = min(data.n_days, s.size)
@@ -97,7 +111,8 @@ def et0_for_data(data: GWData, cache_path: str | None = None,
     if cache_path:
         import os
         os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-        np.savez_compressed(cache_path, et0=et0, well_ids=np.array(ids), dates=dates)
+        np.savez_compressed(cache_path, et0=et0, well_ids=np.array(ids), dates=dates,
+                            coords=coords)
     return et0
 
 

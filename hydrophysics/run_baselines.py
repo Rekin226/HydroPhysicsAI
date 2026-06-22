@@ -85,6 +85,7 @@ def main(argv: list[str] | None = None) -> None:
             graybox.to_csv(out / "per_well_graybox.csv")
             try:
                 import matplotlib.pyplot as plt  # optional
+
                 from .eval import plot_spatial
                 gb = graybox.reindex(data.well_ids)
                 sp = spatial_scores(data, gb.rename(columns={"kge": "kge"}), metric="kge")

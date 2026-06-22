@@ -34,7 +34,7 @@ import numpy as np
 
 from ..data import GWData
 from .base import GroundwaterModel
-from .gru import _forcing_features, _static_features, _default_device
+from .gru import _default_device, _forcing_features, _static_features
 
 
 def _seasonal_amp(h: np.ndarray, doy: np.ndarray) -> float:
@@ -147,6 +147,11 @@ class PhysicsUDE(GroundwaterModel):
         # decomposition baseline used to reach gray-box accuracy. Empty () = the original
         # instantaneous term, bit-identical.
         self.rain_memory = tuple(rain_memory)
+        # decay must be a true contraction (0 <= d < 1): the memory state is a geometric
+        # series bounded by rain_max/(1-d), so d>=1 diverges (-> inf -> NaN gains). Guard the
+        # CLI-supplied decays here rather than failing deep in the rollout.
+        if any(not (0.0 <= d < 1.0) for d in self.rain_memory):
+            raise ValueError(f"rain_memory decays must be in [0, 1); got {self.rain_memory}")
         # When True, pin the free-run equilibrium to each well's observed mean (anchor) and
         # let the ODE model only deviations driven by rainfall/upstream anomalies + season.
         # This removes the absolute-level degree of freedom that makes held-out wells drift
@@ -218,7 +223,7 @@ class PhysicsUDE(GroundwaterModel):
                 sd[i] = obs.std() if obs.std() > 1e-6 else 1.0
         return mu, sd
 
-    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> "PhysicsUDE":
+    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> PhysicsUDE:
         """Train the hypernetwork on the calibration period.
 
         train_wells: optional boolean mask (n_wells,). When given, only those wells
@@ -390,7 +395,7 @@ class PhysicsUDE(GroundwaterModel):
                  + d_cos[:, None] * cos_t)               # (W, T) affine forcing
         return g, s
 
-    def _rollout(self, params, dyn, h0, anchor, force_mean=None, api=None) -> "torch.Tensor":
+    def _rollout(self, params, dyn, h0, anchor, force_mean=None, api=None) -> torch.Tensor:
         """Free-running daily integration of the gray-box ODE skeleton.
 
         params: (W, n_params); dyn: (W, T, 4); h0: (W,) initial level;
@@ -419,7 +424,7 @@ class PhysicsUDE(GroundwaterModel):
         return torch.stack(out, dim=1)
 
     def _physics_residual(self, params, dyn, target, obs_mask, anchor, scale,
-                          force_mean=None, api=None) -> "torch.Tensor":
+                          force_mean=None, api=None) -> torch.Tensor:
         """Mean squared mass-balance residual on observed consecutive training days.
 
         Teacher-forced: plug the observed level into the ODE right-hand side and require

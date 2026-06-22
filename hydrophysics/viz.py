@@ -33,7 +33,7 @@ def plot_simulation_hydrographs(data: GWData, preds: dict, well_ids, out_path,
     n = len(well_ids)
     fig, axes = plt.subplots(n, 1, figsize=(11, 2.6 * n), sharex=True, squeeze=False)
     v0, v1 = _val_span(data)
-    for ax, wid in zip(axes[:, 0], well_ids):
+    for ax, wid in zip(axes[:, 0], well_ids, strict=True):
         i = data.well_index(wid)
         ax.plot(data.dates, data.target[i], color="0.25", lw=1.1, label="observed")
         for label, pred in preds.items():

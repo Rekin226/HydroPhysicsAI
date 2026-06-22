@@ -146,7 +146,7 @@ class GlobalForecastLSTM:
         return enc, fut, stat, tgt, wi, t0i
 
     # --- fit / forecast --------------------------------------------------------
-    def fit(self, data: GWData) -> "GlobalForecastLSTM":
+    def fit(self, data: GWData) -> GlobalForecastLSTM:
         torch.manual_seed(self.seed)
         s = self._stats
         s["level_sd"] = self._level_std(data)

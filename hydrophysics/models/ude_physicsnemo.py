@@ -23,7 +23,7 @@ physics-ML framework.
 
 from __future__ import annotations
 
-from .ude import PARAM_NAMES, PhysicsUDE, _require_torch
+from .ude import PhysicsUDE, _require_torch
 
 try:
     import torch  # noqa: F401  (re-exported indirectly; needed for the Module subclass)
@@ -32,8 +32,8 @@ except ImportError:  # pragma: no cover
     _HAS_TORCH = False
 
 try:
-    from physicsnemo import Module as NeMoModule
     from physicsnemo import ModelMetaData
+    from physicsnemo import Module as NeMoModule
     _HAS_PHYSICSNEMO = True
 except Exception:  # pragma: no cover - optional heavy dependency
     _HAS_PHYSICSNEMO = False
@@ -62,7 +62,11 @@ class PhysicsNeMoUDE(PhysicsUDE):
         super().__init__(*args, **kwargs)
 
     def _build(self, n_static: int) -> None:
-        self.hypernet = _HyperNetNeMo(n_static, self.hidden, len(PARAM_NAMES)).to(self.device)
+        # Match the parent's output width exactly: PhysicsUDE._n_params() is
+        # len(PARAM_NAMES) only when rain_memory is empty; with K memory timescales it is
+        # len(PARAM_NAMES)-1+K. Hardcoding len(PARAM_NAMES) silently mis-maps (or
+        # IndexErrors) the moment --model ude_nemo is combined with --rain-memory.
+        self.hypernet = _HyperNetNeMo(n_static, self.hidden, self._n_params()).to(self.device)
 
     # --- PhysicsNeMo checkpointing -------------------------------------------------
     def save_checkpoint(self, path: str) -> None:
@@ -76,7 +80,7 @@ class PhysicsNeMoUDE(PhysicsUDE):
             raise RuntimeError("call fit() before save_checkpoint()")
         self.hypernet.save(path)
 
-    def load_checkpoint(self, path: str) -> "PhysicsNeMoUDE":
+    def load_checkpoint(self, path: str) -> PhysicsNeMoUDE:
         """Reload a hypernetwork saved by :meth:`save_checkpoint`."""
         _require_physicsnemo()
         self.hypernet = NeMoModule.from_checkpoint(path).to(self.device)

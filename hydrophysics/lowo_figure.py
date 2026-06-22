@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> None:
 
     fig, ax = plt.subplots(figsize=(9, 4.8))
     parts = ax.violinplot(data, showmedians=True, showextrema=False)
-    for pc, (_, _, color) in zip(parts["bodies"], cols):
+    for pc, (_, _, color) in zip(parts["bodies"], cols, strict=True):
         pc.set_facecolor(color)
         pc.set_alpha(0.7)
     parts["cmedians"].set_color("k")
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> None:
                label=f"climatology median {clim_med:.2f}")
     ax.set_xticks([1, 2, 3])
     ax.set_xticklabels([f"{lbl}\nmedian {np.median(d):.2f}"
-                        for (_, lbl, _), d in zip(cols, data)])
+                        for (_, lbl, _), d in zip(cols, data, strict=True)])
     ax.set_ylabel("held-out well KGE (clipped to [-1, 1])")
     ax.set_title("Leave-one-well-out: gating the operator to climatology beats both")
     ax.legend(fontsize=9, loc="lower right")

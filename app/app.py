@@ -32,12 +32,11 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import gradio as gr
 import numpy as np
 import plotly.graph_objects as go
-
-import gradio as gr
-
 from demo_data import build_synthetic_data, load_artifact
+
 from hydrophysics.metrics import kge
 
 APP_DIR = Path(__file__).resolve().parent
@@ -96,10 +95,8 @@ OPERATOR = _load_operator()
 # Baseline net recharge (synthetic rain - real ET0) the operator was trained on, and the
 # baseline simulation it produces. Computed once; the what-if perturbs around this.
 WHATIF_OK = OPERATOR is not None and np.isfinite(RAINFALL).any() and np.isfinite(ET0).any()
-if WHATIF_OK:
-    BASE_SIM = OPERATOR.simulate(DATA)   # ~1 s CPU forward over all 61 wells
-else:
-    BASE_SIM = SIM
+# ~1 s CPU forward over all 61 wells when the operator is present, else the shipped sim.
+BASE_SIM = OPERATOR.simulate(DATA) if WHATIF_OK else SIM
 WELL_IDS = list(DATA.well_ids)
 VAL_IDX = np.where(DATA.val_mask)[0]
 V0, V1 = int(VAL_IDX[0]), int(VAL_IDX[-1])
@@ -186,7 +183,7 @@ def _load_lonlat() -> dict:
         return {}
     z = np.load(p, allow_pickle=True)
     return {str(w): (float(la), float(lo))
-            for w, la, lo in zip(z["well_ids"], z["lat"], z["lon"])}
+            for w, la, lo in zip(z["well_ids"], z["lat"], z["lon"], strict=True)}
 
 
 WELL_LONLAT = _load_lonlat()
@@ -232,7 +229,7 @@ def _label(well_id: str) -> str:
 
 
 WELL_LABELS = [_label(w) for w in WELL_IDS]
-LABEL_TO_ID = dict(zip(WELL_LABELS, WELL_IDS))
+LABEL_TO_ID = dict(zip(WELL_LABELS, WELL_IDS, strict=True))
 
 
 def _origin_index(origin_frac: float) -> int:

@@ -15,7 +15,7 @@ pip install -e ".[dev]"          # foundation + pytest/ruff (no GPU)
 Verify the foundation works without a GPU or any real data:
 
 ```bash
-pytest -q                                 # 5 pass, model tests skip without torch
+pytest -q                                 # foundation/data/eval/explorer green; model tests skip without torch
 python -m hydrophysics.run_baselines      # baselines on the bundled synthetic sample
 ```
 

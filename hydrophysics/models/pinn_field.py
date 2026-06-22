@@ -123,7 +123,7 @@ class SpatialPINN(GroundwaterModel):
         self.norm: Normalizer | None = None
         self.h_net: nn.Module | None = None
         self.field_net: nn.Module | None = None
-        self.log_S: "nn.Parameter | None" = None
+        self.log_S: nn.Parameter | None = None
         self._wc: np.ndarray | None = None
 
     # --- helpers -----------------------------------------------------------
@@ -172,7 +172,7 @@ class SpatialPINN(GroundwaterModel):
         return T, alpha, d, log_T
 
     # --- interface ---------------------------------------------------------
-    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> "SpatialPINN":
+    def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> SpatialPINN:
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         self.norm = Normalizer.from_data(data)

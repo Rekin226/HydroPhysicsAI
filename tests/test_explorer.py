@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import numpy as np  # noqa: F401
-import pandas as pd  # noqa: F401
+import numpy as np
+import pandas as pd
 import pytest
 
 
 def test_load_mlcw_stations():
-    from hydrophysics.subsidence import load_mlcw_stations
     from hydrophysics.config import default_config
+    from hydrophysics.subsidence import load_mlcw_stations
 
     cfg = default_config()
     path = cfg.data_dir / "mlcw_stations.csv"
@@ -93,6 +93,7 @@ def test_calibrate_sk_recovers_slope():
 
 def test_head_and_subsidence_grid(gwdata):
     from shapely.geometry import box
+
     from hydrophysics.explorer import head_grid, subsidence_grid
 
     wx = gwdata.attrs["tm_x"].astype(float)
@@ -111,6 +112,7 @@ def test_head_and_subsidence_grid(gwdata):
 
 def test_build_explorer_writes_html(gwdata, tmp_path):
     from shapely.geometry import box
+
     from hydrophysics.explorer import build_explorer
 
     wx = gwdata.attrs["tm_x"].astype(float)
@@ -147,6 +149,7 @@ def test_fit_sk_regression_recovers_beta():
 
 def test_distances_to_geom():
     from shapely.geometry import LineString
+
     from hydrophysics.subsidence import _distances_to_geom
 
     coast = LineString([(0.0, 0.0), (0.0, 100.0)])  # the y-axis
