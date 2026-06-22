@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..data import GWData
-from .base import GroundwaterModel
+from .base import GroundwaterModel, seed_everything
 
 try:
     import torch
@@ -102,7 +102,7 @@ class GlobalGRU(GroundwaterModel):
         return torch.from_numpy(x).to(self.device)
 
     def fit(self, data: GWData) -> GlobalGRU:
-        torch.manual_seed(self.seed)
+        seed_everything(self.seed)
         dyn = _forcing_features(data)
         stat = _static_features(data)
         self._standardize_fit(dyn, stat, data.target, data.train_mask)

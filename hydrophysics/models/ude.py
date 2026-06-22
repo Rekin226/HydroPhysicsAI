@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..data import GWData
-from .base import GroundwaterModel
+from .base import GroundwaterModel, seed_everything
 from .gru import _default_device, _forcing_features, _static_features
 
 
@@ -231,7 +231,7 @@ class PhysicsUDE(GroundwaterModel):
         be predicted from their attributes (and own initial condition) alone, never from
         a fitted parameter set. Their attributes/IC/level-anchor are still available.
         """
-        torch.manual_seed(self.seed)
+        seed_everything(self.seed)
         stat = self.feature_fn(data)
         self._stats["stat_mu"] = stat.mean(0)
         self._stats["stat_sd"] = stat.std(0) + 1e-6

@@ -148,6 +148,59 @@ def save_artifact(data: GWData, sim, mean, sigma, et0, path: Path = ARTIFACT) ->
     return path
 
 
+# The operator is shipped as a state_dict + config + frozen stats (all tensors / plain
+# scalars), NOT a pickled PhysicsUDE object. That lets the Space load it with
+# torch.load(weights_only=True) -- no arbitrary-code-execution surface -- and survives
+# torch version drift (a full-object pickle does not).
+def save_operator(ude, path: Path = OPERATOR_PT) -> Path:
+    """Persist the trained operator as a portable, weights-only-loadable blob."""
+    import torch
+
+    config = {
+        "hidden": int(ude.hidden),
+        "anchor_level": bool(ude.anchor_level),
+        "normalize_loss": bool(ude.normalize_loss),
+        "anchor_equilibrium": bool(ude.anchor_equilibrium),
+        "rain_memory": [float(d) for d in ude.rain_memory],
+        "n_static": int(np.asarray(ude._stats["stat_mu"]).shape[0]),
+    }
+    blob = {
+        "config": config,
+        "state_dict": {k: v.cpu() for k, v in ude.hypernet.state_dict().items()},
+        # frozen training stats (stat_mu/sd, anchor, api_mu/sd) as tensors so weights_only
+        # loading accepts them (numpy arrays are not on the safe allowlist).
+        "stats": {k: torch.as_tensor(np.asarray(v)) for k, v in ude._stats.items()},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(blob, path)
+    return path
+
+
+def load_operator(path: Path = OPERATOR_PT, device: str = "cpu"):
+    """Rebuild a PhysicsUDE for inference from a :func:`save_operator` blob.
+
+    Loaded with ``weights_only=True`` (safe). Reconstructs the architecture from the
+    stored config, loads the hypernetwork weights, and restores the frozen stats so
+    ``simulate`` reproduces training exactly -- no fit, no pickle of model code.
+    """
+    import torch
+
+    from hydrophysics.models.ude import PhysicsUDE
+
+    blob = torch.load(path, map_location=device, weights_only=True)
+    c = blob["config"]
+    op = PhysicsUDE(hidden=c["hidden"], anchor_level=c["anchor_level"],
+                    normalize_loss=c["normalize_loss"],
+                    anchor_equilibrium=c["anchor_equilibrium"],
+                    rain_memory=tuple(c["rain_memory"]), device=device)
+    op._build(c["n_static"])
+    op.hypernet.load_state_dict(blob["state_dict"])
+    op.hypernet.to(device)
+    op._stats = {k: v.numpy() for k, v in blob["stats"].items()}
+    op.device = device
+    return op
+
+
 def load_artifact(path: Path = ARTIFACT):
     """Reconstruct (GWData, sim, mean, sigma, rainfall, et0) from the shipped artifact.
 
@@ -238,13 +291,12 @@ if __name__ == "__main__":
         data, args.device, args.ude_epochs, args.fc_epochs)
     print(f"trained + predicted on {args.device} in {time.time() - t1:.1f}s")
 
-    # Ship the trained operator CPU-loadable. Move the small hypernetwork to CPU so
-    # torch.load(map_location='cpu') works on a CPU-only Space.
-    import torch
+    # Ship the trained operator as a portable, weights-only-loadable state_dict blob
+    # (no pickled model object). Move the hypernetwork to CPU first so it loads on a
+    # CPU-only Space.
     ude.device = "cpu"
     ude.hypernet = ude.hypernet.to("cpu")
-    OPERATOR_PT.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(ude, OPERATOR_PT)
+    save_operator(ude, OPERATOR_PT)
     op_mb = OPERATOR_PT.stat().st_size / 1e6
     print(f"wrote {OPERATOR_PT} ({op_mb:.3f} MB)")
 

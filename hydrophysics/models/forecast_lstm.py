@@ -24,6 +24,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..data import GWData
+from .base import seed_everything
 from .gru import _default_device, _static_features
 
 try:
@@ -147,7 +148,7 @@ class GlobalForecastLSTM:
 
     # --- fit / forecast --------------------------------------------------------
     def fit(self, data: GWData) -> GlobalForecastLSTM:
-        torch.manual_seed(self.seed)
+        seed_everything(self.seed)
         s = self._stats
         s["level_sd"] = self._level_std(data)
         tm = data.train_mask

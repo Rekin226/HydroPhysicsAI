@@ -22,6 +22,24 @@ import numpy as np
 from ..data import GWData
 
 
+def seed_everything(seed: int) -> None:
+    """Seed torch + numpy, and on CUDA make cuDNN deterministic.
+
+    The bit-identical reproductions the tests assert hold on CPU regardless; without the
+    cuDNN flags a seeded run is NOT reproducible on GPU (cuDNN picks nondeterministic
+    algorithms). The models here are small Linear/GRU/LSTM stacks, so forcing deterministic
+    cuDNN costs negligible throughput. Call this instead of a bare torch.manual_seed.
+    """
+    import torch
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
 class GroundwaterModel(ABC):
     """Abstract base for any groundwater simulation model."""
 
