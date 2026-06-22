@@ -12,10 +12,35 @@ The token is read from the standard HF cache (or the HF_TOKEN env var).
 from __future__ import annotations
 
 import argparse
+import re
+import subprocess
 from pathlib import Path
 
 DEFAULT_SPACE = "Rekin226/HydroPhysicsAI-demo"
 APP_DIR = Path(__file__).resolve().parent
+_REQ_RE = re.compile(
+    r"(hydrophysics-ai @ git\+https://github\.com/Rekin226/HydroPhysicsAI\.git@)\S+")
+
+
+def pin_requirements_to_head() -> str:
+    """Pin the hydrophysics-ai git dependency to the current commit SHA.
+
+    The package version is static (0.0.1), so pip treats an unchanged ``@main`` git
+    requirement as already-satisfied and serves a STALE cached build -- which silently
+    leaves the Space running old library code (e.g. a PhysicsUDE without ``rain_memory``).
+    Pinning to the exact SHA changes the requirement each release, forcing a clean
+    reinstall of the deployed commit. Rewrites app/requirements.txt in place so the
+    committed file records exactly what the Space installs.
+    """
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=APP_DIR,
+                         capture_output=True, text=True, check=True).stdout.strip()
+    req = APP_DIR / "requirements.txt"
+    text = req.read_text()
+    pinned, n = _REQ_RE.subn(rf"\g<1>{sha}", text)
+    if n and pinned != text:
+        req.write_text(pinned)
+        print(f"pinned hydrophysics-ai -> {sha}")
+    return sha
 
 
 def main() -> None:
@@ -32,6 +57,8 @@ def main() -> None:
     except Exception as exc:
         raise SystemExit("Not logged in. Run `hf auth login` with a *write* token first.") from exc
     print(f"authenticated as: {who}")
+
+    pin_requirements_to_head()
 
     api.create_repo(repo_id=args.space, repo_type="space", space_sdk="gradio",
                     private=args.private, exist_ok=True)
