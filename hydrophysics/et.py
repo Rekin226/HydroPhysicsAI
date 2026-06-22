@@ -69,21 +69,29 @@ def et0_for_data(data: GWData, cache_path: str | None = None,
     """
     ids = [str(w) for w in data.well_ids]
     dates = np.array([str(d.date()) for d in data.dates])
-    lon, lat = wells_lonlat(data)
-    # Cache fingerprint: well ids + dates AND coordinates (rounded to ~100 m). ET0 is a
-    # function of location, so a cache that matches only on ids/dates would silently return
-    # the wrong series if a well set with the same ids/dates sits at different coordinates.
-    coords = np.round(np.column_stack([lat, lon]), 3).astype("float32")
+
+    def _coords() -> np.ndarray:
+        # WGS84 lat/lon rounded to ~100 m. Computed lazily (it needs pyproj) so an offline
+        # cache hit does not require the optional [data] extra.
+        lon, lat = wells_lonlat(data)
+        return np.round(np.column_stack([lat, lon]), 3).astype("float32")
+
     if cache_path:
         import os
         if os.path.exists(cache_path):
             c = np.load(cache_path, allow_pickle=True)
             cids = [str(x) for x in c["well_ids"]]
-            coords_ok = ("coords" not in c.files  # legacy caches: fall back to id/date match
-                         or np.array_equal(c["coords"].astype("float32"), coords))
-            if cids == ids and list(c["dates"]) == list(dates) and coords_ok:
+            # ET0 is a function of location, so verify coordinates too -- a cache matching
+            # only on ids/dates would silently return the wrong series for a different well
+            # set. Legacy caches (no "coords") fall back to id/date match. Short-circuiting
+            # keeps _coords() (pyproj) off the offline-cache-hit path.
+            if (cids == ids and list(c["dates"]) == list(dates)
+                    and ("coords" not in c.files
+                         or np.array_equal(c["coords"].astype("float32"), _coords()))):
                 return c["et0"].astype("float32")
 
+    lon, lat = wells_lonlat(data)
+    coords = _coords()
     start, end = dates[0], dates[-1]
     et0 = np.full((data.n_wells, data.n_days), np.nan, "float32")
     for i in range(data.n_wells):
