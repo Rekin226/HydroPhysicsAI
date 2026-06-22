@@ -901,5 +901,10 @@ def build_ui():
     return demo
 
 
+# Module-level app object. The Hugging Face Spaces Gradio runtime imports this file and
+# launches the top-level ``demo`` itself (managing the queue / SSR proxy); exposing it here
+# avoids the "demo not found in __main__" fallback. Locally, run the file directly.
+demo = build_ui()
+
 if __name__ == "__main__":
-    build_ui().launch()
+    demo.launch()
