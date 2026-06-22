@@ -302,6 +302,16 @@ tests/             foundation + numerics + model-smoke + forecast/explorer tests
 
 ## Contributing
 
+Contributions are welcome — from one-line docs fixes to open research on cross-well generalization.
+
+**New here? Start with one of these:**
+
+- 🟢 [**Good first issues**](https://github.com/Rekin226/HydroPhysicsAI/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — newcomer-sized, self-contained (logging, coverage, a small data/summary improvement).
+- 🟣 [**Up for grabs**](https://github.com/Rekin226/HydroPhysicsAI/issues?q=is%3Aissue+is%3Aopen+label%3A%22up+for+grabs%22) — claimable tasks across all sizes; comment to claim one.
+- 🔵 [**Research / help wanted**](https://github.com/Rekin226/HydroPhysicsAI/issues?q=is%3Aissue+is%3Aopen+label%3Aresearch) — meatier modeling work (adjoint rollout, simulation uncertainty, richer conditioning, a transfer pilot). Negative results documented honestly are valued here.
+
+Each issue lists context, the files to touch, and acceptance criteria. Please comment to claim an issue before starting (especially the larger ones) so work isn't duplicated.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the GPU / CUDA / PhysicsNeMo install, the model contract, and the evaluation rules that keep the benchmark honest.
 
 ## Author
