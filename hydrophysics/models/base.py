@@ -28,7 +28,7 @@ class GroundwaterModel(ABC):
     name: str = "model"
 
     @abstractmethod
-    def fit(self, data: GWData) -> "GroundwaterModel":
+    def fit(self, data: GWData) -> GroundwaterModel:
         """Train on the calibration period (data.train_mask). Return self."""
 
     @abstractmethod

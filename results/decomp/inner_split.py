@@ -1,14 +1,15 @@
 """Inner-split evaluation: inner-train < 2018, inner-val = 2018. Used to choose variants.
 Never touches the 2019+ benchmark."""
-import numpy as np
-import pandas as pd
 from copy import copy
 
-from hydrophysics.config import default_config
-from hydrophysics.data import load_dataset, GWData
-from hydrophysics.eval import evaluate_predictions
+import numpy as np
+import pandas as pd
+
 from hydrophysics.baselines import climatology_prediction
-from hydrophysics.decomp import DecompModel, DecompConfig
+from hydrophysics.config import default_config
+from hydrophysics.data import GWData, load_dataset
+from hydrophysics.decomp import DecompConfig, DecompModel
+from hydrophysics.eval import evaluate_predictions
 
 
 def make_inner(data: GWData) -> GWData:

@@ -21,8 +21,14 @@ def main(argv=None) -> None:
 
     from .config import Config, default_config
     from .data import load_dataset
-    from .subsidence import (calibrate_sk, fit_sk_regression, load_mlcw_stations,
-                             loso_sk_regression, mlcw_compaction, site_distance_to_coast)
+    from .subsidence import (
+        calibrate_sk,
+        fit_sk_regression,
+        load_mlcw_stations,
+        loso_sk_regression,
+        mlcw_compaction,
+        site_distance_to_coast,
+    )
 
     ap = argparse.ArgumentParser(description="Head->subsidence coupling verdict")
     ap.add_argument("--data", default=None)

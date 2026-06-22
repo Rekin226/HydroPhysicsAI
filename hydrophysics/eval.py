@@ -37,12 +37,17 @@ def evaluate_predictions(
 
 
 def _aggregate(per_well: pd.DataFrame) -> dict[str, float]:
+    kge = per_well["kge"]
     return {
-        "kge_median": per_well["kge"].median(),
-        "kge_mean": per_well["kge"].mean(),
+        "kge_median": kge.median(),
+        "kge_mean": kge.mean(),
+        # KGE has an unbounded negative tail, so the median can look healthy while a few
+        # wells are catastrophic. Report the [-1, 1]-clipped mean alongside the median so
+        # that tail is never hidden by the headline number.
+        "kge_clipmean": kge.clip(-1, 1).mean(),
         "rmse_median": per_well["rmse"].median(),
         "nse_median": per_well["nse"].median(),
-        "n_wells": int(per_well["kge"].notna().sum()),
+        "n_wells": int(kge.notna().sum()),
     }
 
 
@@ -59,21 +64,34 @@ def benchmark_table(
     graybox: optional gray-box per-well scores (from load_graybox_baseline) whose
         validation scores are reported as-is (no prediction series needed).
     """
+    # Per-well KGE of each model, kept so we can also report head-to-head win-rate against
+    # climatology (median superiority != per-well superiority).
+    per_well = {name: evaluate_predictions(data, pred, period=period)
+                for name, pred in predictions.items()}
+    clim_kge = per_well["climatology"]["kge"] if "climatology" in per_well else None
+
     records = []
-    for name, pred in predictions.items():
-        agg = _aggregate(evaluate_predictions(data, pred, period=period))
+    for name, pw in per_well.items():
+        agg = _aggregate(pw)
+        if clim_kge is not None:
+            agg["win_vs_clim"] = float((pw["kge"] > clim_kge).mean())
         records.append({"model": name, **agg})
 
     if graybox is not None:
         gb = graybox.reindex([str(w) for w in data.well_ids])
-        records.append({
+        gb_kge = gb["kge"]
+        row = {
             "model": "graybox_ode",
-            "kge_median": gb["kge"].median(),
-            "kge_mean": gb["kge"].mean(),
+            "kge_median": gb_kge.median(),
+            "kge_mean": gb_kge.mean(),
+            "kge_clipmean": gb_kge.clip(-1, 1).mean(),
             "rmse_median": gb["rmse"].median() if "rmse" in gb else float("nan"),
             "nse_median": float("nan"),
-            "n_wells": int(gb["kge"].notna().sum()),
-        })
+            "n_wells": int(gb_kge.notna().sum()),
+        }
+        if clim_kge is not None:
+            row["win_vs_clim"] = float((gb_kge > clim_kge).mean())
+        records.append(row)
 
     table = pd.DataFrame.from_records(records).set_index("model")
     return table.sort_values("kge_median", ascending=False)

@@ -26,7 +26,7 @@ class Normalizer:
     year: float = 365.25
 
     @classmethod
-    def from_data(cls, data: GWData) -> "Normalizer":
+    def from_data(cls, data: GWData) -> Normalizer:
         x = data.attrs["tm_x"].astype(float).fillna(0.0).to_numpy()
         y = data.attrs["tm_y"].astype(float).fillna(0.0).to_numpy()
         xr = float(x.max() - x.min())

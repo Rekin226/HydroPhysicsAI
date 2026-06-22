@@ -86,7 +86,7 @@ class DecompModel(GroundwaterModel):
         self._per_well: list[dict] = []
 
     # ---- per-well fit on the training period only ----
-    def fit(self, data: GWData) -> "DecompModel":
+    def fit(self, data: GWData) -> DecompModel:
         cfg = self.cfg
         tm = data.train_mask
         doy_all = data.doy

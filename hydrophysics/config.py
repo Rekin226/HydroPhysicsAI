@@ -5,7 +5,7 @@ The data directory is resolved in this order:
 
 1. The ``HYDROMIND_GW_DATA`` environment variable, if set.
 2. ``Config.data_dir`` passed explicitly in code.
-3. A bundled synthetic sample under ``physics_ml/sample_data/`` (used by tests/CI
+3. A bundled synthetic sample under ``hydrophysics/sample_data/`` (used by tests/CI
    and by anyone without the real data). Generate it with ``sample.write_sample``.
 
 To run on the real data, point ``HYDROMIND_GW_DATA`` at the single_tankV2 ``data/``

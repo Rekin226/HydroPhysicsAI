@@ -8,11 +8,11 @@ headline verdict uses the pre-committed robust config only.
 """
 import pandas as pd
 
+from hydrophysics.baselines import climatology_prediction
 from hydrophysics.config import default_config
 from hydrophysics.data import load_dataset
+from hydrophysics.decomp import DecompConfig, DecompModel
 from hydrophysics.eval import evaluate_predictions
-from hydrophysics.baselines import climatology_prediction
-from hydrophysics.decomp import DecompModel, DecompConfig
 
 GRAYBOX = 0.736
 UDE = 0.591

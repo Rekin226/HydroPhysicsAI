@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--gate", type=float, default=None, metavar="TAU",
                     help="confidence-gated hybrid: trust the operator only on wells whose "
                          "free-run training-period KGE >= TAU, else fall back to that "
-                         "well's climatology. TAU=0.5 was selected on the inner 2018 split.")
+                         "well's climatology. TAU=0.3 was selected on the inner 2018 split.")
     ap.add_argument("--anchor-equilibrium", action="store_true",
                     help="pin each well's free-run equilibrium to its observed mean and "
                          "model only deviations (fixes held-out-well level drift).")

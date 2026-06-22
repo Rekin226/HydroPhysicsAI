@@ -273,11 +273,17 @@ hydrophysics/
   metrics.py       KGE / NSE / RMSE (NaN-safe, zero-variance-safe)
   baselines.py     gray-box + climatology + last-value (sim) + persistence (forecast)
   eval.py          benchmark_table + per-well scores + spatial KGE map
+  lowo.py          leave-one-well-out cross-well generalization (+ gated hybrid)
+  decomp.py        per-well signal-decomposition baseline (gray-box-class)
+  et.py            Open-Meteo FAO-56 ET0 net-recharge driver (rain - ET0)
   sample.py        synthetic dataset generator (CI / no-data users)
   run_baselines.py freeze + print the baseline tables
   train.py         load -> fit -> simulate -> benchmark (the GPU entry point)
   forecast_eval.py horizon-wise forecast scoring (point + probabilistic)
   figures.py       generate the README figures (hydrographs, fan, bars)
+  maps.py          study-area maps: per-well KGE + PINN head field over the fan
+  explorer.py      Choushui head + land-subsidence explorer
+  subsidence.py    inelastic-compaction (Sk) regression vs cumulative drawdown
   bench.py         CPU vs CUDA vs CUDA+AMP throughput benchmark
   viz.py           plotting helpers (lazy matplotlib)
   models/
@@ -286,10 +292,12 @@ hydrophysics/
     ude.py         PhysicsUDE physics-informed operator (the new method)
     ude_physicsnemo.py  PhysicsNeMoUDE: the UDE on NVIDIA PhysicsNeMo
     forecast_lstm.py    GlobalForecastLSTM (assimilated, probabilistic, AMP)
+    pinn_field.py       SpatialPINN continuous head field h(x, y, t) over the fan
 results/phase0/    frozen baselines + spatial map
 results/figures/   reproducible figures (from the synthetic sample)
 results/bench/     GPU throughput benchmark
-tests/             foundation + model-smoke + forecast tests (run in CI)
+app/               live Gradio demo (deployed to Hugging Face Spaces)
+tests/             foundation + numerics + model-smoke + forecast/explorer tests (CI)
 ```
 
 ## Contributing

@@ -71,8 +71,8 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         import torch
-    except ImportError:
-        raise SystemExit("bench needs torch: pip install -e '.[gpu]'")
+    except ImportError as exc:
+        raise SystemExit("bench needs torch: pip install -e '.[gpu]'") from exc
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -130,7 +130,8 @@ def main(argv: list[str] | None = None) -> None:
         labels = [r.split(" (")[0] for r in df["backend"]]
         colors = ["0.6", "#5b9bd5", "#76b900"][:len(df)]
         ax.bar(labels, df["windows_per_s"], color=colors, edgecolor="k", linewidth=0.5)
-        for x, (v, s) in enumerate(zip(df["windows_per_s"], df.get("speedup_vs_cpu", []))):
+        for x, (v, s) in enumerate(zip(df["windows_per_s"], df.get("speedup_vs_cpu", []),
+                                       strict=False)):
             tag = f"{v/1e6:.2f}M/s" + (f"\n{s:.1f}x" if s == s else "")
             ax.text(x, v, tag, ha="center", va="bottom", fontsize=9)
         ax.set_ylabel("training throughput (windows/s)")

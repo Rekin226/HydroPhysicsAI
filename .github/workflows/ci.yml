@@ -40,3 +40,24 @@ jobs:
         # End-to-end smoke of the public entry point on the bundled sample data
         # (no real data, no GPU) so a broken pipeline fails CI, not a user.
         run: python -m hydrophysics.run_baselines
+
+  # Separate job that actually installs torch (CPU wheels) so the neural-model tests
+  # RUN instead of self-skipping. Without this the UDE/GRU/PINN/forecast tests -- the
+  # whole reason the project exists -- contribute nothing to CI and a rollout regression
+  # would pass green.
+  models-cpu-torch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install CPU torch + package
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,explorer,gpu]"
+      - name: Test (torch paths exercised)
+        # -rs lists which tests skipped, so a silently-skipping model test is visible.
+        run: pytest -q -rs

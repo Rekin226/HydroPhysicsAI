@@ -29,8 +29,8 @@ def main() -> None:
     api = HfApi()
     try:
         who = whoami()["name"]
-    except Exception:
-        raise SystemExit("Not logged in. Run `hf auth login` with a *write* token first.")
+    except Exception as exc:
+        raise SystemExit("Not logged in. Run `hf auth login` with a *write* token first.") from exc
     print(f"authenticated as: {who}")
 
     api.create_repo(repo_id=args.space, repo_type="space", space_sdk="gradio",

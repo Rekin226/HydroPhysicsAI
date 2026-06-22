@@ -101,7 +101,7 @@ class GlobalGRU(GroundwaterModel):
         x = np.concatenate([dyn, stat_seq], axis=-1).astype("float32")
         return torch.from_numpy(x).to(self.device)
 
-    def fit(self, data: GWData) -> "GlobalGRU":
+    def fit(self, data: GWData) -> GlobalGRU:
         torch.manual_seed(self.seed)
         dyn = _forcing_features(data)
         stat = _static_features(data)

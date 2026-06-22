@@ -121,8 +121,8 @@ def test_spatial_pinn_lowo_no_leakage(data):
 
 
 def test_build_model_registers_pinn():
-    from hydrophysics.train import build_model
     from hydrophysics.models.pinn_field import SpatialPINN
+    from hydrophysics.train import build_model
 
     model = build_model("pinn", device="cpu", epochs=3)
     assert isinstance(model, SpatialPINN)
