@@ -72,20 +72,19 @@ DATA, SIM, MEAN, SIGMA, RAINFALL, ET0 = _setup()
 
 
 def _load_operator():
-    """Load the shipped trained PhysicsUDE operator (CPU-loadable), or None.
+    """Rebuild the shipped trained PhysicsUDE operator (CPU), or None.
 
-    The operator is a picklable PhysicsUDE (a small nn.Module + numpy stats). It is
-    trained on NET recharge (rain - ET0), so its frozen rain-memory stats line up with
-    the baseline forcing reconstructed in DATA.rainfall. Falls back to None (what-if
-    disabled, baseline-only) if the model is missing or unloadable.
+    The operator ships as a state_dict + config + frozen stats and is loaded with
+    torch.load(weights_only=True) (no pickle-of-code execution surface). It is trained on
+    NET recharge (rain - ET0), so its frozen rain-memory stats line up with the baseline
+    forcing reconstructed in DATA.rainfall. Falls back to None (what-if disabled,
+    baseline-only) if the model is missing or unloadable.
     """
     if not OPERATOR_PT.exists():
         return None
     try:
-        import torch
-        op = torch.load(OPERATOR_PT, map_location="cpu", weights_only=False)
-        op.device = "cpu"
-        return op
+        from demo_data import load_operator
+        return load_operator(OPERATOR_PT, device="cpu")
     except Exception as exc:  # pragma: no cover - defensive load
         print(f"[what-if] operator load failed ({exc}); what-if disabled")
         return None

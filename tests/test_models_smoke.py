@@ -88,6 +88,28 @@ def test_rain_memory_default_identical_and_runs(data):
     assert sim.shape == data.target.shape and np.isfinite(sim).all()
 
 
+def test_operator_state_dict_reconstruct(data):
+    """A PhysicsUDE rebuilt from config + hypernetwork state_dict + frozen _stats (no fit,
+    no object pickle) reproduces simulate bit-for-bit -- the contract the demo's
+    weights-only operator load (app/demo_data.load_operator) relies on."""
+    from hydrophysics.models.ude import PhysicsUDE
+
+    m = PhysicsUDE(epochs=10, device="cpu", seed=0, rain_memory=(0.9, 0.5)).fit(data)
+    sim = m.simulate(data)
+
+    n_static = int(np.asarray(m._stats["stat_mu"]).shape[0])
+    state = {k: v.clone() for k, v in m.hypernet.state_dict().items()}
+    stats = {k: np.asarray(v).copy() for k, v in m._stats.items()}
+
+    r = PhysicsUDE(hidden=m.hidden, anchor_level=m.anchor_level,
+                   normalize_loss=m.normalize_loss, anchor_equilibrium=m.anchor_equilibrium,
+                   rain_memory=m.rain_memory, device="cpu")
+    r._build(n_static)
+    r.hypernet.load_state_dict(state)
+    r._stats = stats
+    assert np.allclose(sim, r.simulate(data))
+
+
 def test_physicsnemo_ude_matches_base_and_checkpoints(data, tmp_path):
     """The PhysicsNeMo port must (a) be a real physicsnemo.Module, (b) reproduce the
     base PhysicsUDE bit-for-bit (same architecture/seed), and (c) round-trip through a

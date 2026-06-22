@@ -18,7 +18,7 @@ import numpy as np
 
 from ..data import GWData
 from ..field_inputs import Normalizer, RainfallField, well_coords_norm
-from .base import GroundwaterModel
+from .base import GroundwaterModel, seed_everything
 from .gru import _default_device
 
 try:
@@ -173,8 +173,7 @@ class SpatialPINN(GroundwaterModel):
 
     # --- interface ---------------------------------------------------------
     def fit(self, data: GWData, train_wells: np.ndarray | None = None) -> SpatialPINN:
-        torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
+        seed_everything(self.seed)
         self.norm = Normalizer.from_data(data)
         self._wc = well_coords_norm(data, self.norm)            # (W, 2)
         rain_field = RainfallField(self._wc, np.nan_to_num(data.rainfall))
