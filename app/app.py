@@ -797,8 +797,27 @@ All charts are **interactive** - hover for date + value, drag to zoom, double-cl
 """
 
 
+# Geographic panels (map + basin surface) lock equal x/y scale for true geography, so
+# their data is portrait (the fan is ~0.77 as wide as it is tall). In a full-width
+# container that leaves huge horizontal margins, so we cap their width and center them,
+# keeping the figure roughly square instead of a wide rectangle with the fan stranded
+# in the middle. Injected as a <style> tag (not gr.Blocks(css=...)): Gradio 6 moved the
+# css= kwarg to launch(), which the HF Spaces runtime owns, so a constructor css= would
+# be silently dropped on the Space.
+STYLE = """
+<style>
+.geo-square { max-width: 600px; margin-left: auto !important; margin-right: auto !important; }
+/* Keep the click-bridge textbox in the DOM (so BIND_JS can find it) but out of sight.
+   gr.Textbox(visible=False) is dropped from the DOM entirely in Gradio 6, which would
+   silently break map click-to-select. */
+.wellclick-hidden { display: none !important; }
+</style>
+"""
+
+
 def build_ui():
     with gr.Blocks(title="HydroPhysicsAI demo") as demo:
+        gr.HTML(STYLE)
         gr.Markdown(INTRO)
         with gr.Row():
             with gr.Column(scale=1):
@@ -850,7 +869,10 @@ def build_ui():
             day = gr.Slider(0.0, 1.0, value=0.55, step=0.01,
                             label="Day (position across the 2014–2019 record)",
                             interactive=SURFACE_OK)
-            surface_plot = gr.Plot(label="Basin groundwater surface (synthetic, model hindcast)")
+            with gr.Row():
+                surface_plot = gr.Plot(
+                    label="Basin groundwater surface (synthetic, model hindcast)",
+                    elem_classes=["geo-square"])
 
         # --- Live recharge-stress monitor (real Open-Meteo) ----------------------
         with gr.Group():
@@ -873,7 +895,10 @@ def build_ui():
             stress_plot = gr.Plot(label="Live recharge-stress (real Open-Meteo)")
 
         # Hidden bridge: BIND_JS writes the clicked station id here; its change selects.
-        clicked = gr.Textbox(visible=False, elem_id="wellclick")
+        # CSS-hidden (not visible=False) so the textarea stays in the DOM for the JS bridge
+        # to find — Gradio 6 removes visible=False components from the DOM entirely.
+        clicked = gr.Textbox(value="", elem_id="wellclick",
+                             elem_classes=["wellclick-hidden"])
 
         sel_inputs = [well, origin, rain_mult, et_mult, day]
         all_plots = [map_plot, sim_plot, fc_plot, whatif_plot, surface_plot]
