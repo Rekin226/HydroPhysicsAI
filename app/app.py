@@ -550,11 +550,23 @@ def make_surface(well_id: str, day_frac: float) -> go.Figure:
     return fig
 
 
-def _stress_prompt(msg: str) -> go.Figure:
-    """A placeholder figure carrying a one-line message (no data yet / fetch failed)."""
+def _stress_prompt(msg: str, cta: bool = False) -> go.Figure:
+    """A placeholder figure carrying a message.
+
+    ``cta=True`` renders a prominent, button-like call-to-action (the initial "click to
+    load" state, which would otherwise look like an empty panel). ``cta=False`` is a plain
+    gray note used for the unavailable / fetch-failed cases.
+    """
     fig = go.Figure()
-    fig.add_annotation(text=msg, x=0.5, y=0.5, xref="paper", yref="paper",
-                       showarrow=False, font=dict(size=14, color="#555"))
+    if cta:
+        fig.add_annotation(
+            text=msg, x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+            align="center", font=dict(size=18, color="#1f77b4"),
+            bordercolor="#1f77b4", borderwidth=1, borderpad=18,
+            bgcolor="rgba(31,119,180,0.06)")
+    else:
+        fig.add_annotation(text=msg, x=0.5, y=0.5, xref="paper", yref="paper",
+                           showarrow=False, font=dict(size=14, color="#555"))
     fig.update_layout(template="plotly_white", height=360,
                       xaxis=dict(visible=False), yaxis=dict(visible=False),
                       margin=dict(l=40, r=20, t=50, b=30),
@@ -917,9 +929,12 @@ def build_ui():
         fetch_btn.click(on_stress, [well], stress_plot)
         # initial draw + install the plotly_click -> hidden-textbox JS bridge
         demo.load(on_dropdown, sel_inputs, all_plots)
-        demo.load(lambda: _stress_prompt(
-            "Click “Pull latest weather” to fetch live Open-Meteo data for the selected "
-            "station." if LIVE_OK else "Live monitor unavailable in this build."),
+        demo.load(lambda: (_stress_prompt(
+            "⬆&nbsp;&nbsp;<b>Click “Pull latest weather” above</b><br>"
+            "<span style='font-size:13px;color:#777'>to load live Open-Meteo recharge "
+            "data for the selected station</span>", cta=True)
+            if LIVE_OK else
+            _stress_prompt("Live monitor unavailable in this build.")),
             None, stress_plot)
         demo.load(js=BIND_JS)
     return demo
