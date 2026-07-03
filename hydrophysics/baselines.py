@@ -14,7 +14,7 @@ good):
 
 References:
   - Gray-box ODE: per-well calibrated model (one parameter set per well), read from a
-    single_tankV2 ``gw_fit_results.csv`` (simulation mode). The published baseline.
+    ``gw_fit_results.csv`` (simulation mode; see docs/DATA_FORMAT.md). The published baseline.
   - persistence_prediction: forecast-mode no-skill (tomorrow = today).
   - climatology_prediction / last_value_prediction: simulation-mode no-skill.
 """
@@ -40,7 +40,7 @@ def load_graybox_baseline(cfg: Config | None = None) -> pd.DataFrame:
     if cfg.baseline_results is None or not cfg.baseline_results.exists():
         raise FileNotFoundError(
             "No gray-box baseline results found. Set Config.baseline_results to a "
-            "gw_fit_results.csv (e.g. single_tankV2/workspace/results/final/)."
+            "gw_fit_results.csv (see docs/DATA_FORMAT.md)."
         )
     df = pd.read_csv(cfg.baseline_results)
     df["st_id"] = df["st_id"].astype(str)

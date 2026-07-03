@@ -1,4 +1,4 @@
-"""Generate a small synthetic dataset in the single_tankV2 CSV layout.
+"""Generate a small synthetic dataset in the expected CSV layout (see docs/DATA_FORMAT.md).
 
 Used by tests/CI and by anyone without the real (unpublished) Zhuoshui data. The
 synthetic series follow the same gray-box-style dynamics (recession + rainfall +

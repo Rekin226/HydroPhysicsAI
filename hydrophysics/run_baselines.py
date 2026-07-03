@@ -1,10 +1,10 @@
 """Freeze the baselines and print the Phase-0 benchmark tables.
 
 Usage:
-    # real data
-    export HYDROMIND_GW_DATA=~/Desktop/Postdoc/code_space/single_tankV2/data
+    # your own data (laid out like hydrophysics/sample_data/; see docs/DATA_FORMAT.md)
+    export HYDROMIND_GW_DATA=/path/to/your/gw_data
     python -m hydrophysics.run_baselines \\
-        --baseline ~/Desktop/Postdoc/code_space/single_tankV2/workspace/results/final/gw_fit_results.csv \\
+        --baseline /path/to/your/gray_box_fit_results.csv \\
         --out results/phase0
 
     # synthetic sample (no real data needed)

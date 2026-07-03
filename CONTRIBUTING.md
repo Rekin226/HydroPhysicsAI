@@ -85,8 +85,9 @@ benchmark automatically.
 ## 4. Data policy
 
 - **No real agency data in the repo, ever.** The Zhuoshui groundwater data is read at
-  runtime via the `HYDROMIND_GW_DATA` env var (point it at a single_tankV2-style `data/`
-  dir). The committed `hydrophysics/sample_data/` is synthetic and safe to publish.
+  runtime via the `HYDROMIND_GW_DATA` env var (point it at a `data/` dir laid out like
+  `hydrophysics/sample_data/`; see `docs/DATA_FORMAT.md`). The committed
+  `hydrophysics/sample_data/` is synthetic and safe to publish.
 - `.gitignore` blocks `data/`, `*.parquet`, and checkpoints. Keep it that way.
 - Results you commit (benchmark tables, spatial maps) must be aggregate skill metrics,
   not raw level series.
