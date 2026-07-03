@@ -108,6 +108,50 @@ in the benchmark table (not recomputed by this repo).
 
 ---
 
+## Programmatic API (skip the CSVs)
+
+If your data is already in memory, you don't need to write any CSV files.
+
+**From arrays** — you have `(n_wells, n_days)` arrays:
+
+```python
+from hydrophysics import GWData
+from hydrophysics.baselines import climatology_prediction
+
+data = GWData.from_arrays(
+    well_ids=["w1", "w2", "w3"],
+    dates=dates,                 # length-T, anything pd.to_datetime accepts
+    target=levels,               # (3, T) groundwater level
+    rainfall=rain,               # (3, T)
+    upstream=None,               # optional (3, T); None = no upstream coupling
+    attrs=stations_df,           # per-well tm_x/tm_y (+ optional group, dist_to_coast_m…)
+    split_date="2019-01-01",
+    crs="EPSG:4326",             # your coordinate system (see note above)
+)
+print(data.validate())           # [] means good to go; otherwise a list of issues
+pred = climatology_prediction(data)
+```
+
+**From tidy long tables** — "declare your columns" with `column_map`:
+
+```python
+from hydrophysics import load_dataset_from_frames
+
+data = load_dataset_from_frames(
+    gw_long, rf_long, stations, pairing=None,
+    column_map={"DateTime": "date", "WellID": "st_id", "Level": "level",
+                "GaugeID": "rf_id", "Rain": "rainfall", "X": "tm_x", "Y": "tm_y"},
+    split_date="2019-01-01",
+)
+```
+
+Canonical columns: `gw_long` → `date, st_id, level`; `rf_long` → `date, rf_id, rainfall`;
+`stations` → `st_id, tm_x, tm_y` (+ optional attributes); optional `pairing` →
+`st_id, ups_id, rf_id, ups_lag_days, lag_days, group`.
+
+**`GWData.validate()`** returns a list of human-readable issues (missing static features,
+dead wells, empty split, non-finite coordinates). Run it before training.
+
 ## Minimum to get a result
 Required: `gw_timeseries.csv`, `rf_timeseries.csv`, `gw_stations.csv`, `gray_box_input.csv`.
 Optional: `intermediate/gw_coastal_inland_class.csv`, `gw_fit_results.csv`.

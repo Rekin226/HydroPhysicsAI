@@ -18,7 +18,7 @@ from .baselines import (
     persistence_prediction,
 )
 from .config import Config, default_config
-from .data import GWData, load_dataset
+from .data import GWData, load_dataset, load_dataset_from_frames
 from .eval import benchmark_table, evaluate_predictions, spatial_scores
 from .metrics import all_metrics, kge, kge_components, nse, rmse
 
@@ -34,6 +34,7 @@ __all__ = [
     "kge_components",
     "last_value_prediction",
     "load_dataset",
+    "load_dataset_from_frames",
     "load_graybox_baseline",
     "nse",
     "persistence_prediction",
