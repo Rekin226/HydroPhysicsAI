@@ -21,20 +21,51 @@ import numpy as np
 
 from .data import GWData
 
-# Taiwan TWD97 / TM2 zone 121 (EPSG:3826) -> WGS84 lon/lat (EPSG:4326).
+# Default: Taiwan TWD97 / TM2 zone 121 (EPSG:3826). The well CRS is configurable via
+# Config.crs (carried on GWData.crs) so the ET driver works for any region.
 _TWD97 = "EPSG:3826"
 _WGS84 = "EPSG:4326"
 _DAILY = "et0_fao_evapotranspiration"
 
 
+def _is_wgs84(crs: str) -> bool:
+    """True if ``crs`` is WGS84 lon/lat, so tm_x/tm_y are already geographic (no pyproj)."""
+    return str(crs).strip().upper().replace("EPSG:", "") in {"4326", "WGS84"}
+
+
+def _check_lonlat(lon: np.ndarray, lat: np.ndarray, crs: str) -> None:
+    """Fail loudly if coordinates don't land in valid lon/lat -- the classic silent trap
+    where Config.crs doesn't match the actual tm_x/tm_y coordinate system."""
+    bad = ~np.isfinite(lon) | ~np.isfinite(lat) | (np.abs(lon) > 180) | (np.abs(lat) > 90)
+    if bad.any():
+        i = int(np.argmax(bad))
+        raise ValueError(
+            f"Well coordinates do not resolve to valid lon/lat under crs={crs!r} "
+            f"(well {i}: lon={lon[i]!r}, lat={lat[i]!r}). Set Config.crs to the CRS of your "
+            f"TM_X97/TM_Y97 columns: an EPSG code for projected metres, or 'EPSG:4326' if "
+            f"they are already longitude/latitude."
+        )
+
+
 def wells_lonlat(data: GWData) -> tuple[np.ndarray, np.ndarray]:
-    """Per-well (lon, lat) in WGS84 from the TWD97 station coordinates."""
-    from pyproj import Transformer
-    tf = Transformer.from_crs(_TWD97, _WGS84, always_xy=True)
+    """Per-well (lon, lat) in WGS84 from the station coordinates, honouring ``data.crs``.
+
+    If the CRS is already WGS84, tm_x/tm_y are taken as lon/lat directly (no pyproj needed,
+    which also keeps the offline ET-cache path dependency-free). Otherwise the coordinates
+    are transformed from ``data.crs`` to WGS84. Raises if the result isn't valid lon/lat.
+    """
+    crs = getattr(data, "crs", _TWD97)
     tx = data.attrs["tm_x"].astype(float).to_numpy()
     ty = data.attrs["tm_y"].astype(float).to_numpy()
-    lon, lat = tf.transform(tx, ty)
-    return np.asarray(lon, float), np.asarray(lat, float)
+    if _is_wgs84(crs):
+        lon, lat = tx, ty
+    else:
+        from pyproj import Transformer
+        tf = Transformer.from_crs(crs, _WGS84, always_xy=True)
+        lon, lat = tf.transform(tx, ty)
+    lon, lat = np.asarray(lon, float), np.asarray(lat, float)
+    _check_lonlat(lon, lat, crs)
+    return lon, lat
 
 
 def _fetch_one(lat: float, lon: float, start: str, end: str) -> np.ndarray | None:

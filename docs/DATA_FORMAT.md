@@ -19,11 +19,13 @@ python -m hydrophysics.sample sample_data
 Everything below is the contract that `hydrophysics/sample.py` writes and
 `hydrophysics/data.py` reads. Match it and your data loads.
 
-> **Coordinate system note.** Station coordinates (`TM_X97`, `TM_Y97`) are currently
-> assumed to be **EPSG:3826 (TWD97 / Taiwan)** by the optional ET driver
-> (`hydrophysics.et`). The core operator/baseline/eval are CRS-agnostic and work with any
-> projected meters, but if you use the ET forcing outside Taiwan the ET is fetched at the
-> wrong location. Making the CRS configurable is tracked as an open issue.
+> **Coordinate system note.** Station coordinates (`TM_X97`, `TM_Y97`) default to
+> **EPSG:3826 (TWD97 / Taiwan)**. Set `Config.crs` to your own CRS: any projected EPSG
+> (metres) for another region, or `"EPSG:4326"` if `TM_X97`/`TM_Y97` are already
+> longitude/latitude. Only the optional ET driver (`hydrophysics.et`) uses the CRS, to
+> fetch weather at each well's true location; the core operator/baseline/eval work in
+> whatever projected metres you supply. A mismatched CRS now raises a clear error instead
+> of silently fetching ET at the wrong place.
 
 ---
 

@@ -33,6 +33,7 @@ class GWData:
     val_mask: np.ndarray    # (T,) validation period
     attrs: pd.DataFrame      # static per-well attributes, indexed by well id
     split_date: str
+    crs: str = "EPSG:3826"   # CRS of attrs.tm_x/tm_y; used only by the ET driver
 
     @property
     def n_wells(self) -> int:
@@ -137,6 +138,7 @@ def load_dataset(cfg: Config | None = None) -> GWData:
         val_mask=val_mask,
         attrs=attrs,
         split_date=cfg.split_date,
+        crs=cfg.crs,
     )
 
 
