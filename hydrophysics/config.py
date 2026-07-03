@@ -37,11 +37,16 @@ class Config:
     baseline_results: path to a gray-box ``gw_fit_results.csv`` (per-well kge_val etc.).
         Optional; if absent, only the persistence baseline is available.
     split_date: validation split (ISO date string).
+    crs: coordinate reference system of the station ``TM_X97``/``TM_Y97`` columns. Only
+        the ET driver (hydrophysics.et) needs it, to fetch weather at each well's WGS84
+        location. Defaults to Taiwan TWD97 (EPSG:3826); set ``"EPSG:4326"`` if your
+        coordinates are already lon/lat, or any projected EPSG for another region.
     """
 
     data_dir: Path = field(default_factory=lambda: _resolve_data_dir())
     baseline_results: Path | None = None
     split_date: str = DEFAULT_SPLIT_DATE
+    crs: str = "EPSG:3826"
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
