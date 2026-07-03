@@ -1,0 +1,29 @@
+name: Data / usage question
+description: Help running HydroPhysicsAI on your own well data
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Please skim **docs/DATA_FORMAT.md** first — it documents the CSV layout the loader
+        expects. If something there is unclear or your data doesn't fit, tell us here.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Which aquifer / dataset, and what result are you after (simulation, forecast)?
+    validations:
+      required: true
+  - type: textarea
+    id: data-shape
+    attributes:
+      label: What does your data look like?
+      description: >-
+        Number of wells, time span, sampling frequency, coordinate system (CRS/EPSG), and
+        whether you have rainfall gauges and an upstream/pairing topology.
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: Where are you stuck?

@@ -1,0 +1,24 @@
+name: Research idea / feature request
+description: A modeling improvement, new capability, or experiment
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to add or change?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why does it matter?
+      description: What does it unlock for a user or for the science?
+    validations:
+      required: true
+  - type: textarea
+    id: eval
+    attributes:
+      label: How would we know it worked?
+      description: >-
+        Proposed evaluation. Remember the benchmark rules — keep simulation and forecast
+        modes separate, and report a before/after skill number on the same split.

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+title: >-
+  HydroPhysicsAI: GPU physics-informed neural operators for
+  groundwater, benchmarked against per-well gray-box ODEs
+message: >-
+  If you use this software, please cite it using the metadata
+  from this file.
+type: software
+authors:
+  - given-names: Abdoul Rachid
+    family-names: Ouedraogo
+repository-code: 'https://github.com/Rekin226/HydroPhysicsAI'
+url: 'https://github.com/Rekin226/HydroPhysicsAI'
+abstract: >-
+  A single GPU-trained, physics-informed neural operator across
+  many groundwater monitoring wells, conditioned on each well's
+  static attributes and benchmarked in free-running simulation
+  mode against per-well calibrated gray-box ODEs. Includes a
+  probabilistic forecaster, an NVIDIA PhysicsNeMo port, and an
+  interactive demo.
+keywords:
+  - scientific-machine-learning
+  - physics-informed-neural-networks
+  - neural-operator
+  - groundwater
+  - hydrology
+  - pytorch
+  - physicsnemo
+license: MIT
+version: 0.0.1

@@ -1,4 +1,4 @@
-"""Load the groundwater modeling dataset from the single_tankV2 CSV inputs.
+"""Load the groundwater modeling dataset from the CSV inputs (see docs/DATA_FORMAT.md).
 
 Produces a :class:`GWData` bundle of daily, well-aligned arrays ready for both the
 baselines and (later) the neural models. Hourly groundwater levels are resampled to

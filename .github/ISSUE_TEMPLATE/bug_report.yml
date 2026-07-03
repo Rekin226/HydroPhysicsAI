@@ -1,0 +1,33 @@
+name: Bug report
+description: Something is broken or produces wrong results
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s), ideally on the bundled synthetic sample.
+      placeholder: |
+        python -m hydrophysics.run_baselines
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Python version, OS, and how you installed (pip/uv, which extras).
+      placeholder: "Python 3.11, Ubuntu 22.04, pip install -e '.[dev,gpu]'"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Traceback / logs
+      render: shell

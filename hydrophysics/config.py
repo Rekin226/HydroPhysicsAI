@@ -8,10 +8,10 @@ The data directory is resolved in this order:
 3. A bundled synthetic sample under ``hydrophysics/sample_data/`` (used by tests/CI
    and by anyone without the real data). Generate it with ``sample.write_sample``.
 
-To run on the real data, point ``HYDROMIND_GW_DATA`` at the single_tankV2 ``data/``
-directory, e.g.::
+To run on your own data, point ``HYDROMIND_GW_DATA`` at a directory laid out like the
+bundled ``hydrophysics/sample_data/`` (see ``docs/DATA_FORMAT.md``), e.g.::
 
-    export HYDROMIND_GW_DATA=~/Desktop/Postdoc/code_space/single_tankV2/data
+    export HYDROMIND_GW_DATA=/path/to/your/gw_data
 """
 
 from __future__ import annotations
