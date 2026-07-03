@@ -32,6 +32,9 @@ checkpoints/
 # Claude
 .claude/settings.local.json
 
+# Local-only internal audit (kept out of the public repo by request)
+docs/AUDIT.md
+
 # Prediction arrays (regenerate via the LOWO/forecast runs)
 *.npy
 .gstack/
