@@ -46,16 +46,19 @@ def pick_device(requested: str | None = None) -> str:
     return "cpu"
 
 
-def build_model(name: str, device: str, epochs: int, rain_memory: tuple = ()):
+def build_model(name: str, device: str, epochs: int, rain_memory: tuple = (),
+                rollout: str = "loop", amp: bool = False):
     if name == "gru":
         from .models.gru import GlobalGRU
         return GlobalGRU(device=device, epochs=epochs)
     if name == "ude":
         from .models.ude import PhysicsUDE
-        return PhysicsUDE(device=device, epochs=epochs, rain_memory=rain_memory)
+        return PhysicsUDE(device=device, epochs=epochs, rain_memory=rain_memory,
+                          rollout=rollout, amp=amp)
     if name == "ude_nemo":
         from .models.ude_physicsnemo import PhysicsNeMoUDE
-        return PhysicsNeMoUDE(device=device, epochs=epochs, rain_memory=rain_memory)
+        return PhysicsNeMoUDE(device=device, epochs=epochs, rain_memory=rain_memory,
+                              rollout=rollout, amp=amp)
     if name == "pinn":
         from .models.pinn_field import SpatialPINN
         return SpatialPINN(device=device, epochs=epochs)
@@ -75,6 +78,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--et", action="store_true",
                     help="use net recharge (rain - ET0) instead of rain, with FAO-56 ET0 "
                          "from Open-Meteo (cached). With --rain-memory, lifts 0.704 -> 0.754.")
+    ap.add_argument("--rollout", default="loop", choices=["loop", "scan", "adjoint"],
+                    help="(ude/ude_nemo) integrator backend: loop = reference sequential "
+                         "semi-implicit step, scan = same recurrence chunk-parallel (GPU-"
+                         "efficient), adjoint = torchdiffeq.odeint_adjoint (constant-memory).")
+    ap.add_argument("--amp", action="store_true",
+                    help="(ude/ude_nemo) bf16 autocast for the training step (CUDA only)")
     ap.add_argument("--et-coef", type=float, default=1.0, help="ET0 subtraction coefficient")
     ap.add_argument("--et-cache", default="results/et/openmeteo_et0_2012_2022.npz",
                     help="ET0 .npz cache (fetched from Open-Meteo if absent)")
@@ -102,7 +111,8 @@ def main(argv: list[str] | None = None) -> None:
     device = pick_device(args.device)
     print(f"device: {device} | model: {args.model} | epochs: {args.epochs}")
 
-    model = build_model(args.model, device, args.epochs, rain_memory=rain_memory)
+    model = build_model(args.model, device, args.epochs, rain_memory=rain_memory,
+                        rollout=args.rollout, amp=args.amp)
     model.fit(data)
     pred = model.simulate(data)
 

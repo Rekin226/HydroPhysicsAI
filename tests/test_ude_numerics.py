@@ -95,6 +95,50 @@ def test_physics_residual_zero_on_exact_ode():
     assert resid.item() < 1e-12
 
 
+def test_scan_rollout_matches_loop():
+    """The chunk-parallel scan is the *same* recurrence as the sequential loop; in
+    float64 the two must agree to reassociation-level tolerance, including across
+    chunk boundaries (T deliberately not a multiple of the chunk size)."""
+    from hydrophysics.models.ude import PhysicsUDE
+    m = _model()
+    torch.manual_seed(3)
+    W, T = 5, 700                                              # 700 = 5*128 + 60 remainder
+    params = torch.randn(W, m._n_params(), dtype=_D)
+    dyn = torch.randn(W, T, 4, dtype=_D)
+    anchor = torch.zeros(W, dtype=_D)
+    h0 = torch.randn(W, dtype=_D) * 10
+
+    loop = m._rollout(params, dyn, h0, anchor)
+    g, s = m._decay_and_source(params, dyn, anchor)
+    scan = PhysicsUDE._rollout_scan(g, s, h0)
+    assert torch.allclose(loop, scan, atol=1e-9)
+
+
+def test_adjoint_rollout_tracks_ode_and_stays_stable():
+    """The adjoint backend integrates the continuous ODE dh/dt = -g*h + s(t). Under
+    constant forcing it must reach the same equilibrium h* = s/g as the discrete
+    scheme, stay finite, and support backprop through odeint_adjoint."""
+    pytest.importorskip("torchdiffeq")
+    from hydrophysics.models.ude import PhysicsUDE
+    m = _model()
+    torch.manual_seed(4)
+    W, T = 3, 300
+    params = (torch.randn(W, m._n_params(), dtype=_D) * 0.3).requires_grad_(True)
+    dyn = torch.randn(W, 1, 4, dtype=_D).expand(W, T, 4).contiguous()
+    anchor = torch.zeros(W, dtype=_D)
+    h0 = torch.full((W,), 5.0, dtype=_D)
+
+    g, s = m._decay_and_source(params, dyn, anchor)
+    h_star = s[:, -1] / g
+    sim = PhysicsUDE._rollout_adjoint(g, s, h0)
+    assert sim.shape == (W, T)
+    assert torch.isfinite(sim).all()
+    assert torch.allclose(sim[:, -1], h_star, atol=1e-3)
+    # gradients flow back through the adjoint to the hypernet parameters
+    sim.sum().backward()
+    assert params.grad is not None and torch.isfinite(params.grad).all()
+
+
 def test_lowo_ignores_validation_observations(data):
     """Leave-one-well-out must never see validation-period observations: poisoning every
     well's validation target leaves the held-out predictions bit-identical (the loss uses

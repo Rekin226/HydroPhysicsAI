@@ -34,6 +34,7 @@ checkpoints/
 
 # Local-only internal audit (kept out of the public repo by request)
 docs/AUDIT.md
+docs/PHASE1_AUDIT.md
 
 # Prediction arrays (regenerate via the LOWO/forecast runs)
 *.npy
