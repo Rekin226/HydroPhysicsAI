@@ -135,10 +135,24 @@ class PhysicsUDE(GroundwaterModel):
                  physics_weight: float = 0.1, anchor_level: bool = True,
                  normalize_loss: bool = True, lr_min: float | None = 1e-4,
                  anchor_equilibrium: bool = False, rain_memory: tuple = (),
+                 rollout: str = "loop", amp: bool = False,
                  feature_fn=None, device: str | None = None, seed: int = 0):
         _require_torch()
         self.hidden, self.epochs, self.lr, self.seed = hidden, epochs, lr, seed
         self.physics_weight = physics_weight
+        # Integrator backend for the free-running rollout (same recurrence, three ways):
+        #   "loop"    -- the original sequential semi-implicit step (reference).
+        #   "scan"    -- the identical linear recurrence evaluated chunk-parallel as
+        #                banded-triangular matmuls; T/chunk matmuls instead of T tiny
+        #                kernel launches, so the GPU is compute- not launch-bound.
+        #   "adjoint" -- torchdiffeq.odeint_adjoint on the continuous-time ODE
+        #                dh/dt = -g*h + s(t) (constant-memory backprop; a different
+        #                discretization, so results are close but not bit-identical).
+        if rollout not in ("loop", "scan", "adjoint"):
+            raise ValueError(f"rollout must be loop|scan|adjoint, got {rollout!r}")
+        self.rollout = rollout
+        # bf16 autocast over the training step (CUDA only; no GradScaler needed).
+        self.amp = amp
         # Rainfall recharge memory: aquifers integrate rainfall over weeks-months, so a
         # single instantaneous b*rain term underfits the recharge response. With
         # rain_memory=(decay1, decay2, ...) the rainfall enters through that many causal
@@ -259,20 +273,25 @@ class PhysicsUDE(GroundwaterModel):
         opt = torch.optim.Adam(self.hypernet.parameters(), lr=self.lr)
         sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, self.epochs, eta_min=self.lr_min)
                  if self.lr_min is not None else None)
+        use_amp = self.amp and str(self.device).startswith("cuda")
+        import contextlib
+        amp_ctx = (torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+                   if use_amp else contextlib.nullcontext())
         for _ in range(self.epochs):
             opt.zero_grad()
-            params = self.hypernet(stat_n)            # (W, n_params)
-            pred = self._rollout(params, dyn, h0, anchor, force_mean, api)     # (W, T)
-            # Per-well scale weights every well equally (matches the per-well-median
-            # KGE we report); scale is 1 when normalize_loss is off.
-            data_loss = (((pred - target) / scale[:, None]) ** 2 * obs_mask).sum() \
-                / obs_mask.sum().clamp_min(1.0)
-            # Physics-residual: enforce the mass-balance ODE on observed training days,
-            # teacher-forced (decoupled from the free rollout). This is the "informed"
-            # half of physics-informed: it constrains the dynamics, not just the fit.
-            phys_loss = self._physics_residual(params, dyn, target, obs_mask, anchor, scale,
-                                               force_mean, api)
-            loss = data_loss + self.physics_weight * phys_loss
+            with amp_ctx:
+                params = self.hypernet(stat_n)            # (W, n_params)
+                pred = self._rollout(params, dyn, h0, anchor, force_mean, api)     # (W, T)
+                # Per-well scale weights every well equally (matches the per-well-median
+                # KGE we report); scale is 1 when normalize_loss is off.
+                data_loss = (((pred - target) / scale[:, None]) ** 2 * obs_mask).sum() \
+                    / obs_mask.sum().clamp_min(1.0)
+                # Physics-residual: enforce the mass-balance ODE on observed training days,
+                # teacher-forced (decoupled from the free rollout). This is the "informed"
+                # half of physics-informed: it constrains the dynamics, not just the fit.
+                phys_loss = self._physics_residual(params, dyn, target, obs_mask, anchor, scale,
+                                                   force_mean, api)
+                loss = data_loss + self.physics_weight * phys_loss
             loss.backward()
             opt.step()
             if sched is not None:
@@ -409,11 +428,15 @@ class PhysicsUDE(GroundwaterModel):
         Euler loop this replaces could diverge to NaN for large early-training g. The
         update is fully differentiable, so gradients flow through the whole rollout.
 
-        NVIDIA GPU path: for very long rollouts where storing every step is the
-        bottleneck, swap this loop for torchdiffeq.odeint_adjoint over the same
-        ``_decay_and_source`` ODE (constant-memory backprop), or port to PhysicsNeMo.
+        Backend is selected by ``self.rollout``: "loop" (reference sequential step),
+        "scan" (same recurrence, chunk-parallel -- see _rollout_scan), or "adjoint"
+        (torchdiffeq.odeint_adjoint on the continuous ODE -- see _rollout_adjoint).
         """
         g, s = self._decay_and_source(params, dyn, anchor, force_mean, api)
+        if self.rollout == "scan":
+            return self._rollout_scan(g, s, h0)
+        if self.rollout == "adjoint":
+            return self._rollout_adjoint(g, s, h0)
         denom = 1.0 + g                                  # backward-Euler, dt = 1 day
         _, T = s.shape
         h = h0.clone()
@@ -422,6 +445,62 @@ class PhysicsUDE(GroundwaterModel):
             h = (h + s[:, t]) / denom
             out.append(h)
         return torch.stack(out, dim=1)
+
+    @staticmethod
+    def _rollout_scan(g, s, h0, chunk: int = 128) -> torch.Tensor:
+        """The identical semi-implicit recurrence, evaluated chunk-parallel.
+
+        The update h[t] = (h[t-1] + s_t) / (1+g) is the linear recurrence
+        h[t] = r*h[t-1] + r*s_t with contraction r = 1/(1+g), whose closed form over a
+        chunk of C days is a banded lower-triangular weighting of the forcing:
+        h[i] = r^(i+1)*h_in + sum_{j<=i} r^(i-j+1) * s_j. Evaluating that as one
+        (W,C,C) x (W,C) matmul per chunk replaces T tiny sequential kernel launches
+        with T/C batched matmuls -- same math (up to float reassociation), but the GPU
+        is compute-bound instead of launch-bound. r < 1 so the in-chunk powers only
+        underflow (harmlessly) and never overflow; the chunk-to-chunk carry stays exact.
+        """
+        r = 1.0 / (1.0 + g)                              # (W,) contraction per well
+        W, T = s.shape
+        outs = []
+        h = h0.clone()
+        for start in range(0, T, chunk):
+            sc = s[:, start:start + chunk]               # (W, C)
+            C = sc.shape[1]
+            m = torch.arange(C, device=s.device)
+            p = r[:, None] ** (m[None, :] + 1).to(s.dtype)          # (W, C): r^1..r^C
+            lag = m[:, None] - m[None, :]                            # (C, C): i - j
+            M = p[:, lag.clamp(min=0)] * (lag >= 0).to(s.dtype)      # (W, C, C) banded tri
+            h_out = torch.bmm(M, sc.unsqueeze(-1)).squeeze(-1) + p * h.unsqueeze(-1)
+            h = h_out[:, -1]
+            outs.append(h_out)
+        return torch.cat(outs, dim=1)
+
+    @staticmethod
+    def _rollout_adjoint(g, s, h0) -> torch.Tensor:
+        """Continuous-time integration of dh/dt = -g*h + s(t) with adjoint backprop.
+
+        torchdiffeq.odeint_adjoint recomputes states in the backward pass, so training
+        memory is O(1) in the rollout length instead of O(T) autograd-graph nodes. The
+        forcing is held piecewise-constant over each day (s(t) = s[floor(t)]), matching
+        the daily forcing resolution; states are read at t = 1..T so index t aligns with
+        the discrete rollout's day-t output. This is a *different discretization* than
+        the semi-implicit step (continuous exponential decay vs backward Euler), so
+        predictions are close but not bit-identical -- benchmark both.
+        """
+        from torchdiffeq import odeint_adjoint
+
+        W, T = s.shape
+
+        class _AffineODE(torch.nn.Module):
+            def forward(self, t, h):
+                idx = int(t.clamp(min=0.0, max=float(T - 1)).floor())
+                return -g * h + s[:, idx]
+
+        func = _AffineODE()
+        tgrid = torch.arange(T + 1, device=s.device, dtype=s.dtype)
+        traj = odeint_adjoint(func, h0, tgrid, method="dopri5", rtol=1e-4, atol=1e-5,
+                              adjoint_params=(g, s))     # (T+1, W)
+        return traj[1:].transpose(0, 1)
 
     def _physics_residual(self, params, dyn, target, obs_mask, anchor, scale,
                           force_mean=None, api=None) -> torch.Tensor:
