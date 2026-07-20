@@ -36,6 +36,7 @@ checkpoints/
 docs/AUDIT.md
 docs/PHASE1_AUDIT.md
 docs/PHASE2_LITERATURE.md
+docs/manuscript/
 
 # Prediction arrays (regenerate via the LOWO/forecast runs)
 *.npy
