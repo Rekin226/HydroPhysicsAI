@@ -1,0 +1,79 @@
+# Auto-restart the HF demo Space when it gets stuck in RUNTIME_ERROR.
+#
+# Context: free cpu-basic Spaces sleep after 48h idle; a transiently failed
+# wake/rebuild leaves the Space in a sticky RUNTIME_ERROR ("Launch timed out,
+# workload was not healthy after 30 min") until someone manually restarts it
+# (happened 2026-07-20). This check restarts it automatically.
+#
+# Requires the HF_TOKEN repo secret (a HF token with write access to the
+# Space): gh secret set HF_TOKEN < ~/.cache/huggingface/token
+name: space-health
+
+on:
+  schedule:
+    - cron: "7,37 * * * *" # every 30 min (offset to dodge top-of-hour congestion)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check Space health and restart if stuck
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE: Rekin226/HydroPhysicsAI-demo
+        run: |
+          set -u
+          if [ -z "${HF_TOKEN}" ]; then
+            echo "::warning::HF_TOKEN secret not set — health check skipped. Run: gh secret set HF_TOKEN < ~/.cache/huggingface/token"
+            exit 0
+          fi
+          auth=(-H "Authorization: Bearer ${HF_TOKEN}")
+          api="https://huggingface.co/api/spaces/${SPACE}"
+
+          stage=$(curl -sf "${auth[@]}" "${api}/runtime" | jq -r .stage)
+          echo "stage: ${stage}"
+
+          case "${stage}" in
+            RUNNING)
+              # Stage can lie; make sure the app actually serves.
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "https://rekin226-hydrophysicsai-demo.hf.space/")
+              echo "http: ${code}"
+              [ "${code}" = "200" ] && exit 0
+              echo "::warning::stage RUNNING but app returned HTTP ${code} — restarting"
+              ;;
+            SLEEPING|BUILDING|APP_STARTING|RUNNING_APP_STARTING|RUNNING_BUILDING)
+              # Healthy or in transit; sleeping Spaces wake on visit.
+              exit 0
+              ;;
+            PAUSED)
+              # Paused intentionally by the owner — leave it alone.
+              exit 0
+              ;;
+            RUNTIME_ERROR)
+              msg=$(curl -sf "${auth[@]}" "${api}/runtime" | jq -r '.errorMessage // "unknown"')
+              echo "::warning::Space in RUNTIME_ERROR (${msg}) — restarting"
+              ;;
+            *)
+              # BUILD_ERROR etc: a restart won't fix a broken build; notify instead.
+              echo "::error::Space in unexpected stage '${stage}' — manual attention needed"
+              exit 1
+              ;;
+          esac
+
+          curl -sf -X POST "${auth[@]}" "${api}/restart" > /dev/null
+          echo "restart requested; waiting for RUNNING (up to 10 min)"
+          for i in $(seq 1 60); do
+            sleep 10
+            stage=$(curl -sf "${auth[@]}" "${api}/runtime" | jq -r .stage)
+            echo "[${i}] ${stage}"
+            if [ "${stage}" = "RUNNING" ]; then
+              echo "Space recovered."
+              exit 0
+            fi
+          done
+          echo "::error::Space did not reach RUNNING within 10 min of restart"
+          exit 1
