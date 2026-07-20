@@ -45,3 +45,7 @@ docs/manuscript/
 # Interactive explorer HTML (large generated artifact; regenerate via
 # `python -m hydrophysics.explorer`)
 results/explorer/*.html
+
+# Local manuscript figure/rerun outputs (regenerable)
+results/figures_ms/
+results/forecast_rerun/
