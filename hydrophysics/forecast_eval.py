@@ -34,6 +34,9 @@ def _aggregate(rows: dict[str, dict]) -> dict[str, float]:
         "kge_median": df["kge"].median(),
         "kge_mean": df["kge"].mean(),
         "nse_median": df["nse"].median(),
+        # R^2 as the squared Pearson correlation (KGE's r component), the journal-
+        # conventional companion to NSE/RMSE.
+        "r2_median": (df["kge_r"] ** 2).median(),
         "rmse_median": df["rmse"].median(),
         "n_wells": int(df["kge"].notna().sum()),
     }
