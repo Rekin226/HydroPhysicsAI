@@ -1,0 +1,9 @@
+config,model,rollout,amp,capture,train_s,peak_gpu_mb,kge_median,nse_median,rmse_median,speedup_vs_pre
+pre_port__ude_loop,ude,loop,False,none,248.7,32.4,0.5912,0.4905,1.0691,1.0
+port__ude_nemo_loop,ude_nemo,loop,False,none,246.7,32.4,0.5912,0.4905,1.0691,1.01
+post__ude_scan,ude,scan,False,none,38.7,163.5,0.6476,0.5114,1.1407,6.43
+post__ude_loop_amp,ude,loop,True,none,244.7,32.4,0.6494,0.5871,0.9532,1.02
+post__ude_nemo_scan_amp,ude_nemo,scan,True,none,39.6,103.6,0.6406,0.5536,0.9611,6.28
+graph__ude_nemo_loop_cudagraph,ude_nemo,loop,False,cudagraph,69.4,58.8,0.5912,0.4905,1.0691,3.58
+graph__ude_nemo_scan_cudagraph,ude_nemo,scan,False,cudagraph,37.1,215.3,0.6476,0.5114,1.1407,6.7
+graph__ude_scan_compile,ude,scan,False,compile,4.2,114.3,0.6434,0.5262,0.9989,59.21

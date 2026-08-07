@@ -1,0 +1,7 @@
+config,t_1500ep_s,t_3000ep_s,ms_per_epoch,kind,per_step_speedup
+"loop (pre-port, eager)",248.7,,165.8,average,1.0
+loop + PhysicsNeMo cudagraph,69.4,,46.27,average,3.6
+scan (eager),38.7,78.6,26.6,marginal,6.2
+scan + PhysicsNeMo cudagraph,37.1,,24.73,average,6.7
+scan + torch.compile (warm),4.2,7.3,2.07,marginal,80.1
+scan + torch.compile (cold),15.1,,10.07,average,16.5

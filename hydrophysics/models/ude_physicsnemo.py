@@ -99,9 +99,14 @@ if _HAS_TORCH and _HAS_PHYSICSNEMO:
         """
 
         def __init__(self, n_in: int, hidden: int, n_params: int):
-            # amp=True advertises this model as mixed-precision safe to the PhysicsNeMo
-            # training utilities; the architecture is pure Linear/SiLU so bf16/AMP are fine.
-            super().__init__(meta=ModelMetaData(amp=True, auto_grad=True))
+            # Capability metadata is what the PhysicsNeMo training utilities introspect,
+            # and it is opt-in: StaticCaptureTraining silently disables CUDA graphs unless
+            # cuda_graphs=True is declared here. The declarations are truthful for this
+            # model -- the architecture is pure Linear/SiLU (so bf16/AMP are safe) and the
+            # whole training step has static shapes with no data-dependent control flow
+            # and no host synchronization, which is exactly the graph-capture precondition.
+            super().__init__(meta=ModelMetaData(amp=True, bf16=True, auto_grad=True,
+                                                cuda_graphs=True))
             self.net = nn.Sequential(
                 nn.Linear(n_in, hidden), nn.SiLU(),
                 nn.Linear(hidden, hidden), nn.SiLU(),

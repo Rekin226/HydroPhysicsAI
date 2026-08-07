@@ -47,18 +47,18 @@ def pick_device(requested: str | None = None) -> str:
 
 
 def build_model(name: str, device: str, epochs: int, rain_memory: tuple = (),
-                rollout: str = "loop", amp: bool = False):
+                rollout: str = "loop", amp: bool = False, capture: str = "none"):
     if name == "gru":
         from .models.gru import GlobalGRU
         return GlobalGRU(device=device, epochs=epochs)
     if name == "ude":
         from .models.ude import PhysicsUDE
         return PhysicsUDE(device=device, epochs=epochs, rain_memory=rain_memory,
-                          rollout=rollout, amp=amp)
+                          rollout=rollout, amp=amp, capture=capture)
     if name == "ude_nemo":
         from .models.ude_physicsnemo import PhysicsNeMoUDE
         return PhysicsNeMoUDE(device=device, epochs=epochs, rain_memory=rain_memory,
-                              rollout=rollout, amp=amp)
+                              rollout=rollout, amp=amp, capture=capture)
     if name == "pinn":
         from .models.pinn_field import SpatialPINN
         return SpatialPINN(device=device, epochs=epochs)
@@ -84,6 +84,10 @@ def main(argv: list[str] | None = None) -> None:
                          "efficient), adjoint = torchdiffeq.odeint_adjoint (constant-memory).")
     ap.add_argument("--amp", action="store_true",
                     help="(ude/ude_nemo) bf16 autocast for the training step (CUDA only)")
+    ap.add_argument("--capture", default="none", choices=["none", "cudagraph", "compile"],
+                    help="(ude/ude_nemo) eliminate per-step launch overhead: cudagraph = "
+                         "PhysicsNeMo StaticCaptureTraining (needs --model ude_nemo), "
+                         "compile = torch.compile. CUDA only.")
     ap.add_argument("--et-coef", type=float, default=1.0, help="ET0 subtraction coefficient")
     ap.add_argument("--et-cache", default="results/et/openmeteo_et0_2012_2022.npz",
                     help="ET0 .npz cache (fetched from Open-Meteo if absent)")
@@ -112,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"device: {device} | model: {args.model} | epochs: {args.epochs}")
 
     model = build_model(args.model, device, args.epochs, rain_memory=rain_memory,
-                        rollout=args.rollout, amp=args.amp)
+                        rollout=args.rollout, amp=args.amp, capture=args.capture)
     model.fit(data)
     pred = model.simulate(data)
 

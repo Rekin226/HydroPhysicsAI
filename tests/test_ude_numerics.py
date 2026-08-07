@@ -156,3 +156,30 @@ def test_lowo_ignores_validation_observations(data):
                                feature_fn=observable_features)
 
     assert np.allclose(clean, dirty, equal_nan=True)
+
+
+def test_capture_backend_validation():
+    """``capture`` is validated at construction (a typo must not silently train eager),
+    and the CUDA-only backends refuse a CPU device rather than degrading quietly."""
+    from hydrophysics.models.ude import PhysicsUDE
+    with pytest.raises(ValueError, match="capture must be"):
+        PhysicsUDE(capture="cudagraphs", device="cpu")
+    m = PhysicsUDE(epochs=1, capture="compile", device="cpu")
+    with pytest.raises(ValueError, match="needs a CUDA device"):
+        m._make_step(lambda: None, None, None, False)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-graph capture needs a GPU")
+def test_cudagraph_capture_matches_eager_training(data):
+    """PhysicsNeMo StaticCaptureTraining records forward+backward and replays it, so it
+    must reproduce eager training exactly -- same seed, same epochs, same weights. This
+    is the guard on the capture rows of the port benchmark: a replayed graph that silently
+    accumulated gradients (or skipped the optimizer) would still *run* and still look fast.
+    """
+    pytest.importorskip("physicsnemo")
+    from hydrophysics.models.ude_physicsnemo import PhysicsNeMoUDE
+    ds = data
+    eager = PhysicsNeMoUDE(epochs=25, rollout="scan", device="cuda", seed=1).fit(ds)
+    captured = PhysicsNeMoUDE(epochs=25, rollout="scan", device="cuda", seed=1,
+                              capture="cudagraph").fit(ds)
+    np.testing.assert_allclose(eager.simulate(ds), captured.simulate(ds), rtol=0, atol=1e-4)
