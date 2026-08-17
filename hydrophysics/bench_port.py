@@ -9,6 +9,16 @@ so the "does the NVIDIA stack help" question is answered by one table:
   - ude / scan            : GPU-parallel chunked-scan rollout (same recurrence)
   - ude / loop + amp      : bf16 autocast training
   - ude_nemo / scan + amp : the full post-port configuration
+  - ude_nemo / +cudagraph : PhysicsNeMo StaticCaptureTraining on loop and on scan
+  - ude / scan + compile  : torch.compile, the plain-PyTorch control for the same effect
+
+Timing caveats for the capture rows. torch.compile caches compiled kernels on disk, so
+a second run in the same TORCHINDUCTOR_CACHE_DIR skips compilation and reports a
+misleadingly low wall-clock; quote cold-cache numbers, or separate the one-time cost
+from the steady state by timing two epoch counts (see results/bench_port/
+capture_per_epoch.csv). Compiled results are also not bit-reproducible across cache
+states -- kernel selection changes the float reassociation -- so the same seed-spread
+discipline as the scan rollout applies.
 
 The adjoint backend is benchmarked separately at the micro level (see the audit
 report): constant-memory backprop works, but at this scale (61 wells, ~4000 days,
