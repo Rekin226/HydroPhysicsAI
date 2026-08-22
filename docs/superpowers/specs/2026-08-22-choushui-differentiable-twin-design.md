@@ -1,6 +1,6 @@
 # Choushui Differentiable Digital Twin — Design
 
-**Date:** 2026-08-22
+**Date:** 2026-08-22 (rev. 2026-08-23, §4/§4.1 after the AMP_V2 experiment)
 **Status:** Approved (brainstorming), pending spec review
 **Author:** brainstormed with Claude
 **Doubles as:** pre-registration. Gates, baselines and success criteria below are fixed
@@ -111,14 +111,22 @@ directly (`10.1016/j.enggeo.2022.106543` at Huwei, Yunlin, inside this study are
 
 ```
 electricity  E(pump, month)  →  Q = η · E / (ρ g · lift)     lift = ground elev − simulated head + losses
-AMP          a(well, day)    →  Q_local ≈ a · C(T, S)        C = drawdown coefficient from learned T, S
+AMP-G        a(t) · d(t)     →  Q_local ∝ amplitude × duty   rate × duration = volume
 heads        h(well, t)      →  the state both must explain
 ```
 
 Only `η` (a few parameters per purpose/HP class, calibrated on the 475 high-frequency
-meters) and `C` (supplied by the learned `T`, `S`) are unknown, and both are
-low-dimensional. This replaces a low-rank spatiotemporal inversion and removes the largest
-technical risk in the project.
+meters) and the AMP-G scaling are unknown, and both are low-dimensional. This replaces a
+low-rank spatiotemporal inversion and removes the largest technical risk in the project.
+
+**Revised 2026-08-23 after the AMP_V2 experiment.** The AMP channel was originally specified
+as stress, `Q_local ≈ a · C(T,S)`, with the drawdown coefficient supplied by the learned
+parameters. Measurement showed amplitude alone is a weak cross-well discriminator
+(ρ = +0.255 against irrigation electricity, n=71) because it confounds pumping with `T` and
+`S` — exactly the limitation the 2023 AMP paper flagged. **Duty cycle solves it**: being a
+timing property it is not scaled by `T` or `S`, and `volume = amplitude × duty` reaches
+ρ = +0.424 (p = 0.007), a 48% improvement on identical wells. The twin therefore ingests
+volume, not stress.
 
 **The residual between the two pumping estimates is modelled explicitly as the
 unregistered-abstraction field**, not absorbed into noise.
@@ -128,30 +136,38 @@ delivers less water. This energy–water feedback is real, policy-relevant, and 
 this fan. It also lets a scenario be expressed in something a regulator controls —
 electricity supply or tariff to agricultural wells.
 
-### 4.1 AMP v2
+### 4.1 AMP-G (built and evaluated — see `AMP_V2/README.md`)
 
-Extends Ouédraogo, Hsu & Wang 2023 (`10.1061/JHYEFF.HEENG-5760`), which established AMP on
-three Tuku wells from hourly data and stated its own limitation: *"the multiplication of AMP
-by the drawdown coefficient results in the average pumping rate… the inclusion of the aquifer
-properties will lead to interesting results."* This model supplies those properties.
+Extends Ouédraogo, Hsu & Wang 2023 (`10.1061/JHYEFF.HEENG-5760`). An unconstrained survey
+of 34 wells over 11 years finds a **median 3.9 coherent spectral lines per well**; AMP
+measures one. AMP-G detects lines against a local noise floor, complex-demodulates each,
+attributes them physically, and inverts the harmonic ladder for **duty cycle**
+(`A2/A1 = |cos(πd)|`, fitted jointly with aquifer attenuation `α`).
 
-Verified on the 61 cached wells before writing this spec: **38 of 49 analysable wells have
-their dominant 0.5–5 cpd spectral peak at exactly 1.00 cpd**, SNR median **63×** over the
-3–5 cpd noise floor (>3× at 48/49); A(1 cpd) median 0.92 cm, p90 4.9 cm, max 11.2 cm; a
-2 cpd harmonic exceeding 30% of the 1 cpd line at **24 wells** (duty-cycle structure);
-sampling is 10-min at 36 wells. Tidal 1.93 cpd stays 0.1–1.7 cm, negligible as the original
-paper argued.
+**What the evaluation established, and what it did not:**
 
-v1's fixed narrow band-pass at 1 cpd assumes stationarity, which the harmonic structure and
-the 2021 drought both violate. v2 uses **GAFD + Hilbert (HGT)** per Lin et al. 2023
-(`10.3390/s23083785`) to obtain *instantaneous* amplitude and frequency — pumping intensity
-**and** schedule — adaptively, without mode mixing or boundary effects. Band-pass vs HGT is
-an ablation, not an assumption.
+| claim | verdict |
+|---|---|
+| HGT/GAFD beats the published band-pass on amplitude | **No.** 0.988 vs 0.994 synthetic; +0.231 vs +0.303 per-well real |
+| Multi-band amplitude adds information | **No.** +7%, p = 0.19 |
+| Sub-daily "irrigation rotation" band helps | **No — it hurts.** ρ 0.202, p = 0.027. Hypothesis rejected |
+| Duty cycle is a new, aquifer-independent observable | **Yes.** volume ρ = +0.424 (p = 0.007) vs amplitude +0.286, same 40 wells |
+| `α` is a usable T/S diagnostic | **Plausible.** Splits by layer: 0.21 at 38 m vs 0.49 at 119 m |
 
-AMP contributes what the census cannot: unregistered wells (hydraulic stress regardless of
-registration), aquifer-layer discrimination (the original paper's layer-1 sites read
-0.22/0.08 m against layer-2 at 0.02 m), coverage outside Yunlin, and daily rather than
-monthly timing.
+Bootstrap on the improvement: +0.137, 95% CI **[−0.008, +0.323]**, P(improvement) = 0.964.
+Real but not conclusively established — it enters the twin as an observable with honest
+uncertainty, never as a headline claim.
+
+**Availability limit, load-bearing for Plan B:** duty needs ≥3 detected harmonics and is
+recoverable at only **40 of 161** wells with a signature. The twin must use
+`volume = amp × duty` where available and `amp_fund` elsewhere, with different noise
+models for the two cases.
+
+**AMP is irrigation-specific.** Seasonal correlation with rice/dry-crop electricity is
++0.66 to +0.75, but −0.17 with aquaculture and −0.15 with domestic. Consequence for §4:
+the gap between AMP-implied and electricity-implied abstraction is **not** purely
+unregistered pumping — it also contains the non-irrigation purpose mix, which must be
+modelled separately before any unregistered-abstraction claim is made.
 
 ## 5. Observation model and uncertainty
 
@@ -256,6 +272,10 @@ balance. Reported as a bounded inference, never as a measurement.
 
 **Uncertainty calibration** via coverage/PICP on held-out data, matching the discipline
 already applied to the forecasting track.
+
+**Already discharged:** the AMP channel's own validation is complete (`AMP_V2/`), against
+1,736,085 monthly electricity readings from 15,019 pumps. Its numbers are fixed above and
+are not to be re-tuned during Plan B.
 
 **Negative results will be reported.** If a full rheology with 40× more sites still fails to
 generalize, that is a strong finding against a literature that has assumed sparsity was the
