@@ -216,6 +216,48 @@ Each stage is independently valuable and each gate is a genuine continue/kill de
 Stages 1 and 2 can each kill or redirect the project within weeks, before the expensive
 machinery exists. That ordering is the main risk control.
 
+### Results (2026-08-23, commit `011df32`, final fix wave on `feat/choushui-twin-plan-a`)
+
+**Stage 1 — 888 leveling sites** (`python -m hydrophysics.twin.sk_leveling --min-obs 5`):
+
+| tectonic | n_sites | var_removed | sk_single (in-sample) | sk_loso_pooled | coast-regression LOSO (compaction) | coast-regression LOSO (Sk-space) |
+|---|---|---|---|---|---|---|
+| none | 888 | 0.000 | +0.119 | +0.116 | +0.062 | −0.102 |
+| planar | 888 | 0.208 | −0.158 | −0.161 | −0.180 | −0.021 |
+
+Gate: LOSO compaction R² > 0 means spatial sparsity was the wall; still negative means the
+model form is. Result: positive (+0.062 to +0.116) with no tectonic correction, negative
+once the planar tilt is removed — inconclusive rather than a clean pass, but nowhere near
+as negative as the 14-site MLCW numbers below, consistent with sparsity being *part* of
+the original problem even though the algebraic form still underperforms once the tectonic
+correction is applied.
+
+**Stage 2 — 14 MLCW compaction wells** (`python -m hydrophysics.twin.calibrate_mlcw --epochs 2000`):
+
+| n_sites | n_cells | loss | sk_insample | sk_loso | sk_coast_loso | vep_loso | vep_shared_loso |
+|---|---|---|---|---|---|---|---|
+| 14 | 1296 | 0.0077 | −0.298 | −0.556 | −4.000 | −0.707 | −0.944 |
+
+`sk_loso` (pooled single-`Sk`, LOSO, −0.556) and `vep_shared_loso` (one global 4-parameter
+VEP column fit jointly across all training sites, LOSO, −0.944) are the like-for-like
+model-form comparison: both are pooled estimators with no per-site covariates. The shared
+VEP arm has only 4 parameters over ~1,296 training cells, so identifiability is not the
+limiting factor for that arm -- and it still loses to a single scalar `Sk`. Stated plainly:
+**the rheology, tested on equal footing, does not beat the algebraic baseline at these 14
+sites.**
+
+The per-site arm (`vep_loso`, 52 free parameters collapsed by a weighted mean of
+log-parameters, −0.707) scores better than the shared arm (−0.944) but worse than
+`sk_loso` (−0.556), and 6/14 folds gave zero gradient on `log_skv`/`log_tau` in that
+per-site fit (those sites carry only their initialization value into the average). Both
+facts are recorded without over-interpreting them: the per-site number is not a clean
+rheology result either, since a chunk of its parameters never moved.
+
+Gate: VEP LOSO beats single-`Sk` LOSO on identical (h, obs, mask) arrays. The
+`vep_shared_loso` arm (one global 4-parameter column fit jointly across all training
+sites, not fit-per-site-then-averaged) is the structural test of the rheology itself,
+per-item 2 of the final fix wave.
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).

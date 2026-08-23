@@ -154,11 +154,16 @@ fan with a **Head / Subsidence** toggle:
 A validation panel plots predicted vs observed compaction at those sites. **Honest result:
 no head→subsidence coupling we tried generalizes** (`python -m hydrophysics.subsidence_report`):
 
-| coupling | leave-one-site-out R² | verdict |
-|---|---|---|
-| single basin-wide `Sk` | −0.28 (compaction) | worse than the mean |
-| spatial IDW of per-site `Sk` | −2.40 (compaction) | worse |
-| `Sk = exp(β₀+β₁·distance_to_coast)` | −0.29 (Sk-space gate) · −2.10 (compaction) | **fails the gate** |
+| coupling | evaluation | R² | verdict |
+|---|---|---|---|
+| single basin-wide `Sk` | in-sample, pooled (`calibrate_sk_from_pairs`) | −0.28 (compaction) | worse than the mean |
+| spatial IDW of per-site `Sk` | reported in the coast-regression design doc; not reproduced by a script in this repo | −2.40 (compaction) | worse |
+| `Sk = exp(β₀+β₁·distance_to_coast)` | **leave-one-site-out** (`loso_sk_regression`) | −0.29 (Sk-space gate) · −2.10 (compaction) | **fails the gate** |
+
+Only the coast-regression row above is an honest leave-one-site-out number; the single-`Sk`
+row is an in-sample fit (it is fit and scored on the same 14 sites) and is not directly
+comparable to it. The Stage-1/Stage-2 twin-track gates below redo this comparison
+like-for-like — see "Results" in the differentiable-twin design doc.
 
 Each MLCW site is individually well-explained (per-site `Sk` in-sample R² = 0.81), and `Sk`
 tracks distance-to-coast in-sample (corr = −0.68, the marine-clay gradient). But with only
