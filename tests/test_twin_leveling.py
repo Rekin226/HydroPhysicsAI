@@ -42,22 +42,35 @@ def test_site_xy_returns_epsg3826_metres():
 
 
 def test_planar_tectonic_removes_a_regional_tilt_but_not_local_signal():
-    xy, sub = {}, {}
+    """Sites on an 8x5 grid so the [1, x, y] design matrix is full rank.
+
+    The local signal is assigned at random (fixed seed) so it is not aligned with the
+    coordinate axes and cannot be absorbed by the fitted plane.
+    """
+    rng = np.random.default_rng(0)
+    xy, sub, local_flag = {}, {}, {}
     times = pd.DatetimeIndex([pd.Timestamp(f"{y}-06-15") for y in range(2012, 2020)])
     yrs = np.array([(t - times[0]).days / 365.25 for t in times])
     for i in range(40):
-        x = 170000.0 + 1000.0 * i
-        y = 2620000.0 + 500.0 * i
-        xy[f"S{i}"] = (x, y)
-        tect = 0.002 + 1e-8 * (x - 170000.0)              # regional tilt, m/yr
-        local = 0.01 if i % 2 == 0 else 0.0               # site-specific compaction
-        sub[f"S{i}"] = pd.Series((tect + local) * yrs, index=times)
+        x = 170000.0 + 1000.0 * (i % 8)
+        y = 2620000.0 + 1000.0 * (i // 8)
+        name = f"S{i}"
+        xy[name] = (x, y)
+        tect = 0.002 + 1e-8 * (x - 170000.0) + 5e-9 * (y - 2620000.0)   # regional plane
+        local = 0.01 if rng.random() < 0.5 else 0.0                      # position-independent
+        local_flag[name] = local
+        sub[name] = pd.Series((tect + local) * yrs, index=times)
 
     out, info = leveling.remove_tectonic(sub, xy, mode="planar")
-    even = np.mean([out[f"S{i}"].iloc[-1] for i in range(0, 40, 2)])
-    odd = np.mean([out[f"S{i}"].iloc[-1] for i in range(1, 40, 2)])
-    assert even - odd == pytest.approx(0.01 * yrs[-1], rel=0.05)   # local signal survives
-    assert abs(odd) < 0.2 * abs(even)                              # regional tilt removed
+
+    hi = [out[n].iloc[-1] for n in xy if local_flag[n] > 0]
+    lo = [out[n].iloc[-1] for n in xy if local_flag[n] == 0]
+    # the local signal survives the correction
+    assert np.mean(hi) - np.mean(lo) == pytest.approx(0.01 * yrs[-1], rel=0.05)
+    # the regional tilt is gone: residual no longer tracks easting
+    resid = np.array([out[n].iloc[-1] for n in xy])
+    east = np.array([xy[n][0] for n in xy])
+    assert abs(np.corrcoef(east, resid)[0, 1]) < 0.3
     assert 0.0 <= info["var_removed"] <= 1.0
 
 
