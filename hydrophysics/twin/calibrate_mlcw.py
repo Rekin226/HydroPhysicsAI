@@ -165,7 +165,10 @@ def main(argv=None) -> None:
     obs = obs - anchor
 
     _, info = fit_column(h, obs, mask, epochs=args.epochs, lr=args.lr)
-    gate = loso(h, obs, mask, epochs=max(args.epochs // 4, 200), lr=args.lr)
+    # LOSO folds get the SAME epoch budget as the in-sample fit. Diagnostics showed
+    # parameters still moving between 500 and 6000 epochs, so a quartered budget
+    # (epochs // 4) under-trained every held-out fold and made the gate unreliable.
+    gate = loso(h, obs, mask, epochs=args.epochs, lr=args.lr)
     vep_loso = gate["r2"]
 
     # Like-for-like single-Sk baselines on the IDENTICAL arrays (same sites, same mask,
