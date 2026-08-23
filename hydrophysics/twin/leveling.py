@@ -78,7 +78,10 @@ def remove_tectonic(sub: dict[str, pd.Series], xy: dict[str, tuple[float, float]
     beta, *_ = np.linalg.lstsq(Xc, rates, rcond=None)
     fitted = Xc @ beta
     denom = float(((rates - rates.mean()) ** 2).sum())
-    var_removed = float((fitted ** 2).sum() / denom) if denom > 0 else 0.0
+    # mean-centre the fit: the intercept carries the mean rate, not the tilt, so leaving it
+    # in makes var_removed report ~1.0 whatever the plane does.
+    fitted_c = fitted - fitted.mean()
+    var_removed = float((fitted_c ** 2).sum() / denom) if denom > 0 else 0.0
 
     out: dict[str, pd.Series] = {}
     for n, v in zip(names, fitted, strict=True):

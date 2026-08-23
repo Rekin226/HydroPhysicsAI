@@ -44,7 +44,9 @@ def test_site_xy_returns_epsg3826_metres():
 def test_planar_tectonic_removes_a_regional_tilt_but_not_local_signal():
     """Sites on an 8x5 grid so the [1, x, y] design matrix is full rank.
 
-    The local signal is assigned at random (fixed seed) so it is not aligned with the
+    The plane is scaled to be comparable to the local signal, so a no-op implementation
+    cannot pass: the uncorrected residual tracks easting strongly, the corrected one does
+    not. The local signal is assigned at random (fixed seed) so it is not aligned with the
     coordinate axes and cannot be absorbed by the fitted plane.
     """
     rng = np.random.default_rng(0)
@@ -56,22 +58,26 @@ def test_planar_tectonic_removes_a_regional_tilt_but_not_local_signal():
         y = 2620000.0 + 1000.0 * (i // 8)
         name = f"S{i}"
         xy[name] = (x, y)
-        tect = 0.002 + 1e-8 * (x - 170000.0) + 5e-9 * (y - 2620000.0)   # regional plane
+        tect = 0.002 + 2e-6 * (x - 170000.0) + 1e-6 * (y - 2620000.0)   # regional plane
         local = 0.01 if rng.random() < 0.5 else 0.0                      # position-independent
         local_flag[name] = local
         sub[name] = pd.Series((tect + local) * yrs, index=times)
 
     out, info = leveling.remove_tectonic(sub, xy, mode="planar")
+    raw, _ = leveling.remove_tectonic(sub, xy, mode="none")
+
+    east = np.array([xy[n][0] for n in xy])
+    corr_raw = abs(np.corrcoef(east, np.array([raw[n].iloc[-1] for n in xy]))[0, 1])
+    corr_out = abs(np.corrcoef(east, np.array([out[n].iloc[-1] for n in xy]))[0, 1])
+
+    # a no-op implementation cannot pass: the tilt must actually be detectable and removed
+    assert corr_raw > 0.5
+    assert corr_out < 0.2
 
     hi = [out[n].iloc[-1] for n in xy if local_flag[n] > 0]
     lo = [out[n].iloc[-1] for n in xy if local_flag[n] == 0]
-    # the local signal survives the correction
     assert np.mean(hi) - np.mean(lo) == pytest.approx(0.01 * yrs[-1], rel=0.05)
-    # the regional tilt is gone: residual no longer tracks easting
-    resid = np.array([out[n].iloc[-1] for n in xy])
-    east = np.array([xy[n][0] for n in xy])
-    assert abs(np.corrcoef(east, resid)[0, 1]) < 0.3
-    assert 0.0 <= info["var_removed"] <= 1.0
+    assert 0.2 < info["var_removed"] < 0.9
 
 
 def test_tectonic_mode_none_is_identity():
