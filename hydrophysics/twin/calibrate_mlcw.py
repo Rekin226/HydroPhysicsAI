@@ -201,10 +201,36 @@ def main(argv=None) -> None:
     mask = torch.tensor(np.stack(rows_m))
     n_cells = int(mask.sum().item())
 
-    # anchor each site at its first OBSERVED sample; column 0 may be masked out
+    # Anchor each site at its first OBSERVED sample. VEPColumn zeroes its prediction at
+    # column 0 and references h[:, 0] (elastic term, preconsolidation head), and the
+    # single-Sk baseline's D is built from h[:, :1] -- so "column 0" must be the SAME
+    # calendar index as the anchor subtracted from obs, or a site whose first observation
+    # isn't at month 0 carries an offset its target does not. Realign (not just re-zero):
+    # slice each site's h/obs/mask to start at its first-unmasked index and pad the tail
+    # (mask=False) to the common length, so column 0 is the anchor for both prediction
+    # and target.
     first = mask.float().argmax(dim=1)
-    anchor = obs.gather(1, first.unsqueeze(1))
-    obs = obs - anchor
+    n_sites, T = h.shape
+    h_np, obs_np, mask_np = h.numpy(), obs.numpy(), mask.numpy()
+    h_al = np.empty_like(h_np)
+    obs_al = np.zeros_like(obs_np)
+    mask_al = np.zeros_like(mask_np)
+    n_shifted = 0
+    for i in range(n_sites):
+        s = int(first[i].item())
+        n_shifted += s > 0
+        keep_len = T - s
+        h_al[i, :keep_len] = h_np[i, s:]
+        h_al[i, keep_len:] = h_np[i, -1]                       # flat pad, unused (mask False)
+        obs_al[i, :keep_len] = obs_np[i, s:] - obs_np[i, s]    # re-zeroed to the new column 0
+        obs_al[i, keep_len:] = obs_al[i, keep_len - 1] if keep_len > 0 else 0.0
+        mask_al[i, :keep_len] = mask_np[i, s:]
+        mask_al[i, keep_len:] = False
+    h = torch.tensor(h_al, dtype=torch.float32)
+    obs = torch.tensor(obs_al, dtype=torch.float32)
+    mask = torch.tensor(mask_al)
+    print(f"anchor realignment: {n_shifted}/{n_sites} sites had a first observation "
+          f"after month 0 and were shifted so column 0 = their first unmasked sample")
 
     _, info = fit_column(h, obs, mask, epochs=args.epochs, lr=args.lr)
     # LOSO folds get the SAME epoch budget as the in-sample fit. Diagnostics showed
