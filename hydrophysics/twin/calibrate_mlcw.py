@@ -25,6 +25,7 @@ from ..subsidence import (
     calibrate_sk_from_pairs,
     idw_interp,
     load_mlcw_stations,
+    loso_sk_pooled,
     loso_sk_regression,
     mlcw_compaction,
     monthly_heads,
@@ -160,24 +161,6 @@ def loso_shared(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor, **kw) ->
     return {"r2": 1.0 - ss_res / max(ss_tot, 1e-12), "n_sites": n, "per_site": per_site}
 
 
-def _loso_sk_pooled(pairs: dict[str, tuple[np.ndarray, np.ndarray]]) -> float:
-    """LOSO for the single-Sk baseline: pooled through-origin fit on the other sites,
-    predict Sk * D_held, pool residuals into one R2 -- exactly as ``loso`` does for VEP."""
-    names = list(pairs)
-    preds, obsv = [], []
-    for held in names:
-        train = {n: pairs[n] for n in names if n != held}
-        fit = calibrate_sk_from_pairs(train)
-        d_held, c_held = pairs[held]
-        preds.append(fit["sk"] * np.asarray(d_held, dtype="float64"))
-        obsv.append(np.asarray(c_held, dtype="float64"))
-    pred = np.concatenate(preds)
-    ob = np.concatenate(obsv)
-    ss_res = float(((ob - pred) ** 2).sum())
-    ss_tot = float(((ob - ob.mean()) ** 2).sum())
-    return 1.0 - ss_res / max(ss_tot, 1e-12)
-
-
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Stage-2 VEP gate on MLCW sites")
     ap.add_argument("--data", default=None)
@@ -245,7 +228,7 @@ def main(argv=None) -> None:
 
     single = calibrate_sk_from_pairs(pairs)
     sk_insample = single["r2"]
-    sk_loso = _loso_sk_pooled(pairs)
+    sk_loso = loso_sk_pooled(pairs)["r2"]
     dist = dict(zip(names, rows_x, strict=True))
     sk_coast_gate = loso_sk_regression(pairs, dist)
     sk_coast_loso = sk_coast_gate["r2"]

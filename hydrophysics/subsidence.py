@@ -114,6 +114,31 @@ def calibrate_sk_from_pairs(per_site: dict[str, tuple[np.ndarray, np.ndarray]]) 
     return {"sk": sk, "r2": r2, "per_site": per_site, "D": D, "C": C}
 
 
+def loso_sk_pooled(per_site: dict[str, tuple[np.ndarray, np.ndarray]]) -> dict:
+    """LOSO gate for the pooled single-``Sk`` baseline (in-sample-vs-out-of-sample fix).
+
+    ``calibrate_sk_from_pairs`` reports an IN-SAMPLE pooled fit -- the same sites are
+    fit and scored. This refits Sk through-origin on every site but one, predicts the
+    held-out site as ``sk * D_held``, and pools residuals across folds into one R2 --
+    exactly as the VEP LOSO gates do, so the numbers are directly comparable.
+
+    Returns {r2, n_sites}.
+    """
+    names = list(per_site)
+    preds, obsv = [], []
+    for held in names:
+        train = {n: per_site[n] for n in names if n != held}
+        fit = calibrate_sk_from_pairs(train)
+        d_held, c_held = per_site[held]
+        preds.append(fit["sk"] * np.asarray(d_held, dtype="float64"))
+        obsv.append(np.asarray(c_held, dtype="float64"))
+    pred = np.concatenate(preds)
+    ob = np.concatenate(obsv)
+    ss_res = float(((ob - pred) ** 2).sum())
+    ss_tot = float(((ob - ob.mean()) ** 2).sum())
+    return {"r2": 1.0 - ss_res / max(ss_tot, 1e-12), "n_sites": len(names)}
+
+
 def calibrate_sk(data: GWData, stations: pd.DataFrame,
                  compaction: dict[str, pd.Series]) -> dict:
     """Pair each MLCW site's monthly compaction with the IDW head drawdown at its (x,y),

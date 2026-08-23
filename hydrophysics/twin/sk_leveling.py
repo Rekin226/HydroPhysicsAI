@@ -21,6 +21,7 @@ from ..data import GWData, load_dataset
 from ..subsidence import (
     calibrate_sk_from_pairs,
     idw_interp,
+    loso_sk_pooled,
     loso_sk_regression,
     monthly_heads,
     well_xy,
@@ -81,12 +82,14 @@ def main(argv=None) -> None:
             continue
         single = calibrate_sk_from_pairs(pairs)
         gate = loso_sk_regression(pairs, {k: coast[k] for k in pairs})
+        pooled = loso_sk_pooled(pairs)
         rows.append({"tectonic": mode, "n_sites": len(pairs),
                      "var_removed": info["var_removed"], "sk_single": single["sk"],
-                     "r2_insample": single["r2"], "loso_r2": gate["r2"],
-                     "loso_r2_sk": gate["r2_sk"]})
+                     "r2_insample": single["r2"], "sk_loso_pooled": pooled["r2"],
+                     "loso_r2": gate["r2"], "loso_r2_sk": gate["r2_sk"]})
         print(f"[{mode:6s}] sites={len(pairs):4d}  var_removed={info['var_removed']:.3f}  "
               f"single-Sk in-sample R2={single['r2']:+.3f}  "
+              f"single-Sk LOSO pooled R2={pooled['r2']:+.3f}  "
               f"LOSO compaction R2={gate['r2']:+.3f}  LOSO Sk R2={gate['r2_sk']:+.3f}")
 
     os.makedirs(args.out, exist_ok=True)
