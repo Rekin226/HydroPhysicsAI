@@ -39,3 +39,31 @@ def test_min_obs_filter_drops_short_records():
 def test_site_xy_returns_epsg3826_metres():
     xy = leveling.site_xy(_panel())
     assert xy["A"] == (180000.0, 2620000.0)
+
+
+def test_planar_tectonic_removes_a_regional_tilt_but_not_local_signal():
+    xy, sub = {}, {}
+    times = pd.DatetimeIndex([pd.Timestamp(f"{y}-06-15") for y in range(2012, 2020)])
+    yrs = np.array([(t - times[0]).days / 365.25 for t in times])
+    for i in range(40):
+        x = 170000.0 + 1000.0 * i
+        y = 2620000.0 + 500.0 * i
+        xy[f"S{i}"] = (x, y)
+        tect = 0.002 + 1e-8 * (x - 170000.0)              # regional tilt, m/yr
+        local = 0.01 if i % 2 == 0 else 0.0               # site-specific compaction
+        sub[f"S{i}"] = pd.Series((tect + local) * yrs, index=times)
+
+    out, info = leveling.remove_tectonic(sub, xy, mode="planar")
+    even = np.mean([out[f"S{i}"].iloc[-1] for i in range(0, 40, 2)])
+    odd = np.mean([out[f"S{i}"].iloc[-1] for i in range(1, 40, 2)])
+    assert even - odd == pytest.approx(0.01 * yrs[-1], rel=0.05)   # local signal survives
+    assert abs(odd) < 0.2 * abs(even)                              # regional tilt removed
+    assert 0.0 <= info["var_removed"] <= 1.0
+
+
+def test_tectonic_mode_none_is_identity():
+    p = _panel()
+    sub = leveling.site_subsidence(p, "2012-01-01", "2018-01-01", min_obs=5)
+    out, info = leveling.remove_tectonic(sub, leveling.site_xy(p), mode="none")
+    assert np.allclose(out["A"].to_numpy(), sub["A"].to_numpy())
+    assert info["var_removed"] == 0.0
