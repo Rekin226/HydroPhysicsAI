@@ -64,3 +64,32 @@ def test_no_inelastic_above_preconsolidation_head():
     h = torch.tensor([[0.0, -10.0, 0.0]])
     s = col(h)
     assert s[0, 2].item() == pytest.approx(0.0, abs=1e-6)   # purely elastic, recovers
+
+
+def _step_response(tau_days, n_steps=60, dt=30.0):
+    col = VEPColumn(n_sites=1, dt_days=dt)
+    with torch.no_grad():
+        col.log_ske.fill_(-30.0)                                  # elastic off
+        col.log_skv.fill_(torch.log(torch.tensor(1e-2)).item())
+        col.log_tau.fill_(torch.log(torch.tensor(float(tau_days))).item())
+        col.h_pc0.fill_(0.0)
+    h = torch.cat([torch.zeros(1, 1), torch.full((1, n_steps - 1), -10.0)], dim=1)
+    return col(h)[0]
+
+
+def test_tau_small_reproduces_the_instantaneous_limit():
+    fast = _step_response(1e-3)
+    assert fast[1].item() == pytest.approx(fast[-1].item(), rel=1e-3)   # arrives at once
+
+
+def test_tau_large_suppresses_compaction_within_the_window():
+    slow = _step_response(1e6)
+    fast = _step_response(1e-3)
+    assert slow[-1].item() < 0.05 * fast[-1].item()
+
+
+def test_intermediate_tau_relaxes_monotonically_toward_equilibrium():
+    mid = _step_response(365.0)
+    d = torch.diff(mid[1:])
+    assert torch.all(d >= -1e-9)                    # monotone approach
+    assert mid[-1].item() > mid[2].item()           # still rising: memory present

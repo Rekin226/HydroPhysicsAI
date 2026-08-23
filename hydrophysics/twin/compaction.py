@@ -35,16 +35,20 @@ class VEPColumn(nn.Module):
         self.h_pc0 = nn.Parameter(z.clone())
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
-        ske = torch.exp(self.log_ske)                       # (n,)
+        ske = torch.exp(self.log_ske)
         skv = torch.exp(self.log_skv)
+        tau = torch.exp(self.log_tau)
+        decay = torch.exp(-torch.tensor(self.dt_days, dtype=h.dtype, device=h.device) / tau)
         n, T = h.shape
-        h_pc = torch.minimum(self.h_pc0, h[:, 0])           # (n,) running preconsolidation
+        h_pc = torch.minimum(self.h_pc0, h[:, 0])
         eps_i = torch.zeros(n, dtype=h.dtype, device=h.device)
+        eq = torch.zeros(n, dtype=h.dtype, device=h.device)
         out = [torch.zeros(n, dtype=h.dtype, device=h.device)]
         for t in range(1, T):
-            below = torch.clamp(h_pc - h[:, t], min=0.0)    # how far below preconsolidation
-            eps_i = eps_i + skv * below
+            below = torch.clamp(h_pc - h[:, t], min=0.0)
+            eq = eq + skv * below                     # equilibrium inelastic strain
             h_pc = torch.minimum(h_pc, h[:, t])
+            eps_i = eq + (eps_i - eq) * decay         # exact for piecewise-constant forcing
             eps_e = ske * (h[:, 0] - h[:, t])
             out.append(eps_e + eps_i)
         return torch.stack(out, dim=1)
