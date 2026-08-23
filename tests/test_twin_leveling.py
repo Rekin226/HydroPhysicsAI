@@ -20,6 +20,50 @@ def _panel():
     return pd.DataFrame(rows)
 
 
+def test_load_panel_renames_epsg3826_columns_and_sorts(tmp_path):
+    """load_panel is the only place the x_3826/y_3826 -> x/y rename happens, and every
+    Stage-1 number flows through it -- yet every other fixture in this module (and in
+    test_twin_sk_leveling.py) mocks the POST-rename schema. Write the panel with the real
+    cached schema (unrenamed x_3826/y_3826, extra columns, unsorted rows) and check that
+    load_panel actually performs the rename, keeps only the expected columns, coerces
+    dtypes, and sorts by (sid, datetime).
+    """
+    raw = pd.DataFrame({
+        "sid": ["B", "A", "A", "B"],
+        "datetime": ["2013-01-01", "2012-06-15", "2011-01-01", "2012-01-01"],
+        "elev_m": [5.0, 10.0, 10.2, 5.1],
+        "x_3826": [190000.0, 180000.0, 180000.0, 190000.0],
+        "y_3826": [2630000.0, 2620000.0, 2620000.0, 2630000.0],
+        "lon": [120.5, 120.4, 120.4, 120.5],
+        "lat": [23.9, 23.8, 23.8, 23.9],
+        "town": ["Erlin", "Xizhou", "Xizhou", "Erlin"],
+        "name": ["b-benchmark", "a-benchmark", "a-benchmark", "b-benchmark"],
+    })
+    cache_dir = tmp_path / "ls_cache"
+    cache_dir.mkdir()
+    raw.to_parquet(cache_dir / "ls-wra-lsp-obs__choushui_panel.parquet")
+
+    out = leveling.load_panel(str(tmp_path))
+
+    # only the renamed/kept columns survive -- lon/lat/town/name are dropped
+    assert list(out.columns) == ["sid", "datetime", "elev_m", "x", "y"]
+    # x_3826/y_3826 -> x/y, values preserved
+    assert out.loc[out.sid == "A", "x"].unique().tolist() == [180000.0]
+    assert out.loc[out.sid == "A", "y"].unique().tolist() == [2620000.0]
+    assert out.loc[out.sid == "B", "x"].unique().tolist() == [190000.0]
+    # dtypes
+    assert pd.api.types.is_datetime64_any_dtype(out["datetime"])
+    assert out["elev_m"].dtype == np.float64
+    assert out["x"].dtype == np.float64 and out["y"].dtype == np.float64
+    # sorted by (sid, datetime) ascending, index reset
+    assert out["sid"].tolist() == ["A", "A", "B", "B"]
+    assert out["datetime"].tolist() == [
+        pd.Timestamp("2011-01-01"), pd.Timestamp("2012-06-15"),
+        pd.Timestamp("2012-01-01"), pd.Timestamp("2013-01-01"),
+    ]
+    assert out.index.tolist() == list(range(len(out)))
+
+
 def test_site_subsidence_is_positive_and_rezeroed():
     sub = leveling.site_subsidence(_panel(), "2012-01-01", "2018-01-01", min_obs=5)
     assert set(sub) == {"A", "B"}
