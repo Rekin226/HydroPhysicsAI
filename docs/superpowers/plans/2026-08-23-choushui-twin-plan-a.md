@@ -780,7 +780,7 @@ git commit -m "feat(twin): viscous relaxation completes the VEP column"
 - Test: `tests/test_twin_compaction.py`
 
 **Interfaces:**
-- Consumes: `VEPColumn` (Task 6); `subsidence.{mlcw_compaction, load_mlcw_stations, monthly_heads, well_xy, idw_interp}`; `data.load_data`.
+- Consumes: `VEPColumn` (Task 6); `subsidence.{mlcw_compaction, load_mlcw_stations, monthly_heads, well_xy, idw_interp}`; `data.load_dataset`.
 - Produces:
   - `fit_column(h, obs, mask, epochs=2000, lr=0.05, device=None) -> tuple[VEPColumn, dict]` — fits one `VEPColumn` to `h` and `obs`, both `(n_sites, T)`, using masked MSE; returns the model and `{"loss": float, "epochs": int}`.
   - `loso(h, obs, mask, **kw) -> dict` — leave-one-site-out. Each held-out site's parameters are the ΣD²-weighted mean of the trained sites' log-parameters, and the gate is pooled compaction R² over held-out sites, directly comparable to `subsidence.loso_sk_regression`'s `r2`.
