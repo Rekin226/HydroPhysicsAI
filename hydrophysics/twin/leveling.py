@@ -58,14 +58,19 @@ def _site_rate(s: pd.Series) -> float:
 
 def remove_tectonic(sub: dict[str, pd.Series], xy: dict[str, tuple[float, float]],
                     mode: str = "planar") -> tuple[dict[str, pd.Series], dict]:
-    """Subtract a global planar vertical-velocity field v(x,y) = a + b*x + c*y.
+    """Subtract a global planar vertical-velocity field v(x,y) = a + b*(x-x0) + c*(y-y0).
 
     Taiwan's tectonic vertical field is spatially smooth (Ching et al. 2011), so three
     global parameters over hundreds of sites absorb a regional tilt without absorbing
     site-specific compaction. ``mode="none"`` returns the input unchanged.
+
+    The regression is fit on mean-centred coordinates for conditioning, so ``b``/``c`` are
+    the plane's slope w.r.t. ``(x - x0, y - y0)``, NOT raw ``(x, y)`` -- a consumer wanting
+    the field at raw coordinates must re-centre by the returned ``x0``/``y0`` first.
     """
     if mode == "none":
-        return dict(sub), {"a": 0.0, "b": 0.0, "c": 0.0, "var_removed": 0.0}
+        return dict(sub), {"a": 0.0, "b": 0.0, "c": 0.0, "x0": 0.0, "y0": 0.0,
+                           "var_removed": 0.0}
     if mode != "planar":
         raise ValueError(f"unknown tectonic mode: {mode!r}")
 
@@ -73,8 +78,10 @@ def remove_tectonic(sub: dict[str, pd.Series], xy: dict[str, tuple[float, float]
     rates = np.array([_site_rate(sub[n]) for n in names], dtype="float64")
     X = np.array([[1.0, xy[n][0], xy[n][1]] for n in names], dtype="float64")
     Xc = X.copy()
-    Xc[:, 1] -= Xc[:, 1].mean()          # centre the coordinates for conditioning
-    Xc[:, 2] -= Xc[:, 2].mean()
+    x0 = float(Xc[:, 1].mean())
+    y0 = float(Xc[:, 2].mean())
+    Xc[:, 1] -= x0                        # centre the coordinates for conditioning
+    Xc[:, 2] -= y0
     beta, *_ = np.linalg.lstsq(Xc, rates, rcond=None)
     fitted = Xc @ beta
     denom = float(((rates - rates.mean()) ** 2).sum())
@@ -92,4 +99,5 @@ def remove_tectonic(sub: dict[str, pd.Series], xy: dict[str, tuple[float, float]
         t = np.array([(i - s.index[0]).days / 365.25 for i in s.index], dtype="float64")
         out[n] = s - v * t
     return out, {"a": float(beta[0]), "b": float(beta[1]), "c": float(beta[2]),
+                 "x0": x0, "y0": y0,
                  "var_removed": min(max(var_removed, 0.0), 1.0)}
