@@ -66,13 +66,17 @@ from hydrophysics.twin import leveling
 
 
 def _panel():
-    """Two sites: A sinks 1 cm/yr over 6 annual surveys, B is stable."""
+    """Two sites: A sinks 1 cm/yr over 6 annual surveys, B is stable.
+
+    Columns mirror ``load_panel``'s output schema (x/y, already renamed), which is what
+    ``site_subsidence`` and ``site_xy`` consume.
+    """
     rows = []
     for i, yr in enumerate(range(2012, 2018)):
         rows.append({"sid": "A", "datetime": pd.Timestamp(f"{yr}-06-15"),
-                     "elev_m": 10.0 - 0.01 * i, "x_3826": 180000.0, "y_3826": 2620000.0})
+                     "elev_m": 10.0 - 0.01 * i, "x": 180000.0, "y": 2620000.0})
         rows.append({"sid": "B", "datetime": pd.Timestamp(f"{yr}-06-15"),
-                     "elev_m": 5.0, "x_3826": 190000.0, "y_3826": 2630000.0})
+                     "elev_m": 5.0, "x": 190000.0, "y": 2630000.0})
     return pd.DataFrame(rows)
 
 
@@ -368,12 +372,13 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ..config import Config
-from ..data import GWData, load_data
+from ..data import GWData, load_dataset
 from ..subsidence import (
     calibrate_sk_from_pairs,
     idw_interp,
@@ -420,8 +425,8 @@ def main(argv=None) -> None:
     ap.add_argument("--out", default="results/twin")
     args = ap.parse_args(argv)
 
-    cfg = Config(data_dir=args.data) if args.data else Config()
-    data = load_data(cfg)
+    cfg = Config(data_dir=Path(args.data)) if args.data else Config()
+    data = load_dataset(cfg)
     ddir = str(cfg.data_dir)
 
     panel = leveling.load_panel(ddir)
@@ -844,13 +849,14 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
 
 from ..config import Config
-from ..data import load_data
+from ..data import load_dataset
 from ..subsidence import idw_interp, load_mlcw_stations, mlcw_compaction, monthly_heads, well_xy
 from .compaction import VEPColumn
 
@@ -908,8 +914,8 @@ def main(argv=None) -> None:
     ap.add_argument("--out", default="results/twin")
     args = ap.parse_args(argv)
 
-    cfg = Config(data_dir=args.data) if args.data else Config()
-    data = load_data(cfg)
+    cfg = Config(data_dir=Path(args.data)) if args.data else Config()
+    data = load_dataset(cfg)
     ddir = str(cfg.data_dir)
     stations = load_mlcw_stations(os.path.join(ddir, "mlcw_stations.csv"))
     comp = mlcw_compaction(ddir)
