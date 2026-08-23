@@ -126,6 +126,9 @@ def test_fit_column_recovers_synthetic_compaction():
 
 def test_loso_returns_a_finite_gate_number():
     h, obs, mask = _synthetic()
-    out = loso(h, obs, mask, epochs=300, lr=0.05)
+    out = loso(h, obs, mask, epochs=800, lr=0.05)
     assert np.isfinite(out["r2"])
     assert out["n_sites"] == h.shape[0]
+    # All six synthetic sites share identical true parameters, so a correct cross-site
+    # transfer must score well -- this is not just a finiteness check.
+    assert out["r2"] > 0.95
