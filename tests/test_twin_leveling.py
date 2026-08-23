@@ -86,3 +86,27 @@ def test_tectonic_mode_none_is_identity():
     out, info = leveling.remove_tectonic(sub, leveling.site_xy(p), mode="none")
     assert np.allclose(out["A"].to_numpy(), sub["A"].to_numpy())
     assert info["var_removed"] == 0.0
+
+
+def test_planar_correction_preserves_the_basin_mean_rate():
+    """The intercept is basin-mean compaction, not tectonics -- it must survive."""
+    xy, sub = {}, {}
+    times = pd.DatetimeIndex([pd.Timestamp(f"{y}-06-15") for y in range(2012, 2020)])
+    yrs = np.array([(t - times[0]).days / 365.25 for t in times])
+    for i in range(40):
+        x = 170000.0 + 1000.0 * (i % 8)
+        y = 2620000.0 + 1000.0 * (i // 8)
+        name = f"S{i}"
+        xy[name] = (x, y)
+        # every site sinks at 2 cm/yr, plus a regional tilt centred on the grid's own mean
+        # x (173500.0, since x spans 170000..177000): a tilt term must be zero-mean over
+        # the site grid, or it leaks into the fitted intercept and the assertion below no
+        # longer isolates the shared/basin-mean rate.
+        rate = 0.02 + 2e-6 * (x - 173500.0)
+        sub[name] = pd.Series(rate * yrs, index=times)
+
+    out, _ = leveling.remove_tectonic(sub, xy, mode="planar")
+    finals = np.array([out[n].iloc[-1] for n in xy])
+    # the shared 2 cm/yr sinking must remain; only the tilt is removed
+    assert np.mean(finals) == pytest.approx(0.02 * yrs[-1], rel=0.05)
+    assert np.all(finals > 0.0)

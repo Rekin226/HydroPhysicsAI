@@ -83,8 +83,11 @@ def remove_tectonic(sub: dict[str, pd.Series], xy: dict[str, tuple[float, float]
     fitted_c = fitted - fitted.mean()
     var_removed = float((fitted_c ** 2).sum() / denom) if denom > 0 else 0.0
 
+    # Subtract only the TILT, never the intercept: the intercept is the basin-mean vertical
+    # rate, which on this fan is ~1.7 cm/yr of groundwater compaction, not tectonics.
+    # Removing it would drive most sites negative and make a Sk*D >= 0 model unfittable.
     out: dict[str, pd.Series] = {}
-    for n, v in zip(names, fitted, strict=True):
+    for n, v in zip(names, fitted_c, strict=True):
         s = sub[n]
         t = np.array([(i - s.index[0]).days / 365.25 for i in s.index], dtype="float64")
         out[n] = s - v * t
