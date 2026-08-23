@@ -34,11 +34,18 @@ from .compaction import VEPColumn
 
 
 def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
-               epochs: int = 2000, lr: float = 0.05, device=None) -> tuple[VEPColumn, dict]:
-    """Fit one VEPColumn to (h, obs) under ``mask`` with masked MSE."""
+               epochs: int = 2000, lr: float = 0.05, device=None,
+               n_sites: int | None = None) -> tuple[VEPColumn, dict]:
+    """Fit one VEPColumn to (h, obs) under ``mask`` with masked MSE.
+
+    ``n_sites`` defaults to ``h.shape[0]`` (one parameter set per row). Passing
+    ``n_sites=1`` fits a SINGLE global parameter set against all rows of ``h`` at once --
+    ``VEPColumn.forward`` broadcasts its (1,)-shaped parameters against the (n, T) input,
+    so this is exactly "one 4-vector explains every row", used by ``loso_shared``.
+    """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     h, obs, mask = h.to(dev), obs.to(dev), mask.to(dev)
-    model = VEPColumn(n_sites=h.shape[0], device=dev).to(dev)
+    model = VEPColumn(n_sites=n_sites if n_sites is not None else h.shape[0], device=dev).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     loss = torch.tensor(float("nan"))
@@ -78,11 +85,63 @@ def loso(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor, **kw) -> dict:
             # dominate the cross-site average regardless of how well-observed it is.
             w = mask[keep].sum(dim=1).to(obs.dtype)
             w = w / w.sum().clamp(min=1e-12)
-            out = VEPColumn(n_sites=1)  # built and evaluated on CPU, consistently
+            # built and evaluated on CPU, consistently; dt_days must match the fitted
+            # model's -- it is NOT the VEPColumn default (30.0) whenever the caller fits
+            # with a different cadence.
+            out = VEPColumn(n_sites=1, dt_days=model.dt_days)
             for name in ("log_ske", "log_skv", "log_tau", "h_pc0"):
                 src = getattr(model, name).detach().cpu()
                 getattr(out, name).copy_((src * w.cpu()).sum().reshape(1))
             p = out(h[held: held + 1].cpu())[0]
+        m = mask[held].cpu()
+        p_site = p[m].numpy()
+        t_site = obs[held].cpu()[m].numpy()
+        preds.append(p_site)
+        targets.append(t_site)
+        ss_res_i = float(((t_site - p_site) ** 2).sum())
+        ss_tot_i = float(((t_site - t_site.mean()) ** 2).sum())
+        per_site[held] = {
+            "r2": 1.0 - ss_res_i / max(ss_tot_i, 1e-12),
+            "loss": float(((t_site - p_site) ** 2).mean()) if len(t_site) else float("nan"),
+        }
+    pred = np.concatenate(preds)
+    obsv = np.concatenate(targets)
+    ss_res = float(((obsv - pred) ** 2).sum())
+    ss_tot = float(((obsv - obsv.mean()) ** 2).sum())
+    return {"r2": 1.0 - ss_res / max(ss_tot, 1e-12), "n_sites": n, "per_site": per_site}
+
+
+def loso_shared(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor, **kw) -> dict:
+    """Structural analogue of the pooled single-``Sk`` baseline for the VEP column.
+
+    ``loso`` fits ``VEPColumn(n_sites=13)`` per fold -- 4 params x 13 sites = 52 free
+    parameters -- then collapses them post hoc with a weighted mean of log-parameters.
+    Diagnostics show that mean is not an estimate of the rheology: 6/14 folds give ZERO
+    gradient on ``log_skv``/``log_tau`` (those sites just carry their initialization
+    value into the average) and 4/14 pin ``log_tau`` at its clamp bound.
+
+    This function instead fits ONE global 4-vector jointly against every training site's
+    rows at once (``VEPColumn(n_sites=1)`` broadcasts against the (n_train, T) batch, so
+    it is equivalent to fitting against the concatenation of all training sites), then
+    predicts the held-out site with that same global vector. 4 parameters over ~1200
+    training cells, so identifiability is not in question by construction.
+
+    This is the missing structural analogue of the pooled single-``Sk`` baseline. Only if
+    THIS loses to single-``Sk`` has the rheology itself been tested -- rather than the
+    per-site-fit-then-average transfer rule ``loso`` tests.
+
+    Residuals are pooled across folds into one R2 exactly as ``loso`` does, so the two
+    numbers are directly comparable. Also returns ``per_site``, a per-fold diagnostic of
+    {site_index: {r2, loss}}.
+    """
+    n = h.shape[0]
+    preds, targets, per_site = [], [], {}
+    for held in range(n):
+        keep = [i for i in range(n) if i != held]
+        model, _ = fit_column(h[keep], obs[keep], mask[keep], n_sites=1, **kw)
+        model = model.cpu()
+        with torch.no_grad():
+            p = model(h[held: held + 1].cpu())[0]
         m = mask[held].cpu()
         p_site = p[m].numpy()
         t_site = obs[held].cpu()[m].numpy()
@@ -170,6 +229,10 @@ def main(argv=None) -> None:
     # (epochs // 4) under-trained every held-out fold and made the gate unreliable.
     gate = loso(h, obs, mask, epochs=args.epochs, lr=args.lr)
     vep_loso = gate["r2"]
+    # Structural analogue of the pooled single-Sk baseline (see loso_shared's docstring):
+    # one global 4-vector fit jointly to all training sites, not fit-per-site-then-averaged.
+    shared_gate = loso_shared(h, obs, mask, epochs=args.epochs, lr=args.lr)
+    vep_shared_loso = shared_gate["r2"]
 
     # Like-for-like single-Sk baselines on the IDENTICAL arrays (same sites, same mask,
     # same anchoring) -- not the README's in-sample table.
@@ -190,9 +253,12 @@ def main(argv=None) -> None:
     print(f"sites={len(names)}  cells_within_tolerance={n_cells}  "
           f"in-sample loss={info['loss']:.3e}")
     print(f"sk_insample={sk_insample:+.3f}  sk_loso={sk_loso:+.3f}  "
-          f"sk_coast_loso={sk_coast_loso:+.3f}  vep_loso={vep_loso:+.3f}")
+          f"sk_coast_loso={sk_coast_loso:+.3f}  vep_loso={vep_loso:+.3f}  "
+          f"vep_shared_loso={vep_shared_loso:+.3f}")
     print(f"GATE (VEP LOSO vs single-Sk LOSO, identical arrays): "
           f"{'PASS' if vep_loso > sk_loso else 'FAIL'}")
+    print(f"GATE (shared-parameter VEP LOSO vs single-Sk LOSO -- the rheology itself): "
+          f"{'PASS' if vep_shared_loso > sk_loso else 'FAIL'}")
 
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, "stage2_vep_mlcw.csv")
@@ -204,6 +270,7 @@ def main(argv=None) -> None:
         "sk_loso": sk_loso,
         "sk_coast_loso": sk_coast_loso,
         "vep_loso": vep_loso,
+        "vep_shared_loso": vep_shared_loso,
     }]).to_csv(path, index=False)
     print(f"wrote {path}")
 
