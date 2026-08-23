@@ -247,7 +247,7 @@ limiting factor for that arm -- and it still loses to a single scalar `Sk`. Stat
 sites.**
 
 The per-site arm (`vep_loso`, 52 free parameters collapsed by a weighted mean of
-log-parameters, −0.707) scores better than the shared arm (−0.944) but worse than
+log-parameters, −0.919) scores worse than the shared arm (−0.841) and worse than
 `sk_loso` (−0.556), and 6/14 folds gave zero gradient on `log_skv`/`log_tau` in that
 per-site fit (those sites carry only their initialization value into the average). Both
 facts are recorded without over-interpreting them: the per-site number is not a clean
@@ -257,6 +257,41 @@ Gate: VEP LOSO beats single-`Sk` LOSO on identical (h, obs, mask) arrays. The
 `vep_shared_loso` arm (one global 4-parameter column fit jointly across all training
 sites, not fit-per-site-then-averaged) is the structural test of the rheology itself,
 per-item 2 of the final fix wave.
+
+### Reproducibility and the init-scatter ensemble (2026-08-23)
+
+The pipeline is **fully deterministic**: rerunning the committed code reproduces
+`results/twin/stage2_vep_mlcw.csv` byte-for-byte, and `fit_column` is bit-identical across
+repeats on both CPU and CUDA. An earlier note in this project claimed a ~0.2 run-to-run
+swing; that was an error — the two figures compared came from different code versions
+during the fix wave (in-sample loss 0.0077 before the anchor-alignment fix, 0.00466 after),
+not from two runs of the same code.
+
+Determinism is not robustness, though. `VEPColumn`'s initialisation is a fixed constant, so
+every fit starts from the same point in a landscape already shown to be flat in several
+directions. `--ensemble N --init-scatter S` repeats the decisive shared-parameter arm from
+starts perturbed by `N(0, S)` in log space. Eight runs at `S = 0.5`:
+
+| statistic | `vep_shared_loso` |
+|---|---|
+| mean | −0.8588 |
+| sd | 0.0426 |
+| min / max | −0.9627 / −0.8408 |
+| runs beating `sk_loso` (−0.5562) | **0 / 8** |
+
+Six of the eight land within 0.001 of the deterministic-init value (−0.8408), so the
+optimiser reaches the same basin from scattered starts; one outlier at −0.963 sets the
+spread. The gap to the pooled single-`Sk` baseline is 0.30, roughly **7× the ensemble
+standard deviation**. The Stage-2 conclusion is therefore robust to initialisation: at
+these 14 sites, the visco-elasto-plastic rheology does not beat a single scalar
+out-of-sample, and that is not an artefact of where the optimiser started.
+
+Reproduce with:
+
+```bash
+export HYDROMIND_GW_DATA="$(pwd)/chou-shui-data/chou-shui-data/data"
+python -m hydrophysics.twin.calibrate_mlcw --epochs 2000 --ensemble 8 --init-scatter 0.5
+```
 
 ## 8. Agentic research loop
 

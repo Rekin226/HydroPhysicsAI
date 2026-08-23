@@ -36,6 +36,7 @@ from .compaction import VEPColumn
 
 def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
                epochs: int = 2000, lr: float = 0.05, device=None,
+               init_scatter: float = 0.0, seed: int | None = None,
                n_sites: int | None = None) -> tuple[VEPColumn, dict]:
     """Fit one VEPColumn to (h, obs) under ``mask`` with masked MSE.
 
@@ -47,6 +48,18 @@ def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     h, obs, mask = h.to(dev), obs.to(dev), mask.to(dev)
     model = VEPColumn(n_sites=n_sites if n_sites is not None else h.shape[0], device=dev).to(dev)
+    if init_scatter > 0.0:
+        # VEPColumn's init is a fixed constant, so every fit starts from the same point in a
+        # landscape that is flat in several directions. Scattering the start is the only way
+        # to tell whether a gate number is representative or an artefact of that one point.
+        g = torch.Generator(device="cpu")
+        if seed is not None:
+            g.manual_seed(int(seed))
+        with torch.no_grad():
+            for name in ("log_ske", "log_skv", "log_tau", "h_pc0"):
+                par = getattr(model, name)
+                noise = torch.randn(par.shape, generator=g).to(dev) * init_scatter
+                par.add_(noise)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     loss = torch.tensor(float("nan"))
@@ -167,6 +180,10 @@ def main(argv=None) -> None:
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--out", default="results/twin")
+    ap.add_argument("--ensemble", type=int, default=0,
+                    help="repeat the shared-parameter arm N times with scattered inits")
+    ap.add_argument("--init-scatter", type=float, default=0.5,
+                    help="sd of the log-space init perturbation used by --ensemble")
     args = ap.parse_args(argv)
 
     cfg = Config(data_dir=Path(args.data)) if args.data else Config()
@@ -289,6 +306,30 @@ def main(argv=None) -> None:
         for i, v in sorted(gate["per_site"].items())
     ]).to_csv(per_site_path, index=False)
     print(f"wrote {per_site_path}")
+
+    if args.ensemble > 0:
+        # The gate above starts from VEPColumn's constant init. Repeat the decisive
+        # (shared-parameter) arm from scattered starts to test whether that single number is
+        # representative of the rheology or an artefact of one point in a flat landscape.
+        print(f"\n=== init-scatter ensemble: {args.ensemble} runs of the shared arm, "
+              f"sd={args.init_scatter} in log space ===")
+        vals = []
+        for seed in range(args.ensemble):
+            r = loso_shared(h, obs, mask, epochs=args.epochs, lr=args.lr,
+                            init_scatter=args.init_scatter, seed=seed)
+            vals.append(r["r2"])
+            print(f"  seed {seed}: vep_shared_loso={r['r2']:+.4f}  "
+                  f"({'beats' if r['r2'] > sk_loso else 'loses to'} sk_loso {sk_loso:+.4f})",
+                  flush=True)
+        a = np.array(vals, dtype="float64")
+        n_beat = int((a > sk_loso).sum())
+        print(f"  mean {a.mean():+.4f}  sd {a.std(ddof=1):+.4f}  "
+              f"min {a.min():+.4f}  max {a.max():+.4f}")
+        print(f"  runs beating sk_loso ({sk_loso:+.4f}): {n_beat}/{len(a)}")
+        ens_path = os.path.join(args.out, "stage2_vep_ensemble.csv")
+        pd.DataFrame({"seed": range(len(vals)), "vep_shared_loso": vals,
+                      "sk_loso": sk_loso}).to_csv(ens_path, index=False)
+        print(f"wrote {ens_path}")
 
 
 if __name__ == "__main__":
