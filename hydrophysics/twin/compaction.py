@@ -35,6 +35,16 @@ class VEPColumn(nn.Module):
         self.h_pc0 = nn.Parameter(z.clone())
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
-        ske = torch.exp(self.log_ske).unsqueeze(1)          # (n, 1)
-        drop = (h[:, :1] - h)                                # (n, T), >0 when head falls
-        return ske * drop
+        ske = torch.exp(self.log_ske)                       # (n,)
+        skv = torch.exp(self.log_skv)
+        n, T = h.shape
+        h_pc = torch.minimum(self.h_pc0, h[:, 0])           # (n,) running preconsolidation
+        eps_i = torch.zeros(n, dtype=h.dtype, device=h.device)
+        out = [torch.zeros(n, dtype=h.dtype, device=h.device)]
+        for t in range(1, T):
+            below = torch.clamp(h_pc - h[:, t], min=0.0)    # how far below preconsolidation
+            eps_i = eps_i + skv * below
+            h_pc = torch.minimum(h_pc, h[:, t])
+            eps_e = ske * (h[:, 0] - h[:, t])
+            out.append(eps_e + eps_i)
+        return torch.stack(out, dim=1)
