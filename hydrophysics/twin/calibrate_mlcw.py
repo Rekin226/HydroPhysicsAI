@@ -32,6 +32,7 @@ from ..subsidence import (
     well_xy,
 )
 from .compaction import VEPColumn
+from .heads import build_head_field
 
 
 def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
@@ -182,6 +183,11 @@ def main(argv=None) -> None:
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--out", default="results/twin")
+    ap.add_argument("--heads", default="legacy", choices=["legacy", "api"],
+                    help="legacy = the curated 61-well set; api = QC'd wisenvr fan wells")
+    ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
+    ap.add_argument("--stations", default=None)
+    ap.add_argument("--layer", default=None, choices=["1", "2", "3", "4"])
     ap.add_argument("--ensemble", type=int, default=0,
                     help="repeat the shared-parameter arm N times with scattered inits")
     ap.add_argument("--init-scatter", type=float, default=0.5,
@@ -194,8 +200,18 @@ def main(argv=None) -> None:
     stations = load_mlcw_stations(os.path.join(ddir, "mlcw_stations.csv"))
     comp = mlcw_compaction(ddir)
 
-    H, dates = monthly_heads(data)
-    wxy = well_xy(data)
+    if args.heads == "api":
+        stn = pd.read_parquet(args.stations)
+        stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
+        stn["sid"] = stn["sid"].astype(str)
+        hf = build_head_field(args.wells_dir, stn).subset(args.layer)
+        H, dates, wxy = hf.heads, hf.dates, hf.xy
+        print(f"heads: {len(hf)} API wells"
+              f"{f' (layer {args.layer})' if args.layer else ' (all layers)'}")
+    else:
+        H, dates = monthly_heads(data)
+        wxy = well_xy(data)
+        print(f"heads: {H.shape[0]} curated wells (legacy set)")
     rows_h, rows_o, rows_m, rows_x, names = [], [], [], [], []
     for _, r in stations.iterrows():
         name = r["sub_id"]

@@ -27,18 +27,26 @@ from ..subsidence import (
     well_xy,
 )
 from . import leveling
+from .heads import build_head_field
 
 
 def build_pairs(data: GWData, sub: dict[str, pd.Series],
-                xy: dict[str, tuple[float, float]]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+                xy: dict[str, tuple[float, float]],
+                head: tuple[np.ndarray, pd.DatetimeIndex, np.ndarray] | None = None,
+                ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """{sid -> (cumulative drawdown, cumulative subsidence)} sampled at survey dates.
 
     Heads are interpolated to each site by IDW from the observed wells, aggregated to
     month-end, then read at the nearest month to each survey. Both series are re-zeroed to
     the site's first survey inside the head record.
     """
-    H, dates = monthly_heads(data)
-    wxy = well_xy(data)
+    # ``head`` lets a caller supply an alternative head field (e.g. the QC'd API well
+    # network) instead of deriving one from ``data``'s curated well set.
+    if head is not None:
+        H, dates, wxy = head
+    else:
+        H, dates = monthly_heads(data)
+        wxy = well_xy(data)
     lo, hi = dates[0], dates[-1]
     out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for sid, s in sub.items():
@@ -63,11 +71,32 @@ def main(argv=None) -> None:
     ap.add_argument("--t0", default="2012-01-01")
     ap.add_argument("--t1", default="2023-01-01")
     ap.add_argument("--out", default="results/twin")
+    ap.add_argument("--heads", default="legacy", choices=["legacy", "api"],
+                    help="legacy = the curated 61-well set; api = QC'd wisenvr fan wells")
+    ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
+    ap.add_argument("--stations", default=None,
+                    help="parquet of the API station table (needed for --heads api)")
+    ap.add_argument("--layer", default=None, choices=["1", "2", "3", "4"],
+                    help="restrict --heads api to one aquifer layer")
     args = ap.parse_args(argv)
 
     cfg = Config(data_dir=Path(args.data)) if args.data else Config()
     data = load_dataset(cfg)
     ddir = str(cfg.data_dir)
+
+    if args.heads == "api":
+        st = pd.read_parquet(args.stations)
+        st = st[st.GroundwaterZoneIdentifier == 50].copy()
+        st["sid"] = st["sid"].astype(str)
+        hf = build_head_field(args.wells_dir, st, t0=args.t0, t1=args.t1).subset(args.layer)
+        head_H, head_dates, head_xy = hf.heads, hf.dates, hf.xy
+        print(f"heads: {len(hf)} API wells"
+              f"{f' (layer {args.layer})' if args.layer else ' (all layers)'}, "
+              f"{100 * np.isnan(hf.heads).mean():.1f}% NaN month-cells")
+    else:
+        head_H, head_dates = monthly_heads(data)
+        head_xy = well_xy(data)
+        print(f"heads: {head_H.shape[0]} curated wells (legacy set)")
 
     panel = leveling.load_panel(ddir)
     sub_raw = leveling.site_subsidence(panel, args.t0, args.t1, min_obs=args.min_obs)
@@ -77,7 +106,7 @@ def main(argv=None) -> None:
     rows = []
     for mode in ("none", "planar"):
         sub, info = leveling.remove_tectonic(sub_raw, xy, mode=mode)
-        pairs = build_pairs(data, sub, xy)
+        pairs = build_pairs(data, sub, xy, head=(head_H, head_dates, head_xy))
         if not pairs:
             continue
         single = calibrate_sk_from_pairs(pairs)
