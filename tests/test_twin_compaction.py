@@ -132,3 +132,29 @@ def test_loso_returns_a_finite_gate_number():
     # All six synthetic sites share identical true parameters, so a correct cross-site
     # transfer must score well -- this is not just a finiteness check.
     assert out["r2"] > 0.95
+
+
+def test_inelastic_gate_opens_for_all_positive_heads():
+    """A site whose heads never cross the datum must still accrue permanent strain.
+
+    Regression: `h_pc` was once `min(h_pc0, h[:, 0])` with `h_pc0` init 0.0, so at any site
+    whose heads stayed above 0 m the gate never opened and `log_skv`/`log_tau` received no
+    gradient. That silently disabled the inelastic term at 7 of the 14 Choushui MLCW sites.
+    `h_pc0` is now an offset from `h[:, 0]`, so the gate is datum-independent.
+    """
+    col = VEPColumn(n_sites=1)
+    with torch.no_grad():
+        col.log_ske.fill_(torch.log(torch.tensor(1e-4)).item())
+        col.log_skv.fill_(torch.log(torch.tensor(1e-2)).item())
+        col.log_tau.fill_(-10.0)      # instantaneous: isolate the gate
+        col.h_pc0.zero_()             # normally consolidated at t=0
+    # heads far above the datum, drawn down then recovered
+    h = torch.tensor([[25.0, 15.0, 25.0]])
+    s = col(h)
+    assert s[0, 1].item() > 0.0
+    assert s[0, 2].item() > 0.5 * s[0, 1].item()      # permanent strain remains
+
+    # and the inelastic parameters must actually receive gradient
+    col.zero_grad()
+    col(h).sum().backward()
+    assert col.log_skv.grad is not None and col.log_skv.grad.abs().item() > 0.0

@@ -32,6 +32,7 @@ class VEPColumn(nn.Module):
         self.log_ske = nn.Parameter(z.clone() + torch.log(torch.tensor(1e-3)))
         self.log_skv = nn.Parameter(z.clone() + torch.log(torch.tensor(2e-2)))
         self.log_tau = nn.Parameter(z.clone() + torch.log(torch.tensor(365.0)))
+        # offset of the preconsolidation head relative to h[:, 0]; 0 = normally consolidated
         self.h_pc0 = nn.Parameter(z.clone())
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
@@ -40,7 +41,13 @@ class VEPColumn(nn.Module):
         tau = torch.exp(self.log_tau)
         decay = torch.exp(-torch.tensor(self.dt_days, dtype=h.dtype, device=h.device) / tau)
         n, T = h.shape
-        h_pc = torch.minimum(self.h_pc0, h[:, 0])
+        # h_pc0 is an OFFSET relative to each site's starting head, not an absolute head.
+        # Absolute framing silently disabled the inelastic term wherever a site's heads never
+        # crossed the datum: with h_pc0 init 0.0, `min(0, h[0])` pinned the gate at 0 m, so at
+        # 7 of 14 Choushui sites (all heads above sea level) it never opened and log_skv /
+        # log_tau received no gradient at all. Offsetting from h[:, 0] makes the init mean
+        # "normally consolidated at t=0" and is datum-independent.
+        h_pc = h[:, 0] + self.h_pc0
         eps_i = torch.zeros(n, dtype=h.dtype, device=h.device)
         eq = torch.zeros(n, dtype=h.dtype, device=h.device)
         out = [torch.zeros(n, dtype=h.dtype, device=h.device)]

@@ -293,6 +293,60 @@ export HYDROMIND_GW_DATA="$(pwd)/chou-shui-data/chou-shui-data/data"
 python -m hydrophysics.twin.calibrate_mlcw --epochs 2000 --ensemble 8 --init-scatter 0.5
 ```
 
+### CORRECTION (2026-08-24): the Stage-2 gate PASSES — the earlier failure was a model bug
+
+Everything recorded above for Stage 2 is superseded. `VEPColumn` computed the
+preconsolidation head as `h_pc = min(h_pc0, h[:, 0])` with `h_pc0` initialised to **0.0** —
+an absolute head, i.e. the survey datum. Inelastic strain accrues only where `h < h_pc`, so
+**at every site whose heads never crossed 0 m the inelastic term was structurally disabled
+and `log_skv` / `log_tau` received no gradient at all**. That was **7 of the 14** MLCW sites
+(湖南國小, 溪州國小, 僑義國小, 土庫國中, 宏崙國小, 光復國小, 拯民國小). Zero is a datum
+choice, not a physical preconsolidation head; the reviewer's "6/14 folds gave zero gradient"
+observation was this bug, not a data limitation.
+
+`h_pc0` is now an **offset relative to each site's starting head** — `h_pc = h[:, 0] +
+h_pc0`, init 0 meaning "normally consolidated at t = 0" — which is datum-independent.
+`tests/test_twin_compaction.py::test_inelastic_gate_opens_for_all_positive_heads` pins it.
+
+Re-running the identical gate (14 sites, 1,296 cells, 2000 epochs):
+
+| model | transfer rule | R² before fix | R² after fix |
+|---|---|---|---|
+| single `Sk` | in-sample | −0.298 | −0.298 |
+| single `Sk` | LOSO, pooled | **−0.556** | **−0.556** |
+| coast regression | LOSO | −4.000 | −4.000 |
+| VEP | LOSO, per-site + mean transfer | −0.919 | −1.875 |
+| **VEP** | **LOSO, shared global parameters** | −0.841 | **+0.324** |
+
+In-sample loss fell from 4.660e-03 to **1.283e-04**, a 36× improvement, because half the
+sites regained a working inelastic term. The init-scatter ensemble (8 runs, sd 0.5 in log
+space) gives mean **+0.3232**, sd **0.0043**, range +0.3171 to +0.3290, and **8/8 runs beat
+the pooled single-`Sk` baseline**.
+
+**Revised Stage-2 verdict: PASS.** The shared-parameter VEP — 4 global parameters, no
+per-site covariates, the exact structural analogue of pooled single-`Sk` — achieves a
+**positive** leave-one-site-out R² on head→subsidence coupling. Every coupling previously
+reported for this fan is negative (README: −0.28 in-sample single-`Sk`, −2.40 spatial-IDW,
+−0.29 coast regression; and −0.556 for the honest pooled LOSO baseline computed here).
+
+The per-site arm got *worse* (−1.875), which is consistent: with the inelastic term now
+active everywhere, 4 free parameters × 13 sites overfits harder, and a covariate-free mean
+is the wrong transfer rule. The pooled arm is the right estimator, and it is the one that
+passes.
+
+**Consequence for staging:** §7's gate table says a failing Stage 2 means "do not proceed to
+Plan B". It passes, so Plan B (Stages 3–4: the differentiable four-layer flow solver, AMP-G
+pumping channels, and coupling) is now justified on evidence.
+
+**Diagnostic gap:** `results/twin/stage2_vep_per_site.csv` is written only for the per-site
+arm, not the shared arm. For the record, that per-site arm gets 8 of 14 held-out sites
+positive but is destroyed in the pool by two outliers (嘉興國小 −228.9, 北辰國小 −54.6).
+Per-fold diagnostics for the shared arm should be added before Plan B.
+
+**Caveat that survives:** Stage 1 is unaffected — the algebraic `Sk` coupling still fails on
+888 leveling sites. What passes here is the *rheology with memory*, at the 14 depth-resolved
+compaction wells, transferred by a pooled estimator.
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).

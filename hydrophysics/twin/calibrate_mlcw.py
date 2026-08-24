@@ -78,7 +78,9 @@ def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
             model.log_ske.clamp_(min=math.log(1e-6), max=math.log(1e-1))
             model.log_skv.clamp_(min=math.log(1e-5), max=math.log(1e0))
             model.log_tau.clamp_(min=math.log(1.0), max=math.log(float(h.shape[1]) * model.dt_days))
-            model.h_pc0.clamp_(min=float(h.min()), max=float(h.max()))
+            # h_pc0 is now an offset from h[:, 0], so bound it by the head RANGE
+            rng = float(h.max() - h.min())
+            model.h_pc0.clamp_(min=-rng, max=rng)
         sched.step()
     return model, {"loss": float(loss.detach().cpu()), "epochs": epochs}
 
