@@ -252,6 +252,37 @@ def test_zero_leakance_decouples_the_layers():
     assert float(h[2, :, -1].abs().max()) < 1e-9
 
 
+def test_leakage_gradient_is_nonzero_and_finite():
+    """Finding 1 (fix round 1): `test_zero_leakance_decouples_the_layers` alone cannot
+    distinguish "log_L wired correctly but driven to ~0" from "log_L ignored entirely
+    by the operator" -- it passes against a stub that never adds the leakage term at
+    all, since with no coupling the lower layers are also exactly zero. This test
+    closes that gap directly: at a *finite*, non-degenerate leakance, log_L must sit
+    inside the operator M(log_T, log_S, log_L), so d(loss)/d(log_L) must be a real,
+    finite, nonzero number by construction -- and getting a gradient at all here also
+    exercises the n_layers > 1 branch of the conditional parameter tuple threaded
+    through _op/_ImplicitSolve.apply.
+
+    Verified (see fix-round-1 section of the report) that this test fails -- with an
+    AssertionError on `gr is not None`, since log_L then never enters the autograd
+    graph at all -- against a stub that reverts to Task 2's leakage-free `_matvec_from`
+    (the pre-Task-3 marker-comment version), confirming the test is not vacuous.
+    """
+    g = _uniform_grid(n=11)
+    m = FlowModel(g, n_layers=2, dt_days=1.0)
+    A = g.n_active
+    with torch.no_grad():
+        m.log_L.fill_(float(np.log(1e-3)))            # finite, non-degenerate leakance
+    rech = torch.zeros(2, A, 4)
+    rech[0, 0, :] = 1e-3                               # localized: breaks spatial symmetry
+    h = m(torch.zeros(2, A), rech, torch.zeros(2, A, 4), 4)
+    h.pow(2).sum().backward()
+    gr = m.log_L.grad
+    assert gr is not None
+    assert torch.isfinite(gr).all()
+    assert float(gr.abs().sum()) > 0.0
+
+
 def test_four_layers_run_and_stay_finite():
     g = _uniform_grid(n=11)
     m = FlowModel(g, n_layers=4, dt_days=30.0)

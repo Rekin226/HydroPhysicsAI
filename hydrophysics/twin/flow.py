@@ -234,11 +234,17 @@ class FlowModel(nn.Module):
         ``L`` is the leakance (1/day) between layer k and k+1, shape (n_layers-1, A),
         or ``None`` when there is only one layer (nothing to couple). Leakage acts on
         the *vertical* head difference between adjacent layers, independently of the
-        horizontal face conductances above: layer k gains ``-Lk*area*(h_k - h_{k+1})``
-        and layer k+1 gains ``+Lk*area*(h_k - h_{k+1})``, i.e. water moves down the
-        head gradient. Written as an explicit +/- accumulation into a zeros_like
-        buffer (rather than in place on ``out``/``diag`` directly) so it reads the same
-        for any n_layers and stays out-of-place for autograd.
+        horizontal face conductances above. These are LHS operator coefficients
+        (``M @ h``), not a physical mass flux -- with ``inter = Lk*(h_k - h_{k+1})``,
+        row k of the operator gains ``+inter`` and row k+1 gains ``-inter``, i.e. each
+        row picks up ``+Lk`` on its own (diagonal) head and ``-Lk`` on its neighbour's
+        (off-diagonal) head. This mirrors the ``ia``/``ib`` convention already used
+        for the horizontal conductance term just above (``index_add(..., flux)`` /
+        ``index_add(..., -flux)``), and is what keeps the operator symmetric: the
+        code is the source of truth here, verified symmetric and SPD by assembling
+        the dense operator on a small grid. Written as an explicit +/- accumulation
+        into a zeros_like buffer (rather than in place on ``out``/``diag`` directly)
+        so it reads the same for any n_layers and stays out-of-place for autograd.
         """
         ia, ib = self.ia, self.ib
         Tf = 2.0 * T[:, ia] * T[:, ib] / (T[:, ia] + T[:, ib]).clamp(min=1e-30)  # harmonic
