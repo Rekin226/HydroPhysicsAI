@@ -225,10 +225,20 @@ class FlowModel(nn.Module):
             + float(np.log(1e-4))                                       # 1/day
         )
 
-    def _matvec_from(self, T, S):
-        """Return ``(mv, diag)``: ``mv`` applies (S*area/dt + K) to a head vector of
-        shape (L, A); ``diag`` is that operator's diagonal (S*area/dt plus the sum of
-        face conductances touching each cell), used as a Jacobi preconditioner in _cg.
+    def _matvec_from(self, T, S, L=None):
+        """Return ``(mv, diag)``: ``mv`` applies (S*area/dt + K + leakage) to a head
+        vector of shape (L, A); ``diag`` is that operator's diagonal (S*area/dt, plus
+        the sum of face conductances touching each cell, plus the leakances touching
+        each layer), used as a Jacobi preconditioner in _cg.
+
+        ``L`` is the leakance (1/day) between layer k and k+1, shape (n_layers-1, A),
+        or ``None`` when there is only one layer (nothing to couple). Leakage acts on
+        the *vertical* head difference between adjacent layers, independently of the
+        horizontal face conductances above: layer k gains ``-Lk*area*(h_k - h_{k+1})``
+        and layer k+1 gains ``+Lk*area*(h_k - h_{k+1})``, i.e. water moves down the
+        head gradient. Written as an explicit +/- accumulation into a zeros_like
+        buffer (rather than in place on ``out``/``diag`` directly) so it reads the same
+        for any n_layers and stays out-of-place for autograd.
         """
         ia, ib = self.ia, self.ib
         Tf = 2.0 * T[:, ia] * T[:, ib] / (T[:, ia] + T[:, ib]).clamp(min=1e-30)  # harmonic
@@ -239,19 +249,39 @@ class FlowModel(nn.Module):
             flux = Tf * dh
             out = out.index_add(1, ia, flux)
             out = out.index_add(1, ib, -flux)
-            # Vertical leakage is added in Task 3; layers are independent here.
+            if self.n_layers > 1:
+                # Leakance L (1/day) between layer k and k+1, acting on the head
+                # difference. +Lk to both diagonal entries, -Lk to both off-diagonal
+                # entries -- symmetric, so the operator stays SPD.
+                Lk = L * self.area                              # (L-1, A)
+                inter = Lk * (h[:-1] - h[1:])                    # downward-positive flux
+                lay = torch.zeros_like(out)
+                lay[:-1] = lay[:-1] + inter
+                lay[1:] = lay[1:] - inter
+                out = out + lay
             return out
 
         diag = S * self.area / self.dt
         diag = diag.index_add(1, ia, Tf)
         diag = diag.index_add(1, ib, Tf)
+        if self.n_layers > 1:
+            Lk = L * self.area
+            diagL = torch.zeros_like(diag)
+            diagL[:-1] = diagL[:-1] + Lk
+            diagL[1:] = diagL[1:] + Lk
+            diag = diag + diagL
         return mv, diag
 
-    def _op(self, h, log_T, log_S):
-        """Differentiable M(log_T, log_S) @ h, used only by the adjoint's backward."""
+    def _op(self, h, log_T, log_S, log_L=None):
+        """Differentiable M(log_T, log_S, log_L) @ h, used only by the adjoint's
+        backward. ``log_L`` is omitted by the caller (stays None) when n_layers == 1,
+        since then it never enters the operator and would otherwise trip the
+        None-gradient guard in ``_ImplicitSolve.backward``.
+        """
         T = torch.exp(log_T)
         S = torch.exp(log_S)
-        mv, _ = self._matvec_from(T, S)
+        L = torch.exp(log_L) if log_L is not None else None
+        mv, _ = self._matvec_from(T, S, L)
         return mv(h)
 
     def forward(self, h0: torch.Tensor, recharge: torch.Tensor,
@@ -262,7 +292,13 @@ class FlowModel(nn.Module):
 
         T = torch.exp(self.log_T)
         S = torch.exp(self.log_S)
-        mv, diag = self._matvec_from(T, S)
+        if self.n_layers > 1:
+            L = torch.exp(self.log_L)
+            params = (self.log_T, self.log_S, self.log_L)
+        else:
+            L = None
+            params = (self.log_T, self.log_S)
+        mv, diag = self._matvec_from(T, S, L)
         h = h0
         out = [h0]
         for t in range(n_steps):
@@ -271,6 +307,6 @@ class FlowModel(nn.Module):
             # Warm-start CG from the previous head: consecutive backward-Euler steps have
             # similar solutions, so this is free and cuts iterations substantially.
             solve = _warm_started_solver(mv, diag, h)
-            h = _ImplicitSolve.apply(b, self._op, solve, self.log_T, self.log_S)
+            h = _ImplicitSolve.apply(b, self._op, solve, *params)
             out.append(h)
         return torch.stack(out, dim=-1)

@@ -209,3 +209,53 @@ def test_adjoint_gradient_matches_finite_differences():
     eps = 1e-4
     numeric = (loss_of(eps) - loss_of(-eps)) / (2 * eps)
     assert analytic == pytest.approx(numeric, rel=0.02)
+
+
+def test_leakage_moves_water_between_layers_and_conserves_it():
+    """NOTE (brief defect, corrected here): the brief's `added` omits the `m.dt` factor
+    that `test_mass_balance_closes_each_step` above established is required (stored =
+    dt * sum(recharge*area)). It happens to still pass as written because this test uses
+    dt_days=1.0, which makes the missing factor silently 1 -- the same trap the earlier
+    fix-round-1 note describes. Corrected here for consistency with the established
+    convention, even though it does not change the numeric result at dt=1.
+    """
+    g = _uniform_grid(n=15)
+    m = FlowModel(g, n_layers=2, dt_days=1.0)
+    A = g.n_active
+    with torch.no_grad():
+        m.log_S.fill_(float(np.log(1e-3)))
+        m.log_L.fill_(float(np.log(1e-3)))
+    # recharge the upper layer only
+    rech = torch.zeros(2, A, 8)
+    rech[0] = 1e-3
+    h = m(torch.zeros(2, A), rech, torch.zeros(2, A, 8), 8)
+    assert float(h[0, :, -1].mean()) > 0.0
+    assert float(h[1, :, -1].mean()) > 0.0            # leakage reached the lower layer
+    assert float(h[0, :, -1].mean()) > float(h[1, :, -1].mean())
+
+    S = torch.exp(m.log_S)
+    stored = float(((h[:, :, -1] - h[:, :, 0]) * S).sum() * g.dx ** 2)
+    added = float(rech.sum() * g.dx ** 2 * m.dt)
+    assert stored == pytest.approx(added, rel=1e-4)
+
+
+def test_zero_leakance_decouples_the_layers():
+    g = _uniform_grid(n=11)
+    m = FlowModel(g, n_layers=3, dt_days=1.0)
+    A = g.n_active
+    with torch.no_grad():
+        m.log_L.fill_(-40.0)                          # effectively zero
+    rech = torch.zeros(3, A, 4)
+    rech[0] = 1e-3
+    h = m(torch.zeros(3, A), rech, torch.zeros(3, A, 4), 4)
+    assert float(h[1, :, -1].abs().max()) < 1e-9
+    assert float(h[2, :, -1].abs().max()) < 1e-9
+
+
+def test_four_layers_run_and_stay_finite():
+    g = _uniform_grid(n=11)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    A = g.n_active
+    h = m(torch.zeros(4, A), torch.full((4, A, 6), 1e-4), torch.zeros(4, A, 6), 6)
+    assert h.shape == (4, A, 7)
+    assert torch.isfinite(h).all()
