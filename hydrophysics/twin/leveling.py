@@ -26,10 +26,17 @@ def load_panel(data_dir: str) -> pd.DataFrame:
 
 
 def site_subsidence(panel: pd.DataFrame, t0: str, t1: str,
-                    min_obs: int = 5) -> dict[str, pd.Series]:
+                    min_obs: int = 5,
+                    max_rate: float | None = None) -> dict[str, pd.Series]:
     """{sid -> cumulative subsidence (m, positive = sinking) re-zeroed to the first survey}.
 
     Sites with fewer than ``min_obs`` surveys inside [t0, t1) are dropped.
+
+    ``max_rate`` (m/yr) additionally drops sites showing an inter-survey rate that large.
+    A levelling benchmark can be reset, rebuilt or mis-transcribed, which appears as a step
+    no ground motion could produce: on this network the median site moves 1.6 cm/yr, so a
+    survey-to-survey rate above ~50 cm/yr is a datum artefact rather than subsidence.
+    Left off (``None``) by default so the unscreened panel stays reproducible.
     """
     w = panel[(panel.datetime >= pd.Timestamp(t0)) & (panel.datetime < pd.Timestamp(t1))]
     out: dict[str, pd.Series] = {}
@@ -38,6 +45,11 @@ def site_subsidence(panel: pd.DataFrame, t0: str, t1: str,
         if len(g) < min_obs:
             continue
         s = pd.Series(g.elev_m.to_numpy(), index=pd.DatetimeIndex(g.datetime))
+        if max_rate is not None and len(s) > 1:
+            yrs = np.diff([t.toordinal() for t in s.index]) / 365.25
+            rate = np.abs(np.diff(s.to_numpy())) / np.maximum(yrs, 1e-6)
+            if np.nanmax(rate) > max_rate:
+                continue
         out[sid] = (s.iloc[0] - s).rename("subsidence_m")
     return out
 

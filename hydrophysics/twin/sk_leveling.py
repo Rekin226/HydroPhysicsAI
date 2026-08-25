@@ -68,6 +68,9 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Stage-1 Sk gate on the leveling network")
     ap.add_argument("--data", default=None, help="data dir (else HYDROMIND_GW_DATA)")
     ap.add_argument("--min-obs", type=int, default=5)
+    ap.add_argument("--max-rate", type=float, default=None,
+                    help="drop sites with an inter-survey rate above this (m/yr); "
+                         "benchmark resets show up as steps no ground motion can produce")
     ap.add_argument("--t0", default="2012-01-01")
     ap.add_argument("--t1", default="2023-01-01")
     ap.add_argument("--out", default="results/twin")
@@ -99,7 +102,8 @@ def main(argv=None) -> None:
         print(f"heads: {head_H.shape[0]} curated wells (legacy set)")
 
     panel = leveling.load_panel(ddir)
-    sub_raw = leveling.site_subsidence(panel, args.t0, args.t1, min_obs=args.min_obs)
+    sub_raw = leveling.site_subsidence(panel, args.t0, args.t1, min_obs=args.min_obs,
+                                       max_rate=args.max_rate)
     xy = leveling.site_xy(panel)
     coast = {sid: float(xy[sid][0]) for sid in xy}     # proxy: easting increases inland
 

@@ -154,3 +154,25 @@ def test_planar_correction_preserves_the_basin_mean_rate():
     # the shared 2 cm/yr sinking must remain; only the tilt is removed
     assert np.mean(finals) == pytest.approx(0.02 * yrs[-1], rel=0.05)
     assert np.all(finals > 0.0)
+
+
+def test_max_rate_drops_benchmark_resets():
+    """A levelling benchmark reset is a step no ground motion could produce."""
+    times = pd.DatetimeIndex([pd.Timestamp(f"{y}-06-15") for y in range(2012, 2018)])
+    yrs = np.array([(t - times[0]).days / 365.25 for t in times])
+    rows = []
+    for i, t in enumerate(times):
+        rows.append({"sid": "GOOD", "datetime": t, "elev_m": 10.0 - 0.02 * yrs[i],
+                     "x": 180000.0, "y": 2620000.0})
+        # RESET jumps 3 m between the 3rd and 4th survey
+        rows.append({"sid": "RESET", "datetime": t,
+                     "elev_m": 5.0 - 0.02 * yrs[i] - (3.0 if i >= 3 else 0.0),
+                     "x": 190000.0, "y": 2630000.0})
+    p = pd.DataFrame(rows)
+
+    both = leveling.site_subsidence(p, "2012-01-01", "2018-01-01", min_obs=5)
+    assert set(both) == {"GOOD", "RESET"}          # off by default
+
+    screened = leveling.site_subsidence(p, "2012-01-01", "2018-01-01", min_obs=5,
+                                        max_rate=0.5)
+    assert set(screened) == {"GOOD"}               # the reset site is dropped
