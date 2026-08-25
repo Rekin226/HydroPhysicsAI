@@ -59,3 +59,22 @@ def test_pumps_outside_the_grid_are_dropped_not_snapped():
                         "electricity_kwh": [50.0]})
     E, _ = aggregate_pumps(pumps, kwh, g, "2015-01-01", "2015-02-01")
     assert E.sum() == pytest.approx(0.0)
+
+
+def test_nan_readings_do_not_poison_a_cell():
+    """One missing reading must not corrupt co-located pumps' valid readings."""
+    g = _grid()
+    pumps = pd.DataFrame({"sid": ["a", "b"],
+                          "TWD97_X": [500.0, 500.0],
+                          "TWD97_Y": [500.0, 500.0],
+                          "PUMP_HP": [5.0, 5.0],
+                          "PURPOSE": ["irrigation"] * 2})
+    months = pd.date_range("2015-01-01", periods=2, freq="MS")
+    kwh = pd.DataFrame({"pump": ["a", "a", "b", "b"],
+                        "datetime": list(months) * 2,
+                        "electricity_kwh": [np.nan, 20.0, 30.0, 40.0]})
+    E, _ = aggregate_pumps(pumps, kwh, g, "2015-01-01", "2015-03-01")
+    i_a = g.active_index(500.0, 500.0)
+    assert np.isfinite(E[i_a, 0])
+    assert E[i_a, 0] == pytest.approx(30.0)   # pump a's NaN dropped, pump b's 30.0 kept
+    assert E[i_a, 1] == pytest.approx(60.0)   # 20.0 + 40.0, unaffected

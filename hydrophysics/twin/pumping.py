@@ -78,6 +78,11 @@ def aggregate_pumps(pumps: pd.DataFrame, kwh: pd.DataFrame, grid,
     k = k[(k["datetime"] >= dates[0]) & (k["datetime"] <= dates[-1])]
     k["cell"] = k["pump"].astype(str).map(cell)
     k = k.dropna(subset=["cell"])
+    # A NaN reading must be treated as *no contribution*, not summed in: np.add.at
+    # accumulates in place, so a single NaN would NaN the whole (cell, month) bucket
+    # and silently poison every other pump sharing that cell and month -- not just the
+    # pump with the missing reading. Drop NaN readings before accumulating.
+    k = k.dropna(subset=["electricity_kwh"])
 
     E = np.zeros((grid.n_active, len(dates)), dtype="float64")
     if k.empty:
