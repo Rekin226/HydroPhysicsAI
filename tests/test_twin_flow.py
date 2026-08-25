@@ -168,51 +168,42 @@ def test_gradients_reach_the_parameters_and_are_finite():
 def test_adjoint_gradient_matches_finite_differences():
     """The implicit-differentiation backward must agree with a numerical gradient.
 
-    NOTE (brief defect, corrected here): two problems with the brief's version.
+    NOTE (brief defect, corrected here): the brief's uniform recharge makes the true
+    dL/d(log_T) exactly zero (see the note in
+    test_gradients_reach_the_parameters_and_are_finite above), so the comparison is
+    trivially 0 == 0 regardless of whether the adjoint's parameter term is even
+    implemented -- verified by monkeypatching the brief's literal (broken) backward,
+    which returns None for every parameter grad: the test's own `m.log_T.grad.sum()`
+    then raises AttributeError rather than exercising the `rel=0.02` comparison at all,
+    and with a non-degenerate forcing pattern the true gradient is provably nonzero, so a
+    broken backward is no longer masked. Fixed by localizing the recharge to a single
+    cell.
 
-    1. Uniform recharge makes the true dL/d(log_T) exactly zero (see the note in
-       test_gradients_reach_the_parameters_and_are_finite above), so the comparison is
-       trivially 0 == 0 regardless of whether the adjoint's parameter term is even
-       implemented -- verified by monkeypatching the brief's literal (broken) backward,
-       which returns None for every parameter grad: the test's own `m.log_T.grad.sum()`
-       then raises AttributeError rather than exercising the `rel=0.02` comparison at
-       all, and with a non-degenerate forcing pattern the true gradient is provably
-       nonzero, so a broken backward is no longer masked. Fixed by localizing the
-       recharge to a single cell.
-    2. This problem is numerically stiff: the harmonic conductance term T (~500) is far
-       larger than the storage term S*area/dt (=1e-4*100^2/1=1), so the assembled operator
-       is dominated by the discrete-Laplacian-like conductance block and is
-       ill-conditioned. A small CG residual does not imply a small solution error for an
-       ill-conditioned system, and float32's ~1e-7 relative precision is not enough
-       headroom for an eps=1e-4 central difference once that error is amplified --
-       verified numerically: in float32 the finite-difference estimate is pure noise
-       (order-1 relative error, sign flips) whereas in float64 it agrees with the
-       analytic gradient to 8 significant figures. Finite-difference gradient checks
-       needing float64 for exactly this reason is standard practice (e.g. PyTorch's own
-       `torch.autograd.gradcheck` defaults to double precision). Fixed by building the
-       model and its inputs in float64 for this test only.
+    NOTE (fix round 3): this test used to also build the model and its inputs in float64
+    explicitly, because this problem is numerically stiff (the harmonic conductance term
+    T~500 is far larger than the storage term S*area/dt=1, so the assembled operator is
+    ill-conditioned) and float32's ~1e-7 relative precision left no headroom for an
+    eps=1e-4 central difference once that ill-conditioning amplified it -- float32 gave
+    pure noise (order-1 relative error, sign flips) while float64 agreed with the
+    analytic gradient to 8 significant figures. `FlowModel` now runs in float64
+    internally regardless of the caller's dtype (see the module docstring), so that
+    workaround is no longer needed here -- plain float32 tensors are passed in below and
+    the model casts them itself, the same as any other caller.
     """
     g = _uniform_grid(n=9)
-    prev_dtype = torch.get_default_dtype()
-    torch.set_default_dtype(torch.float64)
-    try:
-        m = FlowModel(g, n_layers=1, dt_days=1.0)
-    finally:
-        torch.set_default_dtype(prev_dtype)
+    m = FlowModel(g, n_layers=1, dt_days=1.0)
     A = g.n_active
-    rech = torch.zeros(1, A, 2, dtype=torch.float64)
+    rech = torch.zeros(1, A, 2)
     rech[0, 0, :] = 1e-3
 
     def loss_of(logT_delta: float) -> float:
         with torch.no_grad():
             m.log_T.fill_(float(np.log(500.0)) + logT_delta)
-        return float(m(torch.zeros(1, A, dtype=torch.float64), rech,
-                       torch.zeros(1, A, 2, dtype=torch.float64), 2).pow(2).sum())
+        return float(m(torch.zeros(1, A), rech, torch.zeros(1, A, 2), 2).pow(2).sum())
 
     with torch.no_grad():
         m.log_T.fill_(float(np.log(500.0)))
-    out = m(torch.zeros(1, A, dtype=torch.float64), rech,
-            torch.zeros(1, A, 2, dtype=torch.float64), 2).pow(2).sum()
+    out = m(torch.zeros(1, A), rech, torch.zeros(1, A, 2), 2).pow(2).sum()
     out.backward()
     analytic = float(m.log_T.grad.sum())
     eps = 1e-4

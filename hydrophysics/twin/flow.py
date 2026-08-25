@@ -15,6 +15,17 @@ computed inside backward) is a CG solve in its own right and its convergence mat
 directly -- a stalled lambda solve feeds a wrong lambda into both the b-gradient and the
 parameter vjp, corrupting every gradient computed from this step. See ``_cg``'s residual
 warning.
+
+The model holds its parameters in float64 and casts ``forward``'s inputs to float64 on
+entry, returning float64. This is deliberate, not incidental: measured on this solver,
+float32 CG has an honest accuracy floor of ~1e-5 regardless of iteration budget (CG's
+running residual estimate drifts from the true residual under float32 rounding well
+before the true error gets anywhere near a useful tolerance), while float64 reaches 1e-8
+or better in fewer iterations than float32's illusory "converged" iteration count. Memory
+is not the constraint one might expect: at fan scale (~2,150 cells x 4 layers x 133
+monthly steps) a float64 rollout is on the order of 10 MB. Callers (including Task 5's
+numpy-built calibration tensors) should not need to remember to pass float64 -- the
+model enforces it internally regardless of what dtype it is called with.
 """
 
 from __future__ import annotations
@@ -30,6 +41,7 @@ from .grid import FanGrid
 _CG_TOL = 1e-8
 _CG_MAXITER = 400
 _CG_RESTART = 50
+_MODEL_DTYPE = torch.float64
 
 
 def _neighbour_index(grid: FanGrid) -> tuple[torch.Tensor, torch.Tensor]:
@@ -104,22 +116,23 @@ class _ImplicitSolve(torch.autograd.Function):
         return (lam, None, None) + param_grads
 
 
-def _warm_started_solver(matvec, x0):
-    """Bind ``x0`` now (rather than via a lambda default-arg trick) so the returned
-    closure always warm-starts from the head at the time it was created, not whatever
-    the loop variable holds when the closure is later invoked (e.g. by
-    ``_ImplicitSolve.backward`` for the adjoint solve, well after the forward loop ends).
+def _warm_started_solver(matvec, diag, x0):
+    """Bind ``x0`` (and the operator's diagonal, for Jacobi preconditioning) now, rather
+    than via a lambda default-arg trick, so the returned closure always warm-starts from
+    the head at the time it was created, not whatever the loop variable holds when the
+    closure is later invoked (e.g. by ``_ImplicitSolve.backward`` for the adjoint solve,
+    well after the forward loop ends).
     """
     x0 = x0.detach()
 
     def solve(rhs):
-        return _cg(matvec, rhs, x0=x0)
+        return _cg(matvec, rhs, diag=diag, x0=x0)
 
     return solve
 
 
-def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
-    """Matrix-free conjugate gradient for a symmetric positive-definite operator.
+def _cg(matvec, b, diag=None, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
+    """Matrix-free, Jacobi-preconditioned conjugate gradient for an SPD operator.
 
     Warns once if the *true* relative residual (recomputed from scratch, not the value
     tracked by the CG recurrence) has not reached ``tol`` within ``maxiter`` iterations.
@@ -129,39 +142,52 @@ def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
     heads accurate to 1e-6 instead of 1e-8) is often still usable, but it must not pass
     silently.
 
-    Two float32-specific safeguards, both needed:
+    ``diag``, if given, is the operator's diagonal (S*area/dt plus the sum of face
+    conductances touching each cell); ``z = r / diag`` is applied each iteration as a
+    Jacobi preconditioner. This matters because calibration (Task 5) clamps log_T to
+    span 5 decades (log(1)..log(1e5)), which is exactly the kind of heterogeneity that
+    makes the unpreconditioned operator ill-conditioned and stalls CG well short of
+    ``tol`` -- Jacobi is the standard, near-free (one elementwise divide per iteration)
+    first remedy. ``diag=None`` falls back to plain (unpreconditioned) CG.
+
+    Two float32-legacy safeguards remain even though the model now runs in float64,
+    since ``_cg`` itself is dtype-agnostic and these protect it either way:
 
     1. The convergence check *inside* the loop uses the cheap recurrence residual
-       ``r = r - alpha*Ap``, which drifts from the true residual ``b - matvec(x)`` under
-       float32 rounding over the ~100-140 iterations these solves typically take --
-       confirmed on a plain, non-adversarial case (T=500, single well): the recurrence
-       reports relres~9e-9 (converged) while the true residual is ~1e-5, four orders of
-       magnitude worse. So every ``_CG_RESTART`` iterations the recurrence is corrected by
-       recomputing ``r`` from scratch (the standard remedy for this drift; costs one extra
-       matvec per restart), rather than trusting the incremental update indefinitely.
+       ``r = r - alpha*Ap``, which can drift from the true residual ``b - matvec(x)``
+       under floating-point rounding over many iterations. So every ``_CG_RESTART``
+       iterations the recurrence is corrected by recomputing ``r`` from scratch (the
+       standard remedy for this drift; costs one extra matvec per restart), rather than
+       trusting the incremental update indefinitely.
     2. Independent of restarts, the *warning* always recomputes the true residual after
-       the loop rather than reusing whatever the recurrence last reported -- the drift
-       above means the recurrence's own belief about convergence cannot be trusted even
-       right when the loop exits.
+       the loop rather than reusing whatever the recurrence last reported -- drift means
+       the recurrence's own belief about convergence cannot be trusted even right when
+       the loop exits.
     """
     x = torch.zeros_like(b) if x0 is None else x0.clone()
     r = b - matvec(x)
     b_norm = (b * b).sum().sqrt().clamp(min=1e-30)
     relres = (r * r).sum().sqrt() / b_norm
+
+    def precondition(v):
+        return v / diag.clamp(min=1e-30) if diag is not None else v
+
     if relres >= tol:
-        p = r.clone()
-        rs = (r * r).sum()
+        z = precondition(r)
+        p = z.clone()
+        rz = (r * z).sum()
         for i in range(1, maxiter + 1):
             Ap = matvec(p)
-            alpha = rs / (p * Ap).sum().clamp(min=1e-30)
+            alpha = rz / (p * Ap).sum().clamp(min=1e-30)
             x = x + alpha * p
             r = b - matvec(x) if i % _CG_RESTART == 0 else r - alpha * Ap
-            rs_new = (r * r).sum()
-            relres = rs_new.sqrt() / b_norm
+            relres = (r * r).sum().sqrt() / b_norm
             if relres < tol:
                 break
-            p = r + (rs_new / rs.clamp(min=1e-30)) * p
-            rs = rs_new
+            z = precondition(r)
+            rz_new = (r * z).sum()
+            p = z + (rz_new / rz.clamp(min=1e-30)) * p
+            rz = rz_new
     true_relres = (b - matvec(x)).pow(2).sum().sqrt() / b_norm
     if true_relres >= tol:
         warnings.warn(
@@ -174,7 +200,11 @@ def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
 
 
 class FlowModel(nn.Module):
-    """Multi-layer transient flow. ``forward`` returns heads ``(L, A, T+1)``."""
+    """Multi-layer transient flow. ``forward`` returns heads ``(L, A, T+1)``.
+
+    Always operates internally in float64 (see module docstring); the constructor's
+    ``device`` argument still controls placement, just not dtype.
+    """
 
     def __init__(self, grid: FanGrid, n_layers: int = 4, dt_days: float = 30.0,
                  device=None):
@@ -187,14 +217,19 @@ class FlowModel(nn.Module):
         ia, ib = _neighbour_index(grid)
         self.register_buffer("ia", ia.to(device) if device else ia)
         self.register_buffer("ib", ib.to(device) if device else ib)
-        z = torch.zeros(self.n_layers, A, device=device)
+        z = torch.zeros(self.n_layers, A, device=device, dtype=_MODEL_DTYPE)
         self.log_T = nn.Parameter(z.clone() + float(np.log(500.0)))     # m2/day
         self.log_S = nn.Parameter(z.clone() + float(np.log(1e-4)))      # -
-        self.log_L = nn.Parameter(torch.zeros(max(self.n_layers - 1, 1), A, device=device)
-                                  + float(np.log(1e-4)))               # 1/day
+        self.log_L = nn.Parameter(
+            torch.zeros(max(self.n_layers - 1, 1), A, device=device, dtype=_MODEL_DTYPE)
+            + float(np.log(1e-4))                                       # 1/day
+        )
 
     def _matvec_from(self, T, S):
-        """Return a closure applying (S*area/dt + K) to a head vector of shape (L, A)."""
+        """Return ``(mv, diag)``: ``mv`` applies (S*area/dt + K) to a head vector of
+        shape (L, A); ``diag`` is that operator's diagonal (S*area/dt plus the sum of
+        face conductances touching each cell), used as a Jacobi preconditioner in _cg.
+        """
         ia, ib = self.ia, self.ib
         Tf = 2.0 * T[:, ia] * T[:, ib] / (T[:, ia] + T[:, ib]).clamp(min=1e-30)  # harmonic
 
@@ -207,19 +242,27 @@ class FlowModel(nn.Module):
             # Vertical leakage is added in Task 3; layers are independent here.
             return out
 
-        return mv
+        diag = S * self.area / self.dt
+        diag = diag.index_add(1, ia, Tf)
+        diag = diag.index_add(1, ib, Tf)
+        return mv, diag
 
     def _op(self, h, log_T, log_S):
         """Differentiable M(log_T, log_S) @ h, used only by the adjoint's backward."""
         T = torch.exp(log_T)
         S = torch.exp(log_S)
-        return self._matvec_from(T, S)(h)
+        mv, _ = self._matvec_from(T, S)
+        return mv(h)
 
     def forward(self, h0: torch.Tensor, recharge: torch.Tensor,
                 pumping: torch.Tensor, n_steps: int) -> torch.Tensor:
+        h0 = h0.to(dtype=_MODEL_DTYPE)
+        recharge = recharge.to(dtype=_MODEL_DTYPE)
+        pumping = pumping.to(dtype=_MODEL_DTYPE)
+
         T = torch.exp(self.log_T)
         S = torch.exp(self.log_S)
-        mv = self._matvec_from(T, S)
+        mv, diag = self._matvec_from(T, S)
         h = h0
         out = [h0]
         for t in range(n_steps):
@@ -227,7 +270,7 @@ class FlowModel(nn.Module):
             b = S * self.area / self.dt * h + q
             # Warm-start CG from the previous head: consecutive backward-Euler steps have
             # similar solutions, so this is free and cuts iterations substantially.
-            solve = _warm_started_solver(mv, h)
+            solve = _warm_started_solver(mv, diag, h)
             h = _ImplicitSolve.apply(b, self._op, solve, self.log_T, self.log_S)
             out.append(h)
         return torch.stack(out, dim=-1)
