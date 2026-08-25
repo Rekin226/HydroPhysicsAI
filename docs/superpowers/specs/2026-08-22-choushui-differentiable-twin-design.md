@@ -347,6 +347,52 @@ Per-fold diagnostics for the shared arm should be added before Plan B.
 888 leveling sites. What passes here is the *rheology with memory*, at the 14 depth-resolved
 compaction wells, transferred by a pooled estimator.
 
+### FINAL RESULTS (2026-08-25) — the head field was the binding constraint
+
+The head field had been built from `chou-shui-data`'s curated **61** wells. That selection
+came from the gray-box study, which required every well to have an *upstream partner* for
+its ODE — a constraint with no bearing on subsidence. The provided raw file holds **174**
+wells, and the API exposes **344** on the fan, each with a `GroundwaterLayerCode`.
+`twin/heads.py` rebuilds the field from the API network: robust despike at median ± 15·MAD,
+≥80% coverage, ≤180 d max gap, valid layer code → **147 wells** (L1 34, L2 69, L3 31,
+L4 13), 1.1% NaN month-cells, nothing gap-filled. This is now the default (`--heads api`).
+
+**Stage 1** — 878 leveling sites (10 benchmark resets screened at `--max-rate 0.5`), single-`Sk` LOSO pooled:
+
+| head field | no tectonic correction | tilt removed |
+|---|---|---|
+| 61 curated wells | +0.116 | **−0.161** |
+| **147 API wells** | **+0.214** | **+0.040** |
+
+Head-field density was a real confound: the tilt-corrected gate flips from negative to
+positive. Per-layer fields are *worse* than pooled (L1 −0.215, L2 −0.099, L3 +0.036),
+which is expected — subsidence integrates compaction over the whole column, so no single
+aquifer's head drives it. That is direct motivation for the four-layer solver.
+
+**Stage 2** — 14 compaction wells, 1,296 cells, identical arrays:
+
+| model | evaluation | 61-well heads | **147-well heads** |
+|---|---|---|---|
+| single `Sk` | in-sample | −0.298 | +0.190 |
+| single `Sk` | **LOSO, pooled** (baseline) | −0.556 | **+0.106** |
+| coast regression | LOSO | −4.000 | −0.120 |
+| VEP | LOSO, per-site + mean | −1.875 | +0.070 |
+| **VEP** | **LOSO, shared global** | +0.324 | **+0.478** |
+
+Init-scatter ensemble on the final configuration (8 runs, sd 0.5 log-space): mean
+**+0.4777**, sd **0.0023**, range +0.4739 to +0.4812, **8/8 beat the baseline**.
+
+**Verdict.** With the full well network, the sparse-head-field confound is removed and the
+picture is consistent: the algebraic `Sk` becomes weakly predictive out-of-sample
+(+0.106 at MLCW sites, +0.040 across 878 leveling sites), and the visco-elasto-plastic
+rheology adds **+0.37 R²** on top of it (+0.478 vs +0.106) under a pooled estimator with no
+per-site covariates. Stage 2 passes decisively; Stage 1 is marginal, which is itself
+informative — the algebraic form is adequate at compaction wells and not across the
+leveling network.
+
+**Plan B is justified**, and the layer results say what it must be: a genuinely four-layer
+solver, not a single-layer proxy.
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).

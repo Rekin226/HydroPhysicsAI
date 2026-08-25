@@ -74,11 +74,11 @@ def main(argv=None) -> None:
     ap.add_argument("--t0", default="2012-01-01")
     ap.add_argument("--t1", default="2023-01-01")
     ap.add_argument("--out", default="results/twin")
-    ap.add_argument("--heads", default="legacy", choices=["legacy", "api"],
-                    help="legacy = the curated 61-well set; api = QC'd wisenvr fan wells")
+    ap.add_argument("--heads", default="api", choices=["legacy", "api"],
+                    help="api (default) = 147 QC'd wisenvr fan wells; legacy = the curated 61")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
-    ap.add_argument("--stations", default=None,
-                    help="parquet of the API station table (needed for --heads api)")
+    ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet",
+                    help="parquet of the API station table (used by --heads api)")
     ap.add_argument("--layer", default=None, choices=["1", "2", "3", "4"],
                     help="restrict --heads api to one aquifer layer")
     args = ap.parse_args(argv)

@@ -183,10 +183,10 @@ def main(argv=None) -> None:
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--out", default="results/twin")
-    ap.add_argument("--heads", default="legacy", choices=["legacy", "api"],
-                    help="legacy = the curated 61-well set; api = QC'd wisenvr fan wells")
+    ap.add_argument("--heads", default="api", choices=["legacy", "api"],
+                    help="api (default) = 147 QC'd wisenvr fan wells; legacy = the curated 61")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
-    ap.add_argument("--stations", default=None)
+    ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
     ap.add_argument("--layer", default=None, choices=["1", "2", "3", "4"])
     ap.add_argument("--ensemble", type=int, default=0,
                     help="repeat the shared-parameter arm N times with scattered inits")
