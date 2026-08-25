@@ -29,6 +29,7 @@ from .grid import FanGrid
 
 _CG_TOL = 1e-8
 _CG_MAXITER = 400
+_CG_RESTART = 50
 
 
 def _neighbour_index(grid: FanGrid) -> tuple[torch.Tensor, torch.Tensor]:
@@ -120,12 +121,28 @@ def _warm_started_solver(matvec, x0):
 def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
     """Matrix-free conjugate gradient for a symmetric positive-definite operator.
 
-    Warns once if the relative residual has not reached ``tol`` within ``maxiter``
-    iterations. The same closure produces both the forward head solve and the adjoint's
-    lambda solve, so a stalled solve here silently corrupts the heads *and* every gradient
-    computed from them -- this is deliberately not a hard error, since a warned-about
-    near-miss (e.g. heads accurate to 1e-6 instead of 1e-8) is often still usable, but it
-    must not pass silently.
+    Warns once if the *true* relative residual (recomputed from scratch, not the value
+    tracked by the CG recurrence) has not reached ``tol`` within ``maxiter`` iterations.
+    The same closure produces both the forward head solve and the adjoint's lambda solve,
+    so a stalled solve here silently corrupts the heads *and* every gradient computed from
+    them -- this is deliberately not a hard error, since a warned-about near-miss (e.g.
+    heads accurate to 1e-6 instead of 1e-8) is often still usable, but it must not pass
+    silently.
+
+    Two float32-specific safeguards, both needed:
+
+    1. The convergence check *inside* the loop uses the cheap recurrence residual
+       ``r = r - alpha*Ap``, which drifts from the true residual ``b - matvec(x)`` under
+       float32 rounding over the ~100-140 iterations these solves typically take --
+       confirmed on a plain, non-adversarial case (T=500, single well): the recurrence
+       reports relres~9e-9 (converged) while the true residual is ~1e-5, four orders of
+       magnitude worse. So every ``_CG_RESTART`` iterations the recurrence is corrected by
+       recomputing ``r`` from scratch (the standard remedy for this drift; costs one extra
+       matvec per restart), rather than trusting the incremental update indefinitely.
+    2. Independent of restarts, the *warning* always recomputes the true residual after
+       the loop rather than reusing whatever the recurrence last reported -- the drift
+       above means the recurrence's own belief about convergence cannot be trusted even
+       right when the loop exits.
     """
     x = torch.zeros_like(b) if x0 is None else x0.clone()
     r = b - matvec(x)
@@ -134,22 +151,23 @@ def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
     if relres >= tol:
         p = r.clone()
         rs = (r * r).sum()
-        for _ in range(maxiter):
+        for i in range(1, maxiter + 1):
             Ap = matvec(p)
             alpha = rs / (p * Ap).sum().clamp(min=1e-30)
             x = x + alpha * p
-            r = r - alpha * Ap
+            r = b - matvec(x) if i % _CG_RESTART == 0 else r - alpha * Ap
             rs_new = (r * r).sum()
             relres = rs_new.sqrt() / b_norm
             if relres < tol:
                 break
             p = r + (rs_new / rs.clamp(min=1e-30)) * p
             rs = rs_new
-    if relres >= tol:
+    true_relres = (b - matvec(x)).pow(2).sum().sqrt() / b_norm
+    if true_relres >= tol:
         warnings.warn(
-            f"_cg did not converge within maxiter={maxiter}: relative residual "
-            f"{float(relres):.3e} exceeds tol={tol:.1e}. Heads and gradients from this "
-            "solve may be inaccurate.",
+            f"_cg did not converge within maxiter={maxiter}: true relative residual "
+            f"{float(true_relres):.3e} exceeds tol={tol:.1e}. Heads and gradients from "
+            "this solve may be inaccurate.",
             stacklevel=2,
         )
     return x
