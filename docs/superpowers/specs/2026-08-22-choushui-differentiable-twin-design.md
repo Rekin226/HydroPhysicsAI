@@ -465,9 +465,15 @@ each written and executed separately, with the gates in §7 as the hand-off poin
 
 - **Plan A — Stages 0–2** (data foundation, the `Sk` refit, the differentiable VEP column).
   Self-contained, needs no flow solver, and settles the central scientific question.
-- **Plan B — Stages 3–4** (flow solver, AMP v2, pumping channels, coupling). Begins only
-  after Stage 2's gate passes.
-- **Plan C — Stage 5 + the research loop hardening** (scenarios, ensembles, calibration).
+- **Plan B — Stage 3 only** (grid + layer geometry, differentiable four-layer flow solver,
+  electricity-driven pumping, flow calibration gate). Begins only after Stage 2's gate
+  passes — it has. *Revised 2026-08-25: originally scoped as Stages 3–4. Split because the
+  Stage-3 gate ("predicts held-out wells better than IDW") is a genuine kill point, and
+  because the flow solver is a large enough subsystem to warrant its own review surface.*
+- **Plan C — Stage 4** (coupling flow to the VEP column, joint calibration against heads +
+  MLCW + leveling). Begins only after Stage 3's gate passes.
+- **Plan D — Stage 5 + research-loop hardening** (counterfactual scenarios, ensembles,
+  uncertainty calibration).
 
 Only Plan A should be written now. Writing B and C before A's results exist would be
 planning against unknowns.
