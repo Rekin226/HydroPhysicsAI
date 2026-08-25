@@ -27,6 +27,13 @@ def test_theis_drawdown_matches_the_analytical_solution():
     holding dx fixed (so near-well resolution is unchanged) converges cleanly onto Theis:
     n=81 -> ratio ~1.9x, n=151 -> ~1.12x, n=251 -> ~1.005x. n=161 is used here for a
     comfortable margin (~10% error at both probe radii) at a runtime of ~1s.
+
+    Reviewer note (fix round 1): the remaining 9.3%/10.5% over-prediction at n=161 is
+    boundary image wells, not scheme bias -- at t=10 days the diffusion length
+    sqrt(4*T*t/S) ~ 14.1 km still exceeds the n=161 half-width of 8.05 km, and the
+    n=41->251 sequence above decays monotonically to 1.005x. A future tightening of the
+    rel=0.20 tolerance should be paired with widening the grid further, not read as a
+    scheme regression.
     """
     g = _uniform_grid(n=161)
     T_val, S_val, Q = 500.0, 1e-4, 1000.0          # m2/day, -, m3/day
@@ -55,17 +62,80 @@ def test_theis_drawdown_matches_the_analytical_solution():
         assert numeric == pytest.approx(analytic, rel=0.20)
 
 
-def test_mass_balance_closes_each_step():
+@pytest.mark.parametrize("dt_days", [1.0, 30.0])
+def test_mass_balance_closes_each_step(dt_days):
+    """NOTE (fix round 1): the original assertion omitted dt from `added`. The true
+    identity is stored = dt * sum(recharge * area) -- each of the 5 steps injects
+    recharge*area*dt of water, not recharge*area. It only passed before because the
+    fixture used dt_days=1.0 (so the missing factor was silently 1); at dt_days=30 the
+    ratio between the (wrong) old `added` and the correct one is exactly 30.0. The solver
+    was already right; only the test's bookkeeping was wrong. Parametrized over two dt
+    values so the dt-scaling of storage is actually exercised.
+    """
     g = _uniform_grid(n=21)
-    m = FlowModel(g, n_layers=1, dt_days=1.0)
+    m = FlowModel(g, n_layers=1, dt_days=dt_days)
     A = g.n_active
     rech = torch.full((1, A, 5), 1e-3)
     h = m(torch.zeros(1, A), rech, torch.zeros(1, A, 5), 5)
     S = torch.exp(m.log_S)[0]
     cell_area = g.dx ** 2
     stored = float(((h[0, :, -1] - h[0, :, 0]) * S).sum() * cell_area)
-    added = float(rech.sum() * cell_area)          # no-flow boundaries: nothing leaves
+    added = float(rech.sum() * cell_area * m.dt)   # no-flow boundaries: nothing leaves
     assert stored == pytest.approx(added, rel=1e-4)
+
+
+def test_face_conductance_is_harmonic_not_arithmetic_mean():
+    """NOTE (fix round 1): every other test in this file uses spatially uniform T, for
+    which harmonic and arithmetic face-averaging agree in value and derivative alike --
+    the reviewer confirmed empirically that substituting `0.5*(T[:,ia]+T[:,ib])` for the
+    harmonic mean in `_matvec_from` still leaves all 4 original tests passing. Since
+    log_T is exactly what Tasks 5/6 calibrate cell-by-cell, that gap matters. This test
+    uses heterogeneous T and an independent (not code-derived) physical check to close it.
+
+    Setup: a 1D chain of cells (ny=1) split into two uniform zones, T1 then T2, with a
+    single point source +Q at one end and an equal point sink -Q at the other end and no
+    other sources in between. A single backward-Euler step with a very large dt makes the
+    storage term S*area/dt negligible next to the conductance term, so the step solves
+    (approximately) the true steady-state elliptic problem K(T) h = q directly.
+
+    In that steady state, mass conservation forces the flux through *every* internal face
+    of the chain to equal exactly Q (there is nowhere else for the water to go), including
+    the single face straddling the T1/T2 interface. So Tf_interface * (h_left - h_right)
+    must equal Q, where Tf_interface is whatever face-conductance formula the operator
+    actually uses. The test computes Tf_interface independently in test code as the
+    harmonic mean 2*T1*T2/(T1+T2) -- the textbook result for steady flow across a
+    conductivity discontinuity, i.e. resistors in series -- and checks that multiplying it
+    by the *simulated* head drop reproduces Q. This is not circular: if the operator
+    internally used a different formula (e.g. the arithmetic mean), the simulated head
+    drop would instead satisfy Tf_other * drop = Q, so Tf_harmonic * drop would recover Q
+    only up to the ratio Tf_harmonic/Tf_other -- a large, predictable miss whenever T1 and
+    T2 differ substantially, not a subtle rounding difference.
+
+    Verified directly (see fix-round-1 section of the report): with the real harmonic
+    implementation, Tf_harmonic * drop matches Q to 7 significant figures; with the
+    arithmetic mean monkeypatched into `_matvec_from` in its place, the same check misses
+    Q by ~90%.
+    """
+    n, k = 20, 10                      # chain of 20 cells, interface between col 9 and 10
+    T1, T2, Q = 2000.0, 50.0, 10.0     # m2/day, m2/day, m3/day
+    g = FanGrid(nx=n, ny=1, dx=100.0, x0=0.0, y0=0.0, mask=np.ones((1, n), dtype=bool))
+    m = FlowModel(g, n_layers=1, dt_days=1.0e6)   # huge dt: storage term ~negligible
+    A = g.n_active
+    with torch.no_grad():
+        log_t = torch.full((1, A), float(np.log(T1)))
+        log_t[0, k:] = float(np.log(T2))
+        m.log_T.copy_(log_t)
+
+    rech = torch.zeros(1, A, 1)
+    pump = torch.zeros(1, A, 1)
+    rech[0, 0, 0] = Q / m.area          # recharge is a rate (m/day); recharge*area == Q
+    pump[0, n - 1, 0] = Q               # pumping is already volumetric (m3/day)
+    with torch.no_grad():
+        h = m(torch.zeros(1, A), rech, pump, 1)
+
+    drop = float(h[0, k - 1, -1] - h[0, k, -1])
+    tf_harmonic = 2.0 * T1 * T2 / (T1 + T2)
+    assert tf_harmonic * drop == pytest.approx(Q, rel=1e-3)
 
 
 def test_gradients_reach_the_parameters_and_are_finite():

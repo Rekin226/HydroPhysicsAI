@@ -6,17 +6,29 @@ Five-point finite volume, backward Euler, monthly steps by default. Each step so
 
 with K the symmetric conductance operator. The solve runs matrix-free under no_grad; the
 gradient is attached by implicit differentiation (a transposed solve with the same
-operator), so memory does not grow with iteration count and the gradient does not depend on
-how tightly CG converged.
+operator), so memory does not grow with iteration count.
+
+That "does not depend on how tightly CG converged" guarantee holds for the *forward* head
+solve only: the implicit-function-theorem backward is exact for whatever ``y`` the forward
+solve actually returned, converged or not. The *adjoint* solve (lambda = M^{-1} grad_y,
+computed inside backward) is a CG solve in its own right and its convergence matters
+directly -- a stalled lambda solve feeds a wrong lambda into both the b-gradient and the
+parameter vjp, corrupting every gradient computed from this step. See ``_cg``'s residual
+warning.
 """
 
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 import torch
 from torch import nn
 
 from .grid import FanGrid
+
+_CG_TOL = 1e-8
+_CG_MAXITER = 400
 
 
 def _neighbour_index(grid: FanGrid) -> tuple[torch.Tensor, torch.Tensor]:
@@ -74,27 +86,72 @@ class _ImplicitSolve(torch.autograd.Function):
             raw_grads = torch.autograd.grad(
                 My, detached, grad_outputs=lam, allow_unused=True,
             )
-        param_grads = tuple(-g if g is not None else None for g in raw_grads)
+        # allow_unused=True above only to get a clean per-parameter error message below
+        # instead of an autograd.grad RuntimeError; every parameter passed in is expected
+        # to actually affect the operator. A None here means one silently dropped out of
+        # `op` -- exactly the defect class this backward was rewritten to fix (the brief's
+        # version returned None for every parameter unconditionally) -- so fail loudly
+        # rather than propagate a silent zero gradient.
+        for i, g in enumerate(raw_grads):
+            if g is None:
+                raise RuntimeError(
+                    f"_ImplicitSolve.backward: parameter at position {i} did not "
+                    "contribute to op(y, *params) -- it dropped out of the operator "
+                    "(check that _op actually uses it)."
+                )
+        param_grads = tuple(-g for g in raw_grads)
         return (lam, None, None) + param_grads
 
 
-def _cg(matvec, b, x0=None, tol=1e-8, maxiter=400):
-    """Matrix-free conjugate gradient for a symmetric positive-definite operator."""
+def _warm_started_solver(matvec, x0):
+    """Bind ``x0`` now (rather than via a lambda default-arg trick) so the returned
+    closure always warm-starts from the head at the time it was created, not whatever
+    the loop variable holds when the closure is later invoked (e.g. by
+    ``_ImplicitSolve.backward`` for the adjoint solve, well after the forward loop ends).
+    """
+    x0 = x0.detach()
+
+    def solve(rhs):
+        return _cg(matvec, rhs, x0=x0)
+
+    return solve
+
+
+def _cg(matvec, b, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
+    """Matrix-free conjugate gradient for a symmetric positive-definite operator.
+
+    Warns once if the relative residual has not reached ``tol`` within ``maxiter``
+    iterations. The same closure produces both the forward head solve and the adjoint's
+    lambda solve, so a stalled solve here silently corrupts the heads *and* every gradient
+    computed from them -- this is deliberately not a hard error, since a warned-about
+    near-miss (e.g. heads accurate to 1e-6 instead of 1e-8) is often still usable, but it
+    must not pass silently.
+    """
     x = torch.zeros_like(b) if x0 is None else x0.clone()
     r = b - matvec(x)
-    p = r.clone()
-    rs = (r * r).sum()
     b_norm = (b * b).sum().sqrt().clamp(min=1e-30)
-    for _ in range(maxiter):
-        Ap = matvec(p)
-        alpha = rs / (p * Ap).sum().clamp(min=1e-30)
-        x = x + alpha * p
-        r = r - alpha * Ap
-        rs_new = (r * r).sum()
-        if (rs_new.sqrt() / b_norm) < tol:
-            break
-        p = r + (rs_new / rs.clamp(min=1e-30)) * p
-        rs = rs_new
+    relres = (r * r).sum().sqrt() / b_norm
+    if relres >= tol:
+        p = r.clone()
+        rs = (r * r).sum()
+        for _ in range(maxiter):
+            Ap = matvec(p)
+            alpha = rs / (p * Ap).sum().clamp(min=1e-30)
+            x = x + alpha * p
+            r = r - alpha * Ap
+            rs_new = (r * r).sum()
+            relres = rs_new.sqrt() / b_norm
+            if relres < tol:
+                break
+            p = r + (rs_new / rs.clamp(min=1e-30)) * p
+            rs = rs_new
+    if relres >= tol:
+        warnings.warn(
+            f"_cg did not converge within maxiter={maxiter}: relative residual "
+            f"{float(relres):.3e} exceeds tol={tol:.1e}. Heads and gradients from this "
+            "solve may be inaccurate.",
+            stacklevel=2,
+        )
     return x
 
 
@@ -148,9 +205,11 @@ class FlowModel(nn.Module):
         h = h0
         out = [h0]
         for t in range(n_steps):
-            q = (recharge[..., t] - pumping[..., t] / self.area) * self.area
+            q = recharge[..., t] * self.area - pumping[..., t]
             b = S * self.area / self.dt * h + q
-            h = _ImplicitSolve.apply(b, self._op, lambda rhs: _cg(mv, rhs),
-                                      self.log_T, self.log_S)
+            # Warm-start CG from the previous head: consecutive backward-Euler steps have
+            # similar solutions, so this is free and cuts iterations substantially.
+            solve = _warm_started_solver(mv, h)
+            h = _ImplicitSolve.apply(b, self._op, solve, self.log_T, self.log_S)
             out.append(h)
         return torch.stack(out, dim=-1)
