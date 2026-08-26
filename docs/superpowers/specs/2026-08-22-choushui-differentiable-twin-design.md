@@ -393,6 +393,41 @@ leveling network.
 **Plan B is justified**, and the layer results say what it must be: a genuinely four-layer
 solver, not a single-layer proxy.
 
+### Stage-3 result (2026-08-26) — FAIL, provisional
+
+`hydrophysics/twin/{grid,flow,pumping,calibrate_flow}.py`. Four-layer differentiable flow on
+a 1 km grid (2,148 active cells), float64, Jacobi-preconditioned CG with an exact adjoint,
+verified against Theis and Hantush-style limits. Pumping from the 116,769-pump electricity
+census; recharge from 26 rain gauges minus cached ET.
+
+| quantity | value |
+|---|---|
+| wells / cells / grid | 136 / 2,148 / 1 km |
+| parameters | 13 (homogeneous per layer) |
+| in-sample R² | +0.126 |
+| **10-fold R²** | **−0.204** |
+| **IDW baseline R²** (identical folds) | **+0.904** |
+| recovered T / S | ~3,000 m²/day / ~9e-4 |
+| bounds binding | none |
+
+**GATE: FAIL.** The physics model does not beat inverse-distance weighting.
+
+Two things keep this honest rather than damning. Adding real forcing moved in-sample R² from
+−0.022 to +0.126, and the recovered `T` sits inside the measured Choushui range (Liu et al.
+2002, 58–6,034 m²/day) — the model behaves, it just does not fit. And `epochs=45` was chosen
+to land the 11-fit gate inside two hours, not because the fit converged; by the criterion
+stated before the run, an in-sample R² this poor reads as under-training, so **this gate is
+provisional**.
+
+The baseline is also genuinely hard: 147 wells over 2,144 km² is ~4 km spacing, and IDW
+interpolates directly between the same wells the model is scored against.
+
+Candidate limiters, in test order: (1) epoch budget, (2) homogeneity — 13 parameters cannot
+express the fan's proximal-to-distal texture gradient, though Plan A settled that free
+per-cell parameters are the wrong fix, (3) pump-layer allocation, currently all into layer 2.
+
+**Plan C (Stage 4 coupling) does not start until this gate passes.**
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).
