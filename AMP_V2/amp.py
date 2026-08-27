@@ -13,9 +13,8 @@ irrigation schedules shift with crop stage, drought and tariff.
 from __future__ import annotations
 
 import numpy as np
-from scipy.signal import hilbert
-
 from gafd import hgt, instantaneous_mean
+from scipy.signal import hilbert
 
 
 def gaussian_highpass(x: np.ndarray, fs: float, f_cut: float) -> np.ndarray:
@@ -75,7 +74,7 @@ def amp_v2(x: np.ndarray, fs: float, f_lo: float = 0.6, f_hi: float = 2.6,
         env = np.sqrt(np.sum([m["amp"] ** 2 for m in cand], axis=0))     # energy sum
         w = np.array([m["energy"] for m in cand], dtype="float64")
         w = w / w.sum()
-        frq = np.sum([wi * m["freq"] for wi, m in zip(w, cand)], axis=0)
+        frq = np.sum([wi * m["freq"] for wi, m in zip(w, cand, strict=True)], axis=0)
     best = min(cand, key=lambda m: m["f_std"])
     M = max(2, int(round(smooth_days * fs / 2)))
     M = min(M, env.size // 2 - 2)

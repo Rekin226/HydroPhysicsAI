@@ -9,8 +9,9 @@ Weighting: drawdown from a pumping well falls off roughly as -ln(r) (Theis), so 
 is weighted 1/(1+r/r0) as a cheap monotone proxy. Both estimators see the identical index,
 so the comparison is fair whatever the weighting.
 """
-import numpy as np, pandas as pd
-from scipy.stats import spearmanr
+import numpy as np
+import pandas as pd
+from scipy.stats import spearmanr, wilcoxon
 
 D = "/home/rekin226/Desktop/code_space/HydroPhysicsAI/AMP_V2/data"
 amp = pd.read_parquet(f"{D}/amp_monthly.parquet")
@@ -54,7 +55,6 @@ for m in ("pearson", "spearman"):
           f"   |  v2 median {v2.median():+.3f}  mean {v2.mean():+.3f}  >0 at {(v2>0).sum():2d}/{len(res)}")
 win = (res.spearman_v2 > res.spearman_v1).sum()
 print(f"\nv2 beats v1 (Spearman) at {win}/{len(res)} wells")
-from scipy.stats import wilcoxon
 if len(res) > 5:
     w = wilcoxon(res.spearman_v2, res.spearman_v1)
     print(f"Wilcoxon signed-rank on paired Spearman: statistic={w.statistic:.0f}, p={w.pvalue:.4f}")

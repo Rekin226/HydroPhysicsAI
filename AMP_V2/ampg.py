@@ -33,9 +33,8 @@ diagnostic of transmissivity and storage -- exploited later, not here.
 from __future__ import annotations
 
 import numpy as np
-from scipy.signal import find_peaks
-
 from gafd import instantaneous_mean
+from scipy.signal import find_peaks
 
 # Exact astronomical / thermal constituents (cycles per day) used for attribution.
 CONSTITUENTS = {
@@ -128,24 +127,24 @@ def classify(lines: list[dict], f_tol: float = 0.01) -> dict:
     - ``other``        everything else
     """
     out = {"fundamental": None, "harmonics": [], "rotation": [], "tidal": [], "other": []}
-    diurnal = [l for l in lines if abs(l["f"] - 1.0) < 0.05]
+    diurnal = [ln for ln in lines if abs(ln["f"] - 1.0) < 0.05]
     if diurnal:
-        out["fundamental"] = max(diurnal, key=lambda l: l["amp"])
+        out["fundamental"] = max(diurnal, key=lambda ln: ln["amp"])
     f0 = out["fundamental"]["f"] if out["fundamental"] else 1.0
-    for l in lines:
-        if out["fundamental"] is not None and l is out["fundamental"]:
+    for ln in lines:
+        if out["fundamental"] is not None and ln is out["fundamental"]:
             continue
-        tid = [k for k, v in CONSTITUENTS.items() if k != "S1" and abs(l["f"] - v) < f_tol]
-        n = round(l["f"] / f0)
-        if l["f"] < 0.5:
-            out["rotation"].append(l)
-        elif 2 <= n <= 5 and abs(l["f"] - n * f0) < 0.05:
-            out["harmonics"].append({**l, "n": int(n)})
+        tid = [k for k, v in CONSTITUENTS.items() if k != "S1" and abs(ln["f"] - v) < f_tol]
+        n = round(ln["f"] / f0)
+        if ln["f"] < 0.5:
+            out["rotation"].append(ln)
+        elif 2 <= n <= 5 and abs(ln["f"] - n * f0) < 0.05:
+            out["harmonics"].append({**ln, "n": int(n)})
         elif tid:
-            out["tidal"].append({**l, "constituent": tid[0]})
+            out["tidal"].append({**ln, "constituent": tid[0]})
         else:
-            out["other"].append(l)
-    out["harmonics"].sort(key=lambda l: l["n"])
+            out["other"].append(ln)
+    out["harmonics"].sort(key=lambda ln: ln["n"])
     return out
 
 
@@ -171,7 +170,7 @@ def ampg(x: np.ndarray, fs: float, bw: float = 0.02, snr: float = 8.0) -> dict:
 
     a1 = np.abs(demodulate(x, fs, cls["fundamental"]["f"], bw))
     harm = [np.abs(demodulate(x, fs, h["f"], bw)) for h in cls["harmonics"]]
-    a2 = next((h for h, m in zip(harm, cls["harmonics"]) if m["n"] == 2), None)
+    a2 = next((h for h, m in zip(harm, cls["harmonics"], strict=True) if m["n"] == 2), None)
     rot = [np.abs(demodulate(x, fs, r["f"], min(bw, r["f"] / 3))) for r in cls["rotation"]]
 
     amp_harm = np.sqrt(np.sum([h ** 2 for h in harm], axis=0)) if harm else zeros

@@ -4,16 +4,19 @@ v1 is the special case where every band but the fundamental is zeroed, so this i
 generalisation and the comparison cannot be rigged by construction. Ground truth is
 rice + dry-crop pump electricity within 1 km (nearest 100 pumps, 1/(1+r/300) weighted).
 """
-import numpy as np, pandas as pd
+import pandas as pd
 from scipy.stats import spearmanr, wilcoxon
 
 S = "/tmp/claude-1000/-home-rekin226-Desktop-code-space-HydroPhysicsAI/55ec15e7-c585-41a8-a463-e69e4ca3c0cf/scratchpad"
-g = pd.read_parquet("data/ampg_monthly.parquet"); g["datetime"] = pd.to_datetime(g.datetime)
-v1 = pd.read_parquet("data/amp_monthly.parquet"); v1["datetime"] = pd.to_datetime(v1.datetime)
+g = pd.read_parquet("data/ampg_monthly.parquet")
+g["datetime"] = pd.to_datetime(g.datetime)
+v1 = pd.read_parquet("data/amp_monthly.parquet")
+v1["datetime"] = pd.to_datetime(v1.datetime)
 g = g.merge(v1[["well", "datetime", "amp_v1", "amp_v2"]], on=["well", "datetime"], how="left")
 
 p = pd.read_parquet(f"{S}/tpc_pumps.parquet")[["sid", "PURPOSE"]].rename(columns={"sid": "pump"})
-k = pd.read_parquet("data/pump_kwh_monthly.parquet"); k["datetime"] = pd.to_datetime(k.datetime)
+k = pd.read_parquet("data/pump_kwh_monthly.parquet")
+k["datetime"] = pd.to_datetime(k.datetime)
 k = k.merge(p, on="pump", how="left")
 IRR = ["農業用水(灌溉-一期水稻)", "農業用水(灌溉-二期水稻)", "農業用水(灌溉-旱作)"]
 link = pd.read_parquet("data/well_pump_link.parquet").merge(p, on="pump", how="left")

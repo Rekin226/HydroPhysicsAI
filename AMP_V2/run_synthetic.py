@@ -56,7 +56,7 @@ c2 = score(r2, "AMP v2")
 if r2["found"]:
     fe = r2["freq"][inner]
     ft = f_true[inner]
-    print(f"\nfrequency tracking (v2 only, v1 cannot do this):")
+    print("\nfrequency tracking (v2 only, v1 cannot do this):")
     print(f"  corr(f_true) = {np.corrcoef(ft, fe)[0,1]:6.3f}   "
           f"mean abs err = {np.mean(np.abs(fe-ft)):.4f} cpd   "
           f"drift recovered = {fe[-1]-fe[0]:+.4f} cpd (true {ft[-1]-ft[0]:+.4f})")

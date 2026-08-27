@@ -1,6 +1,9 @@
 """Compute AMP v1 and v2 monthly series for every monitoring well with a raw record."""
-import glob, os
-import numpy as np, pandas as pd
+import glob
+import os
+
+import numpy as np
+import pandas as pd
 from amp import amp_v1, amp_v2
 
 RAW = "/home/rekin226/Desktop/code_space/HydroPhysicsAI/chou-shui-data/chou-shui-data/data/ls_cache"

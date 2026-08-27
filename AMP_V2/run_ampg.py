@@ -1,6 +1,7 @@
 """AMP-G on the real network, then the nested comparison against irrigation electricity."""
 import glob
-import numpy as np, pandas as pd
+
+import pandas as pd
 from ampg import ampg
 
 RAW = "/home/rekin226/Desktop/code_space/HydroPhysicsAI/chou-shui-data/chou-shui-data/data/ls_cache"

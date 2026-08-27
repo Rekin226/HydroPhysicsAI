@@ -1,7 +1,11 @@
 """AMP-G across the full fan network."""
-import glob, os
-import numpy as np, pandas as pd
+import glob
+import os
+
+import numpy as np
+import pandas as pd
 from ampg import ampg
+
 FS = 24.0
 rows, meta = [], []
 files = sorted(glob.glob("data/wells/*.parquet"))
@@ -39,7 +43,8 @@ for i, f in enumerate(files):
     if (i + 1) % 40 == 0:
         print(f"  {i+1}/{len(files)} processed, {len(meta)} usable", flush=True)
 pd.concat(rows, ignore_index=True).to_parquet("data/ampg_all_monthly.parquet")
-M = pd.DataFrame(meta); M.to_csv("data/ampg_all_meta.csv", index=False)
+M = pd.DataFrame(meta)
+M.to_csv("data/ampg_all_meta.csv", index=False)
 print(f"\n{len(M)} wells with an AMP-G signature")
 print(f"lines/well median {M.n_lines.median():.1f} | harmonics {M.n_harm.median():.0f} | "
       f"duty {M.duty_h.median():.1f} h/d (n={M.duty_h.notna().sum()}) | alpha {M.alpha.median():.2f}")
