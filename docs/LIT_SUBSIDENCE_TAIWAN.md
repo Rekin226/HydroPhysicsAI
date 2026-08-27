@@ -204,3 +204,11 @@ scenarios driven by well electricity use.
 Chinese-language WRA technical reports and theses (likely the densest source on the leveling network
 itself); conference proceedings beyond OpenAlex's index; whether the manuscript's target journal has
 published competing Choushui work recently.
+
+---
+
+**Published version.** This review is also published as an Artifact:
+<https://claude.ai/code/artifact/2e0b5617-18fe-409e-a949-afa6270ed9e0>
+Its source is tracked at `docs/assets/choushui-compaction-gap.html`; to update the published
+page, edit that file and re-publish it to the same URL (publishing without the URL creates a
+separate artifact instead of updating this one).

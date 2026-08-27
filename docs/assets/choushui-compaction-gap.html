@@ -1,0 +1,524 @@
+<title>Choushui Compaction Gap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,800;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ground:#f4f6f4;
+  --surface:#ffffff;
+  --surface-2:#eceff0;
+  --ink:#16232b;
+  --ink-2:#3f5460;
+  --ink-3:#6d838d;
+  --rule:#d3dcdd;
+  --rule-2:#e4eaea;
+  --accent:#0e6a66;
+  --accent-soft:#d7e8e6;
+  --alert:#9c3f24;
+  --alert-soft:#f4e2da;
+  --gain:#3d6b34;
+  --gain-soft:#dfeada;
+  --measure:68ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0e1518;
+    --surface:#141d21;
+    --surface-2:#1a2428;
+    --ink:#e3ebe8;
+    --ink-2:#a9bcbd;
+    --ink-3:#7b9095;
+    --rule:#2a383d;
+    --rule-2:#222e33;
+    --accent:#5fc4bb;
+    --accent-soft:#16332f;
+    --alert:#e08865;
+    --alert-soft:#3a231a;
+    --gain:#8fbc7e;
+    --gain-soft:#1e2c1b;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0e1518;
+  --surface:#141d21;
+  --surface-2:#1a2428;
+  --ink:#e3ebe8;
+  --ink-2:#a9bcbd;
+  --ink-3:#7b9095;
+  --rule:#2a383d;
+  --rule-2:#222e33;
+  --accent:#5fc4bb;
+  --accent-soft:#16332f;
+  --alert:#e08865;
+  --alert-soft:#3a231a;
+  --gain:#8fbc7e;
+  --gain-soft:#1e2c1b;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16.5px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- masthead ---------- */
+.masthead{padding:64px 0 34px;border-bottom:2px solid var(--ink)}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;flex-wrap:wrap;gap:10px 18px;margin-bottom:20px;
+}
+h1{
+  font-family:Spectral,Georgia,serif;font-weight:800;
+  font-size:clamp(2.3rem,5.6vw,3.5rem);line-height:1.05;letter-spacing:-.015em;
+  margin:0 0 18px;text-wrap:balance;
+}
+.standfirst{
+  font-family:Spectral,Georgia,serif;font-size:1.2rem;line-height:1.55;
+  color:var(--ink-2);max-width:60ch;margin:0;
+}
+.sourceline{
+  margin-top:26px;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:12px;color:var(--ink-3);line-height:1.7;
+}
+
+/* ---------- sections ---------- */
+section{padding-top:56px}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sec-num{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;
+  color:var(--accent);letter-spacing:.1em;padding-top:6px;flex:none;
+}
+h2{
+  font-family:Spectral,Georgia,serif;font-weight:600;
+  font-size:clamp(1.5rem,3vw,1.95rem);line-height:1.2;margin:0;
+  letter-spacing:-.01em;text-wrap:balance;
+}
+h3{
+  font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:1.02rem;
+  margin:34px 0 8px;letter-spacing:-.005em;
+}
+p{margin:0 0 16px;max-width:var(--measure)}
+ul,ol{max-width:var(--measure);padding-left:20px;margin:0 0 16px}
+li{margin-bottom:9px}
+strong{font-weight:600;color:var(--ink)}
+em{font-style:italic}
+a{color:var(--accent);text-underline-offset:2px}
+code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em;
+  background:var(--surface-2);padding:.12em .38em;border-radius:3px;color:var(--ink-2);
+}
+
+/* ---------- findings ---------- */
+.findings{display:flex;flex-direction:column;gap:2px;margin-top:26px}
+.finding{
+  background:var(--surface);border:1px solid var(--rule);
+  padding:26px 28px;display:grid;grid-template-columns:auto 1fr;gap:0 20px;
+}
+.finding + .finding{border-top:none}
+.f-mark{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:2px;
+  align-self:start;white-space:nowrap;
+}
+.f-mark.diag{background:var(--accent-soft);color:var(--accent)}
+.f-mark.risk{background:var(--alert-soft);color:var(--alert)}
+.f-mark.open{background:var(--gain-soft);color:var(--gain)}
+.f-body h3{margin:0 0 8px;font-family:Spectral,Georgia,serif;font-size:1.22rem;font-weight:600;line-height:1.3}
+.f-body p:last-child{margin-bottom:0}
+
+/* ---------- table ---------- */
+.scroller{overflow-x:auto;margin:26px 0 8px;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.2px;min-width:640px}
+th,td{text-align:left;padding:13px 16px;vertical-align:top;border-bottom:1px solid var(--rule-2)}
+thead th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1px solid var(--rule);font-weight:500;
+}
+tbody tr:last-child td{border-bottom:none}
+td.grp{font-weight:600;white-space:nowrap}
+td.grp span{display:block;font-weight:400;font-size:12.5px;color:var(--ink-3);margin-top:2px}
+td.refs{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-2);line-height:1.75}
+
+/* ---------- figure ---------- */
+figure{margin:32px 0;padding:26px 24px 20px;background:var(--surface);border:1px solid var(--rule)}
+figure svg{display:block;width:100%;height:auto}
+figcaption{
+  margin-top:16px;font-size:13px;color:var(--ink-3);line-height:1.55;max-width:62ch;
+}
+
+/* ---------- ranked directions ---------- */
+.dirs{display:flex;flex-direction:column;gap:14px;margin-top:26px}
+.dir{background:var(--surface);border:1px solid var(--rule);padding:24px 26px;border-left:3px solid var(--rule)}
+.dir.pick{border-left-color:var(--accent);background:var(--surface)}
+.dir.avoid{opacity:.82}
+.dir-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.rank{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);
+  letter-spacing:.08em;
+}
+.dir h3{margin:0;font-family:Spectral,Georgia,serif;font-size:1.15rem;font-weight:600}
+.tag{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;padding:3px 8px;border-radius:2px;
+}
+.tag.rec{background:var(--accent-soft);color:var(--accent)}
+.tag.no{background:var(--alert-soft);color:var(--alert)}
+.dir p:last-child{margin-bottom:0}
+.why{color:var(--ink-2);font-size:14.5px}
+
+/* ---------- steps ---------- */
+ol.steps{list-style:none;padding:0;counter-reset:s;margin-top:24px;max-width:var(--measure)}
+ol.steps li{
+  counter-increment:s;position:relative;padding-left:44px;margin-bottom:18px;
+}
+ol.steps li::before{
+  content:counter(s);position:absolute;left:0;top:1px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;color:var(--accent);
+  border:1px solid var(--rule);width:26px;height:26px;display:grid;place-items:center;
+  border-radius:50%;background:var(--surface);
+}
+.pivot{
+  margin-top:20px;padding:18px 22px;background:var(--accent-soft);
+  border-left:3px solid var(--accent);max-width:var(--measure);
+}
+.pivot p{margin:0;color:var(--ink)}
+
+/* ---------- caveats ---------- */
+.caveats{border-top:1px solid var(--rule);margin-top:24px;padding-top:4px}
+.caveat{display:grid;grid-template-columns:150px 1fr;gap:0 24px;padding:16px 0;border-bottom:1px solid var(--rule-2)}
+.caveat dt{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);padding-top:3px;
+}
+.caveat dd{margin:0;max-width:52ch}
+
+footer{
+  margin-top:72px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;
+  color:var(--ink-3);line-height:1.8;
+}
+
+@media (max-width:620px){
+  .finding{grid-template-columns:1fr;gap:12px}
+  .caveat{grid-template-columns:1fr;gap:4px}
+  .sec-head{flex-direction:column;gap:2px}
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">
+    <span>Literature review</span>
+    <span>Choushui River alluvial fan</span>
+    <span>2026-08-21</span>
+  </div>
+  <h1>The Choushui Compaction Gap</h1>
+  <p class="standfirst">Land subsidence in central Taiwan is well monitored, heavily modelled, and still missing the one thing HydroPhysicsAI is built to supply: a differentiable rheology that carries memory.</p>
+  <p class="sourceline">
+    Rev. 2 — broadened sweep. After a citation-ranked keyword search missed a major author, the search was redone by <strong>enumeration</strong>: all 859 OpenAlex works matching “subsidence” with a Taiwan-affiliated author, medical “cage subsidence” noise removed (734 remain), aggregated by author, institution, topic and year.<br>
+    OpenAlex (~250M works) · Semantic Scholar · every DOI resolved against doi.org<br>
+    Companion to <code>PHASE2_LITERATURE.md</code>, which covers physics-informed ML for groundwater and contains no Taiwan, Choushui, or subsidence coverage.
+  </p>
+</header>
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>Four findings that should change what you do next</h2></div>
+
+  <div class="findings">
+    <article class="finding">
+      <span class="f-mark diag">Diagnosis</span>
+      <div class="f-body">
+        <h3>Your <code>Sk</code> model failed for a published reason — and the reason names the fix</h3>
+        <p>Tsai &amp; Hsu (2018) analysed multi-layer compaction and head data on this exact fan and concluded the deformation is <strong>visco-elasto-plastic</strong>: elastic, plastic <em>and viscous</em> components all present, with a time-delayed response. Lees et al. (2022), modelling 65 years of San Joaquin Valley subsidence, independently found residual clay compaction time constants are far larger than assumed — decades to centuries.</p>
+        <p>Your <code>S = Sk · cumulative_drawdown</code> is memory-less instantaneous plasticity: no elastic recovery, no viscous delay, no preconsolidation state. A single scalar cannot absorb a rheology. That is why per-site <code>Sk</code> fits at R²&nbsp;=&nbsp;0.81 in-sample and collapses out-of-sample. The negative result in your README is <strong>correct and expected</strong> — not a data problem alone.</p>
+      </div>
+    </article>
+
+    <article class="finding">
+      <span class="f-mark risk">Collision</span>
+      <div class="f-body">
+        <h3>The forecasting track has direct prior art on the same fan</h3>
+        <p>Patra &amp; Chu (2023, <em>J. Hydrol. Reg. Studies</em>, 29 citations) is titled <em>“Regional groundwater sequential forecasting using global and local LSTM models”</em> — study area the <strong>Choushui River Alluvial Fan</strong>, daily fluctuations, multiple monitoring wells. That is the design of your GlobalForecastLSTM. Chang, Sun, Kow et al. (2025, <em>J. Hydrol.</em>, 30 citations) run hybrid deep-learning level forecasting on “Taiwan’s largest alluvial fan”. Patra &amp; Chu (2024) extend to ConvLSTM over the whole fan.</p>
+        <p><code>PHASE2_LITERATURE.md</code> claim&nbsp;#3 — the global-vs-local positioning — cites none of these, and they are the closest work that exists. Fix the citations before submission.</p>
+      </div>
+    </article>
+
+    <article class="finding">
+      <span class="f-mark open">Whitespace</span>
+      <div class="f-body">
+        <h3>The gap survives a much harder search</h3>
+        <p>Across all of OpenAlex, <code>"physics-informed" AND (subsidence OR land deformation OR InSAR)</code> returns <strong>52 works</strong>, and exactly <strong>one</strong> couples heads to subsidence with a PINN: Wang et al. (2025), Dezhou City, North China Plain — two citations. Nothing on Choushui. <code>universal differential equation</code> + hydrology returns <strong>two</strong> works, neither about subsidence.</p>
+        <p><code>hybrid physics machine learning land subsidence compaction</code> returns <strong>zero</strong>. Six groups work this fan and several hold both halves — Ni and Shih-Jung Wang hold the poromechanics <em>and</em> the learning — but always in separate papers. Nobody has put a differentiable, memory-carrying compaction model here.</p>
+      </div>
+    </article>
+
+    <article class="finding">
+      <span class="f-mark risk">Threats</span>
+      <div class="f-body">
+        <h3>Two problems with the leveling plan that the literature states outright</h3>
+        <p>Benchmark elevation change is not pure compaction — it carries tectonic vertical motion, and Taiwan’s vertical velocity field is published. And “learn <code>Sk</code> from hydrogeological attributes” has a documented uncertainty floor set by borehole density, established in a paper sited <em>inside</em> your study area. Both are addressable; neither is optional. See §04.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Who owns what on the Choushui fan</h2></div>
+  <p>Six groups — worth knowing whose reviewer pool you are entering.</p>
+
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th>Group</th><th>Angle</th><th>Key works</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="grp">Hwang / Hung<span>NYCU, WRA</span></td>
+          <td>The monitoring backbone — leveling, GPS, InSAR, gravity, and the compaction-well instrument itself</td>
+          <td class="refs">10.1029/2020wr028194<br>10.1016/j.rse.2010.11.007<br>10.1007/s12665-009-0139-9<br>10.3389/feart.2024.1370626<br>10.1016/j.enggeo.2023.107021</td>
+        </tr>
+        <tr>
+          <td class="grp">Hone-Jay Chu<span>NCKU</span></td>
+          <td>Statistical and deep learning — drawdown functions, spatio-temporal regression, LSTM / ConvLSTM</td>
+          <td class="refs">10.1016/j.ejrh.2021.100808<br>10.1007/s10040-020-02211-0<br>10.1016/j.ejrh.2023.101442<br>10.3389/frwa.2024.1471258<br>10.1016/j.ejrh.2022.101289</td>
+        </tr>
+        <tr>
+          <td class="grp">Ku / Liu<span>NTOU</span></td>
+          <td>GIS factor maps, PCA, ANN, missing-data reconstruction on the Choshui delta</td>
+          <td class="refs">10.1038/s41598-023-31390-5<br>10.3390/app122312464<br>10.1038/s41598-023-44642-1</td>
+        </tr>
+        <tr>
+          <td class="grp">Hsu / Tsai<span>NCKU</span></td>
+          <td><strong>Poromechanics</strong> — visco-elasto-plastic rheology, spatially varying parameters</td>
+          <td class="refs">10.1016/j.enggeo.2018.07.025</td>
+        </tr>
+        <tr>
+          <td class="grp">Chuen-Fa Ni<span>NCU</span></td>
+          <td>The broadest span on the fan — geodetic data fusion, SBAS-PSInSAR, hydromechanical modelling, poromechanics, deep learning</td>
+          <td class="refs">10.3319/tao.2016.01.29.02(isrs)<br>10.5194/piahs-372-77-2015<br>10.3390/rs16203789<br>10.1016/j.jhydrol.2024.132108</td>
+        </tr>
+        <tr>
+          <td class="grp">Shih-Jung Wang<span>NCU</span></td>
+          <td><strong>Stochastic poroelasticity and geological-model uncertainty</strong> — how much must you know to predict compaction at all</td>
+          <td class="refs">10.1016/j.jhydrol.2009.02.049<br>10.1016/j.jhydrol.2013.06.047<br>10.1007/s12665-014-3970-6<br>10.1016/j.enggeo.2022.106543<br>10.1016/j.enggeo.2025.107991</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ni Chuen-Fa is the one to watch</h3>
+  <p>149 works, ~1,250 citations; 23 on subsidence or deformation, 18 on this fan. He publishes it as the <strong>Choushui River <em>Fluvial Plain</em></strong> — much of it in <em>TAO</em>, IAHS proceedings and EGU abstracts, often as middle author — which is exactly how a citation-ranked search loses him.</p>
+  <p>He is the only person on the fan spanning both ends. Geodetic fusion: Lu &amp; Ni 2016 cokrige precise leveling, GPS and PSInSAR across the plain for 1993–2008 — the fusion idea behind direction ③, already done geostatistically. Mechanics: Nugraha, Ni &amp; Nguyen 2023, <em>“from conceptual model to hydromechanical model in Choushui River Alluvial Fan”</em>, plus real poromechanics with Ronaldo Borja (<code>10.1016/j.jhydrol.2024.132108</code>) and stochastic flow↔deformation coupling in <em>Physics of Fluids</em>. Learning: Liu, Ku &amp; Ni 2025. Treat him as a likely reviewer — and, being in Taiwan, a plausible collaborator.</p>
+  <p>One finding of his to engage with directly: Nguyen &amp; Ni (2024) report that <strong>half the major compaction on this fan occurs at shallow depth</strong>, where Lees et al. (2022) found over 90% of recent San Joaquin subsidence came from the <em>lower confined</em> aquifer. The depth partition here is genuinely unlike the canonical case, and it is contested — which turns your depth-resolved compaction-well data from a detail into an asset.</p>
+  <h3>Shih-Jung Wang asks the question that bears hardest on your plan</h3>
+  <p>Also NCU. His 2009–2025 programme is about how uncertainty in the <em>geological model</em> propagates into flow and subsidence predictions: first-order second-moment poroelasticity in heterogeneous media (2009), flow↔deformation coupling in randomly heterogeneous media (2013), a nonlinear stochastic poroelastic model for quantifying pumping and subsidence (2015), model uncertainty at <strong>Huwei Town in Yunlin — inside your study area</strong> (2022), and how <strong>borehole density</strong> controls which geostatistical properties are estimable at all (2025). That last one is a direct prior on whether your attribute network can work.</p>
+
+  <p>The critical observation still stands, and now it holds <em>inside</em> individual groups: <strong>the mechanics work and the machine-learning work do not overlap.</strong> Chu’s models are empirical spatial regressions of subsidence on drawdown. Ku’s are static susceptibility maps with no time dynamics. Tsai &amp; Hsu have the rheology but fit it well-by-well, with no learning and no spatial generalization. Ni and Wang hold both halves — in separate papers. The bridge — a differentiable rheology whose parameters are learned as a function of hydrogeology across all sites — is unoccupied.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>The physics you are missing, in the order it matters</h2></div>
+
+  <figure>
+    <svg viewBox="0 0 720 250" role="img" aria-label="Head decline drives three compaction responses: elastic and recoverable, inelastic and permanent, and viscous with a long delay. A memory-less Sk model captures only the second.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)" letter-spacing="0.08em">
+        <text x="0" y="12">HEAD h(t)</text>
+        <text x="250" y="12">COMPACTION RESPONSE</text>
+      </g>
+
+      <!-- head signal -->
+      <g transform="translate(0,26)">
+        <path d="M0 10 L0 130 L190 130" fill="none" stroke="var(--rule)" stroke-width="1"/>
+        <path d="M4 30 C 30 34, 40 60, 62 58 C 84 56, 92 84, 118 88 C 140 91, 150 74, 168 78 C 180 81, 184 96, 189 100"
+              fill="none" stroke="var(--ink-2)" stroke-width="1.9" stroke-linecap="round"/>
+        <path d="M4 30 C 40 30, 40 58, 62 58 C 90 58, 90 88, 118 88 C 145 88, 145 88, 168 88 C 178 88, 182 100, 189 100"
+              fill="none" stroke="var(--alert)" stroke-width="1.3" stroke-dasharray="3 3" opacity="0.9"/>
+        <text x="4" y="150" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--alert)">running-min envelope</text>
+      </g>
+
+      <g color="var(--ink-3)">
+        <path d="M205 105 L245 105" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)" fill="none"/>
+      </g>
+
+      <!-- three responses -->
+      <g transform="translate(268,26)">
+        <!-- elastic -->
+        <g transform="translate(0,0)">
+          <text x="0" y="0" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--gain)" letter-spacing="0.08em">ELASTIC · recoverable</text>
+          <path d="M0 12 L0 44 L200 44" fill="none" stroke="var(--rule-2)" stroke-width="1"/>
+          <path d="M2 20 C 24 24, 34 34, 56 32 C 78 30, 84 40, 110 38 C 138 36, 150 26, 176 30 C 186 32, 192 36, 198 34"
+                fill="none" stroke="var(--gain)" stroke-width="1.8" stroke-linecap="round"/>
+        </g>
+        <!-- inelastic -->
+        <g transform="translate(0,62)">
+          <text x="0" y="0" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--accent)" letter-spacing="0.08em">INELASTIC · permanent, gated by preconsolidation</text>
+          <path d="M0 12 L0 44 L200 44" fill="none" stroke="var(--rule-2)" stroke-width="1"/>
+          <path d="M2 16 L58 16 L58 27 L114 27 L114 36 L168 36 L168 41 L198 41"
+                fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>
+        </g>
+        <!-- viscous -->
+        <g transform="translate(0,124)">
+          <text x="0" y="0" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--alert)" letter-spacing="0.08em">VISCOUS · lags head by months to decades</text>
+          <path d="M0 12 L0 44 L200 44" fill="none" stroke="var(--rule-2)" stroke-width="1"/>
+          <path d="M2 16 C 40 17, 70 24, 100 31 C 130 38, 160 42, 198 44"
+                fill="none" stroke="var(--alert)" stroke-width="1.8" stroke-linecap="round"/>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Head decline splits into three responses. Your model represents only the middle one, and represents it as instantaneous. Tsai &amp; Hsu (2018) found all three present on this fan; Lees et al. (2022) found the third has by far the longest time constant.</figcaption>
+  </figure>
+
+  <ol>
+    <li><strong>Effective stress.</strong> Compaction is driven by effective-stress increase as head falls. Framing references: Gambolati &amp; Teatini 2015 (<code>10.1002/2014wr016841</code>); Guzy &amp; Malinowska 2020 state-of-the-art review (<code>10.3390/w12072051</code>).</li>
+    <li><strong>Elastic vs inelastic, gated by preconsolidation head.</strong> Compaction is recoverable (small <code>Ske</code>) while head stays above the historical minimum, permanent (<code>Skv</code>, often 10–100× larger) below it. Your <code>h₀ − running-min(h)</code> is exactly a <em>fixed</em> preconsolidation assumption. Li et al. (2022) show the preconsolidation head is <strong>variable</strong> and separate the two storage modes (<code>10.1016/j.jhydrol.2021.127420</code>). Li &amp; Wang (2025) estimate inelastic skeletal storativity from SAR plus head in the Beijing Plain (<code>10.1016/j.ejrh.2024.102161</code>) — the closest published analogue to what you are fitting.</li>
+    <li><strong>Delay.</strong> Thick aquitards drain slowly; the surface lags head by months to decades. This is the term your model has none of, and the one Tsai &amp; Hsu found dominant here.</li>
+    <li><strong>Depth structure — contested on this fan.</strong> Tsai &amp; Hsu found Young’s modulus rising with depth and distal→proximal. Lees et al. found over 90% of recent San Joaquin subsidence came from the <em>lower confined</em> aquifer. But Nguyen &amp; Ni (2024) report half the major compaction here occurs at <em>shallow</em> depth. Your depth-resolved compaction-well data can address an open question, not just a detail.</li>
+    <li><strong>Other mechanisms exist.</strong> Clay dehydration was proposed for the Yunlin coastal area by Liu et al. (2001, <code>10.1007/s002540000193</code>) — a non-poroelastic contribution your model would silently absorb into <code>Sk</code>.</li>
+  </ol>
+
+  <p><strong>So:</strong> <code>Sk ~ exp(β₀ + β₁·distance_to_coast)</code> regresses one parameter of a five-parameter rheology onto one covariate. The in-sample correlation of −0.68 is the marine-clay gradient showing through; out-of-sample failure is what happens when the omitted parameters — time constant, preconsolidation state, depth partition — vary independently across sites.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Two threats to the leveling plan</h2></div>
+
+  <h3>Threat 1 — leveling records tectonics too</h3>
+  <p>Ching et al. (2011, <em>JGR</em>, <code>10.1029/2011jb008242</code>) built Taiwan’s modern vertical velocity field from <strong>1,843 precise-leveling benchmarks and 199 continuous GPS stations, 2000–2008</strong>: uplift of 0.2–18.5 mm/yr in the range interior, subsidence on the flanks and coastal plains, with western coastal rates departing from geologic rates <em>because of groundwater pumping</em>.</p>
+  <p>So benchmark elevation change is <strong>tectonic motion + anthropogenic compaction</strong>. On the coastal fan the pumping signal (~2 cm/yr, up to 6 cm/yr per Nguyen &amp; Ni) swamps tectonics — but at proximal and inland benchmarks the compaction signal is small, so the ratio is worst exactly where your <code>Sk</code> fit is most fragile. Subtract a tectonic vertical-rate field, or fit a per-site linear offset, and report what fraction of variance it absorbs. Untreated, this alone can corrupt a per-site regression.</p>
+
+  <h3>Threat 2 — the attribute covariates may not carry the information</h3>
+  <p>Your plan learns rheological parameters from hydrogeological attributes — fine fraction, drainage path, depth, distance to coast. Shih-Jung Wang’s group has published precisely on that limit: geological-model uncertainty propagating into flow and subsidence simulations at <strong>Huwei, Yunlin</strong> (Tran, Wang &amp; Nguyen 2022), uncertainty as a function of <strong>data sufficiency</strong> (<code>10.1007/s10064-022-02832-7</code>), and <strong>borehole density</strong> controlling which geostatistical properties are estimable at all (Tran, Wang &amp; Dong 2025).</p>
+  <p>Read these before designing the attribute network. They set the expectation for how much of <code>Sk</code> is knowable from what you hold — and give you a citable reason if the answer turns out to be “not much”.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Observables you are not yet using</h2></div>
+
+  <dl class="caveats">
+    <div class="caveat">
+      <dt>Cite the instrument</dt>
+      <dd>Hung, Hwang, <strong>Sneed</strong> (USGS), Chen &amp; Chu 2021, <em>WRR</em> (<code>10.1029/2020wr028194</code>): magnetic rings at <strong>25 depths to 300 m</strong>, 1 mm precision, tested across proximal, middle and distal fan. This is the reference for the compaction data you already hold, and nearly everyone on this fan cites it.</dd>
+    </div>
+    <div class="caveat">
+      <dt>Bigger head network</dt>
+      <dd>Hung et al. 2024 (<code>10.3389/feart.2024.1370626</code>) work with <strong>233 groundwater monitoring stations across four aquifers</strong> plus <strong>50 continuous GNSS stations</strong> on this fan. You are modelling 61 wells.</dd>
+    </div>
+    <div class="caveat">
+      <dt>Absolute gravity</dt>
+      <dd>K.-H. Chen, Hwang &amp; Tanaka 2023 (<code>10.1016/j.enggeo.2023.107021</code>) estimate groundwater mass balance of Yunlin’s sandy aquifers from gravity — an independent constraint on storage change that is neither head nor deformation.</dd>
+    </div>
+    <div class="caveat">
+      <dt>Fusion is taken</dt>
+      <dd>Hung et al. 2011, <em>RSE</em> (<code>10.1016/j.rse.2010.11.007</code>, 89 cites) already fuse PS-InSAR with leveling on this fan; Lu &amp; Ni 2016 cokrige three sensor types. Pitch novelty as <em>differentiability</em>, not fusion.</dd>
+    </div>
+  </dl>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Four directions, ranked</h2></div>
+
+  <div class="dirs">
+    <article class="dir pick">
+      <div class="dir-head">
+        <span class="rank">01</span>
+        <h3>Differentiable visco-elasto-plastic compaction model, trained across all sites</h3>
+        <span class="tag rec">Recommended</span>
+      </div>
+      <p>Replace the algebraic <code>Sk</code> with a small ODE carrying internal state — elastic strain, inelastic strain, relaxation time constant — and a neural network mapping site hydrogeology (fine-grained fraction, drainage-path length, depth-to-layer, distance-to-coast, layer thickness) to the rheological parameters. Train jointly against the 16 compaction wells (depth-resolved, high frequency) <em>and</em> the 556 leveling benchmarks (surface-only, annual) now retrievable from the wisenvr API. Score with the same leave-one-site-out gate.</p>
+        <p class="why">Why this one: the exact intersection of your existing UDE machinery, the newly available leveling data, the published diagnosis of why simple models fail, and a worldwide literature gap of one paper. It also converts your current negative result into a motivation section.</p>
+    </article>
+
+    <article class="dir">
+      <div class="dir-head">
+        <span class="rank">02</span>
+        <h3>Learned preconsolidation-head gate</h3>
+      </div>
+      <p>A narrower version of ①: keep the algebraic form but make the elastic/inelastic switch a learned function of state rather than a running minimum. Cheaper, less novel, and a clean incremental result — best used as an ablation <em>inside</em> ①. Closest published analogue: Li &amp; Wang 2025 on the Beijing Plain.</p>
+    </article>
+
+    <article class="dir">
+      <div class="dir-head">
+        <span class="rank">03</span>
+        <h3>Joint head ↔ deformation inversion</h3>
+      </div>
+      <p>Ali et al. (2021, <code>10.1016/j.envsoft.2021.105123</code>) run it backwards, estimating heads from GPS deformation. A bidirectional model would let the 1,239 leveling points act as supervision on the <em>head field</em> — the same spatial-sparsity wall your PINN hit.</p>
+      <p class="why">More occupied than it looks: Lu &amp; Ni (2016) already cokrige leveling, GPS and PSInSAR here; Lu &amp; Ni (2012) did “inversion of subsidence parameters” on this plain; Nguyen &amp; Ni (2024) integrate InSAR with heads, multi-layer compaction and borehole logs. The <em>differentiable</em> version is open; the fusion framing is not.</p>
+    </article>
+
+    <article class="dir avoid">
+      <div class="dir-head">
+        <span class="rank">04</span>
+        <h3>Pure ML subsidence mapping</h3>
+        <span class="tag no">Avoid</span>
+      </div>
+      <p>Ku, Chu and Patra have covered ANN, PCA, spatial regression and ConvLSTM on this fan since 2020, and Liu, Ku &amp; Ni 2025 (<em>Sci. Rep.</em>) add LSTM subsidence reconstruction with pumping-reduction scenarios driven by well electricity use. Entering here means competing on their turf with no mechanism of your own.</p>
+    </article>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>The next experiment</h2></div>
+
+  <ol class="steps">
+    <li>Build the leveling panel: 556 sites × ~11 annual elevations, differenced to cumulative subsidence relative to each site’s first survey. Already cached as <code>ls-wra-lsp-obs__choushui_panel.parquet</code>.</li>
+    <li><strong>Remove the tectonic component</strong> — a per-site linear offset at minimum. Report how much variance it absorbs.</li>
+    <li>Interpolate monthly heads to each leveling site with your existing IDW, then aggregate to the survey dates so head history and elevation change share a time base.</li>
+    <li>Refit the current <code>Sk</code> regression on 556 sites instead of 14. This alone separates the two hypotheses.</li>
+    <li>Fit the VEP-UDE with the parameter network under the same leave-one-site-out protocol, ablating: no-viscosity, no-elastic, fixed-preconsolidation, no-attribute-network.</li>
+    <li>Report against Chu et al. 2021 as the published empirical baseline for this fan.</li>
+  </ol>
+
+  <div class="pivot">
+    <p><strong>Step 4 is the fork in the road, and it costs an afternoon.</strong> If leave-one-site-out R² is still negative with 40× more sites, the wall was never sparsity — it is the model form, and direction ① is justified on evidence instead of assertion.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Caveats on the new data</h2></div>
+
+  <dl class="caveats">
+    <div class="caveat">
+      <dt>Annual only</dt>
+      <dd>Leveling constrains long-term rheology and time constants, not seasonal dynamics. The compaction wells stay the only high-frequency signal — 16 sites on the fan.</dd>
+    </div>
+    <div class="caveat">
+      <dt>GNSS starts 2020</dt>
+      <dd>The API’s GNSS record begins 2020-01-01, overlapping only the tail of your 2012–2022 window. Hung et al. 2024 work with 50 continuous GNSS stations, so a longer record exists somewhere.</dd>
+    </div>
+    <div class="caveat">
+      <dt>No InSAR</dt>
+      <dd>Every competing group uses it — PS-InSAR, Sentinel-1, multi-temporal InSAR. Expect that as reviewer question #1. The leveling network is a defensible answer only if you make the argument explicitly.</dd>
+    </div>
+    <div class="caveat">
+      <dt>Corroboration</dt>
+      <dd>The <code>Sk</code>-versus-coast correlation you found is real and published in spirit: Tsai &amp; Hsu report the same proximal-to-distal gradient in elastic modulus. Cite it.</dd>
+    </div>
+  </dl>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Not checked</h2></div>
+  <p>Chinese-language WRA technical reports and theses — likely the densest source on the leveling network itself. Conference proceedings beyond what OpenAlex indexes. Whether the manuscript’s target journal has published competing Choushui work recently.</p>
+</section>
+
+<footer>
+  Searches run 2026-08-21 against OpenAlex and Semantic Scholar · counts are as-indexed on that date<br>
+  Source document: <code>docs/LIT_SUBSIDENCE_TAIWAN.md</code>
+</footer>
+
+</div>
