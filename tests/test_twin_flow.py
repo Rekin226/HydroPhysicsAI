@@ -545,3 +545,53 @@ def test_fit_flow_homogeneous_with_forcing_exposes_eta_and_recharge_fraction():
     assert math.isfinite(out["loss"]) and math.isfinite(out["r2"])
     assert out["theta"]["log_eta"] != pytest.approx(float(np.log(0.3)), abs=1e-9)
     assert out["theta"]["recharge_frac_logit"] != pytest.approx(0.0, abs=1e-9)
+
+
+# --- grouped k-fold: co-located screens must never straddle a fold boundary -------------
+# The 2026-08-27 retraction: the Choushui head field is 66 physical sites carrying
+# layer-coded screens, and an ungrouped split put 69.9% of held-out entries at ZERO
+# distance from a training entry. idw_interp weights by 1/(d^2 + 1e-6), so a co-located
+# source outweighs a 1 km neighbour by 1e12 and the "baseline" becomes a near-oracle.
+
+def test_kfold_indices_without_groups_is_unchanged():
+    from hydrophysics.twin.calibrate_flow import _kfold_indices
+    folds = _kfold_indices(20, 4, seed=0)
+    assert sum(len(f) for f in folds) == 20
+    assert sorted(np.concatenate(folds).tolist()) == list(range(20))
+
+
+def test_kfold_indices_keeps_every_member_of_a_group_in_one_fold():
+    from hydrophysics.twin.calibrate_flow import _kfold_indices
+    # 12 entries over 4 sites, 3 screens each
+    groups = np.repeat(np.arange(4), 3)
+    folds = _kfold_indices(12, 2, seed=0, groups=groups)
+    assert sorted(np.concatenate(folds).tolist()) == list(range(12))
+    for f in folds:
+        # every site represented in this fold must be *wholly* in it
+        for site in np.unique(groups[f]):
+            assert set(np.flatnonzero(groups == site)) <= set(f.tolist())
+
+
+def test_kfold_indices_rejects_more_folds_than_groups():
+    from hydrophysics.twin.calibrate_flow import _kfold_indices
+    groups = np.repeat(np.arange(3), 2)
+    with pytest.raises(ValueError):
+        _kfold_indices(6, 5, seed=0, groups=groups)
+
+
+def test_kfold_wells_groups_colocated_wells_so_the_baseline_cannot_peek():
+    """Two screens per site: an ungrouped split leaks, a grouped one must not."""
+    g, h, rech, obs_idx, obs_layer = _synthetic_case()
+    # two co-located screens (different layers) at each observed cell
+    obs_idx_all = torch.cat([obs_idx, obs_idx])
+    obs_layer_all = torch.cat([torch.zeros_like(obs_idx), torch.ones_like(obs_idx)])
+    cent = g.centroids()
+    well_xy = np.concatenate([cent[obs_idx.numpy()], cent[obs_idx.numpy()]], axis=0)
+    W = len(obs_idx_all)
+    obs = h[obs_layer_all, obs_idx_all, 1:]
+    out = kfold_wells(g, obs, obs_idx_all, obs_layer_all, rech, n_layers=2,
+                      epochs=3, lr=0.1, n_folds=3, well_xy=well_xy,
+                      obs_h0=np.zeros(W))
+    assert "colocation_rate" in out, "gate must report how leaky its folds are"
+    assert out["colocation_rate"] == pytest.approx(0.0), (
+        f"grouped folds still leak: {out['colocation_rate']:.3f}")

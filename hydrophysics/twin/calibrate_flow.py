@@ -443,11 +443,63 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                         ground_elev=ground_elev, pump_layer=pump_layer)
 
 
-def _kfold_indices(n: int, n_folds: int, seed: int = 0) -> list[np.ndarray]:
-    """Deterministic, (roughly) equal-sized fold partition of ``range(n)``."""
+def _kfold_indices(n: int, n_folds: int, seed: int = 0,
+                   groups: np.ndarray | None = None) -> list[np.ndarray]:
+    """Deterministic, (roughly) equal-sized fold partition of ``range(n)``.
+
+    ``groups`` (length ``n`` labels) makes the split *grouped*: every index sharing a
+    label lands in the same fold. Retraction of 2026-08-27: the Choushui head field is
+    136 layer-coded screens over only 66 physical sites, so an ungrouped split put 95 of
+    136 held-out entries (69.9%) at ZERO distance from a training entry. ``idw_interp``
+    weights by ``1/(d^2 + 1e-6)``, so a co-located source outweighs a 1 km neighbour by
+    1e12 -- the "baseline" stops interpolating and starts copying another screen in the
+    same borehole, and the gate compares the physics model against a near-oracle. Group
+    by physical site and that channel is closed.
+
+    Folds are equal-sized in *groups*, so they are only roughly equal in entries.
+    """
     rng = np.random.default_rng(seed)
-    order = rng.permutation(n)
-    return [np.sort(chunk) for chunk in np.array_split(order, n_folds)]
+    if groups is None:
+        order = rng.permutation(n)
+        return [np.sort(chunk) for chunk in np.array_split(order, n_folds)]
+
+    g = np.asarray(groups)
+    if g.shape[0] != n:
+        raise ValueError(f"groups has length {g.shape[0]}, expected {n}")
+    uniq = np.unique(g)
+    if n_folds > len(uniq):
+        raise ValueError(
+            f"n_folds={n_folds} exceeds the {len(uniq)} distinct groups; a grouped split "
+            f"cannot fill that many folds. Lower n_folds or drop the grouping.")
+    order = rng.permutation(len(uniq))
+    return [np.sort(np.flatnonzero(np.isin(g, uniq[chunk])))
+            for chunk in np.array_split(order, n_folds)]
+
+
+def _site_labels(well_xy: np.ndarray, decimals: int = 1) -> np.ndarray:
+    """Integer physical-site id per well entry, from rounded coordinates."""
+    key = np.round(np.asarray(well_xy, dtype="float64"), decimals)
+    return np.unique(key, axis=0, return_inverse=True)[1]
+
+
+def _colocation_rate(folds: list[np.ndarray], well_xy: np.ndarray | None,
+                     n: int) -> float:
+    """Fraction of held-out entries sitting at zero distance from a *training* entry.
+
+    This is the number that would have caught the 2026-08-27 leak on sight, so the gate
+    reports it permanently rather than leaving it to be rediscovered.
+    """
+    if well_xy is None:
+        return float("nan")
+    site = _site_labels(well_xy)
+    leaked = held_total = 0
+    for held in folds:
+        held = np.asarray(held)
+        keep = np.setdiff1d(np.arange(n), held)
+        train_sites = set(site[keep].tolist())
+        leaked += sum(1 for i in held if site[i] in train_sites)
+        held_total += len(held)
+    return leaked / held_total if held_total else float("nan")
 
 
 def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
@@ -479,7 +531,19 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     n_active = grid.n_active
     n_steps = recharge.shape[-1]
     obs_layer_np = obs_layer.cpu().numpy()
-    folds = _kfold_indices(W, n_folds, seed=seed)
+    # Grouped by physical site when coordinates are available (2026-08-27 retraction):
+    # co-located screens must never straddle a fold boundary, or the IDW baseline reads
+    # the held-out well's own borehole instead of interpolating to it.
+    groups = _site_labels(well_xy) if well_xy is not None else None
+    if groups is None:
+        print("    WARNING: no well_xy, so folds are UNGROUPED -- co-located screens may "
+              "straddle folds and the IDW baseline may peek. Pass well_xy.", flush=True)
+    folds = _kfold_indices(W, n_folds, seed=seed, groups=groups)
+    coloc = _colocation_rate(folds, well_xy, W)
+    if well_xy is not None:
+        n_sites = len(np.unique(groups))
+        print(f"    folds grouped by site: {W} entries over {n_sites} physical sites, "
+              f"held-out/training co-location rate = {coloc:.3f}", flush=True)
     preds, idws, targets = [], [], []
     per_fold = []
     for f, held in enumerate(folds):
@@ -522,7 +586,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     obs = np.concatenate(targets)
     idw_all = np.concatenate(idws)
     return {"r2_kfold": _r2(pred, obs), "r2_idw": _r2(idw_all, obs),
-            "n_wells": W, "n_folds": n_folds, "per_fold": per_fold}
+            "n_wells": W, "n_folds": n_folds, "per_fold": per_fold,
+            "n_sites": int(len(np.unique(groups))) if groups is not None else W,
+            "colocation_rate": coloc}
 
 
 def _load_ground_elev(grid, stn: pd.DataFrame) -> torch.Tensor:
@@ -745,6 +811,12 @@ def main(argv=None) -> None:
         print(f"  theta={ins['theta']}")
     print(f"  {args.n_folds}-fold R2={gate['r2_kfold']:+.3f}   "
           f"IDW baseline R2={gate['r2_idw']:+.3f}  gate_time={t_gate:.1f}s")
+    print(f"  folds grouped by site: {gate['n_wells']} entries / {gate['n_sites']} sites   "
+          f"co-location rate={gate['colocation_rate']:.3f}")
+    if not (gate["colocation_rate"] >= 0.0 and gate["colocation_rate"] < 1e-9):
+        print("  WARNING: held-out entries sit at zero distance from training entries, so "
+              "the IDW baseline is reading co-located screens rather than interpolating. "
+              "Treat the comparison below as biased toward IDW.")
     print(f"GATE ({args.n_folds}-fold): "
           f"{'PASS' if gate['r2_kfold'] > gate['r2_idw'] else 'FAIL'}")
 
@@ -753,7 +825,8 @@ def main(argv=None) -> None:
     pd.DataFrame([{"n_wells": gate["n_wells"], "n_cells": grid.n_active, "dx": args.dx,
                    "param_mode": args.param_mode, "n_params": ins["n_params"],
                    "forcing": "off" if args.no_forcing else "on", "epochs": args.epochs,
-                   "n_folds": gate["n_folds"], "loss": ins["loss"],
+                   "n_folds": gate["n_folds"], "n_sites": gate["n_sites"],
+                   "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
                    "r2_insample": ins["r2"], "r2_kfold": gate["r2_kfold"],
                    "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
                    "theta": str(ins.get("theta", {})),
