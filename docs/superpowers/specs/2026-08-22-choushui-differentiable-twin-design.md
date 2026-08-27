@@ -428,6 +428,63 @@ per-cell parameters are the wrong fix, (3) pump-layer allocation, currently all 
 
 **Plan C (Stage 4 coupling) does not start until this gate passes.**
 
+### Stage-3 re-run (2026-08-27) — RETRACTED. The gate measures the wrong thing.
+
+The 2026-08-26 FAIL above was under-trained, as suspected. Re-running at a converged budget
+produced a second FAIL, and chasing an unrelated well-count discrepancy then showed that
+result is **also** invalid. Both are recorded here because the reasons matter more than the
+numbers.
+
+**Confounder 1 — `--epochs` drives the LR schedule.** `fit_flow` builds
+`CosineAnnealingLR(opt, T_max=epochs)`, so epoch *N* of a 400-epoch run is not comparable to
+epoch *N* of a 100-epoch run. The "converges at epoch ~75-100" reading was taken off a
+400-epoch trace; passing `--epochs 100` anneals to zero by epoch 100 and plateaus at in-sample
+R² **+0.684**, whereas the 400-epoch schedule reaches **+0.943**. Same seed, identical at
+epoch 1, divergent thereafter. Run the gate at the budget that produced the target trace.
+
+**The re-run** (`--epochs 400 --n-folds 5`, 2h06m) reproduced the reference trace at all 17
+logged points exactly and gave:
+
+| quantity | value |
+|---|---|
+| wells / sites / cells / grid | 136 entries / **66 physical sites** / 2,148 / 1 km |
+| parameters | 13 (homogeneous per layer) |
+| in-sample R² | +0.9428 |
+| 5-fold R² | +0.664 |
+| IDW baseline R² (identical folds) | +0.880 |
+| bounds binding | `log_T` 3 of 4, `log_S` 2 of 4, `log_eta` 1 |
+
+**Confounder 2 — the folds leak by co-location, so the baseline is a near-oracle.** The
+"136-well network" is 66 physical sites carrying layer-coded screens. `_kfold_indices` split
+the 136 *entries* at random with no grouping, so co-located screens landed on opposite sides
+of the split: **95 of 136 held-out entries (69.9%) sit at zero distance from a training
+entry** (per fold: 61%, 93%, 63%, 78%, 56%). `idw_interp` weights by
+`1/(d² + 1e-6)`, so a zero-distance source gets weight 1e6 against 1e-6 for a neighbour 1 km
+out — a ratio of 1e12. For ~70% of the held-out set the "IDW baseline" is not interpolating,
+it is copying another screen in the same borehole.
+
+The flow model cannot exploit that: it reproduces each head through a 13-parameter
+homogeneous solve, and the co-located screens sit in different layers. The gate therefore
+pits a physics model against a near-oracle, and **+0.664 vs +0.880 is biased toward IDW by
+construction**. Neither this FAIL nor the 2026-08-26 one is a physics verdict.
+
+**What survives the retraction.** `bounds_hit` is a property of the fit, not of the split:
+`log_T = [log 10, 5.304, log 10, log 10]` pins three of four layers at the **lower clamp**,
+T = 10 m²/day, below the 58 m²/day floor Liu et al. 2002 measured at Choushui. So the +0.943
+in-sample fit was bought by saturating parameters against their bounds rather than by finding
+physical values. That remains the strongest evidence against the current parameterization,
+and it is independent of how the folds are drawn.
+
+**Two data-handling facts found on the way.** `calibrate_flow.py` silently drops wells whose
+coordinates miss the active mask (`grid.active_index(...) is None` → bare `continue`): 147 →
+136, all 11 from 3 sites outside the fan, one of them west of 99.3% of kept wells. The drop
+is also grid-dependent — dx=1 km keeps 136, dx=500 m keeps **134** — so the planned
+`--dx 500` grid-convergence check is not like-for-like unless the well sets are intersected
+first.
+
+**Gate status: unresolved, not failed.** Re-run only after the folds are grouped by physical
+site. Plan C stays blocked either way.
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).
