@@ -255,7 +255,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              init_scatter: float = 0.0, seed: int | None = None,
              param_mode: str = "homogeneous", h0: torch.Tensor | None = None,
              recharge_field: torch.Tensor | None = None,
-             pump_layer: int = 1, recharge_layer: int = 0) -> dict:
+             pump_layer: int = 1, recharge_layer: int = 0,
+             log_every: int = 0) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
 
     ``obs_h`` is ``(W, T)``; ``obs_idx``/``obs_layer`` locate each well in the active-cell
@@ -371,7 +372,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             pump_layer=pump_layer,
         )
 
-    for _ in range(epochs):
+    r2_trace: list[tuple[int, float]] = []
+    for _ep in range(epochs):
         opt.zero_grad()
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
@@ -380,6 +382,17 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         torch.nn.utils.clip_grad_norm_(free, 1.0)
         opt.step()
         sched.step()
+        if log_every and ((_ep + 1) % log_every == 0 or _ep == 0):
+            # Periodic in-sample R2 so the TRAJECTORY is visible, not just the endpoint.
+            # A gate that fails can fail two ways -- under-trained or structurally
+            # inadequate -- and only the trajectory separates them: still climbing means
+            # the epoch budget bound, a plateau means the parameterisation did.
+            with torch.no_grad():
+                _p = _forward()[obs_layer, obs_idx, 1:]
+                _r = _r2(_p.cpu().numpy(), obs_h.cpu().numpy())
+            r2_trace.append((_ep + 1, _r))
+            print(f"      epoch {_ep + 1:4d}: loss={float(loss.detach()):.4g} "
+                  f"in-sample R2={_r:+.4f}", flush=True)
         hits = _clamp_({k: v for k, v in theta.items() if k in BOUNDS})
     with torch.no_grad():
         h = _forward()
@@ -399,7 +412,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         theta_out["recharge_frac"] = float(1.0 / (1.0 + np.exp(-theta_out["recharge_frac_logit"])))
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
             "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
-            "param_mode": param_mode, "theta": theta_out}
+            "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace}
 
 
 def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps: int,
@@ -636,6 +649,10 @@ def main(argv=None) -> None:
                     help="skip the pumping/recharge drivers and h0 IC, reproducing the "
                          "original (degenerate, see module docstring) zero-forcing run")
     ap.add_argument("--out", default="results/twin")
+    ap.add_argument("--log-every", type=int, default=0,
+                    help="print in-sample R2 every N epochs during the fit")
+    ap.add_argument("--fit-only", action="store_true",
+                    help="run the in-sample fit and skip the k-fold gate")
     args = ap.parse_args(argv)
 
     from .heads import build_head_field
@@ -687,8 +704,31 @@ def main(argv=None) -> None:
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
-                   recharge_layer=args.recharge_layer)
+                   recharge_layer=args.recharge_layer, log_every=args.log_every)
     t_fit = time.perf_counter() - t0
+
+    if args.fit_only:
+        # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
+        # structurally inadequate parameterisation, and costs one fit instead of eleven.
+        print(f"wells={obs_h.shape[0]} "
+              f"cells={grid.n_active} dx={args.dx:.0f}m param_mode={args.param_mode} "
+              f"n_params={ins['n_params']} epochs={args.epochs}")
+        print(f"  in-sample R2={ins['r2']:+.3f}  bounds_hit={ins['bounds_hit']}  "
+              f"fit_time={t_fit:.1f}s")
+        tr = ins.get("r2_trace") or []
+        if tr:
+            print("  trajectory: " + "  ".join(f"{e}:{r:+.3f}" for e, r in tr))
+            last = [r for _, r in tr[-3:]]
+            if len(last) >= 2:
+                drift = last[-1] - last[0]
+                print(f"  change over the last {len(last)} logged points: {drift:+.4f} "
+                      f"-> {'STILL CLIMBING (under-trained)' if drift > 0.01 else 'PLATEAUED (structural)'}")
+        os.makedirs(args.out, exist_ok=True)
+        pd.DataFrame(tr, columns=["epoch", "r2_insample"]).to_csv(
+            os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
+        print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
+        return
+
     t0 = time.perf_counter()
     gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy, n_layers=4,
                        epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
