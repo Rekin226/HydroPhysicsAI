@@ -2,10 +2,16 @@ import math
 
 import numpy as np
 import pytest
-import torch
-from scipy.special import exp1
 
-from hydrophysics.twin.calibrate_flow import (
+torch = pytest.importorskip("torch")
+# hydrophysics.twin.grid needs matplotlib.path + pyproj, which are optional extras.
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+pytest.importorskip("scipy")
+
+from scipy.special import exp1  # noqa: E402
+
+from hydrophysics.twin.calibrate_flow import (  # noqa: E402
     BOUNDS,
     _idw_field,
     _idw_initial_heads,
@@ -13,8 +19,8 @@ from hydrophysics.twin.calibrate_flow import (
     fit_flow,
     kfold_wells,
 )
-from hydrophysics.twin.flow import FlowModel
-from hydrophysics.twin.grid import FanGrid
+from hydrophysics.twin.flow import FlowModel  # noqa: E402
+from hydrophysics.twin.grid import FanGrid  # noqa: E402
 
 
 def _uniform_grid(n=41, dx=100.0):

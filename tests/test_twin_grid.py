@@ -1,4 +1,10 @@
-from hydrophysics.twin.grid import build_grid
+import pytest
+
+# hydrophysics.twin.grid needs matplotlib.path + pyproj, which are optional extras.
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+
+from hydrophysics.twin.grid import build_grid  # noqa: E402
 
 POLY = ("chou-shui-data/chou-shui-data/data/Zhuoshui Alluvial Fan/"
         "Zhuoshui Alluvial Fan.json")

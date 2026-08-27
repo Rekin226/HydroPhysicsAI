@@ -1,10 +1,14 @@
 import numpy as np
 import pandas as pd
 import pytest
-import torch
 
-from hydrophysics.twin.grid import FanGrid
-from hydrophysics.twin.pumping import aggregate_pumps, energy_to_volume
+torch = pytest.importorskip("torch")
+# hydrophysics.twin.grid needs matplotlib.path + pyproj, which are optional extras.
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+
+from hydrophysics.twin.grid import FanGrid  # noqa: E402
+from hydrophysics.twin.pumping import aggregate_pumps, energy_to_volume  # noqa: E402
 
 
 def _grid():

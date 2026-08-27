@@ -1,9 +1,13 @@
 import numpy as np
 import pytest
-import torch
 
-from hydrophysics.twin.calibrate_mlcw import fit_column, loso
-from hydrophysics.twin.compaction import VEPColumn
+torch = pytest.importorskip("torch")
+# hydrophysics.twin.grid needs matplotlib.path + pyproj, which are optional extras.
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+
+from hydrophysics.twin.calibrate_mlcw import fit_column, loso  # noqa: E402
+from hydrophysics.twin.compaction import VEPColumn  # noqa: E402
 
 
 def test_elastic_compaction_is_fully_recoverable():
