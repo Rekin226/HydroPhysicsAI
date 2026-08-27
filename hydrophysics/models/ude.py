@@ -135,7 +135,7 @@ class PhysicsUDE(GroundwaterModel):
                  physics_weight: float = 0.1, anchor_level: bool = True,
                  normalize_loss: bool = True, lr_min: float | None = 1e-4,
                  anchor_equilibrium: bool = False, rain_memory: tuple = (),
-                 rollout: str = "loop", amp: bool = False,
+                 rollout: str = "loop", amp: bool = False, capture: str = "none",
                  feature_fn=None, device: str | None = None, seed: int = 0):
         _require_torch()
         self.hidden, self.epochs, self.lr, self.seed = hidden, epochs, lr, seed
@@ -153,6 +153,18 @@ class PhysicsUDE(GroundwaterModel):
         self.rollout = rollout
         # bf16 autocast over the training step (CUDA only; no GradScaler needed).
         self.amp = amp
+        # Per-step launch-overhead elimination. The training step has static shapes, no
+        # data-dependent control flow and no host sync, so it is capturable:
+        #   "none"      -- eager PyTorch (reference).
+        #   "cudagraph" -- PhysicsNeMo's StaticCaptureTraining: records forward+backward
+        #                  into a CUDA graph after a warmup and replays it, so the Python
+        #                  and launch cost of the step is paid once instead of per epoch.
+        #                  Needs a physicsnemo.Module hypernetwork (--model ude_nemo).
+        #   "compile"   -- torch.compile over the same step, the plain-PyTorch control
+        #                  for the same effect (does the framework add anything?).
+        if capture not in ("none", "cudagraph", "compile"):
+            raise ValueError(f"capture must be none|cudagraph|compile, got {capture!r}")
+        self.capture = capture
         # Rainfall recharge memory: aquifers integrate rainfall over weeks-months, so a
         # single instantaneous b*rain term underfits the recharge response. With
         # rain_memory=(decay1, decay2, ...) the rainfall enters through that many causal
@@ -277,26 +289,83 @@ class PhysicsUDE(GroundwaterModel):
         import contextlib
         amp_ctx = (torch.autocast(device_type="cuda", dtype=torch.bfloat16)
                    if use_amp else contextlib.nullcontext())
+
+        def _step_loss():
+            """One training step's forward + loss. Closes over the (static) input
+            tensors, so it is a nullary function of fixed shapes -- the form both
+            CUDA-graph capture and torch.compile need."""
+            params = self.hypernet(stat_n)                # (W, n_params)
+            pred = self._rollout(params, dyn, h0, anchor, force_mean, api)     # (W, T)
+            # Per-well scale weights every well equally (matches the per-well-median
+            # KGE we report); scale is 1 when normalize_loss is off.
+            data_loss = (((pred - target) / scale[:, None]) ** 2 * obs_mask).sum() \
+                / obs_mask.sum().clamp_min(1.0)
+            # Physics-residual: enforce the mass-balance ODE on observed training days,
+            # teacher-forced (decoupled from the free rollout). This is the "informed"
+            # half of physics-informed: it constrains the dynamics, not just the fit.
+            phys_loss = self._physics_residual(params, dyn, target, obs_mask, anchor, scale,
+                                               force_mean, api)
+            return data_loss + self.physics_weight * phys_loss
+
+        step = self._make_step(_step_loss, opt, amp_ctx, use_amp)
         for _ in range(self.epochs):
-            opt.zero_grad()
-            with amp_ctx:
-                params = self.hypernet(stat_n)            # (W, n_params)
-                pred = self._rollout(params, dyn, h0, anchor, force_mean, api)     # (W, T)
-                # Per-well scale weights every well equally (matches the per-well-median
-                # KGE we report); scale is 1 when normalize_loss is off.
-                data_loss = (((pred - target) / scale[:, None]) ** 2 * obs_mask).sum() \
-                    / obs_mask.sum().clamp_min(1.0)
-                # Physics-residual: enforce the mass-balance ODE on observed training days,
-                # teacher-forced (decoupled from the free rollout). This is the "informed"
-                # half of physics-informed: it constrains the dynamics, not just the fit.
-                phys_loss = self._physics_residual(params, dyn, target, obs_mask, anchor, scale,
-                                                   force_mean, api)
-                loss = data_loss + self.physics_weight * phys_loss
-            loss.backward()
-            opt.step()
+            step()
             if sched is not None:
                 sched.step()
         return self
+
+    def _make_step(self, loss_fn, opt, amp_ctx, use_amp):
+        """Build the per-epoch training step for the selected ``capture`` backend.
+
+        All three variants run the same math (forward, backward, Adam step); they differ
+        only in how much per-step Python and kernel-launch overhead they pay.
+        """
+        if self.capture == "none":
+            def step():
+                opt.zero_grad()
+                with amp_ctx:
+                    loss = loss_fn()
+                loss.backward()
+                opt.step()
+            return step
+
+        if not str(self.device).startswith("cuda"):
+            raise ValueError(f"capture={self.capture!r} needs a CUDA device, got {self.device!r}")
+
+        if self.capture == "compile":
+            compiled = torch.compile(loss_fn)
+
+            def step():
+                opt.zero_grad()
+                with amp_ctx:
+                    loss = compiled()
+                loss.backward()
+                opt.step()
+            return step
+
+        # cudagraph: PhysicsNeMo records forward+backward once and replays it. It
+        # introspects the model's ModelMetaData, so the hypernetwork must be a
+        # physicsnemo.Module (PhysicsNeMoUDE) declaring cuda_graphs=True.
+        from physicsnemo.core.module import Module as _NeMoModule
+        from physicsnemo.distributed import DistributedManager
+        from physicsnemo.utils import StaticCaptureTraining
+        # StaticCaptureTraining's graph-record branch instantiates DistributedManager
+        # unconditionally, which raises if the singleton was never initialized -- even for
+        # a single-GPU run with no distributed anything. Initialize it (a no-op fallback
+        # to one local rank when the torchrun env vars are absent) so capture is reachable.
+        DistributedManager.initialize()
+        if not isinstance(self.hypernet, _NeMoModule):
+            raise ValueError(
+                "capture='cudagraph' uses PhysicsNeMo StaticCaptureTraining, which requires "
+                "a physicsnemo.Module hypernetwork -- use --model ude_nemo."
+            )
+        # use_amp is handed the same bf16 toggle as the eager path so the two are
+        # comparable; the decorator applies its own autocast, hence amp_ctx is unused here.
+        capture = StaticCaptureTraining(model=self.hypernet, optim=opt, use_graphs=True,
+                                        use_amp=use_amp, amp_type=torch.bfloat16,
+                                        label=f"ude_{id(self)}")
+        captured = capture(loss_fn)
+        return captured
 
     def simulate(self, data: GWData) -> np.ndarray:
         if self.hypernet is None:

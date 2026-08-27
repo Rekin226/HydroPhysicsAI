@@ -29,6 +29,11 @@ checkpoints/
 *.pt
 *.ckpt
 
+# Raw Choushui dataset (~331 MB, pulled from the wisenvr/WRA APIs). The `data/`
+# rule above only covers the innermost directory by coincidence of its name, so
+# ignore the whole tree explicitly — nothing under it is ever committed.
+chou-shui-data/
+
 # Claude
 .claude/settings.local.json
 
@@ -49,3 +54,9 @@ results/explorer/*.html
 # Local manuscript figure/rerun outputs (regenerable)
 results/figures_ms/
 results/forecast_rerun/
+
+# Generated results are regenerable from the CLI that wrote them; only specific,
+# already-tracked result files (figures/CSVs referenced from docs) are checked in.
+# New/untracked results dirs (e.g. results/twin/ from the Stage-1/Stage-2 twin gates)
+# should not be committed.
+results/

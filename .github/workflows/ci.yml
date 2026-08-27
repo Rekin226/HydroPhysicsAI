@@ -44,7 +44,9 @@ jobs:
   # Separate job that actually installs torch (CPU wheels) so the neural-model tests
   # RUN instead of self-skipping. Without this the UDE/GRU/PINN/forecast tests -- the
   # whole reason the project exists -- contribute nothing to CI and a rollout regression
-  # would pass green.
+  # would pass green. [viz,data] are here for the same reason: hydrophysics.twin.grid
+  # imports matplotlib.path and pyproj, so without them every twin test importorskips
+  # itself away and the Stage-1/2/3 gates go untested.
   models-cpu-torch:
     runs-on: ubuntu-latest
     steps:
@@ -57,7 +59,7 @@ jobs:
       - name: Install CPU torch + package
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev,explorer,gpu]"
+          pip install -e ".[dev,explorer,gpu,viz,data]"
       - name: Test (torch paths exercised)
         # -rs lists which tests skipped, so a silently-skipping model test is visible.
         run: pytest -q -rs
