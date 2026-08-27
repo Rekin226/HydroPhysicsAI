@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 # hydrophysics.twin.grid needs matplotlib.path + pyproj, which are optional extras.
@@ -8,6 +10,13 @@ from hydrophysics.twin.grid import build_grid  # noqa: E402
 
 POLY = ("chou-shui-data/chou-shui-data/data/Zhuoshui Alluvial Fan/"
         "Zhuoshui Alluvial Fan.json")
+
+# The fan polygon ships with the raw Choushui dataset, which is gitignored and never
+# committed, so it is absent in CI. Skip rather than fail: these tests assert properties
+# of the real fan geometry and have no meaningful synthetic stand-in.
+pytestmark = pytest.mark.skipif(
+    not os.path.exists(POLY),
+    reason="fan polygon only present alongside the real Choushui dataset")
 
 
 def test_grid_masks_the_fan_polygon():
