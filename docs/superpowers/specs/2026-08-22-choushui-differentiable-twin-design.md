@@ -485,6 +485,53 @@ first.
 **Gate status: unresolved, not failed.** Re-run only after the folds are grouped by physical
 site. Plan C stays blocked either way.
 
+### Stage-3 result (2026-08-27, grouped folds) — FAIL by 0.033, and the margin may be noise
+
+Folds grouped by physical site (`68f422a`), co-location rate confirmed **0.000** in-run.
+This is the first Stage-3 number not confounded by budget or by leakage.
+
+| quantity | value |
+|---|---|
+| wells / sites / cells / grid | 136 entries / 66 sites / 2,148 / 1 km |
+| parameters | 13 (homogeneous per layer) |
+| co-location rate | **0.000** |
+| in-sample R² | +0.9428 |
+| **5-fold R²** | **+0.6863** |
+| **IDW baseline R²** (identical folds) | **+0.7191** |
+| **gate margin** | **−0.0328** |
+| bounds binding | `log_T` 3 of 4, `log_S` 2 of 4, `log_eta` 1 |
+
+**The pre-registered prediction held.** Written down before the run: closing the leak should
+drop IDW sharply and move the flow model very little, because ~70% of IDW's held-out
+predictions had been reading a co-located screen while the physics model never had that
+channel.
+
+| | leaky folds | grouped folds | Δ |
+|---|---|---|---|
+| IDW | +0.880 | +0.719 | **−0.161** |
+| differentiable flow | +0.664 | +0.686 | +0.022 |
+| gap | 0.216 | **0.033** | |
+
+Leakage accounted for ~85% of the apparent gap. The in-sample fit is byte-identical across
+the two runs (loss 29.282276968357287, same `theta`), as it must be — it does not depend on
+the fold construction.
+
+**GATE: FAIL — but read it as undecided, not as a kill.** 0.033 is one 5-fold split with no
+variance estimate. Fold-assignment variance is unmeasured and can plausibly exceed half that
+margin, so this number does not by itself establish that IDW beats the physics model.
+A seed-variance pass over the fold assignment is required before Stage 3 is called either
+way.
+
+**The bound saturation is the deeper problem, and it is independent of the folds.**
+`log_T = [log 10, 5.304, log 10, log 10]` pins three of four layers at the **lower** clamp,
+T = 10 m²/day, below the 58 m²/day floor of the measured Choushui range (Liu et al. 2002).
+The +0.943 in-sample fit is bought by saturating against clamps rather than by finding
+physical values, and a parameterization that must leave the physical range to fit is not one
+that should be expected to generalize. Plan A already ruled out free per-cell parameters, so
+the fix is not "add parameters".
+
+**Plan C (Stage 4 coupling) remains blocked.**
+
 ## 8. Agentic research loop
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).
