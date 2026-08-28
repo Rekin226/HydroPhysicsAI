@@ -595,3 +595,26 @@ def test_kfold_wells_groups_colocated_wells_so_the_baseline_cannot_peek():
     assert "colocation_rate" in out, "gate must report how leaky its folds are"
     assert out["colocation_rate"] == pytest.approx(0.0), (
         f"grouped folds still leak: {out['colocation_rate']:.3f}")
+
+
+def test_kfold_indices_seed_changes_the_split_but_keeps_groups_intact():
+    """--seed exists to measure fold-assignment variance: the 2026-08-27 gate came down to
+    a 0.033 margin, which a single split cannot resolve. Varying the seed must actually
+    move the split, and must never break the site grouping while doing so."""
+    from hydrophysics.twin.calibrate_flow import _kfold_indices
+    groups = np.repeat(np.arange(12), 2)          # 12 sites, 2 screens each
+    a = _kfold_indices(24, 3, seed=0, groups=groups)
+    b = _kfold_indices(24, 3, seed=1, groups=groups)
+    again = _kfold_indices(24, 3, seed=0, groups=groups)
+
+    # same seed is reproducible
+    for f, g in zip(a, again, strict=True):
+        assert np.array_equal(f, g)
+    # a different seed actually moves wells between folds
+    assert any(not np.array_equal(f, g) for f, g in zip(a, b, strict=True))
+    # and grouping survives either way
+    for folds in (a, b):
+        assert sorted(np.concatenate(folds).tolist()) == list(range(24))
+        for f in folds:
+            for site in np.unique(groups[f]):
+                assert set(np.flatnonzero(groups == site)) <= set(f.tolist())

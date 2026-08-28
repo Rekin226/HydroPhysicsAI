@@ -688,6 +688,10 @@ def main(argv=None) -> None:
     ap.add_argument("--lr", type=float, default=0.1)
     ap.add_argument("--dx", type=float, default=1000.0)
     ap.add_argument("--n-folds", type=int, default=10)
+    ap.add_argument("--seed", type=int, default=0,
+                    help="fold-assignment seed. Vary it to measure whether a gate "
+                         "margin is signal or fold noise; the 2026-08-27 gate came "
+                         "down to 0.033, which one split cannot resolve.")
     ap.add_argument("--param-mode", choices=["homogeneous", "percell"], default="homogeneous")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
     ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
@@ -798,6 +802,7 @@ def main(argv=None) -> None:
     t0 = time.perf_counter()
     gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy, n_layers=4,
                        epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
+                       seed=args.seed,
                        param_mode=args.param_mode, well_xy=well_xy, obs_h0=obs_h0,
                        ground_elev=ground_elev, E=E, recharge_field=recharge_field,
                        pump_layer=args.pump_layer, recharge_layer=args.recharge_layer)
@@ -825,7 +830,8 @@ def main(argv=None) -> None:
     pd.DataFrame([{"n_wells": gate["n_wells"], "n_cells": grid.n_active, "dx": args.dx,
                    "param_mode": args.param_mode, "n_params": ins["n_params"],
                    "forcing": "off" if args.no_forcing else "on", "epochs": args.epochs,
-                   "n_folds": gate["n_folds"], "n_sites": gate["n_sites"],
+                   "n_folds": gate["n_folds"], "seed": args.seed,
+                   "n_sites": gate["n_sites"],
                    "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
                    "r2_insample": ins["r2"], "r2_kfold": gate["r2_kfold"],
                    "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
