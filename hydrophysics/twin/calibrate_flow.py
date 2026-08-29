@@ -509,7 +509,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 well_xy: np.ndarray | None = None, obs_h0: np.ndarray | None = None,
                 ground_elev: torch.Tensor | None = None, E: torch.Tensor | None = None,
                 recharge_field: torch.Tensor | None = None,
-                pump_layer: int = 1, recharge_layer: int = 0) -> dict:
+                pump_layer: int = 1, recharge_layer: int = 0,
+                dump_path: str | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -540,6 +541,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
               "straddle folds and the IDW baseline may peek. Pass well_xy.", flush=True)
     folds = _kfold_indices(W, n_folds, seed=seed, groups=groups)
     coloc = _colocation_rate(folds, well_xy, W)
+    # Per-entry dump (2026-08-29): the headline gate is one pooled R2, which cannot answer
+    # whether the physics model degrades more or less gracefully than IDW as held-out sites
+    # get isolated. That question is most of the argument for building a physics model at
+    # all, so keep the raw predictions rather than only their pooled summary.
+    dump = {"fold": [], "entry": [], "nn_dist": [], "x": [], "y": [], "layer": []}
+    dump_arrays = {"pred": [], "idw": [], "obs": []}
+    # coordinates used for the nearest-training-entry distance
+    dist_xy = (np.asarray(well_xy, dtype="float64") if well_xy is not None
+               else grid.centroids()[obs_idx.cpu().numpy()])
     if well_xy is not None:
         n_sites = len(np.unique(groups))
         print(f"    folds grouped by site: {W} entries over {n_sites} physical sites, "
@@ -579,12 +589,32 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         preds.append(p)
         idws.append(idw)
         targets.append(obs_h[held].numpy())
+        if dump_path is not None:
+            dd = np.sqrt(((dist_xy[held][:, None, :] - dist_xy[keep][None, :, :]) ** 2)
+                         .sum(-1)).min(axis=1)
+            dump["fold"].append(np.full(len(held), f, dtype="int64"))
+            dump["entry"].append(np.asarray(held, dtype="int64"))
+            dump["nn_dist"].append(dd)
+            dump["x"].append(dist_xy[held][:, 0])
+            dump["y"].append(dist_xy[held][:, 1])
+            dump["layer"].append(obs_layer_np[held])
+            dump_arrays["pred"].append(p)
+            dump_arrays["idw"].append(idw)
+            dump_arrays["obs"].append(obs_h[held].numpy())
         per_fold.append({"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
                          "r2_kfold": _r2(p, obs_h[held].numpy()),
                          "r2_idw": _r2(idw, obs_h[held].numpy())})
     pred = np.concatenate(preds)
     obs = np.concatenate(targets)
     idw_all = np.concatenate(idws)
+    if dump_path is not None:
+        os.makedirs(os.path.dirname(dump_path) or ".", exist_ok=True)
+        np.savez_compressed(
+            dump_path,
+            **{k: np.concatenate(v) for k, v in dump.items()},
+            **{k: np.concatenate(v) for k, v in dump_arrays.items()},
+            obs_mean=np.array(float(obs[np.isfinite(obs)].mean())))
+        print(f"    wrote per-entry predictions -> {dump_path}", flush=True)
     return {"r2_kfold": _r2(pred, obs), "r2_idw": _r2(idw_all, obs),
             "n_wells": W, "n_folds": n_folds, "per_fold": per_fold,
             "n_sites": int(len(np.unique(groups))) if groups is not None else W,
@@ -721,6 +751,8 @@ def main(argv=None) -> None:
     ap.add_argument("--out", default="results/twin")
     ap.add_argument("--log-every", type=int, default=0,
                     help="print in-sample R2 every N epochs during the fit")
+    ap.add_argument("--dump-predictions", action="store_true",
+                    help="write per-held-out-entry predictions (flow, IDW, obs) plus\neach entry's distance to the nearest training entry, for degradation-vs-distance\nanalysis without refitting.")
     ap.add_argument("--fit-only", action="store_true",
                     help="run the in-sample fit and skip the k-fold gate")
     args = ap.parse_args(argv)
@@ -805,7 +837,9 @@ def main(argv=None) -> None:
                        seed=args.seed,
                        param_mode=args.param_mode, well_xy=well_xy, obs_h0=obs_h0,
                        ground_elev=ground_elev, E=E, recharge_field=recharge_field,
-                       pump_layer=args.pump_layer, recharge_layer=args.recharge_layer)
+                       pump_layer=args.pump_layer, recharge_layer=args.recharge_layer,
+                       dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
+                                  if args.dump_predictions else None))
     t_gate = time.perf_counter() - t0
     print(f"wells={gate['n_wells']} cells={grid.n_active} dx={args.dx:.0f}m "
           f"param_mode={args.param_mode} n_params={ins['n_params']} "

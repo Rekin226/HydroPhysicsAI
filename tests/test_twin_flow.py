@@ -618,3 +618,38 @@ def test_kfold_indices_seed_changes_the_split_but_keeps_groups_intact():
         for f in folds:
             for site in np.unique(groups[f]):
                 assert set(np.flatnonzero(groups == site)) <= set(f.tolist())
+
+
+def test_kfold_wells_dumps_per_entry_predictions_with_distances(tmp_path):
+    """The pooled gate R2 cannot say whether the physics model degrades more or less
+    gracefully than IDW as held-out sites get isolated, which is most of the argument for
+    building a physics model. The dump keeps the raw predictions so that question is
+    answerable without refitting."""
+    g, h, rech, obs_idx, obs_layer = _synthetic_case()
+    obs_idx_all = torch.cat([obs_idx, obs_idx])
+    obs_layer_all = torch.cat([torch.zeros_like(obs_idx), torch.ones_like(obs_idx)])
+    cent = g.centroids()
+    well_xy = np.concatenate([cent[obs_idx.numpy()], cent[obs_idx.numpy()]], axis=0)
+    W = len(obs_idx_all)
+    obs = h[obs_layer_all, obs_idx_all, 1:]
+    out_npz = tmp_path / "per_entry.npz"
+
+    out = kfold_wells(g, obs, obs_idx_all, obs_layer_all, rech, n_layers=2,
+                      epochs=3, lr=0.1, n_folds=3, well_xy=well_xy,
+                      obs_h0=np.zeros(W), dump_path=str(out_npz))
+
+    d = np.load(out_npz)
+    # every held-out entry appears exactly once, across all folds
+    assert sorted(d["entry"].tolist()) == list(range(W))
+    assert d["pred"].shape == d["obs"].shape == d["idw"].shape == (W, obs.shape[1])
+    # distances are real, positive, and finite -- grouping means never zero
+    assert np.isfinite(d["nn_dist"]).all()
+    assert (d["nn_dist"] > 0).all(), "grouped folds must not leave a zero-distance neighbour"
+    # the dumped rows reproduce the pooled numbers the gate reported
+    assert _r2_ref(d["pred"], d["obs"]) == pytest.approx(out["r2_kfold"], abs=1e-9)
+    assert _r2_ref(d["idw"], d["obs"]) == pytest.approx(out["r2_idw"], abs=1e-9)
+
+
+def _r2_ref(pred, obs):
+    from hydrophysics.twin.calibrate_flow import _r2
+    return _r2(np.asarray(pred), np.asarray(obs))
