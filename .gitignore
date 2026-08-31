@@ -60,3 +60,9 @@ results/forecast_rerun/
 # New/untracked results dirs (e.g. results/twin/ from the Stage-1/Stage-2 twin gates)
 # should not be committed.
 results/
+
+# Superpowers working state: the SDD ledgers (.superpowers/sdd/, previously ignored
+# by their own nested .gitignore) and the brainstorming companion's generated
+# mockups (.superpowers/brainstorm/). Session scratch, not repo content — the
+# durable output of both lands in docs/superpowers/ instead.
+.superpowers/
