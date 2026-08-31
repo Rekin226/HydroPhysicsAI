@@ -14,6 +14,9 @@ from scipy.special import exp1  # noqa: E402
 
 from hydrophysics.twin.calibrate_flow import (  # noqa: E402
     BOUNDS,
+    _clamp_,
+    _format_bounds_hit,
+    _git_commit,
     _idw_field,
     _idw_initial_heads,
     _rollout,
@@ -25,6 +28,8 @@ from hydrophysics.twin.flow import (  # noqa: E402
     _CG_TOL,
     FlowModel,
     _cg,
+    _cg_stats,
+    _reset_cg_stats,
 )
 from hydrophysics.twin.grid import FanGrid  # noqa: E402
 
@@ -424,17 +429,71 @@ def test_log_S_and_log_L_bounds_are_unchanged_from_the_brief():
     assert BOUNDS["log_L"] == (pytest.approx(math.log(1e-8)), pytest.approx(math.log(1e-1)))
 
 
+def test_clamp_distinguishes_lower_from_upper_hits_and_reports_n():
+    """Ruling P1: a lower-bound hit is spec 1's documented failure (fitting below the
+    measured physical range); an upper-bound hit is a different statement and must
+    never be pooled with it. Also pins that clamping behaviour itself is unchanged --
+    only the report shape.
+    """
+    lo, hi = BOUNDS["log_T"]
+    par = torch.tensor([lo - 5.0, lo, (lo + hi) / 2, hi, hi + 5.0], dtype=torch.float64)
+    hits = _clamp_({"log_T": par})
+    assert hits["log_T"] == {"lo": 2, "hi": 2, "n": 5}
+    # clamping behaviour itself: still clamped in place into [lo, hi]
+    assert float(par.min()) == pytest.approx(lo)
+    assert float(par.max()) == pytest.approx(hi)
+
+
+def test_clamp_reports_zero_hits_when_every_entry_is_interior():
+    lo, hi = BOUNDS["log_S"]
+    par = torch.full((4,), (lo + hi) / 2, dtype=torch.float64)
+    hits = _clamp_({"log_S": par})
+    assert hits["log_S"] == {"lo": 0, "hi": 0, "n": 4}
+
+
+def test_format_bounds_hit_shows_lo_and_hi_over_n_for_a_flat_dict():
+    hits = {"log_T": {"lo": 1, "hi": 0, "n": 1}, "log_S": {"lo": 0, "hi": 0, "n": 1}}
+    out = _format_bounds_hit(hits)
+    assert "log_T: lo=1/1 hi=0/1" in out
+    assert "log_S: lo=0/1 hi=0/1" in out
+
+
+def test_format_bounds_hit_shows_lo_and_hi_over_n_per_zone_for_a_nested_dict():
+    """A reader must see 'proximal log_T 1/1 at the lower bound' and not mistake a small
+    absolute count for a minority next to mid/distal's larger denominator.
+    """
+    hits = {
+        "proximal": {"log_T": {"lo": 1, "hi": 0, "n": 1}},
+        "mid": {"log_T": {"lo": 2, "hi": 0, "n": 4}},
+        "distal": {"log_T": {"lo": 0, "hi": 0, "n": 4}},
+        "global": {"log_eta": {"lo": 0, "hi": 0, "n": 1}},
+    }
+    out = _format_bounds_hit(hits)
+    assert "bounds_hit[proximal]={log_T: lo=1/1 hi=0/1}" in out
+    assert "bounds_hit[mid]={log_T: lo=2/4 hi=0/4}" in out
+    assert "bounds_hit[distal]={log_T: lo=0/4 hi=0/4}" in out
+
+
+def test_format_bounds_hit_empty_dict_prints_empty_braces():
+    assert _format_bounds_hit({}) == "  bounds_hit={}"
+
+
 def test_bounds_hit_reports_per_entry_counts():
     """Clamping must actually bind and be counted when a parameter is pushed outside
-    BOUNDS, not just silently clip.
+    BOUNDS, not just silently clip. Fix-wave update: bounds_hit now reports lo/hi/n
+    rather than a single pooled count (Ruling P1) -- pinning every entry ABOVE the
+    upper bound must show up entirely under "hi", never under "lo".
     """
     g, h, rech, obs_idx, obs_layer = _synthetic_case()
     m = FlowModel(g, n_layers=2, dt_days=30.0)
     with torch.no_grad():
-        m.log_T.fill_(float(np.log(1e6)))   # far outside the tightened bound
+        m.log_T.fill_(float(np.log(1e6)))   # far outside the tightened bound (above hi)
     out = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
                    epochs=1, lr=0.0, param_mode="percell")
-    assert out["bounds_hit"]["log_T"] == m.log_T.numel()
+    hit = out["bounds_hit"]["log_T"]
+    assert hit["hi"] == m.log_T.numel()
+    assert hit["lo"] == 0
+    assert hit["n"] == m.log_T.numel()
 
 
 def test_zero_forcing_is_provably_parameter_independent():
@@ -799,7 +858,11 @@ def test_expand_zonal_accumulates_gradient_onto_each_zones_parameter():
 def test_zonal_bounds_hit_reports_per_zone_and_never_pools():
     """Spec §6 primary rule: a pinned proximal log_T must not be maskable by interior
     mid/distal values. Pin proximal at the lower clamp, leave the rest interior, and the
-    report must still show it.
+    report must still show it. Fix-wave update (Ruling P1): the report now carries
+    lo/hi/n per parameter per zone, with the correct denominator for each zone's size
+    (proximal 1 value, mid/distal 4 each for this 4-layer model) -- a reader must be
+    able to tell "proximal is 1/1 pinned" from "mid is 0/4 pinned" rather than reading
+    two bare integers that look comparable but are not.
     """
     from hydrophysics.twin.calibrate_flow import (
         BOUNDS,
@@ -816,11 +879,35 @@ def test_zonal_bounds_hit_reports_per_zone_and_never_pools():
         theta["log_T_distal"].fill_(math.log(500.0))
     hits = _zonal_bounds_hit(theta)
     assert set(hits) == {"proximal", "mid", "distal", "global"}
-    assert hits["proximal"]["log_T"] == 1
-    assert hits["mid"]["log_T"] == 0
-    assert hits["distal"]["log_T"] == 0
+    # proximal: 1 value, pinned at the LOWER bound -- 1/1, not 0/1 or masked by hi
+    assert hits["proximal"]["log_T"] == {"lo": 1, "hi": 0, "n": 1}
+    # mid/distal: 4 layer values each (correct denominator), none pinned
+    assert hits["mid"]["log_T"] == {"lo": 0, "hi": 0, "n": 4}
+    assert hits["distal"]["log_T"] == {"lo": 0, "hi": 0, "n": 4}
     assert "log_L" not in hits["proximal"]        # fixed, not a free parameter
     assert "log_eta" in hits["global"]
+
+
+def test_zonal_bounds_hit_distinguishes_lower_from_upper_pin():
+    """A parameter pinned at the UPPER bound must never report as a lower-bound hit or
+    vice versa -- the distinction is the entire point of Ruling P1 (spec 1's documented
+    failure is specifically fitting BELOW the measured range).
+    """
+    from hydrophysics.twin.calibrate_flow import (
+        BOUNDS,
+        _make_zonal_params,
+        _zonal_bounds_hit,
+    )
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m)
+    with torch.no_grad():
+        theta["log_T_mid"].fill_(BOUNDS["log_T"][1])      # pinned HIGH
+        theta["log_T_distal"].fill_(BOUNDS["log_T"][0])   # pinned LOW
+    hits = _zonal_bounds_hit(theta)
+    assert hits["mid"]["log_T"] == {"lo": 0, "hi": 4, "n": 4}
+    assert hits["distal"]["log_T"] == {"lo": 4, "hi": 0, "n": 4}
 
 
 def _zoned_synthetic_case(seed=0):
@@ -983,16 +1070,22 @@ def test_kfold_wells_zonal_rejects_a_missing_zone_assignment():
 
 
 def test_parse_zone_boundaries_reads_a_comma_pair():
+    """Spec 4.2 varies only the SECOND (mid/distal) value; the first (proximal/mid)
+    value stays 205 in both valid examples here -- '186,178' would instead move the
+    PROXIMAL boundary and is not a spec-4.2 sensitivity run (see the rejected-pair test
+    below for why a transposed pair is refused outright, and _DEFAULT_ZONE_BOUNDARIES
+    for the actual CLI default).
+    """
     from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
 
     assert _parse_zone_boundaries("205,182") == (205.0, 182.0)
-    assert _parse_zone_boundaries(" 186 , 178 ") == (186.0, 178.0)
+    assert _parse_zone_boundaries(" 205 , 178 ") == (205.0, 178.0)
 
 
 def test_parse_zone_boundaries_rejects_malformed_input():
     from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
 
-    for bad in ("205", "205,182,170", "a,b", ""):
+    for bad in ("205", "205,182,170", "a,b", "", "200,200"):
         with pytest.raises(ValueError):
             _parse_zone_boundaries(bad)
 
@@ -1005,6 +1098,17 @@ def test_parse_zone_boundaries_rejects_a_reversed_pair():
 
     with pytest.raises(ValueError):
         _parse_zone_boundaries("178,186")
+
+
+def test_parse_zone_boundaries_rejects_equal_boundaries():
+    """A future `<` -> `<=` slip would silently empty the mid zone and yield a
+    three-zone verdict computed on a two-zone model -- pin the rejection directly rather
+    than relying only on the transposed-pair case above.
+    """
+    from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
+
+    with pytest.raises(ValueError):
+        _parse_zone_boundaries("200,200")
 
 
 def test_cli_exposes_zonal_and_zone_boundaries():
@@ -1023,17 +1127,18 @@ def test_cli_exposes_zonal_and_zone_boundaries():
 def test_cg_maxiter_covers_the_measured_worst_case_proximal_pin():
     """Cheap guard making the reasoning in flow.py's _CG_MAXITER comment executable:
     bisection on the real fan grid found the worst realistic case (proximal leakance
-    pinned at BOUNDS["log_L"][1] = 1e-1/day, transmissivity at its lower clamp of
-    10 m2/day) needs 1242 CG iterations. If this ever regresses below that, the solver
-    will silently truncate exactly the solves the zonal design relies on.
+    pinned at BOUNDS["log_L"][1] = log(1e-1) (i.e. L = 1e-1/day), transmissivity at its
+    lower clamp of 10 m2/day) needs 1242 CG iterations. If this ever regresses below
+    that, the solver will silently truncate exactly the solves the zonal design relies on.
     """
     assert _CG_MAXITER >= 1242
 
 
 def test_cg_maxiter_400_truncates_the_proximal_pin_but_2000_converges():
     """Regression test for the corrupted Stage-3 gate: at the proximal zone's design
-    pin (log_L at BOUNDS["log_L"][1] = 1e-1/day over a proximal-like fraction of cells,
-    mirroring the real fan's 264/2148 pinned cells), the old _CG_MAXITER=400 truncated
+    pin (log_L at BOUNDS["log_L"][1] = log(1e-1) (i.e. L = 1e-1/day) over a
+    proximal-like fraction of cells, mirroring the real fan's 264/2148 pinned cells),
+    the old _CG_MAXITER=400 truncated
     the solve well short of tol -- exactly the mechanism that produced 1,879 corrupted
     CG solves (median true relative residual 4.955e-02) in the aborted real gate. This
     is not a mock: it drives the real ``_cg`` against the real ``_matvec_from`` operator
@@ -1075,3 +1180,104 @@ def test_cg_maxiter_400_truncates_the_proximal_pin_but_2000_converges():
     x_full = _cg(mv, b, diag=diag, maxiter=_CG_MAXITER)
     residual_full = true_relres(x_full)
     assert residual_full <= _CG_TOL
+
+
+# ---------------------------------------------------------------------------------
+# Fix wave (final whole-branch review, 2026-08-31): provenance the published gate
+# number cannot do without -- the CG cap, the git commit, and convergence evidence.
+# ---------------------------------------------------------------------------------
+
+def test_git_commit_returns_a_short_sha_in_this_repo():
+    """This test file lives inside a git checkout, so _git_commit() must return a
+    non-empty short SHA here -- guarded so a run outside a checkout gets "" rather than
+    crashing a multi-hour sweep, but that fallback is not exercised by this test.
+    """
+    commit = _git_commit()
+    assert isinstance(commit, str)
+    assert commit != ""
+    assert len(commit) <= 12   # a short SHA, not a full 40-char one
+
+
+def test_cg_stats_reset_and_clean_run_read_zero_not_blank():
+    """On a clean run, cg_nonconverged/cg_worst_residual must read 0 and 0.0, not
+    blank/None -- the artifact must always carry these two fields.
+    """
+    _reset_cg_stats()
+    count, worst = _cg_stats()
+    assert count == 0
+    assert worst == 0.0
+
+    # a well-conditioned, easily-converging solve must not move the counters
+    g = _uniform_grid(n=9)
+    m = FlowModel(g, n_layers=1, dt_days=1.0)
+    A = g.n_active
+    with torch.no_grad():
+        m.log_T.fill_(float(np.log(500.0)))
+        m.log_S.fill_(float(np.log(1e-4)))
+    rech = torch.full((1, A, 2), 1e-3)
+    m(torch.zeros(1, A), rech, torch.zeros(1, A, 2), 2)
+    count, worst = _cg_stats()
+    assert count == 0
+    assert worst == 0.0
+
+
+def test_cg_stats_count_and_worst_residual_increment_on_non_convergence():
+    """_cg must increment the module counter and track the worst true relative
+    residual every time it warns, without suppressing the warning itself (operators
+    rely on seeing it on stderr).
+    """
+    _reset_cg_stats()
+    g = _uniform_grid(n=32, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    A = g.n_active
+    T = torch.full((4, A), 500.0, dtype=torch.float64)
+    S = torch.full((4, A), 1e-4, dtype=torch.float64)
+    L = torch.full((3, A), 1e-4, dtype=torch.float64)
+    n_pinned = A // 8
+    L[:, :n_pinned] = 1e-1
+    mv, diag = m._matvec_from(T, S, L)
+    rng = torch.Generator().manual_seed(0)
+    b = torch.randn(4, A, generator=rng, dtype=torch.float64)
+
+    def true_relres(x):
+        return float((b - mv(x)).pow(2).sum().sqrt() / b.pow(2).sum().sqrt())
+
+    with pytest.warns(UserWarning, match="did not converge"):
+        x_400 = _cg(mv, b, diag=diag, maxiter=400)
+    count, worst = _cg_stats()
+    assert count == 1
+    assert worst == pytest.approx(true_relres(x_400), rel=1e-9)
+    assert worst > _CG_TOL
+
+    # a second non-convergent call must accumulate, and track the WORST residual
+    with pytest.warns(UserWarning, match="did not converge"):
+        _cg(mv, b, diag=diag, maxiter=1)
+    count2, worst2 = _cg_stats()
+    assert count2 == 2
+    assert worst2 >= worst   # maxiter=1 is at least as bad, so the worst can only grow
+
+
+def test_kfold_wells_per_fold_entries_carry_bounds_hit():
+    """The primary decision rule (does the clamp release?) must be checkable on the
+    fold models, not only the in-sample fit -- a PASS where every fold model is
+    bound-saturated would otherwise be undetectable.
+    """
+    g, h, rech, obs_idx, obs_layer = _synthetic_case()
+    out = kfold_wells(g, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                      n_layers=2, epochs=3, lr=0.1, n_folds=3)
+    assert len(out["per_fold"]) == 3
+    for f in out["per_fold"]:
+        assert "bounds_hit" in f
+        assert "log_T" in f["bounds_hit"]
+        hit = f["bounds_hit"]["log_T"]
+        assert set(hit) == {"lo", "hi", "n"}
+
+
+def test_kfold_wells_per_fold_bounds_hit_is_zonal_shaped_in_zonal_mode():
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    out = kfold_wells(g, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                      n_layers=2, epochs=3, lr=0.1, n_folds=3, seed=0,
+                      param_mode="zonal", zone_of_cell=zones)
+    for f in out["per_fold"]:
+        hits = f["bounds_hit"]
+        assert set(hits) == {"proximal", "mid", "distal", "global"}

@@ -64,6 +64,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import subprocess
 import time
 
 import numpy as np
@@ -73,7 +74,14 @@ from torch import nn
 
 from ..subsidence import idw_interp
 from . import pumping as pumping_mod
-from .flow import FlowModel, _ImplicitSolve, _warm_started_solver
+from .flow import (
+    _CG_MAXITER,
+    FlowModel,
+    _cg_stats,
+    _ImplicitSolve,
+    _reset_cg_stats,
+    _warm_started_solver,
+)
 from .grid import build_grid
 from .zones import N_ZONES, ZONE_NAMES, fan_zones
 
@@ -88,16 +96,42 @@ BOUNDS = {
 }
 
 
-def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, int]:
-    """Clamp each named tensor into BOUNDS in place; return how many entries sit on a bound."""
-    hits: dict[str, int] = {}
+def _git_commit() -> str:
+    """Short commit SHA for the result artifact's provenance, or "" if it cannot be
+    determined (e.g. not a git checkout) -- never raises, since a multi-hour sweep must
+    not die on a provenance nicety.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
+    """Clamp each named tensor into BOUNDS in place; return, per parameter, how many
+    entries sit on the LOWER bound, how many on the UPPER bound, and the total entry
+    count -- ``{"lo": int, "hi": int, "n": int}``.
+
+    Ruling P1: spec 1's documented failure is fitting BELOW the measured physical range
+    (three of four log_T layers pinned at the lower clamp, 10 m2/day, under the 58 m2/day
+    floor Liu et al. 2002 measured). An upper-bound hit is a different physical statement
+    and must never be pooled with a lower-bound one. The clamping behaviour itself is
+    unchanged from before this split -- only what gets reported.
+    """
+    hits: dict[str, dict[str, int]] = {}
     with torch.no_grad():
         for name, par in tensors.items():
             if par is None:
                 continue
             lo, hi = BOUNDS[name]
             par.clamp_(min=lo, max=hi)
-            hits[name] = int(((par <= lo + 1e-9) | (par >= hi - 1e-9)).sum())
+            n_lo = int((par <= lo + 1e-9).sum())
+            n_hi = int((par >= hi - 1e-9).sum())
+            hits[name] = {"lo": n_lo, "hi": n_hi, "n": int(par.numel())}
     return hits
 
 
@@ -335,15 +369,17 @@ def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
     return log_T, log_S, log_L
 
 
-def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
-    """Clamp every zonal parameter into BOUNDS in place and report hits **per zone**.
+def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, dict[str, int]]]:
+    """Clamp every zonal parameter into BOUNDS in place and report hits **per zone**,
+    each as the ``{"lo", "hi", "n"}`` shape ``_clamp_`` returns.
 
     Spec §6's primary decision rule reads this. Pooling would let an interior mid value
     mask a pinned proximal one, and a model still fitting outside the measured physical
     range gives confident wrong counterfactuals -- the failure that matters at the
-    operational bar.
+    operational bar. Ruling P1 further requires lo/hi to stay distinguished per zone:
+    a pinned proximal log_T is only the documented failure if it is pinned LOW.
     """
-    report: dict[str, dict[str, int]] = {name: {} for name in ZONE_NAMES}
+    report: dict[str, dict[str, dict[str, int]]] = {name: {} for name in ZONE_NAMES}
     report["global"] = {}
     for name, par in theta.items():
         base = _base_param_name(name)
@@ -759,7 +795,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             dump_arrays["obs"].append(obs_h[held].numpy())
         per_fold.append({"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
                          "r2_kfold": _r2(p, obs_h[held].numpy()),
-                         "r2_idw": _r2(idw, obs_h[held].numpy())})
+                         "r2_idw": _r2(idw, obs_h[held].numpy()),
+                         "bounds_hit": fit["bounds_hit"]})
     pred = np.concatenate(preds)
     obs = np.concatenate(targets)
     idw_all = np.concatenate(idws)
@@ -874,9 +911,11 @@ _DEFAULT_ZONE_BOUNDARIES = "205,182"
 def _parse_zone_boundaries(text: str) -> tuple[float, float]:
     """``"205,182"`` -> ``(205.0, 182.0)``: the proximal/mid and mid/distal eastings in km.
 
-    Spec §4.2 requires re-running the gate at 178 and 186 km, because the mid/distal
-    boundary is an equal-width default with no independent justification. A transposed
-    pair would silently empty the mid zone, so it is rejected rather than tolerated.
+    Spec §4.2 requires re-running the gate varying only the SECOND (mid/distal) value,
+    at 178 and 186 km, because that boundary is an equal-width default with no
+    independent justification -- the first (proximal/mid) value must stay 205. A
+    transposed or equal pair would silently move the proximal boundary or empty the mid
+    zone, so both are rejected rather than tolerated.
     """
     parts = [p.strip() for p in str(text).split(",")]
     if len(parts) != 2:
@@ -895,15 +934,37 @@ def _parse_zone_boundaries(text: str) -> tuple[float, float]:
     return proximal_km, distal_km
 
 
+def _is_hit_entry(v) -> bool:
+    """True for a single-parameter ``_clamp_`` result ``{"lo", "hi", "n"}`` -- the leaf
+    of both the flat (homogeneous/percell) and nested (zonal) ``bounds_hit`` shapes.
+    """
+    return isinstance(v, dict) and {"lo", "hi", "n"} <= v.keys()
+
+
+def _fmt_hit_entry(name: str, v: dict) -> str:
+    return f"{name}: lo={v['lo']}/{v['n']} hi={v['hi']}/{v['n']}"
+
+
 def _format_bounds_hit(hits: dict) -> str:
-    """Per-zone dicts print one line per zone; flat dicts print as before.
+    """Flat dicts (homogeneous/percell: ``{param: {"lo","hi","n"}}``) print one line.
+    Nested dicts (zonal: ``{zone: {param: {"lo","hi","n"}}}``) print one line per zone.
 
     Spec §6's primary rule reads this, and pooling would let an interior mid value mask
     a pinned proximal one -- so the zonal form is never collapsed into a single number.
+    Printing ``lo/n`` and ``hi/n`` (Ruling P1) rather than a bare count is what lets a
+    reader see "proximal log_T 1/1 at the lower bound" instead of mistaking a small
+    absolute count for a minority.
     """
-    if hits and all(isinstance(v, dict) for v in hits.values()):
-        return "\n".join(f"    bounds_hit[{zone}]={vals}" for zone, vals in hits.items())
-    return f"  bounds_hit={hits}"
+    if not hits:
+        return "  bounds_hit={}"
+    if all(_is_hit_entry(v) for v in hits.values()):
+        parts = ", ".join(_fmt_hit_entry(k, v) for k, v in hits.items())
+        return f"  bounds_hit={{{parts}}}"
+    lines = []
+    for zone, params in hits.items():
+        parts = ", ".join(_fmt_hit_entry(k, v) for k, v in params.items())
+        lines.append(f"    bounds_hit[{zone}]={{{parts}}}")
+    return "\n".join(lines)
 
 
 def main(argv=None) -> None:
@@ -919,9 +980,12 @@ def main(argv=None) -> None:
     ap.add_argument("--param-mode", choices=list(_PARAM_MODES), default="homogeneous")
     ap.add_argument("--zone-boundaries", default=_DEFAULT_ZONE_BOUNDARIES,
                     help="PROXIMAL_KM,DISTAL_KM for --param-mode zonal (default "
-                         "'205,182'). The mid/distal value is an unjustified default; "
-                         "spec 4.2 requires re-running at 178 and 186 to report whether "
-                         "the verdict moves.")
+                         "'205,182'). The mid/distal (SECOND) value is an unjustified "
+                         "default; spec 4.2 requires varying only that SECOND value -- "
+                         "re-run at '205,178' and '205,186' -- to report whether the "
+                         "verdict moves. Do NOT vary the first (proximal) value: e.g. "
+                         "'186,178' moves the PROXIMAL boundary instead and is not the "
+                         "sensitivity check spec 4.2 asks for.")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
     ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
     ap.add_argument("--polygon",
@@ -1018,6 +1082,8 @@ def main(argv=None) -> None:
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
 
     m = FlowModel(grid, n_layers=4, dt_days=30.0)
+    git_commit = _git_commit()
+    _reset_cg_stats()
     t0 = time.perf_counter()
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
@@ -1029,11 +1095,14 @@ def main(argv=None) -> None:
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
         # structurally inadequate parameterisation, and costs one fit instead of eleven.
+        cg_nonconverged, cg_worst_residual = _cg_stats()
         print(f"wells={obs_h.shape[0]} "
               f"cells={grid.n_active} dx={args.dx:.0f}m param_mode={args.param_mode} "
               f"n_params={ins['n_params']} epochs={args.epochs}")
         print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
         print(_format_bounds_hit(ins["bounds_hit"]))
+        print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_nonconverged}  "
+              f"cg_worst_residual={cg_worst_residual:.3e}  git_commit={git_commit!r}")
         tr = ins.get("r2_trace") or []
         if tr:
             print("  trajectory: " + "  ".join(f"{e}:{r:+.3f}" for e, r in tr))
@@ -1043,8 +1112,10 @@ def main(argv=None) -> None:
                 print(f"  change over the last {len(last)} logged points: {drift:+.4f} "
                       f"-> {'STILL CLIMBING (under-trained)' if drift > 0.01 else 'PLATEAUED (structural)'}")
         os.makedirs(args.out, exist_ok=True)
-        pd.DataFrame(tr, columns=["epoch", "r2_insample"]).to_csv(
-            os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
+        trace_df = pd.DataFrame(tr, columns=["epoch", "r2_insample"])
+        trace_df["cg_maxiter"] = _CG_MAXITER
+        trace_df["git_commit"] = git_commit
+        trace_df.to_csv(os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
         print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
         return
 
@@ -1059,6 +1130,7 @@ def main(argv=None) -> None:
                                   if args.dump_predictions else None),
                        zone_of_cell=zone_of_cell)
     t_gate = time.perf_counter() - t0
+    cg_nonconverged, cg_worst_residual = _cg_stats()
     print(f"wells={gate['n_wells']} cells={grid.n_active} dx={args.dx:.0f}m "
           f"param_mode={args.param_mode} n_params={ins['n_params']} "
           f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
@@ -1074,8 +1146,21 @@ def main(argv=None) -> None:
         print("  WARNING: held-out entries sit at zero distance from training entries, so "
               "the IDW baseline is reading co-located screens rather than interpolating. "
               "Treat the comparison below as biased toward IDW.")
+    # Fix wave I5: the primary rule (does the clamp release?) must be checkable on the
+    # fold models too, not only the in-sample fit -- a PASS where every fold model is
+    # bound-saturated must be visible, not silently discarded.
+    print("  per-fold bounds_hit:")
+    for f in gate["per_fold"]:
+        print(f"    -- fold {f['fold']} (n_held={f['n_held']}, "
+              f"r2_kfold={f['r2_kfold']:+.3f}, r2_idw={f['r2_idw']:+.3f}) --")
+        print(_format_bounds_hit(f["bounds_hit"]))
     print(f"GATE ({args.n_folds}-fold): "
           f"{'PASS' if gate['r2_kfold'] > gate['r2_idw'] else 'FAIL'}")
+    # Fix wave I1/I2: the CG cap and convergence evidence must travel with the result --
+    # the maxiter ruling is "both arms at the same cap", and the previous corruption
+    # (median true relative residual 4.955e-02) was caught only by ad-hoc log grepping.
+    print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_nonconverged}  "
+          f"cg_worst_residual={cg_worst_residual:.3e}  git_commit={git_commit!r}")
 
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, "stage3_flow.csv")
@@ -1093,7 +1178,10 @@ def main(argv=None) -> None:
                    "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
                    "r2_insample": ins["r2"], "r2_kfold": gate["r2_kfold"],
                    "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
+                   "fold_bounds_hit": str([f["bounds_hit"] for f in gate["per_fold"]]),
                    "theta": str(ins.get("theta", {})),
+                   "cg_maxiter": _CG_MAXITER, "cg_nonconverged": cg_nonconverged,
+                   "cg_worst_residual": cg_worst_residual, "git_commit": git_commit,
                    "fit_time_s": t_fit, "gate_time_s": t_gate}]).to_csv(path, index=False)
     print(f"wrote {path}")
 

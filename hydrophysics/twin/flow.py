@@ -40,9 +40,9 @@ from .grid import FanGrid
 
 _CG_TOL = 1e-8
 # Measured, not guessed: on the real 2148-cell fan grid, the zonal design pins the
-# proximal zone's log_L at BOUNDS["log_L"][1] = 1e-1/day (the proximal fan has no
-# aquitards, so its layers equilibrate -- that pin is the design's physical claim, not
-# a bug). Bisecting the iterations that pin actually needs: L=1e-1/T=500 -> 947;
+# proximal zone's log_L at BOUNDS["log_L"][1] = log(1e-1), i.e. L = 1e-1/day (the
+# proximal fan has no aquitards, so its layers equilibrate -- that pin is the design's
+# physical claim, not a bug). Bisecting the iterations that pin actually needs: L=1e-1/T=500 -> 947;
 # L=1e-1/T=10 -> 1242 (T=10 is the lower clamp the homogeneous fit actually reaches, so
 # this is the worst realistic case). The previous cap of 400 silently truncated these
 # solves well short of tol -- 1,879 CG solves sampled from the aborted gate run had a
@@ -57,6 +57,33 @@ _CG_TOL = 1e-8
 _CG_MAXITER = 2000
 _CG_RESTART = 50
 _MODEL_DTYPE = torch.float64
+
+# Provenance counters for the published gate number (final-review fix I2): a previous
+# run of this exact code produced catastrophically corrupt gradients (median true
+# relative residual 4.955e-02, max 2.542e+04) and it was caught only by ad-hoc log
+# grepping. A caller that reports a result (calibrate_flow.py's stage3_flow.csv) resets
+# these with _reset_cg_stats() at the start of a run and reads them back with
+# _cg_stats() at the end, so the artifact carries its own proof that gradients were
+# sound. Plain module globals, not a class, so incrementing them costs one branch and
+# two comparisons per non-convergent solve -- immeasurable next to a CG iteration --
+# and _cg's warnings.warn call is untouched, so operators still see every warning on
+# stderr exactly as before.
+_CG_NONCONVERGED = 0
+_CG_WORST_RESIDUAL = 0.0
+
+
+def _reset_cg_stats() -> None:
+    """Zero the non-convergence counters ``_cg`` increments. Call once at the start of
+    a run whose result artifact will report ``cg_nonconverged``/``cg_worst_residual``."""
+    global _CG_NONCONVERGED, _CG_WORST_RESIDUAL
+    _CG_NONCONVERGED = 0
+    _CG_WORST_RESIDUAL = 0.0
+
+
+def _cg_stats() -> tuple[int, float]:
+    """``(count, worst true relative residual)`` over every ``_cg did not converge``
+    warning since the last ``_reset_cg_stats()`` call. ``(0, 0.0)`` on a clean run."""
+    return _CG_NONCONVERGED, _CG_WORST_RESIDUAL
 
 
 def _neighbour_index(grid: FanGrid) -> tuple[torch.Tensor, torch.Tensor]:
@@ -205,9 +232,13 @@ def _cg(matvec, b, diag=None, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
             rz = rz_new
     true_relres = (b - matvec(x)).pow(2).sum().sqrt() / b_norm
     if true_relres >= tol:
+        global _CG_NONCONVERGED, _CG_WORST_RESIDUAL
+        r = float(true_relres)
+        _CG_NONCONVERGED += 1
+        _CG_WORST_RESIDUAL = max(_CG_WORST_RESIDUAL, r)
         warnings.warn(
             f"_cg did not converge within maxiter={maxiter}: true relative residual "
-            f"{float(true_relres):.3e} exceeds tol={tol:.1e}. Heads and gradients from "
+            f"{r:.3e} exceeds tol={tol:.1e}. Heads and gradients from "
             "this solve may be inaccurate.",
             stacklevel=2,
         )
