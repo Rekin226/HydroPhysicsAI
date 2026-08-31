@@ -974,3 +974,41 @@ def test_kfold_wells_zonal_rejects_a_missing_zone_assignment():
         kfold_wells(g, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
                     n_layers=2, epochs=1, n_folds=2, param_mode="zonal",
                     zone_of_cell=None)
+
+
+def test_parse_zone_boundaries_reads_a_comma_pair():
+    from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
+
+    assert _parse_zone_boundaries("205,182") == (205.0, 182.0)
+    assert _parse_zone_boundaries(" 186 , 178 ") == (186.0, 178.0)
+
+
+def test_parse_zone_boundaries_rejects_malformed_input():
+    from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
+
+    for bad in ("205", "205,182,170", "a,b", ""):
+        with pytest.raises(ValueError):
+            _parse_zone_boundaries(bad)
+
+
+def test_parse_zone_boundaries_rejects_a_reversed_pair():
+    """The sensitivity check varies the mid/distal boundary; a transposed pair would
+    silently empty the mid zone and produce a verdict on a two-zone model.
+    """
+    from hydrophysics.twin.calibrate_flow import _parse_zone_boundaries
+
+    with pytest.raises(ValueError):
+        _parse_zone_boundaries("178,186")
+
+
+def test_cli_exposes_zonal_and_zone_boundaries():
+    """Argparse-level check: the gate is expensive, so verify the surface without
+    running it. Reading _PARAM_MODES rather than re-declaring the list means a silent
+    removal of "zonal" fails here instead of at hour two of a run.
+    """
+    from hydrophysics.twin import calibrate_flow as cf
+
+    assert "zonal" in cf._PARAM_MODES
+    assert cf._DEFAULT_ZONE_BOUNDARIES == "205,182"
+    with pytest.raises(SystemExit):
+        cf.main(["--help"])          # the parser builds and --help exits 0

@@ -75,7 +75,7 @@ from ..subsidence import idw_interp
 from . import pumping as pumping_mod
 from .flow import FlowModel, _ImplicitSolve, _warm_started_solver
 from .grid import build_grid
-from .zones import N_ZONES, ZONE_NAMES
+from .zones import N_ZONES, ZONE_NAMES, fan_zones
 
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
@@ -867,6 +867,44 @@ _DEFAULT_PUMP_CENSUS = (
     "55ec15e7-c585-41a8-a463-e69e4ca3c0cf/scratchpad/tpc_pumps.parquet"
 )
 
+_PARAM_MODES = ("homogeneous", "percell", "zonal")
+_DEFAULT_ZONE_BOUNDARIES = "205,182"
+
+
+def _parse_zone_boundaries(text: str) -> tuple[float, float]:
+    """``"205,182"`` -> ``(205.0, 182.0)``: the proximal/mid and mid/distal eastings in km.
+
+    Spec §4.2 requires re-running the gate at 178 and 186 km, because the mid/distal
+    boundary is an equal-width default with no independent justification. A transposed
+    pair would silently empty the mid zone, so it is rejected rather than tolerated.
+    """
+    parts = [p.strip() for p in str(text).split(",")]
+    if len(parts) != 2:
+        raise ValueError(
+            f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM (e.g. '205,182'), got {text!r}"
+        )
+    try:
+        proximal_km, distal_km = float(parts[0]), float(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"--zone-boundaries values must be numbers, got {text!r}") from exc
+    if not distal_km < proximal_km:
+        raise ValueError(
+            f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM with the proximal boundary "
+            f"east of the distal one; got proximal={proximal_km}, distal={distal_km}"
+        )
+    return proximal_km, distal_km
+
+
+def _format_bounds_hit(hits: dict) -> str:
+    """Per-zone dicts print one line per zone; flat dicts print as before.
+
+    Spec §6's primary rule reads this, and pooling would let an interior mid value mask
+    a pinned proximal one -- so the zonal form is never collapsed into a single number.
+    """
+    if hits and all(isinstance(v, dict) for v in hits.values()):
+        return "\n".join(f"    bounds_hit[{zone}]={vals}" for zone, vals in hits.items())
+    return f"  bounds_hit={hits}"
+
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Stage-3 flow calibration and k-fold gate")
@@ -878,7 +916,12 @@ def main(argv=None) -> None:
                     help="fold-assignment seed. Vary it to measure whether a gate "
                          "margin is signal or fold noise; the 2026-08-27 gate came "
                          "down to 0.033, which one split cannot resolve.")
-    ap.add_argument("--param-mode", choices=["homogeneous", "percell"], default="homogeneous")
+    ap.add_argument("--param-mode", choices=list(_PARAM_MODES), default="homogeneous")
+    ap.add_argument("--zone-boundaries", default=_DEFAULT_ZONE_BOUNDARIES,
+                    help="PROXIMAL_KM,DISTAL_KM for --param-mode zonal (default "
+                         "'205,182'). The mid/distal value is an unjustified default; "
+                         "spec 4.2 requires re-running at 178 and 186 to report whether "
+                         "the verdict moves.")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
     ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
     ap.add_argument("--polygon",
@@ -916,6 +959,23 @@ def main(argv=None) -> None:
     from .heads import build_head_field
 
     grid = build_grid(args.polygon, dx=args.dx)
+
+    zone_of_cell = zone_counts = proximal_km = distal_km = None
+    if args.param_mode == "zonal":
+        proximal_km, distal_km = _parse_zone_boundaries(args.zone_boundaries)
+        zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km,
+                                 distal_km=distal_km)
+        zone_counts = {name: int((zone_of_cell == i).sum())
+                       for i, name in enumerate(ZONE_NAMES)}
+        print(f"zones: proximal/mid at {proximal_km:.0f} km, mid/distal at "
+              f"{distal_km:.0f} km -> cells {zone_counts}", flush=True)
+        empty = [n for n, c in zone_counts.items() if c == 0]
+        if empty:
+            raise SystemExit(
+                f"zone(s) {empty} contain no active cells at these boundaries; "
+                "the gate would score a model with fewer zones than it reports"
+            )
+
     stn = pd.read_parquet(args.stations)
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
@@ -962,7 +1022,8 @@ def main(argv=None) -> None:
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
-                   recharge_layer=args.recharge_layer, log_every=args.log_every)
+                   recharge_layer=args.recharge_layer, log_every=args.log_every,
+                   zone_of_cell=zone_of_cell)
     t_fit = time.perf_counter() - t0
 
     if args.fit_only:
@@ -971,8 +1032,8 @@ def main(argv=None) -> None:
         print(f"wells={obs_h.shape[0]} "
               f"cells={grid.n_active} dx={args.dx:.0f}m param_mode={args.param_mode} "
               f"n_params={ins['n_params']} epochs={args.epochs}")
-        print(f"  in-sample R2={ins['r2']:+.3f}  bounds_hit={ins['bounds_hit']}  "
-              f"fit_time={t_fit:.1f}s")
+        print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
+        print(_format_bounds_hit(ins["bounds_hit"]))
         tr = ins.get("r2_trace") or []
         if tr:
             print("  trajectory: " + "  ".join(f"{e}:{r:+.3f}" for e, r in tr))
@@ -995,13 +1056,14 @@ def main(argv=None) -> None:
                        ground_elev=ground_elev, E=E, recharge_field=recharge_field,
                        pump_layer=args.pump_layer, recharge_layer=args.recharge_layer,
                        dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
-                                  if args.dump_predictions else None))
+                                  if args.dump_predictions else None),
+                       zone_of_cell=zone_of_cell)
     t_gate = time.perf_counter() - t0
     print(f"wells={gate['n_wells']} cells={grid.n_active} dx={args.dx:.0f}m "
           f"param_mode={args.param_mode} n_params={ins['n_params']} "
           f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
-    print(f"  in-sample R2={ins['r2']:+.3f}  bounds_hit={ins['bounds_hit']}  "
-          f"fit_time={t_fit:.1f}s")
+    print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
+    print(_format_bounds_hit(ins["bounds_hit"]))
     if "theta" in ins:
         print(f"  theta={ins['theta']}")
     print(f"  {args.n_folds}-fold R2={gate['r2_kfold']:+.3f}   "
@@ -1018,7 +1080,13 @@ def main(argv=None) -> None:
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, "stage3_flow.csv")
     pd.DataFrame([{"n_wells": gate["n_wells"], "n_cells": grid.n_active, "dx": args.dx,
-                   "param_mode": args.param_mode, "n_params": ins["n_params"],
+                   "param_mode": args.param_mode,
+                   "zone_proximal_km": (proximal_km if args.param_mode == "zonal"
+                                        else ""),
+                   "zone_distal_km": (distal_km if args.param_mode == "zonal" else ""),
+                   "zone_cell_counts": (str(zone_counts) if args.param_mode == "zonal"
+                                        else ""),
+                   "n_params": ins["n_params"],
                    "forcing": "off" if args.no_forcing else "on", "epochs": args.epochs,
                    "n_folds": gate["n_folds"], "seed": args.seed,
                    "n_sites": gate["n_sites"],
