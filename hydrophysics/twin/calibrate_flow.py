@@ -359,6 +359,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              E=None, ground_elev=None, epochs: int = 1500, lr: float = 0.1,
              init_scatter: float = 0.0, seed: int | None = None,
              param_mode: str = "homogeneous", h0: torch.Tensor | None = None,
+             zone_of_cell: np.ndarray | None = None,
              recharge_field: torch.Tensor | None = None,
              pump_layer: int = 1, recharge_layer: int = 0,
              log_every: int = 0) -> dict:
@@ -381,9 +382,22 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
       recharge is not wired for this mode (``E``/``ground_elev``/``recharge_field`` are
       ignored here) -- it keeps the original static (here: zero, in every current caller)
       recharge/pumping tensors.
+    - ``"zonal"`` (spec 2026-08-29 §5): structural proximal/mid/distal zonation --
+      proximal is one merged aquifer (2 parameters, ``log_L`` fixed at its upper bound),
+      mid and distal each keep 4 aquifers + 3 aquitards (11 each), plus the same two
+      global driver scalars: 26 parameters for a 4-layer model. Needs ``zone_of_cell``.
+      ``bounds_hit`` comes back nested by zone, never pooled.
     """
-    if param_mode not in ("homogeneous", "percell"):
-        raise ValueError(f"param_mode must be 'homogeneous' or 'percell', got {param_mode!r}")
+    if param_mode not in ("homogeneous", "percell", "zonal"):
+        raise ValueError(
+            "param_mode must be 'homogeneous', 'percell' or 'zonal', "
+            f"got {param_mode!r}"
+        )
+    if param_mode == "zonal" and zone_of_cell is None:
+        raise ValueError(
+            "param_mode='zonal' needs zone_of_cell: an (n_active,) zone id per active "
+            "cell, from hydrophysics.twin.zones.fan_zones(grid.centroids())"
+        )
 
     n_steps = recharge.shape[-1]
     A = model.grid.n_active
@@ -446,7 +460,20 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # have no per-cell home on model to copy back into; they travel in the return dict.
     use_pumping = E is not None and ground_elev is not None
     use_recharge = recharge_field is not None
-    theta = _make_homogeneous_params(model, use_pumping=use_pumping, use_recharge=use_recharge)
+    zone_t = None
+    if param_mode == "zonal":
+        zone_arr = np.asarray(zone_of_cell, dtype="int64").reshape(-1)
+        if zone_arr.shape[0] != A:
+            raise ValueError(
+                f"zone_of_cell has {zone_arr.shape[0]} entries but the grid has {A} "
+                "active cells"
+            )
+        zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
+        theta = _make_zonal_params(model, use_pumping=use_pumping,
+                                   use_recharge=use_recharge)
+    else:
+        theta = _make_homogeneous_params(model, use_pumping=use_pumping,
+                                         use_recharge=use_recharge)
     if init_scatter > 0.0:
         g = torch.Generator().manual_seed(int(seed) if seed is not None else 0)
         with torch.no_grad():
@@ -461,9 +488,12 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     hits: dict[str, int] = {}
 
     def _forward() -> torch.Tensor:
-        log_T = theta["log_T"].expand(-1, A)
-        log_S = theta["log_S"].expand(-1, A)
-        log_L = theta["log_L"].expand(-1, A) if "log_L" in theta else None
+        if zone_t is not None:
+            log_T, log_S, log_L = _expand_zonal(theta, zone_t, model.n_layers)
+        else:
+            log_T = theta["log_T"].expand(-1, A)
+            log_S = theta["log_S"].expand(-1, A)
+            log_L = theta["log_L"].expand(-1, A) if "log_L" in theta else None
         return _rollout(
             model, log_T, log_S, log_L, h0, n_steps,
             recharge=None if use_recharge else recharge,
@@ -498,14 +528,22 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             r2_trace.append((_ep + 1, _r))
             print(f"      epoch {_ep + 1:4d}: loss={float(loss.detach()):.4g} "
                   f"in-sample R2={_r:+.4f}", flush=True)
-        hits = _clamp_({k: v for k, v in theta.items() if k in BOUNDS})
+        hits = (_zonal_bounds_hit(theta) if zone_t is not None
+                else _clamp_({k: v for k, v in theta.items() if k in BOUNDS}))
     with torch.no_grad():
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
-        model.log_T.copy_(theta["log_T"].expand(-1, A))
-        model.log_S.copy_(theta["log_S"].expand(-1, A))
-        if "log_L" in theta and model.n_layers > 1:
-            model.log_L.copy_(theta["log_L"].expand(-1, A))
+        if zone_t is not None:
+            zT, zS, zL = _expand_zonal(theta, zone_t, model.n_layers)
+            model.log_T.copy_(zT)
+            model.log_S.copy_(zS)
+            if zL is not None and model.n_layers > 1:
+                model.log_L.copy_(zL)
+        else:
+            model.log_T.copy_(theta["log_T"].expand(-1, A))
+            model.log_S.copy_(theta["log_S"].expand(-1, A))
+            if "log_L" in theta and model.n_layers > 1:
+                model.log_L.copy_(theta["log_L"].expand(-1, A))
     n_params = sum(p.numel() for p in free)
     theta_out = {}
     for k, v in theta.items():

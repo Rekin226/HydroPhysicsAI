@@ -815,3 +815,135 @@ def test_zonal_bounds_hit_reports_per_zone_and_never_pools():
     assert hits["distal"]["log_T"] == 0
     assert "log_L" not in hits["proximal"]        # fixed, not a free parameter
     assert "log_eta" in hits["global"]
+
+
+def _zoned_synthetic_case(seed=0):
+    """The synthetic case, plus a zone assignment that splits the square grid into three
+    west-east bands so all three zones carry cells.
+    """
+    from hydrophysics.twin.zones import fan_zones
+
+    g, h, rech, obs_idx, obs_layer = _synthetic_case(seed=seed)
+    xy = g.centroids()
+    # the uniform grid is 13x13 at dx=1000 m; rescale the eastings onto 170..215 km so the
+    # default boundaries (205 / 182) cut it into three non-empty bands
+    span = xy[:, 0].max() - xy[:, 0].min()
+    x_km = 170.0 + 45.0 * (xy[:, 0] - xy[:, 0].min()) / max(span, 1e-9)
+    zoned = np.column_stack([x_km * 1000.0, xy[:, 1]])
+    return g, h, rech, obs_idx, obs_layer, fan_zones(zoned)
+
+
+def test_fit_flow_zonal_reports_the_mode_and_runs():
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    out = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                   epochs=30, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    assert out["param_mode"] == "zonal"
+    assert math.isfinite(out["loss"])
+    assert math.isfinite(out["r2"])
+
+
+def test_fit_flow_zonal_has_the_expected_free_parameter_count():
+    """2 layers: proximal 2 + mid (2+2+1) + distal (2+2+1) = 12, no drivers here."""
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    out = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                   epochs=1, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    assert out["n_params"] == 2 + 5 + 5
+
+
+def test_fit_flow_zonal_requires_a_zone_assignment():
+    """Running zonal without zones would silently fall back to something -- refuse."""
+    g, h, rech, obs_idx, obs_layer, _ = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    with pytest.raises(ValueError, match="zone_of_cell"):
+        fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                 epochs=1, param_mode="zonal", zone_of_cell=None)
+
+
+def test_fit_flow_zonal_rejects_a_zone_vector_of_the_wrong_length():
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    with pytest.raises(ValueError):
+        fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                 epochs=1, param_mode="zonal", zone_of_cell=zones[:-1])
+
+
+def test_fit_flow_zonal_reports_bounds_hit_per_zone():
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    out = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                   epochs=5, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    hits = out["bounds_hit"]
+    assert set(hits) == {"proximal", "mid", "distal", "global"}
+    assert "log_T" in hits["proximal"] and "log_T" in hits["mid"]
+    assert "log_L" not in hits["proximal"]
+
+
+def test_fit_flow_zonal_writes_a_piecewise_constant_field_back_to_the_model():
+    """The copy-back must produce a field that is constant WITHIN each zone and
+    (generally) different between them. This is what lets the existing evaluation path
+    read model.log_T directly for zonal, exactly as it does for homogeneous.
+    """
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+             epochs=20, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    for zone_id in (0, 1, 2):
+        sel = torch.tensor(zones == zone_id)
+        assert sel.any(), f"zone {zone_id} has no cells in this fixture"
+        block = m.log_T[0][sel]
+        assert torch.allclose(block, block[0].expand_as(block))
+
+
+def test_fit_flow_zonal_gradients_reach_every_zone_and_are_finite():
+    """The _ImplicitSolve.backward returning None for log_T is a bug this project has
+    already shipped once. Check the real fit path, not just the expansion helper: after
+    one step every zone's parameter must have moved.
+    """
+    from hydrophysics.twin.calibrate_flow import _make_zonal_params
+
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    before = {k: v.detach().clone()
+              for k, v in _make_zonal_params(m).items()}
+    out = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                   epochs=3, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    for name, start in before.items():
+        moved = np.asarray(out["theta"][name], dtype="float64")
+        assert np.isfinite(moved).all(), f"{name} went non-finite"
+        assert not np.allclose(moved, start.squeeze(-1).numpy()), \
+            f"{name} did not move -- no gradient reached this zone"
+
+
+def test_fit_flow_zonal_proximal_layers_equilibrate():
+    """Spec §7: with proximal log_L fixed high, heads across the proximal layers must
+    actually converge -- assert it rather than assuming the fixed leakage did its job.
+    Compare against the distal zone, where leakage is free and low.
+    """
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    fit = fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                   epochs=40, lr=0.1, param_mode="zonal", zone_of_cell=zones)
+    assert fit["param_mode"] == "zonal"
+    A = g.n_active
+    h0 = torch.zeros(2, A, dtype=torch.float64)
+    with torch.no_grad():
+        hh = m(h0, rech, torch.zeros(2, A, rech.shape[-1], dtype=torch.float64),
+               rech.shape[-1])
+    prox = torch.tensor(zones == 0)
+    dist = torch.tensor(zones == 2)
+    spread_prox = (hh[0][prox] - hh[1][prox]).abs().mean()
+    spread_dist = (hh[0][dist] - hh[1][dist]).abs().mean()
+    assert spread_prox < spread_dist, (
+        f"proximal layers did not equilibrate: spread {spread_prox:.4g} is not below "
+        f"the distal spread {spread_dist:.4g}"
+    )
+
+
+def test_fit_flow_still_rejects_an_unknown_param_mode_after_zonal_lands():
+    g, h, rech, obs_idx, obs_layer = _synthetic_case()
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    with pytest.raises(ValueError):
+        fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                 epochs=1, param_mode="zonal_typo")
