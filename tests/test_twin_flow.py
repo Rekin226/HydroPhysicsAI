@@ -653,3 +653,165 @@ def test_kfold_wells_dumps_per_entry_predictions_with_distances(tmp_path):
 def _r2_ref(pred, obs):
     from hydrophysics.twin.calibrate_flow import _r2
     return _r2(np.asarray(pred), np.asarray(obs))
+
+
+def test_make_zonal_params_has_exactly_26_free_parameters():
+    """Spec §5: proximal 2 (one merged aquifer) + mid 11 + distal 11 + global 2.
+    Fewer than naive 3x uniform zoning's 35, and every one physically motivated.
+    """
+    from hydrophysics.twin.calibrate_flow import _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m, use_pumping=True, use_recharge=True)
+    assert sum(p.numel() for p in theta.values()) == 26
+    assert theta["log_T_proximal"].shape == (1, 1)
+    assert theta["log_S_proximal"].shape == (1, 1)
+    assert theta["log_T_mid"].shape == (4, 1)
+    assert theta["log_L_mid"].shape == (3, 1)
+    assert theta["log_T_distal"].shape == (4, 1)
+    assert theta["log_L_distal"].shape == (3, 1)
+
+
+def test_make_zonal_params_does_not_expose_a_proximal_log_L():
+    """Spec §5: fixing proximal log_L at the top of its range IS the statement 'there is
+    no aquitard here'. It must be a constant, never an optimised parameter -- if it
+    appears in theta the optimiser can walk it away from the published geology.
+    """
+    from hydrophysics.twin.calibrate_flow import _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m, use_pumping=True, use_recharge=True)
+    assert "log_L_proximal" not in theta
+
+
+def test_make_zonal_params_without_drivers_drops_the_two_globals():
+    from hydrophysics.twin.calibrate_flow import _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m, use_pumping=False, use_recharge=False)
+    assert sum(p.numel() for p in theta.values()) == 24
+    assert "log_eta" not in theta
+    assert "recharge_frac_logit" not in theta
+
+
+def test_base_param_name_strips_zone_suffixes_but_not_log_eta():
+    from hydrophysics.twin.calibrate_flow import BOUNDS, _base_param_name
+
+    assert _base_param_name("log_T_mid") == "log_T"
+    assert _base_param_name("log_S_proximal") == "log_S"
+    assert _base_param_name("log_L_distal") == "log_L"
+    assert _base_param_name("log_eta") == "log_eta"
+    assert _base_param_name("recharge_frac_logit") == "recharge_frac_logit"
+    for name in ("log_T_mid", "log_S_proximal", "log_L_distal", "log_eta"):
+        assert _base_param_name(name) in BOUNDS
+
+
+def test_expand_zonal_gathers_each_zones_value_to_its_own_cells():
+    """The expansion is an advanced index into a (k, 3) column stack, so a cell must
+    receive its own zone's value and nothing else.
+    """
+    from hydrophysics.twin.calibrate_flow import _expand_zonal, _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m)
+    with torch.no_grad():
+        theta["log_T_proximal"].fill_(1.0)
+        theta["log_T_mid"].fill_(2.0)
+        theta["log_T_distal"].fill_(3.0)
+    zone_t = torch.tensor([0, 1, 2, 1, 0], dtype=torch.long)
+    log_T, log_S, log_L = _expand_zonal(theta, zone_t, n_layers=4)
+    assert log_T.shape == (4, 5)
+    assert log_S.shape == (4, 5)
+    assert log_L.shape == (3, 5)
+    assert log_T[0].tolist() == [1.0, 2.0, 3.0, 2.0, 1.0]
+    assert torch.allclose(log_T[3], log_T[0])       # proximal value shared across layers
+
+
+def test_expand_zonal_shares_one_value_across_all_proximal_layers():
+    """Spec §5: the proximal zone is ONE merged aquifer, so its four layers must carry
+    an identical log_T and log_S -- not four values that happen to start equal.
+    """
+    from hydrophysics.twin.calibrate_flow import _expand_zonal, _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m)
+    with torch.no_grad():
+        theta["log_T_mid"].copy_(torch.tensor([[1.0], [2.0], [3.0], [4.0]], dtype=torch.float64))
+    zone_t = torch.tensor([0, 1], dtype=torch.long)
+    log_T, log_S, _ = _expand_zonal(theta, zone_t, n_layers=4)
+    assert len(set(log_T[:, 0].tolist())) == 1       # proximal: one value, four layers
+    assert log_T[:, 1].tolist() == [1.0, 2.0, 3.0, 4.0]   # mid: four distinct layers
+    assert len(set(log_S[:, 0].tolist())) == 1
+
+
+def test_expand_zonal_pins_proximal_log_L_at_the_upper_bound():
+    """The merged-aquifer statement, checked at the value level: proximal leakage sits at
+    the top of BOUNDS, and it is a constant, so it carries no gradient.
+    """
+    from hydrophysics.twin.calibrate_flow import BOUNDS, _expand_zonal, _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m)
+    zone_t = torch.tensor([0, 1, 2], dtype=torch.long)
+    _, _, log_L = _expand_zonal(theta, zone_t, n_layers=4)
+    assert torch.allclose(log_L[:, 0],
+                       torch.full((3,), BOUNDS["log_L"][1], dtype=torch.float64))
+
+
+def test_expand_zonal_accumulates_gradient_onto_each_zones_parameter():
+    """Advanced indexing must scatter-add the per-cell gradient back onto the small
+    per-zone tensor, the same way homogeneous mode relies on expand-backward. If a zone
+    receives a zero or None gradient it is being silently frozen -- this project has
+    already shipped a backward() returning None for log_T once.
+    """
+    from hydrophysics.twin.calibrate_flow import _expand_zonal, _make_zonal_params
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m, use_pumping=True, use_recharge=True)
+    zone_t = torch.tensor([0, 0, 1, 1, 1, 2], dtype=torch.long)
+    log_T, log_S, log_L = _expand_zonal(theta, zone_t, n_layers=4)
+    (log_T.sum() + log_S.sum() + log_L.sum()).backward()
+    for name in ("log_T_proximal", "log_S_proximal", "log_T_mid", "log_S_mid",
+                 "log_L_mid", "log_T_distal", "log_S_distal", "log_L_distal"):
+        gr = theta[name].grad
+        assert gr is not None, f"{name} received no gradient"
+        assert torch.isfinite(gr).all(), f"{name} gradient is not finite"
+        assert (gr != 0).all(), f"{name} gradient is zero -- the zone is frozen"
+    # proximal log_T is shared across 4 layers x 2 cells -> gradient of 8
+    assert float(theta["log_T_proximal"].grad) == pytest.approx(8.0)
+    # mid log_T is per-layer over 3 cells -> gradient of 3 per layer
+    assert theta["log_T_mid"].grad.flatten().tolist() == pytest.approx([3.0] * 4)
+
+
+def test_zonal_bounds_hit_reports_per_zone_and_never_pools():
+    """Spec §6 primary rule: a pinned proximal log_T must not be maskable by interior
+    mid/distal values. Pin proximal at the lower clamp, leave the rest interior, and the
+    report must still show it.
+    """
+    from hydrophysics.twin.calibrate_flow import (
+        BOUNDS,
+        _make_zonal_params,
+        _zonal_bounds_hit,
+    )
+
+    g = _uniform_grid(n=8, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    theta = _make_zonal_params(m, use_pumping=True, use_recharge=True)
+    with torch.no_grad():
+        theta["log_T_proximal"].fill_(BOUNDS["log_T"][0])
+        theta["log_T_mid"].fill_(math.log(500.0))
+        theta["log_T_distal"].fill_(math.log(500.0))
+    hits = _zonal_bounds_hit(theta)
+    assert set(hits) == {"proximal", "mid", "distal", "global"}
+    assert hits["proximal"]["log_T"] == 1
+    assert hits["mid"]["log_T"] == 0
+    assert hits["distal"]["log_T"] == 0
+    assert "log_L" not in hits["proximal"]        # fixed, not a free parameter
+    assert "log_eta" in hits["global"]

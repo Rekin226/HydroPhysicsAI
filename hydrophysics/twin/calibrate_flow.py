@@ -75,6 +75,7 @@ from ..subsidence import idw_interp
 from . import pumping as pumping_mod
 from .flow import FlowModel, _ImplicitSolve, _warm_started_solver
 from .grid import build_grid
+from .zones import N_ZONES, ZONE_NAMES
 
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
@@ -247,6 +248,110 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
     return theta
+
+
+def _base_param_name(name: str) -> str:
+    """``"log_T_mid"`` -> ``"log_T"``. Zonal theta keys carry a zone suffix; BOUNDS and
+    _clamp_ are keyed on the bare physical name. Only the three known zone suffixes are
+    stripped, so ``log_eta`` and ``recharge_frac_logit`` survive untouched.
+    """
+    for zone in ZONE_NAMES:
+        suffix = f"_{zone}"
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
+                       use_recharge: bool = False) -> dict[str, nn.Parameter]:
+    """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
+    with both drivers, against the homogeneous mode's 13 (spec §5).
+
+    Zones differ in **form**, not only in value:
+
+    - **proximal** is one merged aquifer: a single ``log_T`` and a single ``log_S``
+      shared across all four layers, and NO ``log_L`` at all. Its leakage is pinned at
+      the top of BOUNDS by ``_expand_zonal`` as a constant. That IS the published
+      geology -- thick gravel, indistinct stratification, unrestricted vertical flow --
+      encoded structurally rather than left for the optimiser to discover. 2 parameters.
+    - **mid** and **distal** keep the full 4 aquifers + 3 aquitards. 11 each.
+    - **global**: ``log_eta`` and the recharge fraction, as in homogeneous mode. 2.
+
+    Shapes are ``(k, 1)`` so ``_expand_zonal`` can column-stack them into ``(k, N_ZONES)``
+    and gather to ``(k, n_active)``. Initialised from the model's own uniform starting
+    values, so a zonal run and a homogeneous run start from the same physics.
+    """
+    log_T0 = model.log_T[:, :1].detach().clone()
+    log_S0 = model.log_S[:, :1].detach().clone()
+    theta = {
+        # one merged aquifer: mean of the layer starts, a single shared value
+        "log_T_proximal": nn.Parameter(log_T0.mean(dim=0, keepdim=True)),
+        "log_S_proximal": nn.Parameter(log_S0.mean(dim=0, keepdim=True)),
+        "log_T_mid": nn.Parameter(log_T0.clone()),
+        "log_S_mid": nn.Parameter(log_S0.clone()),
+        "log_T_distal": nn.Parameter(log_T0.clone()),
+        "log_S_distal": nn.Parameter(log_S0.clone()),
+    }
+    if model.n_layers > 1:
+        log_L0 = model.log_L[:, :1].detach().clone()
+        theta["log_L_mid"] = nn.Parameter(log_L0.clone())
+        theta["log_L_distal"] = nn.Parameter(log_L0.clone())
+    dev = model.log_T.device
+    if use_pumping:
+        theta["log_eta"] = nn.Parameter(
+            torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
+    if use_recharge:
+        theta["recharge_frac_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))
+    return theta
+
+
+def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
+                  n_layers: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """Column-stack the per-zone tensors into ``(k, N_ZONES)`` and gather to ``(k, A)``.
+
+    The gather ``cols[:, zone_t]`` is advanced indexing, whose backward is a scatter-add:
+    every cell's gradient accumulates onto its own zone's small tensor, exactly the way
+    homogeneous mode relies on expand-backward summing over the broadcast axis. That is
+    what lets ``FlowModel``'s frozen constructor and parameter shapes stay untouched.
+
+    Proximal ``log_L`` is a CONSTANT at the upper bound, not a parameter: the four
+    proximal layers equilibrate instead of being independently fitted.
+    """
+    dev = theta["log_T_mid"].device
+    prox_T = theta["log_T_proximal"].expand(n_layers, 1)
+    prox_S = theta["log_S_proximal"].expand(n_layers, 1)
+    cols_T = torch.cat([prox_T, theta["log_T_mid"], theta["log_T_distal"]], dim=1)
+    cols_S = torch.cat([prox_S, theta["log_S_mid"], theta["log_S_distal"]], dim=1)
+    assert cols_T.shape == (n_layers, N_ZONES)
+    log_T = cols_T[:, zone_t]
+    log_S = cols_S[:, zone_t]
+    log_L = None
+    if n_layers > 1 and "log_L_mid" in theta:
+        prox_L = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
+                            dtype=torch.float64, device=dev)
+        cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]], dim=1)
+        log_L = cols_L[:, zone_t]
+    return log_T, log_S, log_L
+
+
+def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
+    """Clamp every zonal parameter into BOUNDS in place and report hits **per zone**.
+
+    Spec §6's primary decision rule reads this. Pooling would let an interior mid value
+    mask a pinned proximal one, and a model still fitting outside the measured physical
+    range gives confident wrong counterfactuals -- the failure that matters at the
+    operational bar.
+    """
+    report: dict[str, dict[str, int]] = {name: {} for name in ZONE_NAMES}
+    report["global"] = {}
+    for name, par in theta.items():
+        base = _base_param_name(name)
+        if base not in BOUNDS:
+            continue                     # recharge_frac_logit: unconstrained by design
+        bucket = next((z for z in ZONE_NAMES if name.endswith(f"_{z}")), "global")
+        report[bucket][base] = _clamp_({base: par})[base]
+    return report
 
 
 def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
