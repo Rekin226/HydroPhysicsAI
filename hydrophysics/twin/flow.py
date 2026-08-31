@@ -39,7 +39,22 @@ from torch import nn
 from .grid import FanGrid
 
 _CG_TOL = 1e-8
-_CG_MAXITER = 400
+# Measured, not guessed: on the real 2148-cell fan grid, the zonal design pins the
+# proximal zone's log_L at BOUNDS["log_L"][1] = 1e-1/day (the proximal fan has no
+# aquitards, so its layers equilibrate -- that pin is the design's physical claim, not
+# a bug). Bisecting the iterations that pin actually needs: L=1e-1/T=500 -> 947;
+# L=1e-1/T=10 -> 1242 (T=10 is the lower clamp the homogeneous fit actually reaches, so
+# this is the worst realistic case). The previous cap of 400 silently truncated these
+# solves well short of tol -- 1,879 CG solves sampled from the aborted gate run had a
+# median true relative residual of 4.955e-02 and a max of 2.542e+04, all worse than the
+# 1e-6 usability bar in this function's own docstring, because the truncated result
+# feeds the next step's warm start (_warm_started_solver) and residuals compound. The
+# operator is still SPD at the pin (200 Rayleigh quotients, min 1.813e+04, none <= 0)
+# and converges cleanly to 9.607e-09 at maxiter=2000 -- this is slow convergence, not
+# divergence. 2000 gives headroom over the measured worst case of 1242 iterations; CG
+# exits as soon as it converges, so the larger cap costs nothing when it isn't needed
+# (homogeneous mode converges at 237 iterations and never gets close to either cap).
+_CG_MAXITER = 2000
 _CG_RESTART = 50
 _MODEL_DTYPE = torch.float64
 

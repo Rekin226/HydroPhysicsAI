@@ -1,4 +1,5 @@
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -19,7 +20,12 @@ from hydrophysics.twin.calibrate_flow import (  # noqa: E402
     fit_flow,
     kfold_wells,
 )
-from hydrophysics.twin.flow import FlowModel  # noqa: E402
+from hydrophysics.twin.flow import (  # noqa: E402
+    _CG_MAXITER,
+    _CG_TOL,
+    FlowModel,
+    _cg,
+)
 from hydrophysics.twin.grid import FanGrid  # noqa: E402
 
 
@@ -1012,3 +1018,60 @@ def test_cli_exposes_zonal_and_zone_boundaries():
     assert cf._DEFAULT_ZONE_BOUNDARIES == "205,182"
     with pytest.raises(SystemExit):
         cf.main(["--help"])          # the parser builds and --help exits 0
+
+
+def test_cg_maxiter_covers_the_measured_worst_case_proximal_pin():
+    """Cheap guard making the reasoning in flow.py's _CG_MAXITER comment executable:
+    bisection on the real fan grid found the worst realistic case (proximal leakance
+    pinned at BOUNDS["log_L"][1] = 1e-1/day, transmissivity at its lower clamp of
+    10 m2/day) needs 1242 CG iterations. If this ever regresses below that, the solver
+    will silently truncate exactly the solves the zonal design relies on.
+    """
+    assert _CG_MAXITER >= 1242
+
+
+def test_cg_maxiter_400_truncates_the_proximal_pin_but_2000_converges():
+    """Regression test for the corrupted Stage-3 gate: at the proximal zone's design
+    pin (log_L at BOUNDS["log_L"][1] = 1e-1/day over a proximal-like fraction of cells,
+    mirroring the real fan's 264/2148 pinned cells), the old _CG_MAXITER=400 truncated
+    the solve well short of tol -- exactly the mechanism that produced 1,879 corrupted
+    CG solves (median true relative residual 4.955e-02) in the aborted real gate. This
+    is not a mock: it drives the real ``_cg`` against the real ``_matvec_from`` operator
+    on a synthetic grid, so a future change to either would be caught here too.
+
+    Both directions are asserted deliberately: a maxiter=400 solve that suddenly starts
+    converging would mean the grid stopped reproducing the conditioning problem (in
+    which case this test's own docstring is the pointer to re-check the constant), and
+    a maxiter=_CG_MAXITER solve that fails to converge would mean 2000 is no longer
+    enough.
+    """
+    g = _uniform_grid(n=32, dx=1000.0)
+    m = FlowModel(g, n_layers=4, dt_days=30.0)
+    A = g.n_active
+    T = torch.full((4, A), 500.0, dtype=torch.float64)
+    S = torch.full((4, A), 1e-4, dtype=torch.float64)
+    L = torch.full((3, A), 1e-4, dtype=torch.float64)
+    n_pinned = A // 8  # ~1/8 of cells, matching the real fan's 264/2148 proximal share
+    L[:, :n_pinned] = 1e-1  # the proximal-zone pin, BOUNDS["log_L"][1]
+    mv, diag = m._matvec_from(T, S, L)
+
+    rng = torch.Generator().manual_seed(0)
+    b = torch.randn(4, A, generator=rng, dtype=torch.float64)
+
+    def true_relres(x):
+        return float((b - mv(x)).pow(2).sum().sqrt() / b.pow(2).sum().sqrt())
+
+    with warnings.catch_warnings():
+        # _cg warns exactly because this maxiter=400 call is expected not to converge --
+        # that warning is the mechanism under test, not noise to hide unconditionally.
+        warnings.simplefilter("ignore", UserWarning)
+        x_400 = _cg(mv, b, diag=diag, maxiter=400)
+    residual_400 = true_relres(x_400)
+    assert residual_400 > 100 * _CG_TOL, (
+        f"expected maxiter=400 to leave a residual well above tol, got {residual_400:.3e} "
+        "-- the grid may no longer reproduce the proximal-pin conditioning problem"
+    )
+
+    x_full = _cg(mv, b, diag=diag, maxiter=_CG_MAXITER)
+    residual_full = true_relres(x_full)
+    assert residual_full <= _CG_TOL
