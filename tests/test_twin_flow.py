@@ -947,3 +947,30 @@ def test_fit_flow_still_rejects_an_unknown_param_mode_after_zonal_lands():
     with pytest.raises(ValueError):
         fit_flow(m, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
                  epochs=1, param_mode="zonal_typo")
+
+
+def test_kfold_wells_runs_in_zonal_mode_and_uses_the_calibrated_field():
+    """This does not prove the eval guard's boolean -- the un-widened else-branch would
+    also return a finite r2 here. What it proves is that ``_predict_homogeneous`` gets
+    called with a ZONAL fit dict for the first time: ``fit["theta"]`` carries zone-
+    suffixed keys (``log_T_mid``, ``log_S_proximal``, ...) while ``log_eta``/
+    ``recharge_frac_logit`` keep their bare names. Passing ``recharge_field`` is what
+    routes evaluation through that path at all; a key-name or shape mismatch there would
+    raise and fail this test, and the driverless call the brief originally specified could
+    never reach this code.
+    """
+    g, h, rech, obs_idx, obs_layer, zones = _zoned_synthetic_case()
+    out = kfold_wells(g, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                      n_layers=2, epochs=5, lr=0.1, n_folds=3, seed=0,
+                      param_mode="zonal", zone_of_cell=zones, recharge_field=rech[0])
+    assert math.isfinite(out["r2_kfold"])
+    assert math.isfinite(out["r2_idw"])
+    assert out["n_wells"] == obs_idx.numel()
+
+
+def test_kfold_wells_zonal_rejects_a_missing_zone_assignment():
+    g, h, rech, obs_idx, obs_layer, _ = _zoned_synthetic_case()
+    with pytest.raises(ValueError, match="zone_of_cell"):
+        kfold_wells(g, h[obs_layer, obs_idx, 1:], obs_idx, obs_layer, rech,
+                    n_layers=2, epochs=1, n_folds=2, param_mode="zonal",
+                    zone_of_cell=None)

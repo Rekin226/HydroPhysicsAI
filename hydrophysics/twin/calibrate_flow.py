@@ -565,10 +565,15 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          ground_elev: torch.Tensor | None = None,
                          recharge_layer: int = 0, pump_layer: int = 1) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
-    reusing ``model``'s own calibrated (already copied-back, per-cell-constant) log_T/
-    log_S/log_L plus the scalar ``log_eta``/``recharge_frac_logit`` returned in
+    reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
+    ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
+    by this point the parameter *source* is identical and only the field's spatial
+    structure differs (constant vs piecewise-constant). The name is historical.
+
+    Also reuses the scalar ``log_eta``/``recharge_frac_logit`` returned in
     ``fit["theta"]`` -- those two scalars have no per-cell home on ``model`` to copy back
-    into, so they travel through the fit-result dict instead. homogeneous-mode-only.
+    into, so they travel through the fit-result dict instead. Both param_mode="homogeneous"
+    and param_mode="zonal" keep these two keys bare (no zone suffix) in ``theta``.
     """
     with torch.no_grad():
         log_T, log_S = model.log_T, model.log_S
@@ -653,6 +658,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 ground_elev: torch.Tensor | None = None, E: torch.Tensor | None = None,
                 recharge_field: torch.Tensor | None = None,
                 pump_layer: int = 1, recharge_layer: int = 0,
+                zone_of_cell: np.ndarray | None = None,
                 dump_path: str | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
@@ -670,6 +676,11 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     ``recharge_field`` are physical driver fields independent of which wells are held
     out, so they are reused unchanged across every fold (no leakage risk there).
     """
+    if param_mode == "zonal" and zone_of_cell is None:
+        raise ValueError(
+            "param_mode='zonal' needs zone_of_cell -- the zone assignment is a property "
+            "of the grid, not of the fold, so it is passed once and reused unchanged"
+        )
     W = obs_h.shape[0]
     xy = grid.centroids()
     n_active = grid.n_active
@@ -711,13 +722,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         fit = fit_flow(m, obs_h[keep], obs_idx[keep], obs_layer[keep], recharge,
                        E=E, ground_elev=ground_elev, epochs=epochs, lr=lr,
                        param_mode=param_mode, h0=h0_fold, recharge_field=recharge_field,
-                       pump_layer=pump_layer, recharge_layer=recharge_layer)
+                       pump_layer=pump_layer, recharge_layer=recharge_layer,
+                       zone_of_cell=zone_of_cell)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
             h0_eval = (h0_fold if h0_fold is not None
                       else torch.zeros(n_layers, n_active, dtype=torch.float64))
-            if param_mode == "homogeneous" and (E is not None or recharge_field is not None):
+            if (param_mode in ("homogeneous", "zonal")
+                    and (E is not None or recharge_field is not None)):
                 h = _predict_homogeneous(m, fit, h0_eval, n_steps, recharge=recharge,
                                          recharge_field=recharge_field, E=E,
                                          ground_elev=ground_elev,
