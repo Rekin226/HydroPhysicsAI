@@ -1092,17 +1092,30 @@ def main(argv=None) -> None:
                    zone_of_cell=zone_of_cell)
     t_fit = time.perf_counter() - t0
 
+    # Spec 6's PRIMARY decision rule -- "does the transmissivity clamp release, per zone?" --
+    # is computed from THIS fit, not from the k-fold gate that follows. So it is printed here,
+    # the moment it exists, rather than in the end-of-run report: a run killed or crashed
+    # during the folds must still yield the primary answer.
+    #
+    # This ordering was paid for. A zonal seed-0 run killed mid-fold on 2026-09-01 had already
+    # spent 4.3 h computing this exact result and emitted nothing, because the report came
+    # after kfold_wells returned. The fit is ~4 h of a ~24 h zonal run, and spec 6 reaches the
+    # SECONDARY rule (the margin, which the folds measure) only if the clamp released -- so the
+    # cheap half of the run answers the question that can stop the expensive half.
+    cg_fit_nonconverged, cg_fit_worst = _cg_stats()
+    print(f"wells={obs_h.shape[0]} cells={grid.n_active} dx={args.dx:.0f}m "
+          f"param_mode={args.param_mode} n_params={ins['n_params']} "
+          f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
+    print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
+    print(_format_bounds_hit(ins["bounds_hit"]))
+    if "theta" in ins:
+        print(f"  theta={ins['theta']}")
+    print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_fit_nonconverged}  "
+          f"cg_worst_residual={cg_fit_worst:.3e}  git_commit={git_commit!r}", flush=True)
+
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
         # structurally inadequate parameterisation, and costs one fit instead of eleven.
-        cg_nonconverged, cg_worst_residual = _cg_stats()
-        print(f"wells={obs_h.shape[0]} "
-              f"cells={grid.n_active} dx={args.dx:.0f}m param_mode={args.param_mode} "
-              f"n_params={ins['n_params']} epochs={args.epochs}")
-        print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
-        print(_format_bounds_hit(ins["bounds_hit"]))
-        print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_nonconverged}  "
-              f"cg_worst_residual={cg_worst_residual:.3e}  git_commit={git_commit!r}")
         tr = ins.get("r2_trace") or []
         if tr:
             print("  trajectory: " + "  ".join(f"{e}:{r:+.3f}" for e, r in tr))
@@ -1131,13 +1144,8 @@ def main(argv=None) -> None:
                        zone_of_cell=zone_of_cell)
     t_gate = time.perf_counter() - t0
     cg_nonconverged, cg_worst_residual = _cg_stats()
-    print(f"wells={gate['n_wells']} cells={grid.n_active} dx={args.dx:.0f}m "
-          f"param_mode={args.param_mode} n_params={ins['n_params']} "
-          f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
-    print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
-    print(_format_bounds_hit(ins["bounds_hit"]))
-    if "theta" in ins:
-        print(f"  theta={ins['theta']}")
+    # The in-sample block (R2, per-zone bounds_hit, theta) was printed before the gate began;
+    # it is not repeated here. What follows is what only the gate can tell you.
     print(f"  {args.n_folds}-fold R2={gate['r2_kfold']:+.3f}   "
           f"IDW baseline R2={gate['r2_idw']:+.3f}  gate_time={t_gate:.1f}s")
     print(f"  folds grouped by site: {gate['n_wells']} entries / {gate['n_sites']} sites   "
