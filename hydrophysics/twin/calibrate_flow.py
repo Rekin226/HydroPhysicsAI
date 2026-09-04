@@ -64,6 +64,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import subprocess
 import time
 
 import numpy as np
@@ -73,8 +74,16 @@ from torch import nn
 
 from ..subsidence import idw_interp
 from . import pumping as pumping_mod
-from .flow import FlowModel, _ImplicitSolve, _warm_started_solver
+from .flow import (
+    _CG_MAXITER,
+    FlowModel,
+    _cg_stats,
+    _ImplicitSolve,
+    _reset_cg_stats,
+    _warm_started_solver,
+)
 from .grid import build_grid
+from .zones import N_ZONES, ZONE_NAMES, fan_zones
 
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
@@ -87,16 +96,42 @@ BOUNDS = {
 }
 
 
-def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, int]:
-    """Clamp each named tensor into BOUNDS in place; return how many entries sit on a bound."""
-    hits: dict[str, int] = {}
+def _git_commit() -> str:
+    """Short commit SHA for the result artifact's provenance, or "" if it cannot be
+    determined (e.g. not a git checkout) -- never raises, since a multi-hour sweep must
+    not die on a provenance nicety.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
+    """Clamp each named tensor into BOUNDS in place; return, per parameter, how many
+    entries sit on the LOWER bound, how many on the UPPER bound, and the total entry
+    count -- ``{"lo": int, "hi": int, "n": int}``.
+
+    Ruling P1: spec 1's documented failure is fitting BELOW the measured physical range
+    (three of four log_T layers pinned at the lower clamp, 10 m2/day, under the 58 m2/day
+    floor Liu et al. 2002 measured). An upper-bound hit is a different physical statement
+    and must never be pooled with a lower-bound one. The clamping behaviour itself is
+    unchanged from before this split -- only what gets reported.
+    """
+    hits: dict[str, dict[str, int]] = {}
     with torch.no_grad():
         for name, par in tensors.items():
             if par is None:
                 continue
             lo, hi = BOUNDS[name]
             par.clamp_(min=lo, max=hi)
-            hits[name] = int(((par <= lo + 1e-9) | (par >= hi - 1e-9)).sum())
+            n_lo = int((par <= lo + 1e-9).sum())
+            n_hi = int((par >= hi - 1e-9).sum())
+            hits[name] = {"lo": n_lo, "hi": n_hi, "n": int(par.numel())}
     return hits
 
 
@@ -249,11 +284,118 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
     return theta
 
 
+def _base_param_name(name: str) -> str:
+    """``"log_T_mid"`` -> ``"log_T"``. Zonal theta keys carry a zone suffix; BOUNDS and
+    _clamp_ are keyed on the bare physical name. Only the three known zone suffixes are
+    stripped, so ``log_eta`` and ``recharge_frac_logit`` survive untouched.
+    """
+    for zone in ZONE_NAMES:
+        suffix = f"_{zone}"
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
+                       use_recharge: bool = False) -> dict[str, nn.Parameter]:
+    """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
+    with both drivers, against the homogeneous mode's 13 (spec §5).
+
+    Zones differ in **form**, not only in value:
+
+    - **proximal** is one merged aquifer: a single ``log_T`` and a single ``log_S``
+      shared across all four layers, and NO ``log_L`` at all. Its leakage is pinned at
+      the top of BOUNDS by ``_expand_zonal`` as a constant. That IS the published
+      geology -- thick gravel, indistinct stratification, unrestricted vertical flow --
+      encoded structurally rather than left for the optimiser to discover. 2 parameters.
+    - **mid** and **distal** keep the full 4 aquifers + 3 aquitards. 11 each.
+    - **global**: ``log_eta`` and the recharge fraction, as in homogeneous mode. 2.
+
+    Shapes are ``(k, 1)`` so ``_expand_zonal`` can column-stack them into ``(k, N_ZONES)``
+    and gather to ``(k, n_active)``. Initialised from the model's own uniform starting
+    values, so a zonal run and a homogeneous run start from the same physics.
+    """
+    log_T0 = model.log_T[:, :1].detach().clone()
+    log_S0 = model.log_S[:, :1].detach().clone()
+    theta = {
+        # one merged aquifer: mean of the layer starts, a single shared value
+        "log_T_proximal": nn.Parameter(log_T0.mean(dim=0, keepdim=True)),
+        "log_S_proximal": nn.Parameter(log_S0.mean(dim=0, keepdim=True)),
+        "log_T_mid": nn.Parameter(log_T0.clone()),
+        "log_S_mid": nn.Parameter(log_S0.clone()),
+        "log_T_distal": nn.Parameter(log_T0.clone()),
+        "log_S_distal": nn.Parameter(log_S0.clone()),
+    }
+    if model.n_layers > 1:
+        log_L0 = model.log_L[:, :1].detach().clone()
+        theta["log_L_mid"] = nn.Parameter(log_L0.clone())
+        theta["log_L_distal"] = nn.Parameter(log_L0.clone())
+    dev = model.log_T.device
+    if use_pumping:
+        theta["log_eta"] = nn.Parameter(
+            torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
+    if use_recharge:
+        theta["recharge_frac_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))
+    return theta
+
+
+def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
+                  n_layers: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """Column-stack the per-zone tensors into ``(k, N_ZONES)`` and gather to ``(k, A)``.
+
+    The gather ``cols[:, zone_t]`` is advanced indexing, whose backward is a scatter-add:
+    every cell's gradient accumulates onto its own zone's small tensor, exactly the way
+    homogeneous mode relies on expand-backward summing over the broadcast axis. That is
+    what lets ``FlowModel``'s frozen constructor and parameter shapes stay untouched.
+
+    Proximal ``log_L`` is a CONSTANT at the upper bound, not a parameter: the four
+    proximal layers equilibrate instead of being independently fitted.
+    """
+    dev = theta["log_T_mid"].device
+    prox_T = theta["log_T_proximal"].expand(n_layers, 1)
+    prox_S = theta["log_S_proximal"].expand(n_layers, 1)
+    cols_T = torch.cat([prox_T, theta["log_T_mid"], theta["log_T_distal"]], dim=1)
+    cols_S = torch.cat([prox_S, theta["log_S_mid"], theta["log_S_distal"]], dim=1)
+    assert cols_T.shape == (n_layers, N_ZONES)
+    log_T = cols_T[:, zone_t]
+    log_S = cols_S[:, zone_t]
+    log_L = None
+    if n_layers > 1 and "log_L_mid" in theta:
+        prox_L = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
+                            dtype=torch.float64, device=dev)
+        cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]], dim=1)
+        log_L = cols_L[:, zone_t]
+    return log_T, log_S, log_L
+
+
+def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, dict[str, int]]]:
+    """Clamp every zonal parameter into BOUNDS in place and report hits **per zone**,
+    each as the ``{"lo", "hi", "n"}`` shape ``_clamp_`` returns.
+
+    Spec §6's primary decision rule reads this. Pooling would let an interior mid value
+    mask a pinned proximal one, and a model still fitting outside the measured physical
+    range gives confident wrong counterfactuals -- the failure that matters at the
+    operational bar. Ruling P1 further requires lo/hi to stay distinguished per zone:
+    a pinned proximal log_T is only the documented failure if it is pinned LOW.
+    """
+    report: dict[str, dict[str, dict[str, int]]] = {name: {} for name in ZONE_NAMES}
+    report["global"] = {}
+    for name, par in theta.items():
+        base = _base_param_name(name)
+        if base not in BOUNDS:
+            continue                     # recharge_frac_logit: unconstrained by design
+        bucket = next((z for z in ZONE_NAMES if name.endswith(f"_{z}")), "global")
+        report[bucket][base] = _clamp_({base: par})[base]
+    return report
+
+
 def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              obs_layer: torch.Tensor, recharge: torch.Tensor,
              E=None, ground_elev=None, epochs: int = 1500, lr: float = 0.1,
              init_scatter: float = 0.0, seed: int | None = None,
              param_mode: str = "homogeneous", h0: torch.Tensor | None = None,
+             zone_of_cell: np.ndarray | None = None,
              recharge_field: torch.Tensor | None = None,
              pump_layer: int = 1, recharge_layer: int = 0,
              log_every: int = 0) -> dict:
@@ -276,9 +418,22 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
       recharge is not wired for this mode (``E``/``ground_elev``/``recharge_field`` are
       ignored here) -- it keeps the original static (here: zero, in every current caller)
       recharge/pumping tensors.
+    - ``"zonal"`` (spec 2026-08-29 §5): structural proximal/mid/distal zonation --
+      proximal is one merged aquifer (2 parameters, ``log_L`` fixed at its upper bound),
+      mid and distal each keep 4 aquifers + 3 aquitards (11 each), plus the same two
+      global driver scalars: 26 parameters for a 4-layer model. Needs ``zone_of_cell``.
+      ``bounds_hit`` comes back nested by zone, never pooled.
     """
-    if param_mode not in ("homogeneous", "percell"):
-        raise ValueError(f"param_mode must be 'homogeneous' or 'percell', got {param_mode!r}")
+    if param_mode not in ("homogeneous", "percell", "zonal"):
+        raise ValueError(
+            "param_mode must be 'homogeneous', 'percell' or 'zonal', "
+            f"got {param_mode!r}"
+        )
+    if param_mode == "zonal" and zone_of_cell is None:
+        raise ValueError(
+            "param_mode='zonal' needs zone_of_cell: an (n_active,) zone id per active "
+            "cell, from hydrophysics.twin.zones.fan_zones(grid.centroids())"
+        )
 
     n_steps = recharge.shape[-1]
     A = model.grid.n_active
@@ -341,7 +496,20 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # have no per-cell home on model to copy back into; they travel in the return dict.
     use_pumping = E is not None and ground_elev is not None
     use_recharge = recharge_field is not None
-    theta = _make_homogeneous_params(model, use_pumping=use_pumping, use_recharge=use_recharge)
+    zone_t = None
+    if param_mode == "zonal":
+        zone_arr = np.asarray(zone_of_cell, dtype="int64").reshape(-1)
+        if zone_arr.shape[0] != A:
+            raise ValueError(
+                f"zone_of_cell has {zone_arr.shape[0]} entries but the grid has {A} "
+                "active cells"
+            )
+        zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
+        theta = _make_zonal_params(model, use_pumping=use_pumping,
+                                   use_recharge=use_recharge)
+    else:
+        theta = _make_homogeneous_params(model, use_pumping=use_pumping,
+                                         use_recharge=use_recharge)
     if init_scatter > 0.0:
         g = torch.Generator().manual_seed(int(seed) if seed is not None else 0)
         with torch.no_grad():
@@ -356,9 +524,12 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     hits: dict[str, int] = {}
 
     def _forward() -> torch.Tensor:
-        log_T = theta["log_T"].expand(-1, A)
-        log_S = theta["log_S"].expand(-1, A)
-        log_L = theta["log_L"].expand(-1, A) if "log_L" in theta else None
+        if zone_t is not None:
+            log_T, log_S, log_L = _expand_zonal(theta, zone_t, model.n_layers)
+        else:
+            log_T = theta["log_T"].expand(-1, A)
+            log_S = theta["log_S"].expand(-1, A)
+            log_L = theta["log_L"].expand(-1, A) if "log_L" in theta else None
         return _rollout(
             model, log_T, log_S, log_L, h0, n_steps,
             recharge=None if use_recharge else recharge,
@@ -393,14 +564,22 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             r2_trace.append((_ep + 1, _r))
             print(f"      epoch {_ep + 1:4d}: loss={float(loss.detach()):.4g} "
                   f"in-sample R2={_r:+.4f}", flush=True)
-        hits = _clamp_({k: v for k, v in theta.items() if k in BOUNDS})
+        hits = (_zonal_bounds_hit(theta) if zone_t is not None
+                else _clamp_({k: v for k, v in theta.items() if k in BOUNDS}))
     with torch.no_grad():
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
-        model.log_T.copy_(theta["log_T"].expand(-1, A))
-        model.log_S.copy_(theta["log_S"].expand(-1, A))
-        if "log_L" in theta and model.n_layers > 1:
-            model.log_L.copy_(theta["log_L"].expand(-1, A))
+        if zone_t is not None:
+            zT, zS, zL = _expand_zonal(theta, zone_t, model.n_layers)
+            model.log_T.copy_(zT)
+            model.log_S.copy_(zS)
+            if zL is not None and model.n_layers > 1:
+                model.log_L.copy_(zL)
+        else:
+            model.log_T.copy_(theta["log_T"].expand(-1, A))
+            model.log_S.copy_(theta["log_S"].expand(-1, A))
+            if "log_L" in theta and model.n_layers > 1:
+                model.log_L.copy_(theta["log_L"].expand(-1, A))
     n_params = sum(p.numel() for p in free)
     theta_out = {}
     for k, v in theta.items():
@@ -422,10 +601,15 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          ground_elev: torch.Tensor | None = None,
                          recharge_layer: int = 0, pump_layer: int = 1) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
-    reusing ``model``'s own calibrated (already copied-back, per-cell-constant) log_T/
-    log_S/log_L plus the scalar ``log_eta``/``recharge_frac_logit`` returned in
+    reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
+    ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
+    by this point the parameter *source* is identical and only the field's spatial
+    structure differs (constant vs piecewise-constant). The name is historical.
+
+    Also reuses the scalar ``log_eta``/``recharge_frac_logit`` returned in
     ``fit["theta"]`` -- those two scalars have no per-cell home on ``model`` to copy back
-    into, so they travel through the fit-result dict instead. homogeneous-mode-only.
+    into, so they travel through the fit-result dict instead. Both param_mode="homogeneous"
+    and param_mode="zonal" keep these two keys bare (no zone suffix) in ``theta``.
     """
     with torch.no_grad():
         log_T, log_S = model.log_T, model.log_S
@@ -509,7 +693,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 well_xy: np.ndarray | None = None, obs_h0: np.ndarray | None = None,
                 ground_elev: torch.Tensor | None = None, E: torch.Tensor | None = None,
                 recharge_field: torch.Tensor | None = None,
-                pump_layer: int = 1, recharge_layer: int = 0) -> dict:
+                pump_layer: int = 1, recharge_layer: int = 0,
+                zone_of_cell: np.ndarray | None = None,
+                dump_path: str | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -526,6 +712,11 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     ``recharge_field`` are physical driver fields independent of which wells are held
     out, so they are reused unchanged across every fold (no leakage risk there).
     """
+    if param_mode == "zonal" and zone_of_cell is None:
+        raise ValueError(
+            "param_mode='zonal' needs zone_of_cell -- the zone assignment is a property "
+            "of the grid, not of the fold, so it is passed once and reused unchanged"
+        )
     W = obs_h.shape[0]
     xy = grid.centroids()
     n_active = grid.n_active
@@ -540,6 +731,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
               "straddle folds and the IDW baseline may peek. Pass well_xy.", flush=True)
     folds = _kfold_indices(W, n_folds, seed=seed, groups=groups)
     coloc = _colocation_rate(folds, well_xy, W)
+    # Per-entry dump (2026-08-29): the headline gate is one pooled R2, which cannot answer
+    # whether the physics model degrades more or less gracefully than IDW as held-out sites
+    # get isolated. That question is most of the argument for building a physics model at
+    # all, so keep the raw predictions rather than only their pooled summary.
+    dump = {"fold": [], "entry": [], "nn_dist": [], "x": [], "y": [], "layer": []}
+    dump_arrays = {"pred": [], "idw": [], "obs": []}
+    # coordinates used for the nearest-training-entry distance
+    dist_xy = (np.asarray(well_xy, dtype="float64") if well_xy is not None
+               else grid.centroids()[obs_idx.cpu().numpy()])
     if well_xy is not None:
         n_sites = len(np.unique(groups))
         print(f"    folds grouped by site: {W} entries over {n_sites} physical sites, "
@@ -558,13 +758,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         fit = fit_flow(m, obs_h[keep], obs_idx[keep], obs_layer[keep], recharge,
                        E=E, ground_elev=ground_elev, epochs=epochs, lr=lr,
                        param_mode=param_mode, h0=h0_fold, recharge_field=recharge_field,
-                       pump_layer=pump_layer, recharge_layer=recharge_layer)
+                       pump_layer=pump_layer, recharge_layer=recharge_layer,
+                       zone_of_cell=zone_of_cell)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
             h0_eval = (h0_fold if h0_fold is not None
                       else torch.zeros(n_layers, n_active, dtype=torch.float64))
-            if param_mode == "homogeneous" and (E is not None or recharge_field is not None):
+            if (param_mode in ("homogeneous", "zonal")
+                    and (E is not None or recharge_field is not None)):
                 h = _predict_homogeneous(m, fit, h0_eval, n_steps, recharge=recharge,
                                          recharge_field=recharge_field, E=E,
                                          ground_elev=ground_elev,
@@ -579,12 +781,33 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         preds.append(p)
         idws.append(idw)
         targets.append(obs_h[held].numpy())
+        if dump_path is not None:
+            dd = np.sqrt(((dist_xy[held][:, None, :] - dist_xy[keep][None, :, :]) ** 2)
+                         .sum(-1)).min(axis=1)
+            dump["fold"].append(np.full(len(held), f, dtype="int64"))
+            dump["entry"].append(np.asarray(held, dtype="int64"))
+            dump["nn_dist"].append(dd)
+            dump["x"].append(dist_xy[held][:, 0])
+            dump["y"].append(dist_xy[held][:, 1])
+            dump["layer"].append(obs_layer_np[held])
+            dump_arrays["pred"].append(p)
+            dump_arrays["idw"].append(idw)
+            dump_arrays["obs"].append(obs_h[held].numpy())
         per_fold.append({"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
                          "r2_kfold": _r2(p, obs_h[held].numpy()),
-                         "r2_idw": _r2(idw, obs_h[held].numpy())})
+                         "r2_idw": _r2(idw, obs_h[held].numpy()),
+                         "bounds_hit": fit["bounds_hit"]})
     pred = np.concatenate(preds)
     obs = np.concatenate(targets)
     idw_all = np.concatenate(idws)
+    if dump_path is not None:
+        os.makedirs(os.path.dirname(dump_path) or ".", exist_ok=True)
+        np.savez_compressed(
+            dump_path,
+            **{k: np.concatenate(v) for k, v in dump.items()},
+            **{k: np.concatenate(v) for k, v in dump_arrays.items()},
+            obs_mean=np.array(float(obs[np.isfinite(obs)].mean())))
+        print(f"    wrote per-entry predictions -> {dump_path}", flush=True)
     return {"r2_kfold": _r2(pred, obs), "r2_idw": _r2(idw_all, obs),
             "n_wells": W, "n_folds": n_folds, "per_fold": per_fold,
             "n_sites": int(len(np.unique(groups))) if groups is not None else W,
@@ -681,6 +904,68 @@ _DEFAULT_PUMP_CENSUS = (
     "55ec15e7-c585-41a8-a463-e69e4ca3c0cf/scratchpad/tpc_pumps.parquet"
 )
 
+_PARAM_MODES = ("homogeneous", "percell", "zonal")
+_DEFAULT_ZONE_BOUNDARIES = "205,182"
+
+
+def _parse_zone_boundaries(text: str) -> tuple[float, float]:
+    """``"205,182"`` -> ``(205.0, 182.0)``: the proximal/mid and mid/distal eastings in km.
+
+    Spec §4.2 requires re-running the gate varying only the SECOND (mid/distal) value,
+    at 178 and 186 km, because that boundary is an equal-width default with no
+    independent justification -- the first (proximal/mid) value must stay 205. A
+    transposed or equal pair would silently move the proximal boundary or empty the mid
+    zone, so both are rejected rather than tolerated.
+    """
+    parts = [p.strip() for p in str(text).split(",")]
+    if len(parts) != 2:
+        raise ValueError(
+            f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM (e.g. '205,182'), got {text!r}"
+        )
+    try:
+        proximal_km, distal_km = float(parts[0]), float(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"--zone-boundaries values must be numbers, got {text!r}") from exc
+    if not distal_km < proximal_km:
+        raise ValueError(
+            f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM with the proximal boundary "
+            f"east of the distal one; got proximal={proximal_km}, distal={distal_km}"
+        )
+    return proximal_km, distal_km
+
+
+def _is_hit_entry(v) -> bool:
+    """True for a single-parameter ``_clamp_`` result ``{"lo", "hi", "n"}`` -- the leaf
+    of both the flat (homogeneous/percell) and nested (zonal) ``bounds_hit`` shapes.
+    """
+    return isinstance(v, dict) and {"lo", "hi", "n"} <= v.keys()
+
+
+def _fmt_hit_entry(name: str, v: dict) -> str:
+    return f"{name}: lo={v['lo']}/{v['n']} hi={v['hi']}/{v['n']}"
+
+
+def _format_bounds_hit(hits: dict) -> str:
+    """Flat dicts (homogeneous/percell: ``{param: {"lo","hi","n"}}``) print one line.
+    Nested dicts (zonal: ``{zone: {param: {"lo","hi","n"}}}``) print one line per zone.
+
+    Spec §6's primary rule reads this, and pooling would let an interior mid value mask
+    a pinned proximal one -- so the zonal form is never collapsed into a single number.
+    Printing ``lo/n`` and ``hi/n`` (Ruling P1) rather than a bare count is what lets a
+    reader see "proximal log_T 1/1 at the lower bound" instead of mistaking a small
+    absolute count for a minority.
+    """
+    if not hits:
+        return "  bounds_hit={}"
+    if all(_is_hit_entry(v) for v in hits.values()):
+        parts = ", ".join(_fmt_hit_entry(k, v) for k, v in hits.items())
+        return f"  bounds_hit={{{parts}}}"
+    lines = []
+    for zone, params in hits.items():
+        parts = ", ".join(_fmt_hit_entry(k, v) for k, v in params.items())
+        lines.append(f"    bounds_hit[{zone}]={{{parts}}}")
+    return "\n".join(lines)
+
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Stage-3 flow calibration and k-fold gate")
@@ -688,7 +973,19 @@ def main(argv=None) -> None:
     ap.add_argument("--lr", type=float, default=0.1)
     ap.add_argument("--dx", type=float, default=1000.0)
     ap.add_argument("--n-folds", type=int, default=10)
-    ap.add_argument("--param-mode", choices=["homogeneous", "percell"], default="homogeneous")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="fold-assignment seed. Vary it to measure whether a gate "
+                         "margin is signal or fold noise; the 2026-08-27 gate came "
+                         "down to 0.033, which one split cannot resolve.")
+    ap.add_argument("--param-mode", choices=list(_PARAM_MODES), default="homogeneous")
+    ap.add_argument("--zone-boundaries", default=_DEFAULT_ZONE_BOUNDARIES,
+                    help="PROXIMAL_KM,DISTAL_KM for --param-mode zonal (default "
+                         "'205,182'). The mid/distal (SECOND) value is an unjustified "
+                         "default; spec 4.2 requires varying only that SECOND value -- "
+                         "re-run at '205,178' and '205,186' -- to report whether the "
+                         "verdict moves. Do NOT vary the first (proximal) value: e.g. "
+                         "'186,178' moves the PROXIMAL boundary instead and is not the "
+                         "sensitivity check spec 4.2 asks for.")
     ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
     ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
     ap.add_argument("--polygon",
@@ -717,6 +1014,8 @@ def main(argv=None) -> None:
     ap.add_argument("--out", default="results/twin")
     ap.add_argument("--log-every", type=int, default=0,
                     help="print in-sample R2 every N epochs during the fit")
+    ap.add_argument("--dump-predictions", action="store_true",
+                    help="write per-held-out-entry predictions (flow, IDW, obs) plus\neach entry's distance to the nearest training entry, for degradation-vs-distance\nanalysis without refitting.")
     ap.add_argument("--fit-only", action="store_true",
                     help="run the in-sample fit and skip the k-fold gate")
     args = ap.parse_args(argv)
@@ -724,6 +1023,23 @@ def main(argv=None) -> None:
     from .heads import build_head_field
 
     grid = build_grid(args.polygon, dx=args.dx)
+
+    zone_of_cell = zone_counts = proximal_km = distal_km = None
+    if args.param_mode == "zonal":
+        proximal_km, distal_km = _parse_zone_boundaries(args.zone_boundaries)
+        zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km,
+                                 distal_km=distal_km)
+        zone_counts = {name: int((zone_of_cell == i).sum())
+                       for i, name in enumerate(ZONE_NAMES)}
+        print(f"zones: proximal/mid at {proximal_km:.0f} km, mid/distal at "
+              f"{distal_km:.0f} km -> cells {zone_counts}", flush=True)
+        empty = [n for n, c in zone_counts.items() if c == 0]
+        if empty:
+            raise SystemExit(
+                f"zone(s) {empty} contain no active cells at these boundaries; "
+                "the gate would score a model with fewer zones than it reports"
+            )
+
     stn = pd.read_parquet(args.stations)
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
@@ -766,21 +1082,40 @@ def main(argv=None) -> None:
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
 
     m = FlowModel(grid, n_layers=4, dt_days=30.0)
+    git_commit = _git_commit()
+    _reset_cg_stats()
     t0 = time.perf_counter()
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
-                   recharge_layer=args.recharge_layer, log_every=args.log_every)
+                   recharge_layer=args.recharge_layer, log_every=args.log_every,
+                   zone_of_cell=zone_of_cell)
     t_fit = time.perf_counter() - t0
+
+    # Spec 6's PRIMARY decision rule -- "does the transmissivity clamp release, per zone?" --
+    # is computed from THIS fit, not from the k-fold gate that follows. So it is printed here,
+    # the moment it exists, rather than in the end-of-run report: a run killed or crashed
+    # during the folds must still yield the primary answer.
+    #
+    # This ordering was paid for. A zonal seed-0 run killed mid-fold on 2026-09-01 had already
+    # spent 4.3 h computing this exact result and emitted nothing, because the report came
+    # after kfold_wells returned. The fit is ~4 h of a ~24 h zonal run, and spec 6 reaches the
+    # SECONDARY rule (the margin, which the folds measure) only if the clamp released -- so the
+    # cheap half of the run answers the question that can stop the expensive half.
+    cg_fit_nonconverged, cg_fit_worst = _cg_stats()
+    print(f"wells={obs_h.shape[0]} cells={grid.n_active} dx={args.dx:.0f}m "
+          f"param_mode={args.param_mode} n_params={ins['n_params']} "
+          f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
+    print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
+    print(_format_bounds_hit(ins["bounds_hit"]))
+    if "theta" in ins:
+        print(f"  theta={ins['theta']}")
+    print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_fit_nonconverged}  "
+          f"cg_worst_residual={cg_fit_worst:.3e}  git_commit={git_commit!r}", flush=True)
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
         # structurally inadequate parameterisation, and costs one fit instead of eleven.
-        print(f"wells={obs_h.shape[0]} "
-              f"cells={grid.n_active} dx={args.dx:.0f}m param_mode={args.param_mode} "
-              f"n_params={ins['n_params']} epochs={args.epochs}")
-        print(f"  in-sample R2={ins['r2']:+.3f}  bounds_hit={ins['bounds_hit']}  "
-              f"fit_time={t_fit:.1f}s")
         tr = ins.get("r2_trace") or []
         if tr:
             print("  trajectory: " + "  ".join(f"{e}:{r:+.3f}" for e, r in tr))
@@ -790,25 +1125,27 @@ def main(argv=None) -> None:
                 print(f"  change over the last {len(last)} logged points: {drift:+.4f} "
                       f"-> {'STILL CLIMBING (under-trained)' if drift > 0.01 else 'PLATEAUED (structural)'}")
         os.makedirs(args.out, exist_ok=True)
-        pd.DataFrame(tr, columns=["epoch", "r2_insample"]).to_csv(
-            os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
+        trace_df = pd.DataFrame(tr, columns=["epoch", "r2_insample"])
+        trace_df["cg_maxiter"] = _CG_MAXITER
+        trace_df["git_commit"] = git_commit
+        trace_df.to_csv(os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
         print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
         return
 
     t0 = time.perf_counter()
     gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy, n_layers=4,
                        epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
+                       seed=args.seed,
                        param_mode=args.param_mode, well_xy=well_xy, obs_h0=obs_h0,
                        ground_elev=ground_elev, E=E, recharge_field=recharge_field,
-                       pump_layer=args.pump_layer, recharge_layer=args.recharge_layer)
+                       pump_layer=args.pump_layer, recharge_layer=args.recharge_layer,
+                       dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
+                                  if args.dump_predictions else None),
+                       zone_of_cell=zone_of_cell)
     t_gate = time.perf_counter() - t0
-    print(f"wells={gate['n_wells']} cells={grid.n_active} dx={args.dx:.0f}m "
-          f"param_mode={args.param_mode} n_params={ins['n_params']} "
-          f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
-    print(f"  in-sample R2={ins['r2']:+.3f}  bounds_hit={ins['bounds_hit']}  "
-          f"fit_time={t_fit:.1f}s")
-    if "theta" in ins:
-        print(f"  theta={ins['theta']}")
+    cg_nonconverged, cg_worst_residual = _cg_stats()
+    # The in-sample block (R2, per-zone bounds_hit, theta) was printed before the gate began;
+    # it is not repeated here. What follows is what only the gate can tell you.
     print(f"  {args.n_folds}-fold R2={gate['r2_kfold']:+.3f}   "
           f"IDW baseline R2={gate['r2_idw']:+.3f}  gate_time={t_gate:.1f}s")
     print(f"  folds grouped by site: {gate['n_wells']} entries / {gate['n_sites']} sites   "
@@ -817,19 +1154,42 @@ def main(argv=None) -> None:
         print("  WARNING: held-out entries sit at zero distance from training entries, so "
               "the IDW baseline is reading co-located screens rather than interpolating. "
               "Treat the comparison below as biased toward IDW.")
+    # Fix wave I5: the primary rule (does the clamp release?) must be checkable on the
+    # fold models too, not only the in-sample fit -- a PASS where every fold model is
+    # bound-saturated must be visible, not silently discarded.
+    print("  per-fold bounds_hit:")
+    for f in gate["per_fold"]:
+        print(f"    -- fold {f['fold']} (n_held={f['n_held']}, "
+              f"r2_kfold={f['r2_kfold']:+.3f}, r2_idw={f['r2_idw']:+.3f}) --")
+        print(_format_bounds_hit(f["bounds_hit"]))
     print(f"GATE ({args.n_folds}-fold): "
           f"{'PASS' if gate['r2_kfold'] > gate['r2_idw'] else 'FAIL'}")
+    # Fix wave I1/I2: the CG cap and convergence evidence must travel with the result --
+    # the maxiter ruling is "both arms at the same cap", and the previous corruption
+    # (median true relative residual 4.955e-02) was caught only by ad-hoc log grepping.
+    print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_nonconverged}  "
+          f"cg_worst_residual={cg_worst_residual:.3e}  git_commit={git_commit!r}")
 
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, "stage3_flow.csv")
     pd.DataFrame([{"n_wells": gate["n_wells"], "n_cells": grid.n_active, "dx": args.dx,
-                   "param_mode": args.param_mode, "n_params": ins["n_params"],
+                   "param_mode": args.param_mode,
+                   "zone_proximal_km": (proximal_km if args.param_mode == "zonal"
+                                        else ""),
+                   "zone_distal_km": (distal_km if args.param_mode == "zonal" else ""),
+                   "zone_cell_counts": (str(zone_counts) if args.param_mode == "zonal"
+                                        else ""),
+                   "n_params": ins["n_params"],
                    "forcing": "off" if args.no_forcing else "on", "epochs": args.epochs,
-                   "n_folds": gate["n_folds"], "n_sites": gate["n_sites"],
+                   "n_folds": gate["n_folds"], "seed": args.seed,
+                   "n_sites": gate["n_sites"],
                    "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
                    "r2_insample": ins["r2"], "r2_kfold": gate["r2_kfold"],
                    "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
+                   "fold_bounds_hit": str([f["bounds_hit"] for f in gate["per_fold"]]),
                    "theta": str(ins.get("theta", {})),
+                   "cg_maxiter": _CG_MAXITER, "cg_nonconverged": cg_nonconverged,
+                   "cg_worst_residual": cg_worst_residual, "git_commit": git_commit,
                    "fit_time_s": t_fit, "gate_time_s": t_gate}]).to_csv(path, index=False)
     print(f"wrote {path}")
 
