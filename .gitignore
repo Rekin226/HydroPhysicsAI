@@ -43,6 +43,9 @@ docs/PHASE1_AUDIT.md
 docs/PHASE2_LITERATURE.md
 docs/manuscript/
 
+# Local-only notes: server addresses, accounts, host keys. Never commit.
+*.local.md
+
 # Prediction arrays (regenerate via the LOWO/forecast runs)
 *.npy
 .gstack/
