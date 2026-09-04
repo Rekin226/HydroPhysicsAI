@@ -66,3 +66,11 @@ results/
 # mockups (.superpowers/brainstorm/). Session scratch, not repo content — the
 # durable output of both lands in docs/superpowers/ instead.
 .superpowers/
+
+# Vendor API reference material (WiseEnvr LS API): demo.py + API_workflow.pdf,
+# downloaded from https://api.wisenvr.com/LS/static/. Never committed — demo.py
+# carries the vendor's plaintext demo login, and this is upstream material, not
+# repo content. Fetch it locally with:
+#   curl -sSLO --output-dir data_fetch_api https://api.wisenvr.com/LS/static/demo.py
+#   curl -sSLO --output-dir data_fetch_api https://api.wisenvr.com/LS/static/API_workflow.pdf
+data_fetch_api/
