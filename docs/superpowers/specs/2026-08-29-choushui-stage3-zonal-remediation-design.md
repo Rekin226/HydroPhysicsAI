@@ -188,6 +188,72 @@ TDD, matching the grouped-fold work.
 - `homogeneous` and `percell` behaviour unchanged
 - full suite green (117 collected: 116 passed, 1 skipped), ruff clean
 
+### 7.1 Implementation result — 2026-09-01
+
+Deliverables 1-4 are **complete** (`13cf7d2`, `031ae15`, `d2c84a3`, `42efbda`, `a6f8bbf`).
+Suite: 166 passed, 1 skipped, ruff clean. Every task independently reviewed.
+
+Two defects were found and fixed during the work, both outside the original design:
+
+**The CG iteration cap truncated every zonal solve.** Pinning proximal `log_L` at the top of
+its range — §5's structural statement — raises the operator's condition number past what
+Jacobi-CG reaches in `maxiter=400`. The first gate run produced median true relative residual
+**4.955e-02** (max 2.542e+04), and its last 400 solves before abort had median **1.079e+00**,
+i.e. worse than returning zero. `flow.py`'s own `_cg` docstring states a stalled solve
+"silently corrupts the heads *and* every gradient computed from them," so every number that
+run would have produced was junk. The operator is still SPD at the pin (200 Rayleigh
+quotients, min 1.813e+04, none ≤ 0) and converges to 9.607e-09 at `maxiter=2000`; bisected
+iteration counts are 237 (L=1e-4, T=500), 947 (L=1e-1, T=500), **1242** (L=1e-1, T=10, the
+worst realistic case), 457 (L=1e-1, T=2e4). Fixed in `38b7ecc` by raising the cap, **not** by
+lowering the pin — the pin is this design's physical claim, and §4.2's own reasoning forbids
+tuning it to suit the solver. Re-verified on the real grid: zero non-convergence warnings at
+every leakance including the pin.
+
+The homogeneous arm was re-run at the new cap to keep the comparison like-for-like. It is
+inert there: margin moved by **3.9e-12** (`r2_insample` and `loss` bit-identical, `r2_idw`
+bit-identical), because those solves exit on the recurrence residual before the cap binds.
+The pre-registered baseline of **−0.048 ± 0.013** therefore stands unchanged, and is
+reproducible from the per-seed artifacts in `results/twin/`.
+
+**§6's primary rule was not evaluable as originally specified.** `bounds_hit` reported
+absolute counts over unequal denominators (proximal `log_T` is 1 value, mid and distal 4
+each), so `proximal: 1` beside `mid: 2` read as "proximal less pinned" when it is 100% vs
+50%, and "majority" was undefined across zones of size 1, 4, 4. Worse, the physically worst
+outcome — the proximal gravel zone alone still pinned at T = 10, below the 58 m²/day floor
+this remediation exists to escape — is a *minority of 9* and would have read as "clamp
+released." That is §1's own documented failure (`log_L` reading healthy in aggregate while
+wrong at both ends) about to repeat with `log_T`. Fixed in `ad5b5da`: hits are now split
+lower-bound from upper-bound and reported as `n/total` per zone, and the counting rule was
+written down **before any zonal number existed** (SDD ledger, "PRE-REGISTERED"):
+
+> Clamp **released** iff pooled lower-clamp `log_T` ≤ 4/9 **and** the proximal zone's single
+> `log_T` is not at the lower clamp. Only lower-clamp hits count — fitting *below* the
+> measured range is the documented failure. Otherwise **FAIL** per §6: stop, escalate.
+
+The same commit added run provenance (`cg_maxiter`, `git_commit`, `cg_nonconverged`,
+`cg_worst_residual`, `fold_bounds_hit`) so a published number carries proof of its own
+solver settings and gradient soundness, and `6f3c8bb` moved the in-sample clamp report ahead
+of the k-fold gate so a run killed during the folds still yields the primary answer.
+
+### 7.2 Verdict — NOT REACHED
+
+**Deliverable 5 is outstanding. No zonal gate has completed, and no verdict exists.**
+
+Measured cost is far above §8's estimate: in-sample fit **4.3 h**, fold 1 of 5 **12,733 s
+(3.54 h)** against ~1,125 s/fold for homogeneous — **11.3×**, not the 4-5× the iteration
+counts alone suggested. Seed 0 projects to ~24 h, the five-seed sweep to ~120 h, and the two
+§4.2 boundary runs to ~48 h: **~7 days** against the 14 h budgeted. Seed 0 was stopped during
+fold 2 on that basis. The cost is the pinned proximal leakance needing ~950-1250 CG
+iterations per solve where homogeneous needs 237 — it is the price of correct gradients at
+these settings, not waste.
+
+**Cheapest route to the verdict, when this resumes:** §6's primary rule is computed from the
+in-sample fit, so `--fit-only` answers it in **~4.3 h** rather than ~24 h. A still-pinned
+clamp is FAIL, and §6 then forbids the remaining ~144 h outright. The folds only measure the
+*secondary* rule, which §6 reaches only if the clamp released. §10's open question about CG
+tolerance (`tol=1e-8` against a worst true residual of 2.9e-07) is the obvious lever if the
+full sweep is wanted.
+
 ## 8. Cost
 
 - Implementation: one focused session.
