@@ -73,14 +73,17 @@ import torch
 from torch import nn
 
 from ..subsidence import idw_interp
+from ..train import pick_device
 from . import pumping as pumping_mod
 from .flow import (
+    _CG_CHECK_EVERY,
     _CG_MAXITER,
     FlowModel,
     _cg_stats,
     _ImplicitSolve,
     _reset_cg_stats,
     _warm_started_solver,
+    set_compile_matvec,
 )
 from .grid import build_grid
 from .zones import N_ZONES, ZONE_NAMES, fan_zones
@@ -695,7 +698,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 recharge_field: torch.Tensor | None = None,
                 pump_layer: int = 1, recharge_layer: int = 0,
                 zone_of_cell: np.ndarray | None = None,
-                dump_path: str | None = None) -> dict:
+                dump_path: str | None = None, device=None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -754,7 +757,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         if well_xy is not None and obs_h0 is not None:
             h0_fold = _idw_initial_heads(grid, well_xy[keep], np.asarray(obs_h0)[keep],
                                          obs_layer_np[keep], n_layers)
-        m = FlowModel(grid, n_layers=n_layers, dt_days=30.0)
+        m = FlowModel(grid, n_layers=n_layers, dt_days=30.0, device=device)
         fit = fit_flow(m, obs_h[keep], obs_idx[keep], obs_layer[keep], recharge,
                        E=E, ground_elev=ground_elev, epochs=epochs, lr=lr,
                        param_mode=param_mode, h0=h0_fold, recharge_field=recharge_field,
@@ -1018,7 +1021,23 @@ def main(argv=None) -> None:
                     help="write per-held-out-entry predictions (flow, IDW, obs) plus\neach entry's distance to the nearest training entry, for degradation-vs-distance\nanalysis without refitting.")
     ap.add_argument("--fit-only", action="store_true",
                     help="run the in-sample fit and skip the k-fold gate")
+    ap.add_argument("--device", default=None,
+                    help="'cuda', 'cpu', or omit to auto-select CUDA when available. "
+                         "Until this flag existed both FlowModel construction sites "
+                         "omitted device=, so every Stage-1/2/3 flow run silently used "
+                         "CPU -- including the 4.3 h fit and 12,733 s/fold timings behind "
+                         "the ~144 h sweep estimate. calibrate_mlcw has always "
+                         "auto-selected CUDA, so the twin's two halves disagreed.")
+    ap.add_argument("--compile-matvec", action="store_true",
+                    help="torch.compile the conductance matvec (1.38x -> 1.91x on a "
+                         "fan-scale rollout, ~8 s one-time warmup, head/gradient "
+                         "unchanged to ~1e-9). Off by default because compiled kernel "
+                         "selection is not bit-reproducible across inductor cache "
+                         "states; recorded in the run's provenance when used.")
     args = ap.parse_args(argv)
+    set_compile_matvec(args.compile_matvec)
+    device = pick_device(args.device)
+    print(f"device: {device}", flush=True)
 
     from .heads import build_head_field
 
@@ -1081,7 +1100,7 @@ def main(argv=None) -> None:
 
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
 
-    m = FlowModel(grid, n_layers=4, dt_days=30.0)
+    m = FlowModel(grid, n_layers=4, dt_days=30.0, device=device)
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
@@ -1127,6 +1146,8 @@ def main(argv=None) -> None:
         os.makedirs(args.out, exist_ok=True)
         trace_df = pd.DataFrame(tr, columns=["epoch", "r2_insample"])
         trace_df["cg_maxiter"] = _CG_MAXITER
+        trace_df["cg_check_every"] = _CG_CHECK_EVERY
+        trace_df["compile_matvec"] = bool(args.compile_matvec)
         trace_df["git_commit"] = git_commit
         trace_df.to_csv(os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
         print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
@@ -1139,6 +1160,7 @@ def main(argv=None) -> None:
                        param_mode=args.param_mode, well_xy=well_xy, obs_h0=obs_h0,
                        ground_elev=ground_elev, E=E, recharge_field=recharge_field,
                        pump_layer=args.pump_layer, recharge_layer=args.recharge_layer,
+                       device=device,
                        dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
                                   if args.dump_predictions else None),
                        zone_of_cell=zone_of_cell)
@@ -1188,7 +1210,9 @@ def main(argv=None) -> None:
                    "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
                    "fold_bounds_hit": str([f["bounds_hit"] for f in gate["per_fold"]]),
                    "theta": str(ins.get("theta", {})),
-                   "cg_maxiter": _CG_MAXITER, "cg_nonconverged": cg_nonconverged,
+                   "cg_maxiter": _CG_MAXITER, "cg_check_every": _CG_CHECK_EVERY,
+                   "compile_matvec": bool(args.compile_matvec),
+                   "cg_nonconverged": cg_nonconverged,
                    "cg_worst_residual": cg_worst_residual, "git_commit": git_commit,
                    "fit_time_s": t_fit, "gate_time_s": t_gate}]).to_csv(path, index=False)
     print(f"wrote {path}")

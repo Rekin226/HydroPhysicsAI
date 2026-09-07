@@ -56,7 +56,48 @@ _CG_TOL = 1e-8
 # (homogeneous mode converges at 237 iterations and never gets close to either cap).
 _CG_MAXITER = 2000
 _CG_RESTART = 50
+# How often the CG loop *reads* its residual. Reading it means `if relres < tol`, a Python
+# branch on a CUDA tensor, which forces a cudaStreamSynchronize -- so checking every
+# iteration serialises the host against the device once per iteration. On this hardware the
+# whole solve is launch-bound, not compute-bound (measured: a matvec on 12,896 unknowns
+# takes 257 us in float64 and 250 us in float32 -- dtype-independent, i.e. dominated by
+# kernel launch, not arithmetic; the same rollout runs 1.11 s on the GPU against 1.25 s on
+# the CPU), so those syncs are a first-order cost rather than bookkeeping.
+#
+# Checking every 25 costs almost nothing in extra iterations because the solves are long:
+# median 346 iterations per solve on a heterogeneous fan-scale problem, so the loop
+# overshoots by ~4 iterations (350 vs 346) and runs 1.38x faster. Combined with a compiled
+# matvec (see ``set_compile_matvec``) the rollout is 1.91x faster, at a head/gradient relative
+# L2 difference of ~1e-9 against per-iteration checking -- four orders below the seed
+# spread the gate is read against, and the gradient cosine similarity is 1.0000000000.
+#
+# Applies on CUDA only. On CPU there is no sync to avoid, so `_cg` checks every iteration
+# there and exits as early as it can -- deferring the check on CPU is pure waste, which
+# matters because calibrate_flow ran on CPU until --device was added.
+#
+# The safety net is unchanged: the *true* residual is still recomputed from scratch after
+# the loop and still warns, so a stalled solve cannot pass silently. Set to 1 to restore
+# exact per-iteration checking (bit-reproducible against results recorded before this).
+# _CG_TOL is deliberately NOT loosened here: 1e-6 buys 2.49x but moves gradients by
+# ~1.5e-07, and this solver feeds a pre-registered gate verdict.
+_CG_CHECK_EVERY = 25
 _MODEL_DTYPE = torch.float64
+
+# Opt-in `torch.compile` on the conductance matvec. Off by default: it is the one change
+# here that alters kernel selection, and compiled results are not bit-reproducible across
+# inductor cache states (the same caveat `bench_port.py` records for the UDE's compile
+# backend). Measured on a heterogeneous fan-scale rollout it takes the batched-check
+# speedup from 1.38x to 1.91x for a ~8 s one-time warmup, at an unchanged head/gradient
+# relative L2 difference of ~1e-9 -- i.e. compiling costs no additional accuracy over the
+# batched check alone. Enable per-run via `set_compile_matvec(True)` or
+# `calibrate_flow --compile-matvec`, which records it in the run's provenance.
+_COMPILE_MATVEC = False
+
+
+def set_compile_matvec(enabled: bool) -> None:
+    """Turn the compiled matvec on or off for subsequent solves."""
+    global _COMPILE_MATVEC
+    _COMPILE_MATVEC = bool(enabled)
 
 # Provenance counters for the published gate number (final-review fix I2): a previous
 # run of this exact code produced catastrophically corrupt gradients (median true
@@ -214,6 +255,12 @@ def _cg(matvec, b, diag=None, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
     def precondition(v):
         return v / diag.clamp(min=1e-30) if diag is not None else v
 
+    # Batching the convergence check only pays where reading the residual costs a device
+    # synchronisation -- i.e. on CUDA. On CPU there is no sync to avoid, so deferring the
+    # check cannot save anything and can only run iterations past convergence (up to
+    # _CG_CHECK_EVERY - 1 of them, on every solve). Gate it on where the tensors actually
+    # live rather than applying it globally.
+    check_every = _CG_CHECK_EVERY if b.is_cuda else 1
     if relres >= tol:
         z = precondition(r)
         p = z.clone()
@@ -223,9 +270,10 @@ def _cg(matvec, b, diag=None, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
             alpha = rz / (p * Ap).sum().clamp(min=1e-30)
             x = x + alpha * p
             r = b - matvec(x) if i % _CG_RESTART == 0 else r - alpha * Ap
-            relres = (r * r).sum().sqrt() / b_norm
-            if relres < tol:
-                break
+            if i % check_every == 0:
+                relres = (r * r).sum().sqrt() / b_norm
+                if relres < tol:
+                    break
             z = precondition(r)
             rz_new = (r * z).sum()
             p = z + (rz_new / rz.clamp(min=1e-30)) * p
@@ -322,6 +370,8 @@ class FlowModel(nn.Module):
             diagL[:-1] = diagL[:-1] + Lk
             diagL[1:] = diagL[1:] + Lk
             diag = diag + diagL
+        if _COMPILE_MATVEC:
+            mv = torch.compile(mv, dynamic=False)
         return mv, diag
 
     def _op(self, h, log_T, log_S, log_L=None):
