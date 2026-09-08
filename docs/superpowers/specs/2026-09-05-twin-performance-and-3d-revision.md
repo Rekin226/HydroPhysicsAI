@@ -1,6 +1,14 @@
 # Twin audit, performance revision, and the route to the 3D scenario viewer
 
-**Date:** 2026-09-05 · **Status:** performance work done and validated; Stage 3 still blocked
+**Date:** 2026-09-05, revised 2026-09-07 · **Status:** Stage-3 primary rule **PASSED**; the
+k-fold secondary rule is running
+
+> **Revision note (2026-09-07).** §1 and §2 below were written before the real cause was
+> found, and their headline numbers are wrong in a way that matters. The solve was not
+> merely "not GPU-bound" — **it was never on the GPU at all**, and on the real problem the
+> GPU is ~51× faster, not the 1.1× a synthetic benchmark predicted. §1a and §2a record the
+> correction; §1 and §2 are kept because the reasoning they contain is what led to looking
+> at device placement in the first place, and a result log should show its own wrong turns.
 
 Revisits the Stage-3 cost estimate that stalled the sub-project, on the premise that new
 hardware and an upgraded NVIDIA stack would change it. The premise is half right, and the
@@ -34,6 +42,41 @@ restructuring plus `torch.compile` bought 59×.
 `_cg` evaluated `if relres < tol` every iteration. That is a Python branch on a CUDA
 tensor, so it forced a `cudaStreamSynchronize` **per CG iteration** — and the solves are
 long (median **346 iterations**, measured on a heterogeneous fan-scale problem).
+
+## 1a. CORRECTION — the solve was never on the GPU (2026-09-07)
+
+`calibrate_flow` constructed its model as `FlowModel(grid, n_layers=4, dt_days=30.0)` at
+both sites, with no `device=`. `FlowModel` honours the argument correctly, so `None` put
+every parameter on CPU — and everything downstream derives its device from the model
+(`dev = model.log_T.device`), so the whole run inherited CPU consistently. No error, no
+warning. There was no `--device` flag, and `pick_device()` — present in `train.py` and used
+by `bench_port.py` — was never wired into `twin/`. `calibrate_mlcw.py:50` has always
+auto-selected CUDA, so the twin's two halves silently disagreed about hardware.
+
+**Measured on the real problem** (2,148 cells × 4 layers, zonal, full pumping forcing):
+
+| device | s/epoch | 1500 epochs |
+|---|---|---|
+| CPU | **3,452** | ~1,438 h |
+| GPU | **67 → 34 avg** | **14.3 h (measured)** |
+
+**~51×**, not the 1.1× §1's synthetic benchmark predicted. That benchmark is the methodological
+lesson here: a 3,224-cell synthetic grid with randomised parameters mispredicted the real
+system by nearly two orders of magnitude, because it did not reproduce the real fit's
+CG-iteration profile. Every historical flow timing in this project — the 4.3 h fit, the
+12,733 s/fold, the ~144 h sweep estimate, and the "we need a better GPU" conclusion drawn
+from them — was produced by a CPU run caused by one omitted keyword argument.
+
+Fixed: `--device` added (auto-selects CUDA), threaded through both construction sites and
+into `kfold_wells`'s per-fold models, and the resolved device is printed at startup so this
+cannot recur silently.
+
+## 2a. CORRECTION — `_CG_CHECK_EVERY` is CUDA-only (2026-09-07)
+
+§2's setting was validated on GPU and then applied globally, including to the CPU path it
+cannot help: its entire purpose is avoiding `cudaStreamSynchronize`, which does not exist on
+CPU, so there it could only run iterations *past* convergence. It is now gated on
+`b.is_cuda`. Tests: 89 passed.
 
 ## 2. What was changed
 
@@ -144,33 +187,109 @@ a verdict — so no pumping → head map here is validated. `scenario_heads` is 
 Stage 3 passes, replace the multiplier with the flow model's simulated head under a modified
 abstraction, and every downstream component is unchanged.
 
-## 5. Stage 3 remains blocked — on data, not on compute
+## 5. Stage 3 — the pumping drivers, and the PRIMARY RULE VERDICT
 
-The gate needs the pumping drivers, and they are absent: `AMP_V2/data/pump_kwh_all.parquet`
-and the TPC pump census (whose CLI default still points at a dead session scratchpad,
-`calibrate_flow.py:900-904`). Neither is in `chou-shui-data/`.
+### 5.1 The drivers were recoverable after all
 
-They are **not practically recoverable from the API**: `etc-tpc-etc1mon-obs` exposes no bulk
-endpoint (four candidate paths all 404), a single pump's monthly series returned 504, and
-per-station fetching over 116,769 pumps is ~65 h at the observed rate. `--no-forcing` exists
-but the module docstring calls that configuration degenerate, so it is not a gate run.
+An earlier draft of this section called the pumping data "not practically recoverable from
+the API". That was wrong, and the error was mine: it rested on a single 504 that turned out
+to be transient. `etc-tpc-etc1mon-obs` serves both halves fine —
 
-**This is the single blocker on the whole downstream chain**, and the fix is one file pair
-from the original workstation or a backup.
+- **census** (`tpc_pumps.parquet`): the dataset's *station* metadata, 116,769 rows carrying
+  exactly `sid, TWD97_X, TWD97_Y, PUMP_HP, PURPOSE`. 99.7% fall inside the fan mask.
+- **kWh** (`pump_kwh_all.parquet`): 223 monthly rows per pump, `datetime` +
+  `electricity_kwh`. Fetched in ~3 h at 10 workers → **26,039,264 rows, 116,768 pumps,
+  2007-01 → 2025-07, 16.23 TWh total, zero failures.**
+
+Two fetcher bugs worth recording because both are generic: the bearer token expires and
+`demo.py` never renews it (the first run died at 401 then "succeeded" at failing 2,394
+pumps in a minute), and resume state that logs *attempted* rather than *succeeded* items
+will permanently skip whatever failed during an outage. Resume state is now derived from
+the output shards themselves, which by construction contain only real data.
+
+### 5.2 PRIMARY RULE: **PASS** — the clamp released (2026-09-06)
+
+`--param-mode zonal --fit-only --epochs 1500 --device cuda --compile-matvec`, 14.3 h:
+
+```
+wells=158  cells=2148  dx=1000m  n_params=26  forcing=on
+in-sample R2=+0.760   fit_time=51,625s
+bounds_hit[proximal]={log_T: lo=0/1 hi=0/1, log_S: lo=0/1 hi=0/1}
+bounds_hit[mid]     ={log_T: lo=0/4 hi=0/4, log_S: lo=0/4 hi=3/4, log_L: lo=0/3 hi=1/3}
+bounds_hit[distal]  ={log_T: lo=3/4 hi=1/4, log_S: lo=0/4 hi=1/4, log_L: lo=0/3 hi=0/3}
+cg_maxiter=2000  cg_nonconverged=0  cg_worst_residual=0.000e+00
+```
+
+Against the rule pre-registered before any zonal number existed:
+
+| condition | measured | |
+|---|---|---|
+| pooled lower-clamp `log_T` ≤ 4/9 | 0/1 + 0/4 + 3/4 = **3/9** | ✅ |
+| proximal `log_T` not at lower clamp | **0/1**, free | ✅ |
+
+**Clamp released. PASS.** The proximal zone fits `log_T` 6.585 → **T = 725 m²/day**, inside
+the 58–6,034 m²/day Liu et al. 2002 measured on this fan. The pin below the 58 m²/day floor
+— the strongest evidence against the parameterisation, and the finding that survived the
+2026-08-27 retraction — is gone. Zoning transmissivity did what §4 predicted it would.
+
+Three supporting facts:
+
+- **`cg_nonconverged=0`, worst true residual exactly `0.000e+00`** across a 14 h fit. Given
+  this solver previously produced gradients with a median true residual of 4.955e-02, a
+  clean provenance line is what makes the number publishable.
+- **`PLATEAUED (structural)`** — R² converged by epoch **250** (+0.769) and drifted to +0.760
+  by 1500. The earlier FAILs cannot be attributed to training budget.
+- **R² +0.760 < the old +0.943.** That is the right direction: the retraction records that
+  +0.943 "was bought by saturating parameters against their bounds". A lower in-sample fit
+  with parameters inside physical bounds is the better model.
+
+**Caveat carried forward.** 3 of 4 distal `log_T` remain at the lower clamp and one at the
+upper; `log_S` is at its upper bound in 3 of 4 mid cells. The rule counts only lower-clamp
+hits and 3/9 clears 4/9, but the distal zone is still straining and that belongs in any
+write-up.
+
+### 5.3 SECONDARY RULE: running
+
+§6 reaches the margin (flow vs IDW on held-out wells) only because the clamp released.
+Running: 5 folds, seed 0, `--dump-predictions`, GPU.
+
+**Protocol deviation, declared:** `--epochs 500`, not 1500, justified by the measured
+plateau at epoch 250 (2× margin) and cutting ~70 h to ~35 h. It slightly favours the flow
+arm, since IDW has no epoch budget — so if the margin lands close, re-run at 1500 before
+publishing. `--dump-predictions` also lets the **co-location rate** be verified empirically,
+which is what invalidated the 2026-08-27 verdict (95 of 136 held-out entries at zero
+distance from a training entry).
 
 ## 6. Revised staging
 
-1. ~~Solver performance~~ — done, 1.91×, validated.
-2. **Restore the pumping drivers.** Blocking; nothing below can start.
-3. **Stage-3 `--fit-only`** (~2.25 h) → the pre-registered rule: clamp released iff pooled
-   lower-clamp `log_T` ≤ 4/9 **and** the proximal zone's `log_T` is not at the lower clamp.
-4. **On FAIL — re-parameterise, do not force.** The pinned `log_T = log 10` sits below the
-   58 m²/day floor Liu et al. 2002 measured here; that is evidence against the
-   parameterisation, not against the physics. Candidates: a transmissivity prior from the
-   Kassie et al. 2023 TEM survey (§10 already names it for the mid/distal boundary), or a
-   PhysicsNeMo FNO surrogate trained on the classical solve.
-5. **On PASS — Stage 4 coupling**, then swap `scenario_heads` for the flow model and the
-   viewer becomes a genuine pumping-scenario twin.
+1. ~~Solver performance~~ — done and validated.
+2. ~~Restore the pumping drivers~~ — done; 26.0M kWh rows, 116,768 pumps, zero failures.
+3. ~~**Stage-3 primary rule**~~ — **PASSED** (§5.2). Clamp released.
+4. **Stage-3 secondary rule** — running (§5.3). The margin against IDW.
+5. **On PASS — Stage 4 coupling.** `twin/coupled.py` is already built and tested
+   (§4a): flow → layer heads → driver → VEP → subsidence, with a subsidence loss reaching
+   `log_T` through the implicit adjoint. Warm-start the column from Stage 2, the flow from
+   §5.2, then fine-tune jointly per the spec's staging rule.
+6. **Then the forward twin.** Swap `explorer3d`'s `scenario_heads` multiplier for a
+   `CoupledTwin` run driven by `twin/scenario.PumpingScenario`, and the viewer becomes a
+   genuine on-demand pumping-scenario twin rather than a head-space proxy.
+
+**If the secondary rule FAILs — re-parameterise, do not force.** Candidates unchanged: a
+transmissivity prior from the Kassie et al. 2023 TEM survey (which §10 already names for
+the mid/distal boundary, itself still unjustified), or a PhysicsNeMo FNO surrogate trained
+on the classical solve. Note that the primary rule passing means the *parameterisation* is
+no longer the prime suspect — a secondary FAIL would point at the zoning geometry or the
+head field, not at `log_T`'s bounds.
+
+## 6a. What was built while the gate ran
+
+- `twin/coupled.py` — Stage-4 coupling (see §6.5). 9 tests, including the one that matters:
+  a subsidence-only loss produces non-zero, finite gradients on `log_T`/`log_S`/`log_L`.
+- `twin/scenario.py` — pumping policies rather than drawdown multipliers. The 23 raw
+  `PURPOSE` labels map to six policy classes; **irrigation is 86% of the 457,750 installed
+  HP inside the fan**, so a scenario that does not touch irrigation does not move the fan.
+  Supports per-class factors, zone restriction, and a start date, plus `climatology()` for
+  forcing a run past the end of the record. 12 tests.
 
 ## 7. Environment
 

@@ -218,9 +218,31 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
       ``h[pump_layer]``'s dependence on the *previous* step's ``_ImplicitSolve.apply``
       output) automatically.
     """
-    h0 = h0.to(dtype=torch.float64)
+    # Anchor the device on the PARAMETERS, not on h0. Every forcing tensor reaching this
+    # function is built by a numpy-backed loader (_idw_initial_heads, _ground_elev,
+    # _load_pumping_kwh) and therefore arrives on CPU; fit_flow happens to move them
+    # internally, but the k-fold *evaluation* path passes the originals straight through.
+    # Taking the device from h0 then silently mixed a CPU rollout with CUDA model buffers
+    # and blew up 9.5 h into a gate run. The model's parameters are the authority on where
+    # this computation lives, so everything is moved to them here, once.
+    dev = log_T.device
+    h0 = h0.to(dtype=torch.float64, device=dev)
     A = h0.shape[-1]
-    dev = h0.device
+
+    def _here(x):
+        return None if x is None else x.to(dtype=torch.float64, device=dev)
+
+    recharge = _here(recharge)
+    pumping = _here(pumping)
+    recharge_field = _here(recharge_field)
+    E = _here(E)
+    ground_elev = _here(ground_elev)
+    # These two are learnable during a fit (already on `dev`, so `.to` is a no-op and the
+    # autograd graph is untouched) but are rebuilt as plain CPU scalars from fit["theta"]
+    # during evaluation, where they would otherwise meet CUDA tensors inside
+    # pumping.energy_to_volume.
+    recharge_scale = _here(recharge_scale)
+    log_eta = _here(log_eta)
     T = torch.exp(log_T)
     S = torch.exp(log_S)
     if model.n_layers > 1:
@@ -766,8 +788,12 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
+            # The model may live on CUDA (--device); every tensor entering the rollout and
+            # every index tensor addressing its output has to follow it there.
+            fdev = m.log_T.device
             h0_eval = (h0_fold if h0_fold is not None
                       else torch.zeros(n_layers, n_active, dtype=torch.float64))
+            h0_eval = h0_eval.to(dtype=torch.float64, device=fdev)
             if (param_mode in ("homogeneous", "zonal")
                     and (E is not None or recharge_field is not None)):
                 h = _predict_homogeneous(m, fit, h0_eval, n_steps, recharge=recharge,
@@ -776,8 +802,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          recharge_layer=recharge_layer, pump_layer=pump_layer)
             else:
                 h = m(h0_eval, recharge,
-                     torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64), n_steps)
-            p = h[obs_layer[held], obs_idx[held], 1:].numpy()
+                     torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
+                                 device=fdev), n_steps)
+            p = h[obs_layer[held].to(fdev), obs_idx[held].to(fdev), 1:].cpu().numpy()
         src = xy[obs_idx[keep].numpy()]
         tgt = xy[obs_idx[held].numpy()]
         idw = idw_interp(tgt, src, obs_h[keep].numpy())
