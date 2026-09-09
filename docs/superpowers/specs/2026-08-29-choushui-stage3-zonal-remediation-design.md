@@ -235,24 +235,107 @@ The same commit added run provenance (`cg_maxiter`, `git_commit`, `cg_nonconverg
 solver settings and gradient soundness, and `6f3c8bb` moved the in-sample clamp report ahead
 of the k-fold gate so a run killed during the folds still yields the primary answer.
 
-### 7.2 Verdict — NOT REACHED
+### 7.2 Verdict — REACHED 2026-09-09: primary rule **PASS**, secondary rule **FAIL**
 
-**Deliverable 5 is outstanding. No zonal gate has completed, and no verdict exists.**
+Deliverable 5 is complete. Both rules have been evaluated on seed 0 with sound gradients.
 
-Measured cost is far above §8's estimate: in-sample fit **4.3 h**, fold 1 of 5 **12,733 s
-(3.54 h)** against ~1,125 s/fold for homogeneous — **11.3×**, not the 4-5× the iteration
-counts alone suggested. Seed 0 projects to ~24 h, the five-seed sweep to ~120 h, and the two
-§4.2 boundary runs to ~48 h: **~7 days** against the 14 h budgeted. Seed 0 was stopped during
-fold 2 on that basis. The cost is the pinned proximal leakance needing ~950-1250 CG
-iterations per solve where homogeneous needs 237 — it is the price of correct gradients at
-these settings, not waste.
+#### Primary rule: PASS — the clamp released
 
-**Cheapest route to the verdict, when this resumes:** §6's primary rule is computed from the
-in-sample fit, so `--fit-only` answers it in **~4.3 h** rather than ~24 h. A still-pinned
-clamp is FAIL, and §6 then forbids the remaining ~144 h outright. The folds only measure the
-*secondary* rule, which §6 reaches only if the clamp released. §10's open question about CG
-tolerance (`tol=1e-8` against a worst true residual of 2.9e-07) is the obvious lever if the
-full sweep is wanted.
+`--param-mode zonal --fit-only --epochs 1500 --device cuda`, 14.3 h on a Quadro RTX 6000:
+
+| condition (pre-registered) | measured | |
+|---|---|---|
+| pooled lower-clamp `log_T` ≤ 4/9 | proximal 0/1 + mid 0/4 + distal 3/4 = **3/9** | PASS |
+| proximal `log_T` not at lower clamp | **0/1** — free | PASS |
+
+`log_T_proximal` = 6.585 → **T = 725 m²/day**, inside the 58–6,034 m²/day of Liu et al.
+2002. The pin at T = 10 below the 58 m²/day floor — the finding that survived the
+2026-08-27 retraction, and the reason this remediation exists — **is gone. Zoning the
+transmissivity worked.** In-sample R² +0.760, `cg_nonconverged=0`, trajectory
+`PLATEAUED (structural)` from epoch 250. Reproduced independently at 500 epochs
+(R² +0.758, identical clamp pattern), so the verdict is not an artefact of the budget.
+
+#### Secondary rule: FAIL — the flow model does not beat IDW
+
+5 folds, seed 0, 500 epochs, 24.6 h. **Pooled flow R² +0.466 vs IDW +0.702, margin −0.236.**
+IDW wins in all five folds:
+
+| fold | n_held | flow | IDW | margin |
+|---|---|---|---|---|
+| 0 | 34 | +0.768 | +0.867 | −0.099 |
+| 1 | 34 | +0.252 | +0.846 | −0.594 |
+| 2 | 26 | +0.230 | +0.853 | −0.623 |
+| 3 | 31 | +0.422 | +0.443 | −0.021 |
+| 4 | 33 | +0.437 | +0.746 | −0.309 |
+
+**Why this FAIL stands where the previous three did not.** 2026-08-26 was under-trained;
+2026-08-27 was retracted for co-location leakage; the grouped-fold re-run lost by 0.033,
+which §7 itself called "undecided, not a kill". This one has none of those escapes:
+
+- **Leakage is gone and the verdict does not depend on it.** Grouped folds report a 158
+  entries / 82 physical sites split. 7 held-out entries still sit 0.23–0.28 m from a
+  training entry (the reported `colocation_rate` counts *exact* zeros, so read it as
+  "no exact duplicates", not "no near-duplicates"). Removing them changes nothing:
+
+  | subset | n | flow | IDW | margin |
+  |---|---|---|---|---|
+  | all | 158 | +0.466 | +0.702 | −0.236 |
+  | drop sub-metre | 151 | +0.468 | +0.699 | −0.231 |
+  | drop < 1 km | 138 | +0.436 | +0.681 | −0.245 |
+
+  Stripping near-duplicates makes the margin *worse*, so IDW is not winning by copying.
+- **Gradients are sound.** `cg_nonconverged = 0`, worst true relative residual
+  `0.000e+00`, across the entire 24.6 h gate.
+- **Not under-trained.** In-sample R² plateaus at epoch 250.
+- **−0.236 is 7× the −0.033 previously judged too close to call.** Not marginal.
+
+**GATE: FAIL. Plan C (Stage 4 coupling) does not start.** Per §6: stop and escalate.
+
+### 7.3 Where the constraint moved — read this before re-parameterising
+
+The remediation succeeded at its stated target and the model still lost, so the binding
+constraint is elsewhere. Three diagnostics from the same run point the same way.
+
+**1. `log_eta` is pinned at its LOWER clamp, unanimously** — in-sample and in all five
+folds (`lo=1/1` everywhere). Wire-to-water efficiency floored at η = 0.05, against a
+`BOUNDS` ceiling of 0.9 and a physical range for irrigation pumps of roughly 0.4–0.7.
+The fit is using η as an escape valve and hitting the stop. What it is escaping:
+
+| η | implied abstraction (20 m lift) |
+|---|---|
+| 0.05 (the pin) | 0.83 ×10⁹ m³/yr |
+| 0.45 (physical) | **7.43 ×10⁹ m³/yr** |
+| 0.70 | 11.6 ×10⁹ m³/yr |
+
+against published Choushui abstraction of ~1.5–2.0 ×10⁹ m³/yr. At any physically
+defensible efficiency the electricity implies **roughly 4× too much water**. 9.88 TWh
+entered the fan over 2012–2022; the model cannot reconcile that with the observed heads
+except by flooring the conversion.
+
+**2. The failure is concentrated in the shallow, forcing-dominated layers.**
+
+| aquifer | n | flow | IDW |
+|---|---|---|---|
+| 1 (~53 m) | 37 | +0.319 | +0.691 |
+| 2 (~119 m) | 79 | +0.514 | +0.679 |
+| 3 (~210 m) | 32 | +0.812 | +0.825 |
+| 4 (~282 m) | 10 | +0.854 | +0.895 |
+
+In the deep aquifers, where pumping and recharge matter least, the flow model is level
+with IDW. It loses in layers 1–2, which is where the forcing enters.
+
+**3. Where IDW must genuinely extrapolate, the gap nearly closes.** Restricted to the 39
+entries more than 5 km from any training well, flow +0.430 vs IDW +0.496 — a margin of
+**−0.065** against −0.236 pooled. The physics is doing what physics is for; it is being
+beaten on local interpolation, not on extrapolation.
+
+**Conclusion for the next iteration.** Do not re-zone. The transmissivity field is no
+longer the problem — §7.2 proves that. The suspect is the **energy→volume conversion in
+`twin/pumping.py`**: a single global η over 116,768 heterogeneous meters, a lift floored
+at `MIN_LIFT_M = 2.0`, and an assumption that every metered kWh lifts groundwater. Any of
+those could carry the 4× discrepancy. Candidate remedies, cheapest first: per-`PURPOSE`
+efficiency classes (the census supports it, and irrigation is 86% of installed HP); an
+active/decommissioned filter on the census; and a lift model that does not floor at 2 m.
 
 ## 8. Cost
 
@@ -271,8 +354,12 @@ estimate from epochs. Fold times swing 12.6–33.4 min at identical settings.
 2. `--param-mode zonal` in `calibrate_flow.py` + tests
 3. Per-zone `bounds_hit` reporting, in stdout and in `stage3_flow.csv`
 4. `--zone-boundaries` CLI flag for the sensitivity check
-5. Gate results for seeds 0–4 and both sensitivity boundaries
-6. Spec §7 updated with the verdict, stated plainly, pass or fail
+5. ~~Gate results for seeds 0–4 and both sensitivity boundaries~~ — **seed 0 done**
+   (§7.2). Seeds 1–4 and the §4.2 boundary runs are **not worth spending**: §6 stops the
+   sub-project on a FAIL, and at −0.236 the margin is 7× the seed spread that motivated a
+   multi-seed pass in the first place. A seed sweep answers "is −0.033 noise?", which is
+   no longer the question being asked.
+6. ~~Spec §7 updated with the verdict, stated plainly, pass or fail~~ — §7.2, §7.3.
 7. SDD ledger updated
 
 ## 10. Open questions carried forward

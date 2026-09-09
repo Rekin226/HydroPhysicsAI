@@ -1,7 +1,8 @@
 # Twin audit, performance revision, and the route to the 3D scenario viewer
 
-**Date:** 2026-09-05, revised 2026-09-07 · **Status:** Stage-3 primary rule **PASSED**; the
-k-fold secondary rule is running
+**Date:** 2026-09-05, revised 2026-09-09 · **Status:** Stage-3 primary rule **PASSED**,
+secondary rule **FAILED**. Stage 4 does not start; the constraint has moved to the
+pumping forcing.
 
 > **Revision note (2026-09-07).** §1 and §2 below were written before the real cause was
 > found, and their headline numbers are wrong in a way that matters. The solve was not
@@ -248,38 +249,56 @@ upper; `log_S` is at its upper bound in 3 of 4 mid cells. The rule counts only l
 hits and 3/9 clears 4/9, but the distal zone is still straining and that belongs in any
 write-up.
 
-### 5.3 SECONDARY RULE: running
+### 5.3 SECONDARY RULE: **FAIL** (2026-09-09)
 
-§6 reaches the margin (flow vs IDW on held-out wells) only because the clamp released.
-Running: 5 folds, seed 0, `--dump-predictions`, GPU.
+5 folds, seed 0, 500 epochs, 24.6 h. **Pooled flow R² +0.466 vs IDW +0.702 → margin
+−0.236.** IDW wins every fold. `cg_nonconverged = 0` throughout.
 
-**Protocol deviation, declared:** `--epochs 500`, not 1500, justified by the measured
-plateau at epoch 250 (2× margin) and cutting ~70 h to ~35 h. It slightly favours the flow
-arm, since IDW has no epoch budget — so if the margin lands close, re-run at 1500 before
-publishing. `--dump-predictions` also lets the **co-location rate** be verified empirically,
-which is what invalidated the 2026-08-27 verdict (95 of 136 held-out entries at zero
-distance from a training entry).
+The full verdict, the leakage-robustness table, and the diagnosis live in the canonical
+place — `2026-08-29-choushui-stage3-zonal-remediation-design.md` §7.2 and §7.3. The short
+version:
+
+- The FAIL is **robust to every leakage cut**. Stripping the 7 sub-metre near-duplicates,
+  or everything within 1 km, moves the margin to −0.231 / −0.245 — it gets slightly
+  *worse*, so IDW is not winning by copying. This is the failure mode that invalidated the
+  2026-08-27 verdict, and it is genuinely absent here.
+- **The epoch deviation is moot.** −0.236 is 7× the −0.033 previously called too close to
+  judge; no re-run at 1500 epochs closes that. The declared deviation in the previous
+  revision of this section needs no follow-up.
+- **The constraint moved.** `log_eta` pins at its lower clamp (η = 0.05) unanimously, and
+  at a physical η ≈ 0.45 the metered electricity implies ~7.4 ×10⁹ m³/yr against a
+  published ~1.5–2.0. The flow model loses in the shallow forcing-dominated aquifers
+  (layer 1: +0.319 vs +0.691) and draws level in the deep ones (layer 4: +0.854 vs
+  +0.895). Beyond 5 km from any training well — real extrapolation, IDW's weak ground —
+  the margin narrows to −0.065.
 
 ## 6. Revised staging
 
 1. ~~Solver performance~~ — done and validated.
-2. ~~Restore the pumping drivers~~ — done; 26.0M kWh rows, 116,768 pumps, zero failures.
-3. ~~**Stage-3 primary rule**~~ — **PASSED** (§5.2). Clamp released.
-4. **Stage-3 secondary rule** — running (§5.3). The margin against IDW.
-5. **On PASS — Stage 4 coupling.** `twin/coupled.py` is already built and tested
-   (§4a): flow → layer heads → driver → VEP → subsidence, with a subsidence loss reaching
-   `log_T` through the implicit adjoint. Warm-start the column from Stage 2, the flow from
-   §5.2, then fine-tune jointly per the spec's staging rule.
-6. **Then the forward twin.** Swap `explorer3d`'s `scenario_heads` multiplier for a
-   `CoupledTwin` run driven by `twin/scenario.PumpingScenario`, and the viewer becomes a
-   genuine on-demand pumping-scenario twin rather than a head-space proxy.
+2. ~~Restore the pumping drivers~~ — done; 26.0M kWh rows, 116,768 pumps.
+3. ~~**Stage-3 primary rule**~~ — **PASSED**. Clamp released.
+4. ~~**Stage-3 secondary rule**~~ — **FAILED**, −0.236, robust to every leakage cut.
+5. **Stage 4 coupling does NOT start.** §6 of the remediation spec says stop and escalate,
+   and that is what a failed gate means. `twin/coupled.py` and `twin/scenario.py` are built
+   and tested and will be waiting; they are not the blocked thing.
+6. **Next: fix the pumping forcing, not the aquifer parameterisation.** The remediation
+   fixed `log_T` and the model still lost, and three independent diagnostics (§7.3 of the
+   remediation spec) put the constraint on the energy→volume conversion. Cheapest first:
+   - **per-`PURPOSE` efficiency classes** — one global η over 116,768 heterogeneous meters
+     is the least defensible part of the model, and `twin/scenario.py` already implements
+     the class mapping (irrigation is 86% of installed HP).
+   - **an active/decommissioned filter** on the census — `DisuseDate` exists in the well
+     metadata; the pump census needs the equivalent check.
+   - **a lift model that does not floor at `MIN_LIFT_M = 2.0`**.
 
-**If the secondary rule FAILs — re-parameterise, do not force.** Candidates unchanged: a
-transmissivity prior from the Kassie et al. 2023 TEM survey (which §10 already names for
-the mid/distal boundary, itself still unjustified), or a PhysicsNeMo FNO surrogate trained
-on the classical solve. Note that the primary rule passing means the *parameterisation* is
-no longer the prime suspect — a secondary FAIL would point at the zoning geometry or the
-head field, not at `log_T`'s bounds.
+   Only if the 4× energy discrepancy survives all three is the aquifer model the suspect
+   again — and at that point the honest move is a different forward model (a PhysicsNeMo
+   FNO surrogate trained on MODFLOW, say), not another zoning scheme.
+
+**What the FAIL does not mean.** It is a verdict on *this* pumping-driven four-layer flow
+model as a head predictor at unseen wells. Stage 2's compaction physics still passes, and
+the head→subsidence chain in `explorer3d.py` still scores R² +0.242 against 799 independent
+leveling benchmarks. The twin's subsidence half is standing; its abstraction half is not.
 
 ## 6a. What was built while the gate ran
 
