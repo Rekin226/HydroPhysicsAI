@@ -337,6 +337,46 @@ those could carry the 4× discrepancy. Candidate remedies, cheapest first: per-`
 efficiency classes (the census supports it, and irrigation is 86% of installed HP); an
 active/decommissioned filter on the census; and a lift model that does not floor at 2 m.
 
+### 7.4 Root cause found and fixed (2026-09-09) — it was the lift, and it was worse than 4×
+
+The 4× above assumed a 20 m lift. **Measured**, static lift on this fan is **median
+6.65 m** — ground elevation is median 9.1 m and heads sit near the surface. 20.4% of
+cell-months fall below `MIN_LIFT_M = 2.0`, and the 1st percentile is **−14.8 m**:
+artesian, where the old code clamped to the floor and therefore implied the *largest*
+volumes anywhere on the fan. Exactly backwards — an artesian cell needs the least work.
+
+With the real lift the overestimate is **12–16×** (~25 ×10⁹ m³/yr at η = 0.45 against a
+published ~1.5–2.0 ×10⁹). And even at the pinned η = 0.05 the model abstracts 2.78 ×10⁹,
+still above the published range: efficiency was floored **and still over-pumping**. That
+is why the clamp was unanimous rather than merely common.
+
+**The defect.** `energy_to_volume` divided energy by the **static lift** where the physics
+requires the **total dynamic head** — static lift plus well drawdown, entrance and
+friction losses, and the discharge head the distribution system needs. Where static lift
+is metres, omitting the rest is an order-of-magnitude error, and it lands on the one
+parameter with any freedom to absorb it.
+
+**The fix.** `energy_to_volume` takes an optional `head_extra`; calibration learns one
+bounded scalar `log_head_extra` (1–200 m), threaded exactly as `log_eta` is, and recorded
+in the run's `theta` as `head_extra_m`. Passing nothing reproduces the pre-2026-09-09
+behaviour bit-for-bit, so every recorded result still replays. Median cell **8.2×**,
+artesian cell **16.7×**. Tests: `tests/test_twin_pumping_head.py`, 8 cases.
+
+**Evidence it addresses the right thing.** A 12-epoch zonal fit gives `eta = 0.293` with
+`bounds_hit[global] = {log_eta: lo=0/1, log_head_extra: lo=0/1}` — *neither clamped* —
+against `log_eta: lo=1/1` in the in-sample fit and all five folds of the failed gate. The
+parameter the model was abusing is free again, and it settled on an ordinary wire-to-water
+efficiency. `head_extra` learns toward ~33 m; ~48 m at η = 0.30 reconciles the published
+abstraction, which is unremarkable once drawdown and 20–40 m of sprinkler discharge head
+are counted. `n_params` 26 → 27.
+
+**Correction to the ordering above.** "Cheapest first" put per-`PURPOSE` efficiency
+classes ahead of the lift model. That was wrong: more efficiency classes cannot repair a
+12× error while η sits on its floor. The lift model was the dominant term and the other
+two are refinements. **Re-run the gate before any further parameterisation work** — the
+FAIL was measured with a forcing now known to be wrong by an order of magnitude, so its
+−0.236 margin says nothing yet about the aquifer model.
+
 ## 8. Cost
 
 - Implementation: one focused session.

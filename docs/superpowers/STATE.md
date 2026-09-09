@@ -38,33 +38,49 @@ Session narrative and corrections: `specs/2026-09-05-twin-performance-and-3d-rev
 
 ## 2. The one thing to do next
 
-**Fix the pumping energy→volume forcing in `twin/pumping.py`. Do not re-zone.**
+**Re-run the Stage-3 gate with the total-dynamic-head fix (2026-09-09, implemented).**
 
-The zonal remediation hit its stated target — `log_T` is now physical — and the model
-still lost, so the aquifer parameterisation is no longer the suspect. Three diagnostics
-from the same run agree:
+The FAIL localised to the forcing, and the forcing had a specific physical defect:
+`energy_to_volume` divided pump energy by the **static lift** alone. On this flat coastal
+fan static lift is **median 6.65 m** (ground elevation median 9.1 m, heads near surface),
+20% of cell-months fall below `MIN_LIFT_M = 2.0`, and the 1st percentile is **-14.8 m** --
+artesian, where the old code clamped to the floor and therefore implied the *largest*
+volumes on the fan, exactly backwards.
 
-1. **`log_eta` pins at its LOWER clamp (η = 0.05) unanimously**, in-sample and in all five
-   folds. At a physical η ≈ 0.45 the metered electricity implies **~7.4 ×10⁹ m³/yr against
-   a published ~1.5–2.0 ×10⁹** — roughly 4× too much water. The fit uses efficiency as an
-   escape valve and hits the stop.
-2. The failure is **layer-stratified**: layer 1 (~53 m, forcing-dominated) flow +0.319 vs
-   IDW +0.691; layer 4 (~282 m) +0.854 vs +0.895. It fails where the forcing enters.
-3. Beyond 5 km from any training well — real extrapolation, IDW's weakest ground — the
-   margin narrows to −0.065. The physics is losing on *interpolation*, not on physics.
+Because volume goes as 1/head, that implied **~25e9 m3/yr at a physical eta = 0.45 against
+a published ~1.5-2.0e9** -- a 12-16x overestimate, not the 4x first estimated from an
+assumed 20 m lift. Even at the pinned eta = 0.05 the model still abstracted 2.78e9, above
+the published range: efficiency was floored *and still over-pumping*, which is why the
+clamp was unanimous across every fold.
 
-Candidate fixes, cheapest first:
+**Fixed:** a pump works against the **total dynamic head** -- static lift plus well
+drawdown, friction, and the distribution system's discharge head. `energy_to_volume` now
+takes `head_extra`, and calibration learns one bounded scalar `log_head_extra` (1-200 m)
+threaded exactly like `log_eta`. Omitting the argument reproduces the old behaviour
+bit-for-bit, so recorded results still replay.
 
-- **Per-`PURPOSE` efficiency classes.** One global η over 116,768 heterogeneous meters is
-  the least defensible part of the model. `twin/scenario.py` already implements the class
-  mapping (irrigation = 86% of the 457,750 installed HP inside the fan).
-- **An active/decommissioned filter on the census.** Well metadata carries `DisuseDate`;
-  the pump census needs an equivalent check. Dead meters inflate the forcing.
-- **A lift model that does not floor at `MIN_LIFT_M = 2.0`.**
+Effect at the median cell **8.2x**, at an artesian cell **16.7x**. And the parameter it
+was distorting has been released: after 12 epochs `eta = 0.293` with
+`bounds_hit[global] = {log_eta: lo=0/1, log_head_extra: lo=0/1}` -- **neither clamped**,
+against `log_eta: lo=1/1` in every fold of the failed gate. `head_extra` learns toward
+~33 m; ~48 m at eta = 0.30 reconciles the published abstraction exactly.
 
-Only if the 4× discrepancy survives all three is the aquifer model the suspect again — and
-then the honest move is a different forward model (a PhysicsNeMo FNO surrogate trained on
-MODFLOW), not another zoning scheme.
+So the next action is simply to re-run the gate (§5) and see whether the margin moves.
+`n_params` is now 27.
+
+**Note on ordering, corrected.** An earlier version of this file listed per-`PURPOSE`
+efficiency classes first. That was wrong: more efficiency classes cannot repair a 12x
+error when eta is already pinned at its floor. The lift model was the dominant term. The
+remaining two candidates are now genuine refinements rather than fixes:
+
+- **per-`PURPOSE` efficiency classes** — `twin/scenario.py` has the mapping already;
+  irrigation is 86% of installed HP.
+- **an active/decommissioned census filter** — well metadata carries `DisuseDate`; the
+  pump census needs an equivalent. Dead meters inflate the forcing.
+
+Only if the gate still fails with a physical head and a free efficiency is the aquifer
+model the suspect again -- and then the honest move is a different forward model (a
+PhysicsNeMo FNO surrogate trained on MODFLOW), not another zoning scheme.
 
 ## 3. Remaining gaps, beyond the immediate blocker
 

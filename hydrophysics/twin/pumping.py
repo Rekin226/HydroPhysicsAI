@@ -95,11 +95,32 @@ def aggregate_pumps(pumps: pd.DataFrame, kwh: pd.DataFrame, grid,
 
 
 def energy_to_volume(E: torch.Tensor, lift: torch.Tensor,
-                     log_eta: torch.Tensor) -> torch.Tensor:
-    """Convert period energy (kWh) and lift (m) to pumped volume (m3) for the period."""
+                     log_eta: torch.Tensor,
+                     head_extra: torch.Tensor | None = None) -> torch.Tensor:
+    """Convert period energy (kWh) and head (m) to pumped volume (m3) for the period.
+
+    ``lift`` is the *static* lift, ground elevation minus the aquifer head. ``head_extra``
+    is everything else the pump works against -- well drawdown, entrance and friction
+    losses, and the discharge head the distribution system needs -- so the denominator is
+    the **total dynamic head**, which is what a pump's energy consumption actually
+    measures. Omitting it (``head_extra=None``, the pre-2026-09-09 behaviour) is retained
+    only so old results reproduce.
+
+    Why it matters here, in numbers. On the Choushui fan ground elevation is median 9.1 m
+    and heads sit near the surface, so static lift is **median 6.65 m** and 20% of
+    cell-months fall below ``MIN_LIFT_M``; the 1st percentile is -14.8 m (artesian). Since
+    volume goes as 1/head, treating 6.65 m as the whole head implies **~25e9 m3/yr at a
+    physical eta = 0.45, against a published Choushui abstraction of ~1.5-2.0e9** -- a
+    12-16x overestimate. That is what drove the Stage-3 gate's ``log_eta`` onto its lower
+    clamp in every fold: efficiency was the only lever available, and it was being used as
+    a proxy for a missing head term. An extra 48 m at eta = 0.30 (total dynamic head
+    ~55 m) reconciles the published figure, which is an ordinary number for an irrigation
+    well once drawdown and 20-40 m of sprinkler discharge head are counted.
+    """
     E = E.to(dtype=torch.float64)
     lift = lift.to(dtype=torch.float64)
     log_eta = log_eta.to(dtype=torch.float64)
     eta = torch.exp(log_eta)
-    safe_lift = torch.clamp(lift, min=MIN_LIFT_M)
-    return eta * E * J_PER_KWH / (RHO_G * safe_lift)
+    head = lift if head_extra is None else lift + head_extra.to(dtype=torch.float64)
+    safe_head = torch.clamp(head, min=MIN_LIFT_M)
+    return eta * E * J_PER_KWH / (RHO_G * safe_head)

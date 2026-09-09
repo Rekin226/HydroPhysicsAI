@@ -96,6 +96,13 @@ BOUNDS = {
     "log_S": (math.log(1e-6), math.log(0.3)),        # -
     "log_L": (math.log(1e-8), math.log(1e-1)),       # 1/day
     "log_eta": (math.log(0.05), math.log(0.9)),      # wire-to-water efficiency, -
+    # Total dynamic head = static lift + this. Covers well drawdown, entrance/friction
+    # losses and the distribution system's discharge head -- everything the pump works
+    # against besides raising water to ground level. Bounded 1-200 m: an irrigation well
+    # with no drawdown and gravity delivery sits near the floor, and 200 m is generous for
+    # a deep well on sprinklers. See pumping.energy_to_volume for why omitting this term
+    # cost the Stage-3 gate a factor of ~12 and pinned log_eta on its lower clamp.
+    "log_head_extra": (math.log(1.0), math.log(200.0)),   # m
 }
 
 
@@ -182,7 +189,8 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              recharge_field: torch.Tensor | None = None,
              recharge_scale: torch.Tensor | None = None, recharge_layer: int = 0,
              E: torch.Tensor | None = None, log_eta: torch.Tensor | None = None,
-             ground_elev: torch.Tensor | None = None, pump_layer: int = 1) -> torch.Tensor:
+             ground_elev: torch.Tensor | None = None, pump_layer: int = 1,
+             log_head_extra: torch.Tensor | None = None) -> torch.Tensor:
     """The same backward-Euler rollout as ``FlowModel.forward``, but taking log-parameter
     tensors as arguments instead of reading ``model``'s own registered nn.Parameters, and
     (fix round 1) supporting a *dynamic* forcing mode alongside the original static one.
@@ -243,6 +251,7 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     # pumping.energy_to_volume.
     recharge_scale = _here(recharge_scale)
     log_eta = _here(log_eta)
+    log_head_extra = _here(log_head_extra)
     T = torch.exp(log_T)
     S = torch.exp(log_S)
     if model.n_layers > 1:
@@ -269,8 +278,15 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
                 + torch.sigmoid(recharge_scale) * recharge_field[:, t] * model.area
             )
         if E is not None:
-            lift = torch.clamp(ground_elev - h[pump_layer], min=pumping_mod.MIN_LIFT_M)
-            vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta)   # m3 for the month
+            # Static lift only; energy_to_volume adds the rest of the total dynamic head.
+            # It is NOT clamped here any more -- the clamp belongs after head_extra is
+            # added, or an artesian cell (head above ground, 20% of cell-months here) gets
+            # floored to MIN_LIFT_M and implies a near-unbounded volume.
+            lift = ground_elev - h[pump_layer]
+            head_extra = (torch.exp(log_head_extra)
+                          if log_head_extra is not None else None)
+            vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta,
+                                               head_extra=head_extra)  # m3 for the month
             rate = vol / model.dt                                        # m3/day
             layer_q[pump_layer] = layer_q[pump_layer] - rate
         q = torch.stack(layer_q, dim=0)
@@ -303,6 +319,8 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
             torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
+        theta["log_head_extra"] = nn.Parameter(
+            torch.tensor(float(np.log(40.0)), dtype=torch.float64, device=dev))
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -359,6 +377,8 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
             torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
+        theta["log_head_extra"] = nn.Parameter(
+            torch.tensor(float(np.log(40.0)), dtype=torch.float64, device=dev))
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -564,6 +584,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             recharge_layer=recharge_layer,
             E=E if use_pumping else None,
             log_eta=theta.get("log_eta"),
+            log_head_extra=theta.get("log_head_extra"),
             ground_elev=ground_elev,
             pump_layer=pump_layer,
         )
@@ -612,6 +633,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                         else v.detach().clone().squeeze(-1).cpu().numpy().tolist())
     if "log_eta" in theta_out:
         theta_out["eta"] = float(np.exp(theta_out["log_eta"]))
+    if "log_head_extra" in theta_out:
+        theta_out["head_extra_m"] = float(np.exp(theta_out["log_head_extra"]))
     if "recharge_frac_logit" in theta_out:
         theta_out["recharge_frac"] = float(1.0 / (1.0 + np.exp(-theta_out["recharge_frac_logit"])))
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
@@ -642,6 +665,8 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
         theta = fit.get("theta", {})
         log_eta = (torch.tensor(theta["log_eta"], dtype=torch.float64)
                    if E is not None and "log_eta" in theta else None)
+        log_head_extra = (torch.tensor(theta["log_head_extra"], dtype=torch.float64)
+                          if E is not None and "log_head_extra" in theta else None)
         rfrac = (torch.tensor(theta["recharge_frac_logit"], dtype=torch.float64)
                  if recharge_field is not None and "recharge_frac_logit" in theta else None)
         return _rollout(model, log_T, log_S, log_L, h0, n_steps,
@@ -649,6 +674,7 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                         recharge_field=recharge_field, recharge_scale=rfrac,
                         recharge_layer=recharge_layer,
                         E=E if log_eta is not None else None, log_eta=log_eta,
+                        log_head_extra=log_head_extra,
                         ground_elev=ground_elev, pump_layer=pump_layer)
 
 
