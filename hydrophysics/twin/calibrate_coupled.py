@@ -229,15 +229,15 @@ def _r2(p: np.ndarray, o: np.ndarray, m: np.ndarray) -> float:
 
 
 def loso(config: str, H, OBS, M, Z, epochs, lr, device) -> float:
-    preds = np.zeros_like(OBS)
+    preds = torch.zeros_like(OBS)                 # on OBS's device; numpy only at the end
     n = H.shape[0]
     for held in range(n):
         keep = [i for i in range(n) if i != held]
         model = _make(config, device)
         _fit(model, H[keep], OBS[keep], M[keep], Z[keep] if Z is not None else None, epochs, lr)
         with torch.no_grad():
-            preds[held] = _predict(model, H[held:held + 1], Z[held:held + 1]).cpu().numpy()[0]
-    return _r2(preds, OBS.cpu().numpy(), M.cpu().numpy().astype(bool))
+            preds[held] = _predict(model, H[held:held + 1], Z[held:held + 1])[0]
+    return _r2(preds.cpu().numpy(), OBS.cpu().numpy(), M.cpu().numpy().astype(bool))
 
 
 def column_json(model: nn.Module) -> dict:

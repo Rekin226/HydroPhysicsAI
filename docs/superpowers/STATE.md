@@ -1,6 +1,6 @@
 # Project state — where to continue
 
-**Last updated:** 2026-09-15 (23:30) · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-17 · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -228,11 +228,19 @@ flow. Only after those is a different forward model the honest move.
    | `--pump-split` | +0.867 | 75 % of abstraction from layer 1; recharge fraction 0.85 |
    | `--l-min 1e-4` | +0.876 | leakance at the new floor in two mid interfaces |
    | `--return-flow` | **+0.884** | return fraction 0.69 (near its 0.7 cap); recharge fraction 0.21 |
-   | all three | running | |
+   | all three | +0.884 (300 epochs), +0.887 at 500 | gated: **FAIL, 5-fold +0.632 vs IDW +0.702** (2026-09-17, `stage3_all_gate/`) |
 
-   Irrigation return flow is the first stress-placement change that beats the physical
-   reference in sample, and it wants to sit at its cap, so the cap (0.7) is itself a
-   claim to revisit. Whichever wins is gated next by the queue.
+   So a physical pumping conversion fits nearly as well as the free fit in sample
+   (+0.887 vs +0.906) under every stress placement tried, and **fails the held-out-well
+   gate under every one of them** (+0.626 fixed, +0.632 with split + floor + return).
+   The free fit that switches the stress off remains the only configuration that
+   generalises across wells. The reading is that cell-scale pumping hot spots do not
+   transfer to wells the fit never saw, so a model that damps them predicts held-out
+   heads better than one that carries them. This is where the twin stands: heads and
+   subsidence gated, pumping sensitivity not. The next honest steps are a coarser
+   placement of the stress (smoothing the census over its billing radius, or a learned
+   spread kernel) and a gate that scores the *response to pumping* directly, e.g.
+   held-out years rather than held-out wells.
 4. **Zone boundary and grid convergence.** The mid/distal boundary at 182 km has no
    independent justification (spec §10). The `--dx 500` check can now be made
    like-for-like with `--wells-from <1 km run>/stage3_wells.csv`, but has not been run.

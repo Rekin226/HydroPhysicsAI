@@ -469,8 +469,12 @@ k-fold gate of this configuration (`stage3_fixed_eta_gate/`, 2026-09-15) **FAILS
 vs IDW +0.702, margin −0.076, against +0.757 for the free fit. A physical stress placed
 where the model currently places it (all in layer 2, leakage switched off) generalises
 worse than no stress. The free fit therefore remains the gated parameter set, with its
-caveat, and the stress-placement candidates are being tested with the conversion held
-physical (`diag_split`, `diag_lmin`, `diag_return`, `diag_all`). Candidate refinements after that:
+caveat. The stress-placement candidates were tested with the conversion held physical
+(fit-only, 300 epochs): pump-layer split +0.867, leakance floor +0.876, irrigation
+return flow +0.884, all three +0.884. The last was gated (`stage3_all_gate/`,
+2026-09-17): in-sample +0.887, **5-fold +0.632 vs IDW +0.702, FAIL**. Every physical
+stress placement tried generalises worse than the free fit; see STATE.md §3 for the
+reading and the next steps. Candidate refinements after that:
 pump→layer split by well depth, a leakance floor, irrigation return flow.
 
 **Next gate.** Zonal, 500 epochs, 5 folds, `--boundaries coast-apex --meter-filter
