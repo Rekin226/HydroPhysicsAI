@@ -36,6 +36,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from .boundaries import COAST_HEAD_M
 from .grid import FanGrid
 
 _CG_TOL = 1e-8
@@ -301,7 +302,7 @@ class FlowModel(nn.Module):
     """
 
     def __init__(self, grid: FanGrid, n_layers: int = 4, dt_days: float = 30.0,
-                 device=None):
+                 device=None, boundaries=None):
         super().__init__()
         self.grid = grid
         self.n_layers = int(n_layers)
@@ -318,8 +319,85 @@ class FlowModel(nn.Module):
             torch.zeros(max(self.n_layers - 1, 1), A, device=device, dtype=_MODEL_DTYPE)
             + float(np.log(1e-4))                                       # 1/day
         )
+        # Open boundaries (2026-09-11, ``boundaries.py``): general-head cells on the coast
+        # and at the apex. ``boundaries=None`` keeps the closed basin every result before
+        # that date was computed with, bit for bit -- the boundary term is then absent
+        # from the operator, the RHS and the adjoint's parameter tuple alike.
+        self.boundaries = boundaries
+        if boundaries is not None:
+            dev = device
+            self.register_buffer("coast_idx", torch.as_tensor(
+                boundaries.coast_idx, dtype=torch.long, device=dev))
+            self.register_buffer("coast_faces", torch.as_tensor(
+                boundaries.coast_faces, dtype=_MODEL_DTYPE, device=dev))
+            self.register_buffer("apex_idx", torch.as_tensor(
+                boundaries.apex_idx, dtype=torch.long, device=dev))
+            self.register_buffer("apex_faces", torch.as_tensor(
+                boundaries.apex_faces, dtype=_MODEL_DTYPE, device=dev))
+            # Prescribed apex heads, (n_layers, n_apex); set from the initial head field
+            # by ``set_apex_heads`` before the first solve. Zeros until then, which a
+            # caller that forgets will notice as a coast-like sink at the mountain front.
+            self.register_buffer("apex_h", torch.zeros(
+                self.n_layers, boundaries.n_apex, device=dev, dtype=_MODEL_DTYPE))
+            # Conductance C (m2/day) per exposed face: flux = C * faces * (h_b - h). A
+            # Dirichlet face at distance dx/2 from the cell centre would be C = 2T, so the
+            # init of 100 m2/day is "open, but not pinned" against T ~ 500 at start.
+            self.log_C_coast = nn.Parameter(torch.full(
+                (self.n_layers, 1), float(np.log(100.0)), device=dev, dtype=_MODEL_DTYPE))
+            self.log_C_apex = nn.Parameter(torch.full(
+                (1, 1), float(np.log(100.0)), device=dev, dtype=_MODEL_DTYPE))
+        else:
+            self.register_parameter("log_C_coast", None)
+            self.register_parameter("log_C_apex", None)
 
-    def _matvec_from(self, T, S, L=None):
+    @property
+    def has_boundaries(self) -> bool:
+        return self.boundaries is not None
+
+    def set_apex_heads(self, h0: torch.Tensor) -> FlowModel:
+        """Prescribe the apex boundary head from an initial head field ``(n_layers, A)``.
+
+        The mountain front is held at the initial IDW head for the whole run. In a k-fold
+        gate ``h0`` is the fold's own kept-wells field, so a held-out well never reaches
+        the boundary it is later scored against.
+        """
+        if not self.has_boundaries:
+            return self
+        with torch.no_grad():
+            src = h0.to(dtype=_MODEL_DTYPE, device=self.apex_h.device)
+            self.apex_h.copy_(src[:, self.apex_idx])
+        return self
+
+    def boundary_terms(self, C_coast: torch.Tensor | None, C_apex: torch.Tensor | None):
+        """``(diag_term, rhs_term)`` of the general-head boundaries, each ``(L, A)``.
+
+        ``diag_term`` adds ``C * faces`` on every boundary cell's own head (it enters the
+        SPD operator; a positive diagonal addition keeps it SPD) and ``rhs_term`` carries
+        ``C * faces * h_b`` -- zero on the coast, since sea level is the datum. Both are
+        zero tensors when the model has no boundaries, so callers can add them blindly.
+        """
+        L, A = self.n_layers, self.grid.n_active
+        dev = self.log_T.device
+        zero = torch.zeros(L, A, dtype=_MODEL_DTYPE, device=dev)
+        if not self.has_boundaries or C_coast is None or C_apex is None:
+            return zero, zero
+        cc = C_coast.to(dtype=_MODEL_DTYPE) * self.coast_faces[None, :]      # (L, n_coast)
+        ca = C_apex.to(dtype=_MODEL_DTYPE) * self.apex_faces[None, :]        # (1, n_apex)
+        ca = ca.expand(L, -1)
+        diag = zero.index_add(1, self.coast_idx, cc)
+        diag = diag.index_add(1, self.apex_idx, ca)
+        rhs = zero.index_add(1, self.apex_idx, ca * self.apex_h)
+        if COAST_HEAD_M != 0.0:
+            rhs = rhs.index_add(1, self.coast_idx, cc * COAST_HEAD_M)
+        return diag, rhs
+
+    def _C_from_params(self):
+        """``(C_coast, C_apex)`` from the model's own registered conductances, or Nones."""
+        if not self.has_boundaries:
+            return None, None
+        return torch.exp(self.log_C_coast), torch.exp(self.log_C_apex)
+
+    def _matvec_from(self, T, S, L=None, bdiag=None):
         """Return ``(mv, diag)``: ``mv`` applies (S*area/dt + K + leakage) to a head
         vector of shape (L, A); ``diag`` is that operator's diagonal (S*area/dt, plus
         the sum of face conductances touching each cell, plus the leakances touching
@@ -342,9 +420,15 @@ class FlowModel(nn.Module):
         """
         ia, ib = self.ia, self.ib
         Tf = 2.0 * T[:, ia] * T[:, ib] / (T[:, ia] + T[:, ib]).clamp(min=1e-30)  # harmonic
+        # General-head boundaries (``bdiag``, from ``boundary_terms``): a per-cell
+        # conductance on the diagonal only. Positive, so SPD is preserved; ``None`` or
+        # zeros reproduces the closed basin.
+        stor = S * self.area / self.dt
+        if bdiag is not None:
+            stor = stor + bdiag
 
         def mv(h):
-            out = S * self.area / self.dt * h
+            out = stor * h
             dh = h[:, ia] - h[:, ib]
             flux = Tf * dh
             out = out.index_add(1, ia, flux)
@@ -361,7 +445,7 @@ class FlowModel(nn.Module):
                 out = out + lay
             return out
 
-        diag = S * self.area / self.dt
+        diag = stor
         diag = diag.index_add(1, ia, Tf)
         diag = diag.index_add(1, ib, Tf)
         if self.n_layers > 1:
@@ -374,17 +458,39 @@ class FlowModel(nn.Module):
             mv = torch.compile(mv, dynamic=False)
         return mv, diag
 
-    def _op(self, h, log_T, log_S, log_L=None):
-        """Differentiable M(log_T, log_S, log_L) @ h, used only by the adjoint's
-        backward. ``log_L`` is omitted by the caller (stays None) when n_layers == 1,
-        since then it never enters the operator and would otherwise trip the
-        None-gradient guard in ``_ImplicitSolve.backward``.
+    def _op(self, h, *params):
+        """Differentiable M(params) @ h, used only by the adjoint's backward.
+
+        ``params`` is whatever ``operator_params`` produced: ``(log_T, log_S)``, plus
+        ``log_L`` when there is more than one layer, plus ``(log_C_coast, log_C_apex)``
+        when the model has open boundaries. Only parameters that actually enter the
+        operator are ever in the tuple, because ``_ImplicitSolve.backward`` refuses one
+        that drops out.
         """
+        it = iter(params)
+        log_T = next(it)
+        log_S = next(it)
+        log_L = next(it) if self.n_layers > 1 else None
+        rest = tuple(it)
         T = torch.exp(log_T)
         S = torch.exp(log_S)
         L = torch.exp(log_L) if log_L is not None else None
-        mv, _ = self._matvec_from(T, S, L)
+        bdiag = None
+        if rest:
+            log_C_coast, log_C_apex = rest
+            bdiag, _ = self.boundary_terms(torch.exp(log_C_coast), torch.exp(log_C_apex))
+        mv, _ = self._matvec_from(T, S, L, bdiag=bdiag)
         return mv(h)
+
+    def operator_params(self, log_T, log_S, log_L=None, log_C_coast=None,
+                        log_C_apex=None) -> tuple:
+        """The tuple ``_ImplicitSolve.apply`` gets, in ``_op``'s unpacking order."""
+        params = [log_T, log_S]
+        if self.n_layers > 1:
+            params.append(log_L)
+        if log_C_coast is not None and log_C_apex is not None:
+            params += [log_C_coast, log_C_apex]
+        return tuple(params)
 
     def forward(self, h0: torch.Tensor, recharge: torch.Tensor,
                 pumping: torch.Tensor, n_steps: int) -> torch.Tensor:
@@ -394,18 +500,18 @@ class FlowModel(nn.Module):
 
         T = torch.exp(self.log_T)
         S = torch.exp(self.log_S)
-        if self.n_layers > 1:
-            L = torch.exp(self.log_L)
-            params = (self.log_T, self.log_S, self.log_L)
-        else:
-            L = None
-            params = (self.log_T, self.log_S)
-        mv, diag = self._matvec_from(T, S, L)
+        L = torch.exp(self.log_L) if self.n_layers > 1 else None
+        C_coast, C_apex = self._C_from_params()
+        bdiag, brhs = self.boundary_terms(C_coast, C_apex)
+        params = self.operator_params(self.log_T, self.log_S,
+                                      self.log_L if self.n_layers > 1 else None,
+                                      self.log_C_coast, self.log_C_apex)
+        mv, diag = self._matvec_from(T, S, L, bdiag=bdiag)
         h = h0
         out = [h0]
         for t in range(n_steps):
             q = recharge[..., t] * self.area - pumping[..., t]
-            b = S * self.area / self.dt * h + q
+            b = S * self.area / self.dt * h + q + brhs
             # Warm-start CG from the previous head: consecutive backward-Euler steps have
             # similar solutions, so this is free and cuts iterations substantially.
             solve = _warm_started_solver(mv, diag, h)

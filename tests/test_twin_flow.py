@@ -604,7 +604,9 @@ def test_fit_flow_homogeneous_with_forcing_exposes_eta_and_recharge_fraction():
     out = fit_flow(m, obs_h, obs_idx_all, obs_layer_all, recharge_dummy,
                    E=E, ground_elev=ground_elev, epochs=60, lr=0.2,
                    h0=h0, recharge_field=recharge_field)
-    assert out["n_params"] == n_layers + n_layers + (n_layers - 1) + 1 + 1   # +eta +rfrac
+    # +eta +head_extra (2026-09-09) +rfrac; no boundary conductances, since this model
+    # was built without boundaries.
+    assert out["n_params"] == n_layers + n_layers + (n_layers - 1) + 1 + 1 + 1
     assert "eta" in out["theta"] and "recharge_frac" in out["theta"]
     assert "log_eta" in out["bounds_hit"]
     assert math.isfinite(out["loss"]) and math.isfinite(out["r2"])
@@ -720,8 +722,8 @@ def _r2_ref(pred, obs):
     return _r2(np.asarray(pred), np.asarray(obs))
 
 
-def test_make_zonal_params_has_exactly_26_free_parameters():
-    """Spec §5: proximal 2 (one merged aquifer) + mid 11 + distal 11 + global 2.
+def test_make_zonal_params_has_exactly_27_free_parameters():
+    """Spec §5: proximal 2 (one merged aquifer) + mid 11 + distal 11 + global 3.
     Fewer than naive 3x uniform zoning's 35, and every one physically motivated.
     """
     from hydrophysics.twin.calibrate_flow import _make_zonal_params
@@ -729,7 +731,9 @@ def test_make_zonal_params_has_exactly_26_free_parameters():
     g = _uniform_grid(n=8, dx=1000.0)
     m = FlowModel(g, n_layers=4, dt_days=30.0)
     theta = _make_zonal_params(m, use_pumping=True, use_recharge=True)
-    assert sum(p.numel() for p in theta.values()) == 26
+    # 26 in the 2026-08-29 spec, +1 for log_head_extra (2026-09-09). A model built with
+    # boundaries would add 5 more (4 coast, 1 apex); this one is closed.
+    assert sum(p.numel() for p in theta.values()) == 27
     assert theta["log_T_proximal"].shape == (1, 1)
     assert theta["log_S_proximal"].shape == (1, 1)
     assert theta["log_T_mid"].shape == (4, 1)

@@ -1,6 +1,6 @@
 # HydroPhysicsAI
 
-**GPU physics-informed neural operators for groundwater — one model across many wells, benchmarked against per-well gray-box ODEs.**
+**A differentiable, gated digital twin of the Choushui alluvial fan (Taiwan): pumping policy → groundwater heads → land subsidence, on the NVIDIA GPU stack.**
 
 [![CI](https://github.com/Rekin226/HydroPhysicsAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Rekin226/HydroPhysicsAI/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
@@ -8,28 +8,132 @@
 [![Stack](https://img.shields.io/badge/stack-PyTorch%20%7C%20PhysicsNeMo%20%7C%20CUDA-76b900.svg)](#nvidia-gpu-path)
 [![Demo](https://img.shields.io/badge/%F0%9F%A4%97%20demo-live-blue.svg)](https://huggingface.co/spaces/Rekin226/HydroPhysicsAI-demo)
 
-**[▶ Live demo](https://huggingface.co/spaces/Rekin226/HydroPhysicsAI-demo)** · **[Model card](MODEL_CARD.md)** · **[Technical writeup](docs/TECHNICAL_WRITEUP.md)**
+**[▶ Live demo](https://huggingface.co/spaces/Rekin226/HydroPhysicsAI-demo)** · **[Model card](MODEL_CARD.md)** · **[Technical writeup](docs/TECHNICAL_WRITEUP.md)** · **[Project state](docs/superpowers/STATE.md)**
 
 ---
 
+## What this is
+
+The Choushui fan is Taiwan's largest groundwater basin and its worst subsidence problem:
+unmetered irrigation pumping from a stack of four aquifers, and a ground surface that sinks
+centimetres a year over the high-speed-rail corridor. This repository is a **digital twin**
+of that system: a four-layer differentiable groundwater solver on the fan grid, driven by
+the registered-pump electricity census and rain-minus-ET recharge, coupled to a
+visco-elasto-plastic compaction column, calibrated by gradient descent through the solver's
+own adjoint, and **gated at every stage against held-out data**. It takes a pumping policy
+("cut irrigation 30 % from 2026", "retire aquaculture"), runs the aquifer forward, and
+animates where and how fast the ground sinks — with a parameter ensemble around it.
+
+```
+pumping policy ──▶ flow solver ──▶ layer heads ──▶ VEP column ──▶ subsidence ──▶ 3D viewer
+   (census)        4 layers,        nudged to      per zone,        798 leveling     policy
+                   open basin       observations   leveling-fit     benchmarks       dropdown
+```
+
+## The data
+
+Not a toy set. Everything below is real, on the 2,144 km² fan, 2012–2022, monthly:
+
+| source | size | role |
+|---|---|---|
+| Water Resources Agency monitoring wells (via the WiseEnvr API) | **174 wells** passing QC, 158 on the 1 km grid, layer-resolved across 4 aquifers, hourly → monthly | heads: calibration target and assimilation |
+| Taiwan Power Company pump census + monthly electricity | **116,769 registered pumps**, 26 M meter-months; 2.1 TWh after de-duplication and capacity screening | abstraction forcing (energy → volume through the pump's own hydraulics) |
+| Rain gauges + Open-Meteo/ERA5 ET₀ | 26 gauges, daily | recharge = rain − ET₀ |
+| Leveling benchmarks | **798 sites**, 7,539 site-surveys | independent subsidence validation, and (since 2026-09-14) the compaction column's calibration target |
+| Multi-layer compaction wells (MLCW) | 14 magnetic-ring sites | compaction rings, held out as an independent check |
+| Fan polygon, zones, coast and apex geometry | 2,148 active cells at 1 km | grid, boundaries |
+
+The cache is rebuilt from the API with `hydrophysics.twin.fetch_amp` (credentials from
+the environment only); layout in `docs/DATA_FORMAT.md`. Only a synthetic sample ships.
+
 ## Results at a glance
 
-All on the real 61-well Zhuoshui data, out-of-sample validation from 2019. Median KGE (higher is better) unless noted.
+Every number is out of sample unless marked; verdicts are recorded in
+`docs/superpowers/STATE.md` and the design specs, including the failures.
 
-| Task | This repo | Reference | Verdict |
+| stage | what is gated | result |
+|---|---|---|
+| **Stage 3 — flow model** | 5-fold, site-grouped, k-fold R² of held-out wells must beat inverse-distance interpolation | **PASS** (2026-09-14): **+0.757 vs IDW +0.702**, in-sample +0.906. Two earlier configurations failed (−0.236, −0.080); the fixes were an open coastal/apex boundary and a cleaned census |
+| **Stage 4 — compaction column on the flow model's heads** | site-grouped 5-fold over 798 leveling benchmarks | **+0.546** out of fold (per-zone column), bias +0.1 cm; +0.371 on the 14 rings it never saw |
+| **Hindcast subsidence, full chain** | 798 leveling sites, 18-member ensemble, sequential assimilation | **R² +0.526**, bias 0.0 cm, RMSE 6.6 cm |
+| **Policy projection 2023–2032** | fan-mean subsidence, ± over parameter and initial-condition members | baseline 10.0 ± 1.3 cm; irrigation −30 % 9.9 ± 1.3; aquaculture retired 9.5 ± 1.1 |
+| **Re-run cost** | 18 members × 3 policies × 252 months | 609 s on one Turing GPU; the FNO surrogate is 13–34× faster again (0.03–0.04 m RMSE vs the solver over 24 months) |
+| **Uncertainty** | Laplace posterior around the calibrated vector + fold ensemble + perturbed initial fields | 32 parameters, 10 at a bound and held; posterior sd 0.5–0.7 (mid zone) to 2 (deep distal, coast) |
+
+**The caveat that governs the policy numbers**, stated here because it decides what the
+table means: the gated flow model still keeps its pump conversion at its bounds (efficiency
+at the floor, extra head at the ceiling) and generalises with ~2 % of the published
+abstraction. Holding the conversion at physical values fits nearly as well in sample
+(+0.877) but *fails* the gate (+0.626). So heads and subsidence are validated; the
+model's *sensitivity* to pumping is not yet. Irrigation return flow is the leading
+candidate (in-sample +0.884 at a physical conversion) and its gate is queued. See the
+state doc for the ledger.
+
+## Digital twin of the Choushui fan (pumping → heads → subsidence)
+
+The twin lives under `hydrophysics/twin/`: a differentiable four-layer groundwater solver on the fan grid,
+driven by the registered-pump electricity census and rain-minus-ET recharge, coupled to a
+visco-elasto-plastic compaction column, with a 3D viewer that takes a **pumping policy**
+and animates the ground sinking under it, past the end of the data.
+
+```
+pumping policy ──▶ flow solver ──▶ layer heads ──▶ VEP column ──▶ subsidence ──▶ 3D viewer
+                   (Stage 3)       nudged to obs    (Stage 2 PASS)                 (Stage 5)
+                                   at the origin
+```
+
+Every stage is gated against held-out data and the verdicts are recorded, not assumed
+(`docs/superpowers/STATE.md` is the current ledger):
+
+| stage | what | gate | status |
 |---|---|---|---|
-| **Simulation** (free-running hindcast) | physics-UDE **0.754** (recharge-memory + ET; 0.591 baseline) | gray-box 0.736 · climatology 0.446 | one shared operator reaches/exceeds the gray-box class |
-| **Generalize to unseen wells** (leave-one-well-out) | **0.565** (attr-only 0.236) | climatology 0.446 · in-sample 0.591 | now beats climatology, nearly matches in-sample |
-| **Forecast, 7-day** (operational, assimilated) | LSTM **0.965** | persistence 0.946 | real skill over persistence |
-| **Forecast, 30-day** | LSTM **0.899** | persistence 0.703 | nearly halves the error |
-| **Forecast, probabilistic** | CRPS beats persistence, ~90% calibrated | — | sharp, well-calibrated intervals |
-| **GPU training** (mixed precision) | **14×** over CPU, ~½ the memory | fp32 10.9× | real NVIDIA-stack speedup |
-| **NVIDIA PhysicsNeMo port** | KGE **0.591** (`ude_nemo`) | PyTorch UDE 0.591 | runs on the framework, identical skill |
-| **Per-well signal decomposition** (simulation) | **0.75** | gray-box 0.736 · UDE 0.591 | reaches the gray-box accuracy class |
+| 2 | VEP compaction column, one shared parameter set | leave-one-site-out vs a single-`Sk` baseline | **PASS** (+0.465 vs +0.031) |
+| 3 | flow solver, zonal parameterisation, open basin, clean census | clamp release; k-fold R² must beat IDW | **PASS** (2026-09-14): 5-fold +0.757 vs IDW +0.702; pump conversion still at its bounds, so policy sensitivities are under test |
+| 4 | flow ↔ compaction coupling | column refit on the flow model's heads, site-grouped 5-fold on 798 leveling benchmarks | **PASS**: per-zone column +0.546 out of fold (Stage-2 column under the same driver +0.299) |
+| 5 | 3D scenario twin | — | forward mode ships on the gated parameters (`results/twin/explorer3d_forward.html`) |
 
-Simulation and forecast modes are scored **separately** and are not comparable (forecasting with assimilation is a different, easier task). The headline scientific challenge — one attribute-conditioned operator generalizing to wells it never saw — is the leave-one-well-out row. Conditioning on observable signatures of a held-out well's history, pinning its free-run equilibrium to its observed mean, and gating on self-consistency lift it from 0.236 to **0.565 — above climatology (0.446) and near the in-sample 0.591** (see [Generalizing to unseen wells](#generalizing-to-unseen-wells)).
+Two defects found on 2026-09-11 explain the Stage-3 failures to date and are fixed as
+defaults: the solver was a **closed basin** (no coastal outlet, no apex inflow; now
+general-head boundaries with learnable conductance, `twin/boundaries.py`), and the pump
+census **over-counted electricity 4.6×** (shared meters attached to every pump on them,
+plus meters drawing many times their rated motor capacity; now `pumping.clean_census`).
 
-## The idea
+```bash
+export HYDROMIND_GW_DATA=$PWD/chou-shui-data/data
+# calibrate + gate (GPU, ~1 day at 5 folds); writes results/twin_runs/<stamp>/stage3_*.{csv,json}
+python -m hydrophysics.twin.calibrate_flow --param-mode zonal --epochs 500 --n-folds 5 \
+    --device cuda --compile-matvec --log-every 25
+# run a policy forward: ensemble over the in-sample and fold parameter sets
+python -m hydrophysics.twin.forward --theta results/twin_runs/<run>/stage3_theta.json \
+    --theta results/twin_runs/<run>/stage3_fold_thetas.json --horizon 120 \
+    --scenario "cut30:irrigation=0.7@2026-01" --out results/twin_forward/cut30
+# animate it
+python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.npz \
+    --stride 3 --out results/twin/explorer3d_forward.html
+# optional: an FNO surrogate (PhysicsNeMo) of the calibrated solver for sweeps and ensembles
+python -m hydrophysics.twin.surrogate build --theta ... --out results/surrogate/data.npz
+```
+
+A forward run prints the Stage-3 verdict it inherits and the hindcast skill against
+leveling on every invocation; the viewer carries the verdict in its title. The twin never
+decides for itself whether its pumping → head map is trustworthy.
+
+## Earlier phase (2026-06): one operator across 61 wells
+
+Before the twin, this repository benchmarked **one physics-informed neural operator
+across the 61 curated wells of the original data delivery** against per-well gray-box
+ODEs, in free-running simulation and in assimilated forecasting. That work stands as
+recorded below, but it is no longer the project's headline: the twin above runs on a
+dataset three times as dense in wells, layer-resolved, with the pumping forcing and the
+subsidence network the operator benchmark never had, and its gates are physical (held-out
+wells, held-out leveling sites) rather than a comparison with a baseline that was scored
+elsewhere. The gray-box numbers here are the original project's own evaluation and were
+never re-scored on this harness; the comparison is kept for the record, not as a claim.
+
+<details>
+<summary>The 61-well operator benchmark, forecaster, PINN field and explorer (click to expand)</summary>
+
+### The idea
 
 Classical hydrology calibrates **one ODE per well**: 33-61 separate parameter fits, each blind to the others. HydroPhysicsAI trains **a single physics-informed neural operator across all wells at once**, conditioned on each well's static attributes, on the NVIDIA GPU stack (PyTorch / PhysicsNeMo / CUDA). It is scored in true **simulation mode** (free-running hindcast from an initial condition + forcing, never seeing observed levels) against the per-well gray-box ODE baseline.
 
@@ -37,11 +141,11 @@ Classical hydrology calibrates **one ODE per well**: 33-61 separate parameter fi
 
 Test bed: 61 groundwater monitoring wells on the Zhuoshui alluvial fan, Taiwan, 2012-2022, validated out-of-sample from 2019.
 
-## Why physics-informed, not a black box
+### Why physics-informed, not a black box
 
 The model keeps the gray-box mass-balance ODE (recession + rainfall + upstream coupling + seasonal terms) as its inductive bias, and learns a neural **hypernetwork** that maps well attributes to the ODE parameters. So it stays interpretable (read off `a`, `b`, `k_link` per well), extrapolates better than a pure sequence model, and amortizes: one network conditions on attributes, so it can predict a well it was never calibrated on. That leave-one-well-out generalization is the operator-learning headline.
 
-## Benchmark (simulation mode, validation period)
+### Benchmark (simulation mode, validation period)
 
 The bar to beat, computed by the harness in this repo:
 
@@ -70,7 +174,7 @@ Recharge is rainfall *minus* evapotranspiration, but the model only saw rainfall
 
 *Free-running PhysicsUDE hindcast vs observed, validation period shaded. Generated from the bundled **synthetic sample** (`python -m hydrophysics.figures`) so the figure reproduces anywhere and ships no real agency series; the same command on real data redraws it for the 61 wells.*
 
-## Per-well signal decomposition — reaching the gray-box accuracy class
+### Per-well signal decomposition — reaching the gray-box accuracy class
 
 A different angle on the simulation task: instead of predicting the raw level, **decompose each well's signal and model the components** — `level(t) = harmonic seasonal + (damped) trend + forcing-driven anomaly + anchor`, where rainfall enters through multi-timescale exponential recharge-memory filters and upstream as a lagged term (ridge-fit on the training residual). Every component is fit on training days only and projected from known forcing, so it is scored in the same leakage-free simulation mode as the gray-box.
 
@@ -86,7 +190,7 @@ Its winning ingredient — multi-timescale rainfall recharge-memory — is exact
 
 This lands in the **same accuracy class as the gray-box** and is well above our UDE and climatology on the identical harness. It is *not* a head-to-head win over the gray-box — that 0.736 is from the original project's own evaluation and is not re-scored here — and it is a **per-well** model (the gray-box's class), not the shared operator, so it answers "how accurately can we simulate?", not "does one operator generalize to unseen wells?". Verified leakage-free: corrupting every validation value leaves predictions unchanged (`tests/test_decomp_smoke.py`). Reproduce: `python results/decomp/final_benchmark.py`.
 
-## Generalizing to unseen wells
+### Generalizing to unseen wells
 
 The operator-learning headline: train on N−1 wells, then predict a **held-out** well that was never calibrated (k-fold, every well held out once, scored on 2019+). The gray-box can't do this at all — it fits one parameter set per well and has nothing to say about a new one.
 
@@ -116,7 +220,7 @@ The final hybrid **beats per-well climatology (0.565 vs 0.446 median)** and is f
 
 **Do the in-sample forcing wins transfer here? No — instructively.** The recharge-memory and ET that lift the *in-sample* operator to 0.754 do **not** help leave-one-well-out — they slightly *hurt* the gated hybrid (inner-split 0.626 → ~0.61). Two compounding reasons: (1) recharge-memory adds per-well rainfall gains the hypernetwork must predict for an *unseen* well from attributes alone — extra capacity it cannot place; (2) richer forcing lets the operator fit each well's *training* history better, which fools the self-consistency gate into over-trusting wells that don't generalize. The simplest operator generalizes best. A clean **capacity-vs-generalization tradeoff**: forcing that helps when you *have* the well hurts when you *don't*. (`leave_one_well_out` accepts `rain_memory` to reproduce this.)
 
-## Continuous head field (PINN) — a documented negative result
+### Continuous head field (PINN) — a documented negative result
 
 We also tried the more ambitious "physical AI" framing: a single physics-informed neural network learning a **continuous head field** `h(x, y, t)` over the whole fan (2D depth-averaged groundwater-flow PDE, autodiff residual, learned transmissivity field — the NVIDIA PhysicsNeMo wheelhouse). It is implemented (`hydrophysics/models/pinn_field.py`, `--model pinn`, 22 tests incl. an analytic PDE-residual check) and reported honestly here because **it does not beat the per-well models on this data**, and *why* is the interesting part.
 
@@ -135,7 +239,7 @@ The genuine deliverable that survives is the **continuous map**: the learned fie
 
 *Learned head field `h(x,y,t)` on **2020-12-31 (day index 3287)**, masked to the real fan polygon (study-area shapefiles). High head inland (SE, ~+63 m) declining toward the coast (NW, ~−23 m) — a physically sensible interpolation between the 61 wells (markers). Reproduce: `python -m hydrophysics.maps --headfield --day 3287`. Full write-up: [`docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md`](docs/superpowers/specs/2026-06-16-spatial-pinn-head-field-design.md).*
 
-## Interactive explorer: head + land subsidence
+### Interactive explorer: head + land subsidence
 
 ```bash
 python -m hydrophysics.explorer --n 50   # writes results/explorer/choushui_explorer.html
@@ -175,7 +279,7 @@ is the same spatial-sparsity wall the PINN hit. Specs:
 [explorer](docs/superpowers/specs/2026-06-19-choushui-head-subsidence-explorer-design.md) ·
 [coast regression](docs/superpowers/specs/2026-06-19-per-site-sk-coast-regression-design.md).
 
-## Forecast mode (operational, data-assimilated)
+### Forecast mode (operational, data-assimilated)
 
 A **separate** track from the simulation benchmark above (do not compare the two — different task). Here a single global attribute-aware LSTM (`hydrophysics/models/forecast_lstm.py`) forecasts the level `h` days ahead using observed levels up to the forecast origin (assimilation) plus forcing, scored on 2019+ against the honest forecast-mode references at each horizon:
 
@@ -203,11 +307,14 @@ A **separate** track from the simulation benchmark above (do not compare the two
 
 **Does ET help the forecaster? No — and that is the point.** The ET driver that lifts the *free-running* operator by +0.05 gives the *assimilated* forecaster essentially nothing (2019+: 7-day 0.965 → 0.964, 30-day flat). Same reason the forecaster is strong: it assimilates recent observed levels, which already encode the ET-driven state, so explicit ET is redundant. Put beside the [leave-one-well-out finding](#generalizing-to-unseen-wells) — where the extra forcing actually *hurts* unseen-well generalization — this maps a clean principle: **explicit physics forcing helps most where information is scarcest (free-running operator, +0.05) and least where it is richest (assimilated forecaster, ≈0; or extrapolating to a never-seen well, where the added capacity hurts).**
 
+</details>
+
 ## Status
 
+- **Digital twin (GPU):** `hydrophysics.twin` — fan grid, four-layer differentiable flow solver with open boundaries, electricity-census pumping driver, VEP compaction column, Stage-2/3 gates, the forward policy twin with observation nudging and a fold-ensemble spread, the 3D viewer, and a PhysicsNeMo FNO surrogate. See "Digital twin" above and `docs/superpowers/STATE.md`.
 - **Foundation (done, tested in CI, runs anywhere):** dataset loader, KGE/NSE/RMSE metrics with explicit simulation-vs-forecast modes, gray-box + climatology + last-value baselines, reproducible benchmark, synthetic sample, GitHub Actions CI (ruff + pytest on Python 3.10–3.12).
 - **Models (GPU):** a working `GlobalGRU` reference model, the `PhysicsUDE` physics-informed operator (hypernetwork + stable semi-implicit ODE rollout + physics-residual loss), and `PhysicsNeMoUDE` — the same operator **ported to NVIDIA PhysicsNeMo** with `.mdlus` checkpointing, reproducing the headline simulation result on CUDA. Multi-timescale rainfall **recharge-memory** plus an **evapotranspiration driver** (net recharge = rain − ET₀, ET₀ from Open-Meteo/ERA5 via AquaScope) lift the operator's simulation KGE from 0.591 to **0.754**, reaching/exceeding the per-well gray-box (0.736) with one shared network. Leave-one-well-out generalization improved from 0.236 to **0.565** (above climatology, near in-sample) via observable history signatures + equilibrium anchoring + a self-consistency gate.
-- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and **bf16 mixed-precision** training (14× over CPU; see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
+- **Forecasting (GPU):** `GlobalForecastLSTM`, a global attribute-aware multi-horizon forecaster with data assimilation and optional **bf16 mixed-precision** training (14× over CPU measured on an Ampere-class card; on the project's Turing server bf16 has no hardware support and the fp32 path is used — see GPU performance), scored against persistence/climatology by `hydrophysics.forecast_eval`. Beats persistence at 7- and 30-day horizons, with a probabilistic (Gaussian) mode giving calibrated prediction intervals and CRPS/coverage scoring (see Forecast mode above).
 - **Simulation baselines:** a per-well **signal-decomposition** model (`hydrophysics/decomp.py`) reaching the gray-box accuracy class (median KGE 0.75, leakage-free), and the `SpatialPINN` continuous head field (documented negative result, but a hydrogeologically plausible map).
 - **Tooling:** `hydrophysics.figures` (reproducible plots), `hydrophysics.bench` (CPU vs CUDA vs CUDA+AMP throughput), and `hydrophysics.maps` (study-area KGE + PINN head-field maps over the real fan/river/coast shapefiles).
 
@@ -253,7 +360,7 @@ python app/deploy_space.py
 Not aspirational — the flagship runs on the NVIDIA stack today:
 
 1. **PhysicsNeMo port (done).** `PhysicsNeMoUDE` (`--model ude_nemo`) is the operator with its hypernetwork as a native `physicsnemo.Module`. It carries PhysicsNeMo `ModelMetaData` capability flags (AMP / auto-grad), serializes to a single portable `.mdlus` checkpoint (`save_checkpoint` / `load_checkpoint`, architecture + weights together), and reproduces the simulation headline **exactly** — median KGE 0.591 on the real 61-well data, bit-identical to the pure-PyTorch UDE. Install with `pip install -e ".[nemo]"`.
-2. **Mixed precision (done).** The forecaster trains under bf16 autocast (`amp=True`). On an RTX 4070 SUPER it is **14× faster than CPU and uses ~half the GPU memory** of fp32 (see GPU performance below). Reproduce: `python -m hydrophysics.bench`.
+2. **Mixed precision (done, hardware-dependent).** The forecaster trains under bf16 autocast (`amp=True`). On an RTX 4070 SUPER (Ada) it is **14× faster than CPU and uses ~half the GPU memory** of fp32 (see GPU performance below). The project's own server is a Turing card with no bf16 support, where `amp=False` fp32 is the path that runs; the twin's solver is float64 throughout and does not use AMP at all. Reproduce: `python -m hydrophysics.bench`.
 3. **CUDA training (done).** `train.py` auto-selects `cuda > mps > cpu`; all models are standard PyTorch and train on any CUDA GPU as-is.
 4. **GPU-parallel operator rollout (done).** `--rollout scan` evaluates the same semi-implicit recurrence chunk-parallel (banded-triangular matmuls instead of ~4000 sequential kernel launches): **6.7× faster operator training** (259 s → 39 s for 1500 epochs on the real 61-well data), accuracy-neutral within seed variance (5-seed median KGE 0.62 ± 0.04; the sequential-loop runs land inside that spread). Reproduce: `python -m hydrophysics.bench_port`.
 5. **Adjoint rollout (done — honest negative).** `--rollout adjoint` integrates the same ODE with `torchdiffeq.odeint_adjoint` (constant-memory backprop, validated by tests). At this scale it is not worth it: the full training graph is only ~10 MiB, and the adaptive continuous-time solver is orders of magnitude slower against daily piecewise-constant forcing — the discrete semi-implicit scan is the right integrator here. bf16 autocast for the operator (`--amp`) is likewise measured and neutral: the operator's training is kernel-launch-bound, not compute-bound (AMP's 14× win is the forecaster's, above).
@@ -300,6 +407,20 @@ hydrophysics/
     ude_physicsnemo.py  PhysicsNeMoUDE: the UDE on NVIDIA PhysicsNeMo
     forecast_lstm.py    GlobalForecastLSTM (assimilated, probabilistic, AMP)
     pinn_field.py       SpatialPINN continuous head field h(x, y, t) over the fan
+  twin/
+    grid.py, zones.py, boundaries.py   fan grid, proximal/mid/distal zones, coast + apex GHB
+    flow.py            differentiable 4-layer flow solver (implicit adjoint, float64 CG)
+    pumping.py         electricity census -> abstraction; clean_census (dedupe + capacity)
+    heads.py           layer-resolved QC'd head field from the API wells
+    compaction.py      visco-elasto-plastic column; coupled.py  flow <-> column
+    calibrate_mlcw.py  Stage-2 gate;  calibrate_flow.py  Stage-3 fit + k-fold gate
+    scenario.py        pumping policies + climatology;  inputs.py  one loader for the twin
+    forward.py         the forward twin (hindcast, nudging, projection, ensemble)
+    uncertainty.py     Laplace posterior of the flow parameters -> ensemble members
+    calibrate_coupled.py  Stage 4: refit the column on the flow model's heads, 3 configs
+    surrogate.py       PhysicsNeMo FNO surrogate of the calibrated solver
+    explorer3d.py      3D viewer (head-decline mode and forward/policy mode)
+    fetch_amp.py       env-driven rebuild of the AMP_V2 data cache from the API
 results/phase0/    frozen baselines + spatial map
 results/figures/   reproducible figures (from the synthetic sample)
 results/bench/     GPU throughput benchmark

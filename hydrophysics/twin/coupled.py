@@ -60,11 +60,13 @@ class CoupledTwin(nn.Module):
     """
 
     def __init__(self, grid: FanGrid, n_layers: int = 4, dt_days: float = 30.0,
-                 driver: str = "mean", driver_layer: int = 1, device=None):
+                 driver: str = "mean", driver_layer: int = 1, device=None,
+                 boundaries=None):
         super().__init__()
         if driver not in DRIVERS:
             raise ValueError(f"driver must be one of {DRIVERS}, got {driver!r}")
-        self.flow = FlowModel(grid, n_layers=n_layers, dt_days=dt_days, device=device)
+        self.flow = FlowModel(grid, n_layers=n_layers, dt_days=dt_days, device=device,
+                              boundaries=boundaries)
         self.column = VEPColumn(n_sites=1, dt_days=dt_days, device=device).to(_MODEL_DTYPE)
         self.driver = driver
         self.driver_layer = int(driver_layer)

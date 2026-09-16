@@ -62,6 +62,7 @@ That is 13 free parameters in the homogeneous, 4-layer, both-drivers-active conf
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import subprocess
@@ -75,6 +76,7 @@ from torch import nn
 from ..subsidence import idw_interp
 from ..train import pick_device
 from . import pumping as pumping_mod
+from .boundaries import fan_boundaries
 from .flow import (
     _CG_CHECK_EVERY,
     _CG_MAXITER,
@@ -91,6 +93,17 @@ from .zones import N_ZONES, ZONE_NAMES, fan_zones
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
 # is the brief's original wire-to-water-efficiency bound.
+RETURN_FRAC_MAX = 0.7      # irrigation return flow cannot exceed this share of pumping
+
+
+def set_l_min(l_min: float | None) -> None:
+    """Raise the leakance floor (``--l-min``, 1/day). The free fits drive log_L to
+    1e-8..1e-5, i.e. isolated layers; a physical aquitard on this fan leaks more than
+    that, and an isolated production layer is what forces storage to its ceiling."""
+    if l_min is not None:
+        BOUNDS["log_L"] = (math.log(float(l_min)), BOUNDS["log_L"][1])
+
+
 BOUNDS = {
     "log_T": (math.log(10.0), math.log(2e4)),        # m2/day (Liu et al. 2002)
     "log_S": (math.log(1e-6), math.log(0.3)),        # -
@@ -103,6 +116,12 @@ BOUNDS = {
     # a deep well on sprinklers. See pumping.energy_to_volume for why omitting this term
     # cost the Stage-3 gate a factor of ~12 and pinned log_eta on its lower clamp.
     "log_head_extra": (math.log(1.0), math.log(200.0)),   # m
+    # General-head boundary conductance per exposed face, m2/day (boundaries.py). A
+    # Dirichlet face sits at C = 2T, so the ceiling clears the log_T ceiling with room;
+    # the floor is effectively closed (1e-2 m2/day against T >= 10), which is how the
+    # data get to say "no boundary here" if that is what they say.
+    "log_C_coast": (math.log(1e-2), math.log(1e5)),
+    "log_C_apex": (math.log(1e-2), math.log(1e5)),
 }
 
 
@@ -190,7 +209,11 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              recharge_scale: torch.Tensor | None = None, recharge_layer: int = 0,
              E: torch.Tensor | None = None, log_eta: torch.Tensor | None = None,
              ground_elev: torch.Tensor | None = None, pump_layer: int = 1,
-             log_head_extra: torch.Tensor | None = None) -> torch.Tensor:
+             log_head_extra: torch.Tensor | None = None,
+             log_C_coast: torch.Tensor | None = None,
+             log_C_apex: torch.Tensor | None = None,
+             pump_split_logit: torch.Tensor | None = None,
+             return_frac_logit: torch.Tensor | None = None) -> torch.Tensor:
     """The same backward-Euler rollout as ``FlowModel.forward``, but taking log-parameter
     tensors as arguments instead of reading ``model``'s own registered nn.Parameters, and
     (fix round 1) supporting a *dynamic* forcing mode alongside the original static one.
@@ -252,15 +275,33 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     recharge_scale = _here(recharge_scale)
     log_eta = _here(log_eta)
     log_head_extra = _here(log_head_extra)
+    log_C_coast = _here(log_C_coast)
+    log_C_apex = _here(log_C_apex)
+    # Where the pumping stress lands (2026-09-14, three opt-in physics candidates):
+    #  * ``pump_split_logit``: a fraction sigmoid(.) of every cell's abstraction is taken
+    #    from layer 0 (the shallow aquifer, large storage) instead of ``pump_layer``.
+    #    Shallow farm wells do pump layer 1 on this fan; the census carries no depth, so
+    #    the fraction is learned.
+    #  * ``return_frac_logit``: irrigation return flow -- a fraction 0.7*sigmoid(.) of the
+    #    pumped volume infiltrates back into layer 0 the same month (paddy fields lose a
+    #    large share of applied water to the shallow aquifer). Net stress falls without
+    #    touching the electricity->volume conversion.
+    #  * the leakance floor is a BOUNDS change (``--l-min``), not a rollout term.
+    pump_split_logit = _here(pump_split_logit)
+    return_frac_logit = _here(return_frac_logit)
     T = torch.exp(log_T)
     S = torch.exp(log_S)
-    if model.n_layers > 1:
-        L = torch.exp(log_L)
-        params = (log_T, log_S, log_L)
-    else:
-        L = None
-        params = (log_T, log_S)
-    mv, diag = model._matvec_from(T, S, L)
+    L = torch.exp(log_L) if model.n_layers > 1 else None
+    # Open boundaries (2026-09-11): only when the model was built with them AND the
+    # caller passed conductances; either missing means the closed basin, exactly as
+    # before, so recorded results replay.
+    use_bnd = model.has_boundaries and log_C_coast is not None and log_C_apex is not None
+    bdiag, brhs = model.boundary_terms(torch.exp(log_C_coast) if use_bnd else None,
+                                       torch.exp(log_C_apex) if use_bnd else None)
+    params = model.operator_params(log_T, log_S, log_L if model.n_layers > 1 else None,
+                                   log_C_coast if use_bnd else None,
+                                   log_C_apex if use_bnd else None)
+    mv, diag = model._matvec_from(T, S, L, bdiag=bdiag if use_bnd else None)
     h = h0
     out = [h0]
     for t in range(n_steps):
@@ -285,12 +326,27 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
             lift = ground_elev - h[pump_layer]
             head_extra = (torch.exp(log_head_extra)
                           if log_head_extra is not None else None)
-            vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta,
-                                               head_extra=head_extra)  # m3 for the month
+            if E.dim() == 3:
+                # per-purpose efficiency classes: E is (C, A, T) and log_eta is (C,);
+                # each class converts with its own eta and the volumes add
+                vol = pumping_mod.energy_to_volume(E[:, :, t], lift,
+                                                   log_eta.reshape(-1, 1),
+                                                   head_extra=head_extra).sum(dim=0)
+            else:
+                vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta,
+                                                   head_extra=head_extra)  # m3 for the month
             rate = vol / model.dt                                        # m3/day
-            layer_q[pump_layer] = layer_q[pump_layer] - rate
+            if pump_split_logit is not None and pump_layer != 0:
+                f_shallow = torch.sigmoid(pump_split_logit)
+                layer_q[0] = layer_q[0] - f_shallow * rate
+                layer_q[pump_layer] = layer_q[pump_layer] - (1.0 - f_shallow) * rate
+            else:
+                layer_q[pump_layer] = layer_q[pump_layer] - rate
+            if return_frac_logit is not None:
+                r_ret = RETURN_FRAC_MAX * torch.sigmoid(return_frac_logit)
+                layer_q[0] = layer_q[0] + r_ret * rate
         q = torch.stack(layer_q, dim=0)
-        b = S * model.area / model.dt * h + q
+        b = S * model.area / model.dt * h + q + brhs
         solve = _warm_started_solver(mv, diag, h)
         h = _ImplicitSolve.apply(b, model._op, solve, *params)
         out.append(h)
@@ -298,7 +354,9 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
 
 
 def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
-                             use_recharge: bool = False) -> dict[str, nn.Parameter]:
+                             use_recharge: bool = False, n_eta: int = 1,
+                             pump_split: bool = False, return_flow: bool = False
+                             ) -> dict[str, nn.Parameter]:
     """One (log_T, log_S) per layer and one log_L per interface, shape ``(k, 1)`` so it
     broadcasts against ``(n_layers, n_active)`` via ``.expand``. Initialised from the
     model's own (uniform, per Task 3/4's constructor) starting values.
@@ -318,9 +376,20 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
     dev = model.log_T.device
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
+            torch.full((n_eta,), float(np.log(0.3)), dtype=torch.float64, device=dev)
+            if n_eta > 1 else
             torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
         theta["log_head_extra"] = nn.Parameter(
             torch.tensor(float(np.log(40.0)), dtype=torch.float64, device=dev))
+    if model.has_boundaries:
+        theta["log_C_coast"] = nn.Parameter(model.log_C_coast.detach().clone())
+        theta["log_C_apex"] = nn.Parameter(model.log_C_apex.detach().clone())
+    if use_pumping and pump_split:
+        theta["pump_split_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 50/50
+    if use_pumping and return_flow:
+        theta["return_frac_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 0.35
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -340,7 +409,9 @@ def _base_param_name(name: str) -> str:
 
 
 def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
-                       use_recharge: bool = False) -> dict[str, nn.Parameter]:
+                       use_recharge: bool = False, n_eta: int = 1,
+                       pump_split: bool = False, return_flow: bool = False
+                       ) -> dict[str, nn.Parameter]:
     """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
     with both drivers, against the homogeneous mode's 13 (spec §5).
 
@@ -376,9 +447,20 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     dev = model.log_T.device
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
+            torch.full((n_eta,), float(np.log(0.3)), dtype=torch.float64, device=dev)
+            if n_eta > 1 else
             torch.tensor(float(np.log(0.3)), dtype=torch.float64, device=dev))
         theta["log_head_extra"] = nn.Parameter(
             torch.tensor(float(np.log(40.0)), dtype=torch.float64, device=dev))
+    if model.has_boundaries:
+        theta["log_C_coast"] = nn.Parameter(model.log_C_coast.detach().clone())
+        theta["log_C_apex"] = nn.Parameter(model.log_C_apex.detach().clone())
+    if use_pumping and pump_split:
+        theta["pump_split_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 50/50
+    if use_pumping and return_flow:
+        theta["return_frac_logit"] = nn.Parameter(
+            torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 0.35
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -443,8 +525,15 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              zone_of_cell: np.ndarray | None = None,
              recharge_field: torch.Tensor | None = None,
              pump_layer: int = 1, recharge_layer: int = 0,
-             log_every: int = 0) -> dict:
+             log_every: int = 0, fix_eta: float | None = None,
+             fix_head_extra: float | None = None, pump_split: bool = False,
+             return_flow: bool = False) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    ``fix_eta``/``fix_head_extra`` (2026-09-13) hold the pump energy->volume conversion at
+    given physical values instead of learning it. Diagnostic: every free fit so far has
+    driven both to their bounds, so this measures what the rest of the model can do when
+    the abstraction is what the electricity says it is.
 
     ``obs_h`` is ``(W, T)``; ``obs_idx``/``obs_layer`` locate each well in the active-cell
     vector and the layer stack. ``h0`` is the ``(n_layers, A)`` initial head field (fix
@@ -497,6 +586,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         E = E.to(dtype=torch.float64, device=dev)
     if ground_elev is not None:
         ground_elev = ground_elev.to(dtype=torch.float64, device=dev)
+    # The apex boundary holds this run's initial head; a fold's h0 is built from its
+    # kept wells only, so this cannot leak a held-out well into the boundary.
+    model.set_apex_heads(h0)
 
     if param_mode == "percell":
         pumping = torch.zeros(model.n_layers, A, n_steps, dtype=torch.float64, device=dev)
@@ -541,6 +633,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # have no per-cell home on model to copy back into; they travel in the return dict.
     use_pumping = E is not None and ground_elev is not None
     use_recharge = recharge_field is not None
+    n_eta = int(E.shape[0]) if (use_pumping and E.dim() == 3) else 1
     zone_t = None
     if param_mode == "zonal":
         zone_arr = np.asarray(zone_of_cell, dtype="int64").reshape(-1)
@@ -551,17 +644,26 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             )
         zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
         theta = _make_zonal_params(model, use_pumping=use_pumping,
-                                   use_recharge=use_recharge)
+                                   use_recharge=use_recharge, n_eta=n_eta,
+                                   pump_split=pump_split, return_flow=return_flow)
     else:
         theta = _make_homogeneous_params(model, use_pumping=use_pumping,
-                                         use_recharge=use_recharge)
+                                         use_recharge=use_recharge, n_eta=n_eta,
+                                         pump_split=pump_split, return_flow=return_flow)
     if init_scatter > 0.0:
         g = torch.Generator().manual_seed(int(seed) if seed is not None else 0)
         with torch.no_grad():
             for name, par in theta.items():
-                if name == "recharge_frac_logit":
-                    continue   # unconstrained scalar; scatter would just re-centre lr=0.5
+                if name.endswith("_logit"):
+                    continue   # unconstrained scalars; scatter would just re-centre them
                 par.add_(torch.randn(par.shape, generator=g) * init_scatter)
+    fixed: dict[str, torch.Tensor] = {}
+    if use_pumping and fix_eta is not None:
+        fixed["log_eta"] = torch.full_like(theta.pop("log_eta").detach(),
+                                           float(math.log(fix_eta)))
+    if use_pumping and fix_head_extra is not None:
+        fixed["log_head_extra"] = torch.full_like(theta.pop("log_head_extra").detach(),
+                                                  float(math.log(fix_head_extra)))
     free = list(theta.values())
     opt = torch.optim.Adam(free, lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -583,10 +685,14 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             recharge_scale=theta.get("recharge_frac_logit"),
             recharge_layer=recharge_layer,
             E=E if use_pumping else None,
-            log_eta=theta.get("log_eta"),
-            log_head_extra=theta.get("log_head_extra"),
+            log_eta=theta.get("log_eta", fixed.get("log_eta")),
+            log_head_extra=theta.get("log_head_extra", fixed.get("log_head_extra")),
             ground_elev=ground_elev,
             pump_layer=pump_layer,
+            log_C_coast=theta.get("log_C_coast"),
+            log_C_apex=theta.get("log_C_apex"),
+            pump_split_logit=theta.get("pump_split_logit"),
+            return_frac_logit=theta.get("return_frac_logit"),
         )
 
     r2_trace: list[tuple[int, float]] = []
@@ -626,20 +732,34 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             model.log_S.copy_(theta["log_S"].expand(-1, A))
             if "log_L" in theta and model.n_layers > 1:
                 model.log_L.copy_(theta["log_L"].expand(-1, A))
+        if model.has_boundaries and "log_C_coast" in theta:
+            model.log_C_coast.copy_(theta["log_C_coast"])
+            model.log_C_apex.copy_(theta["log_C_apex"])
     n_params = sum(p.numel() for p in free)
     theta_out = {}
-    for k, v in theta.items():
+    for k, v in list(theta.items()) + list(fixed.items()):
         theta_out[k] = (float(v.detach().cpu()) if v.dim() == 0
                         else v.detach().clone().squeeze(-1).cpu().numpy().tolist())
     if "log_eta" in theta_out:
-        theta_out["eta"] = float(np.exp(theta_out["log_eta"]))
+        theta_out["eta"] = (float(np.exp(theta_out["log_eta"]))
+                            if np.ndim(theta_out["log_eta"]) == 0
+                            else [float(np.exp(v)) for v in theta_out["log_eta"]])
     if "log_head_extra" in theta_out:
         theta_out["head_extra_m"] = float(np.exp(theta_out["log_head_extra"]))
+    if "log_C_coast" in theta_out:
+        theta_out["C_coast_m2day"] = [float(np.exp(v)) for v in theta_out["log_C_coast"]]
+        theta_out["C_apex_m2day"] = float(np.exp(theta_out["log_C_apex"][0]))
+    if "pump_split_logit" in theta_out:
+        theta_out["pump_frac_shallow"] = float(1.0 / (1.0 + np.exp(-theta_out["pump_split_logit"])))
+    if "return_frac_logit" in theta_out:
+        theta_out["return_frac"] = float(RETURN_FRAC_MAX
+                                         / (1.0 + np.exp(-theta_out["return_frac_logit"])))
     if "recharge_frac_logit" in theta_out:
         theta_out["recharge_frac"] = float(1.0 / (1.0 + np.exp(-theta_out["recharge_frac_logit"])))
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
             "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
-            "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace}
+            "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
+            "fixed": sorted(fixed)}
 
 
 def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps: int,
@@ -669,13 +789,19 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                           if E is not None and "log_head_extra" in theta else None)
         rfrac = (torch.tensor(theta["recharge_frac_logit"], dtype=torch.float64)
                  if recharge_field is not None and "recharge_frac_logit" in theta else None)
+        split = (torch.tensor(theta["pump_split_logit"], dtype=torch.float64)
+                 if "pump_split_logit" in theta else None)
+        ret = (torch.tensor(theta["return_frac_logit"], dtype=torch.float64)
+               if "return_frac_logit" in theta else None)
         return _rollout(model, log_T, log_S, log_L, h0, n_steps,
                         recharge=None if recharge_field is not None else recharge,
                         recharge_field=recharge_field, recharge_scale=rfrac,
                         recharge_layer=recharge_layer,
                         E=E if log_eta is not None else None, log_eta=log_eta,
                         log_head_extra=log_head_extra,
-                        ground_elev=ground_elev, pump_layer=pump_layer)
+                        ground_elev=ground_elev, pump_layer=pump_layer,
+                        log_C_coast=model.log_C_coast, log_C_apex=model.log_C_apex,
+                        pump_split_logit=split, return_frac_logit=ret)
 
 
 def _kfold_indices(n: int, n_folds: int, seed: int = 0,
@@ -746,7 +872,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 recharge_field: torch.Tensor | None = None,
                 pump_layer: int = 1, recharge_layer: int = 0,
                 zone_of_cell: np.ndarray | None = None,
-                dump_path: str | None = None, device=None) -> dict:
+                dump_path: str | None = None, device=None, boundaries=None,
+                fix_eta: float | None = None, fix_head_extra: float | None = None,
+                pump_split: bool = False, return_flow: bool = False) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -805,12 +933,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         if well_xy is not None and obs_h0 is not None:
             h0_fold = _idw_initial_heads(grid, well_xy[keep], np.asarray(obs_h0)[keep],
                                          obs_layer_np[keep], n_layers)
-        m = FlowModel(grid, n_layers=n_layers, dt_days=30.0, device=device)
+        m = FlowModel(grid, n_layers=n_layers, dt_days=30.0, device=device,
+                      boundaries=boundaries)
         fit = fit_flow(m, obs_h[keep], obs_idx[keep], obs_layer[keep], recharge,
                        E=E, ground_elev=ground_elev, epochs=epochs, lr=lr,
                        param_mode=param_mode, h0=h0_fold, recharge_field=recharge_field,
                        pump_layer=pump_layer, recharge_layer=recharge_layer,
-                       zone_of_cell=zone_of_cell)
+                       zone_of_cell=zone_of_cell, fix_eta=fix_eta,
+                       fix_head_extra=fix_head_extra, pump_split=pump_split,
+                       return_flow=return_flow)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -849,10 +980,13 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             dump_arrays["pred"].append(p)
             dump_arrays["idw"].append(idw)
             dump_arrays["obs"].append(obs_h[held].numpy())
+        # The fold's own parameter set is kept (2026-09-11): five fold models are the
+        # cheapest honest ensemble the forward twin can draw its parameter spread from.
         per_fold.append({"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
                          "r2_kfold": _r2(p, obs_h[held].numpy()),
                          "r2_idw": _r2(idw, obs_h[held].numpy()),
-                         "bounds_hit": fit["bounds_hit"]})
+                         "bounds_hit": fit["bounds_hit"],
+                         "theta": fit.get("theta", {})})
     pred = np.concatenate(preds)
     obs = np.concatenate(targets)
     idw_all = np.concatenate(idws)
@@ -891,8 +1025,17 @@ def _load_ground_elev(grid, stn: pd.DataFrame) -> torch.Tensor:
 
 
 def _load_pumping_kwh(grid, pump_census_path: str, pump_kwh_path: str,
-                      t0: str, t1: str) -> torch.Tensor:
-    """Monthly electricity census -> (A, T) kWh per active cell (Task 4's aggregate_pumps)."""
+                      t0: str, t1: str, meter_filter: str = "dedupe-cap",
+                      cap_duty: float = 1.0, eta_classes: bool = False
+                      ) -> torch.Tensor | tuple[torch.Tensor, list[str]]:
+    """Monthly electricity census -> (A, T) kWh per active cell (Task 4's aggregate_pumps),
+    or ``((C, A, T), class_names)`` with ``eta_classes=True``.
+
+    ``meter_filter`` (2026-09-11, ``pumping.clean_census``): ``"none"`` is the raw census
+    every result before that date used; ``"dedupe"`` counts each shared meter once;
+    ``"dedupe-cap"`` also drops meters whose mean draw exceeds ``cap_duty`` x their rated
+    motor capacity. On this census the three give 9.9, 6.6 and 2.2 TWh over 2012-2022.
+    """
     for p, label in ((pump_census_path, "pump census"), (pump_kwh_path, "pump kWh")):
         if not os.path.exists(p):
             raise FileNotFoundError(
@@ -902,6 +1045,20 @@ def _load_pumping_kwh(grid, pump_census_path: str, pump_kwh_path: str,
                 "census currently lives (it has no stable in-repo path yet).")
     pumps = pd.read_parquet(pump_census_path)
     kwh = pd.read_parquet(pump_kwh_path)
+    if meter_filter != "none":
+        pumps, kwh, report = pumping_mod.clean_census(
+            pumps, kwh, cap_duty=(cap_duty if meter_filter == "dedupe-cap" else None),
+            t0=t0, t1=t1)
+        print(f"pump census ({meter_filter}): raw {report['kwh_raw_GWh'].sum():.0f} GWh -> "
+              f"de-duplicated {report['kwh_dedup_GWh'].sum():.0f} -> kept "
+              f"{report['kwh_kept_GWh'].sum():.0f} GWh over {len(pumps)} pumps; dropped "
+              f"{int(report['n_meters_dropped'].sum())} meters over capacity", flush=True)
+    if eta_classes:
+        from .scenario import CLASSES, energy_by_class
+
+        by_cls, _dates = energy_by_class(pumps, kwh, grid, t0, t1)
+        names = [c for c in CLASSES if c in by_cls]
+        return torch.tensor(np.stack([by_cls[c] for c in names]), dtype=torch.float64), names
     E, _dates = pumping_mod.aggregate_pumps(pumps, kwh, grid, t0, t1)
     return torch.tensor(E, dtype=torch.float64)
 
@@ -951,14 +1108,28 @@ def _load_recharge_field(grid, rf_timeseries_path: str, rf_stations_path: str,
     return torch.tensor(field, dtype=torch.float64)
 
 
-# The pump census (sid, TWD97_X, TWD97_Y, PUMP_HP, PURPOSE; 116,769 rows) has no stable
-# in-repo path -- see task-5-report.md's fix-round-1 section. This points at the copy
-# Task 4 fetched live from the wisenvr API into this session's scratchpad, which is what
-# --pump-census defaults to; pass --pump-census explicitly (or --no-forcing) elsewhere.
-_DEFAULT_PUMP_CENSUS = (
-    "/tmp/claude-1000/-home-rekin226-Desktop-code-space-HydroPhysicsAI/"
-    "55ec15e7-c585-41a8-a463-e69e4ca3c0cf/scratchpad/tpc_pumps.parquet"
-)
+# Where the real inputs live once the data cache is in place (docs/DATA_FORMAT.md,
+# ``hydrophysics.twin.fetch_amp``). Every path is relative to the repo root. The old
+# defaults pointed at a doubled ``chou-shui-data/chou-shui-data/`` prefix and, for the
+# census, at another machine's scratchpad, so every run had to spell all of them out.
+DEFAULT_PATHS = {
+    "polygon": "chou-shui-data/data/Zhuoshui Alluvial Fan/Zhuoshui Alluvial Fan.json",
+    "wells_dir": "AMP_V2/data/wells",
+    "stations": "AMP_V2/data/fan_stations.parquet",
+    "pump_census": "AMP_V2/data/tpc_pumps.parquet",
+    "pump_kwh": "AMP_V2/data/pump_kwh_all.parquet",
+    "rf_timeseries": "chou-shui-data/data/rf_timeseries.csv",
+    "rf_stations": "chou-shui-data/data/rf_stations.csv",
+    "gw_stations": "chou-shui-data/data/gw_stations.csv",
+    "et_npz": "results/et/openmeteo_et0_2012_2022.npz",
+}
+
+
+def _write_theta(path: str, theta: dict, meta: dict) -> None:
+    """Persist a calibrated parameter set with enough provenance to rebuild the model."""
+    with open(path, "w") as fh:
+        json.dump({"theta": theta, "meta": meta}, fh, indent=1)
+
 
 _PARAM_MODES = ("homogeneous", "percell", "zonal")
 _DEFAULT_ZONE_BOUNDARIES = "205,182"
@@ -1042,23 +1213,53 @@ def main(argv=None) -> None:
                          "verdict moves. Do NOT vary the first (proximal) value: e.g. "
                          "'186,178' moves the PROXIMAL boundary instead and is not the "
                          "sensitivity check spec 4.2 asks for.")
-    ap.add_argument("--wells-dir", default="AMP_V2/data/wells")
-    ap.add_argument("--stations", default="AMP_V2/data/fan_stations.parquet")
-    ap.add_argument("--polygon",
-                    default="chou-shui-data/chou-shui-data/data/Zhuoshui Alluvial Fan/"
-                            "Zhuoshui Alluvial Fan.json")
-    ap.add_argument("--pump-census", default=_DEFAULT_PUMP_CENSUS,
-                    help="pump census parquet (sid, TWD97_X, TWD97_Y, PUMP_HP, PURPOSE) "
-                         "-- see task-5-report.md fix-round-1 for why this has no stable "
-                         "repo path yet")
-    ap.add_argument("--pump-kwh", default="AMP_V2/data/pump_kwh_all.parquet")
-    ap.add_argument("--rf-timeseries",
-                    default="chou-shui-data/chou-shui-data/data/rf_timeseries.csv")
-    ap.add_argument("--rf-stations",
-                    default="chou-shui-data/chou-shui-data/data/rf_stations.csv")
-    ap.add_argument("--et-npz", default="results/et/openmeteo_et0_2012_2022.npz")
-    ap.add_argument("--gw-stations",
-                    default="chou-shui-data/chou-shui-data/data/gw_stations.csv")
+    ap.add_argument("--wells-dir", default=DEFAULT_PATHS["wells_dir"])
+    ap.add_argument("--stations", default=DEFAULT_PATHS["stations"])
+    ap.add_argument("--polygon", default=DEFAULT_PATHS["polygon"])
+    ap.add_argument("--pump-census", default=DEFAULT_PATHS["pump_census"],
+                    help="pump census parquet (sid, TWD97_X, TWD97_Y, PUMP_HP, PURPOSE)")
+    ap.add_argument("--pump-kwh", default=DEFAULT_PATHS["pump_kwh"])
+    ap.add_argument("--rf-timeseries", default=DEFAULT_PATHS["rf_timeseries"])
+    ap.add_argument("--rf-stations", default=DEFAULT_PATHS["rf_stations"])
+    ap.add_argument("--et-npz", default=DEFAULT_PATHS["et_npz"])
+    ap.add_argument("--gw-stations", default=DEFAULT_PATHS["gw_stations"])
+    ap.add_argument("--boundaries", choices=("none", "coast-apex"), default="coast-apex",
+                    help="'coast-apex' (default since 2026-09-11) opens the basin with "
+                         "general-head boundaries on the coast (h_b = 0) and at the apex "
+                         "(h_b = initial head), each with a learnable conductance -- see "
+                         "boundaries.py for why the closed basin pinned the forcing. "
+                         "'none' reproduces every result recorded before that date.")
+    ap.add_argument("--meter-filter", choices=("none", "dedupe", "dedupe-cap"),
+                    default="dedupe-cap",
+                    help="census cleaning (pumping.clean_census): count each shared "
+                         "meter once, and (dedupe-cap) drop meters whose mean draw "
+                         "exceeds --cap-duty x rated motor capacity. 'none' is the raw "
+                         "census every result before 2026-09-11 used (9.9 TWh; the "
+                         "default keeps 2.2).")
+    ap.add_argument("--cap-duty", type=float, default=1.0)
+    ap.add_argument("--eta-classes", action="store_true",
+                    help="one wire-to-water efficiency per purpose class (irrigation, "
+                         "aquaculture, livestock, domestic, industry, other) instead of "
+                         "one for the whole census")
+    ap.add_argument("--fix-eta", type=float, default=None,
+                    help="hold the wire-to-water efficiency at this value (diagnostic; "
+                         "every free fit so far drove it to the 0.05 floor)")
+    ap.add_argument("--fix-head-extra", type=float, default=None,
+                    help="hold the extra pumping head (m) at this value (diagnostic)")
+    ap.add_argument("--pump-split", action="store_true",
+                    help="learn the share of abstraction taken from layer 1 (index 0) "
+                         "instead of --pump-layer; one logit parameter")
+    ap.add_argument("--return-flow", action="store_true",
+                    help="learn an irrigation return-flow fraction (<= 0.7) of the pumped "
+                         "volume that re-enters layer 1 the same month; one logit")
+    ap.add_argument("--l-min", type=float, default=None,
+                    help="leakance floor in 1/day (default 1e-8): raises BOUNDS['log_L']")
+    ap.add_argument("--wells-from", default=None,
+                    help="CSV with a 'sid' column: use only these wells. Every run "
+                         "writes its own well list as stage3_wells.csv, so a --dx 500 "
+                         "convergence check can be made like-for-like by passing the "
+                         "1 km run's list here (the active-cell mask otherwise changes "
+                         "the well set).")
     ap.add_argument("--pump-layer", type=int, default=1,
                     help="0-indexed layer that receives pumping (default 1 = layer 2, "
                          "the main production aquifer)")
@@ -1067,7 +1268,10 @@ def main(argv=None) -> None:
     ap.add_argument("--no-forcing", action="store_true",
                     help="skip the pumping/recharge drivers and h0 IC, reproducing the "
                          "original (degenerate, see module docstring) zero-forcing run")
-    ap.add_argument("--out", default="results/twin")
+    ap.add_argument("--out", default=None,
+                    help="output directory (default: results/twin_runs/stage3_<UTC "
+                         "timestamp>, so a new run never overwrites the published "
+                         "results/twin/*.csv)")
     ap.add_argument("--log-every", type=int, default=0,
                     help="print in-sample R2 every N epochs during the fit")
     ap.add_argument("--dump-predictions", action="store_true",
@@ -1088,7 +1292,11 @@ def main(argv=None) -> None:
                          "selection is not bit-reproducible across inductor cache "
                          "states; recorded in the run's provenance when used.")
     args = ap.parse_args(argv)
+    if args.out is None:
+        args.out = os.path.join("results", "twin_runs",
+                                time.strftime("stage3_%Y%m%d-%H%M%S", time.gmtime()))
     set_compile_matvec(args.compile_matvec)
+    set_l_min(args.l_min)
     device = pick_device(args.device)
     print(f"device: {device}", flush=True)
 
@@ -1117,11 +1325,17 @@ def main(argv=None) -> None:
     stn["sid"] = stn["sid"].astype(str)
     hf = build_head_field(args.wells_dir, stn)
 
-    idx, lay, series, xy_used = [], [], [], []
+    allowed = None
+    if args.wells_from:
+        allowed = set(pd.read_csv(args.wells_from)["sid"].astype(str))
+    idx, lay, series, xy_used, sids_used = [], [], [], [], []
     for w in range(len(hf)):
+        if allowed is not None and str(hf.sids[w]) not in allowed:
+            continue
         i = grid.active_index(float(hf.xy[w, 0]), float(hf.xy[w, 1]))
         if i is None:
             continue
+        sids_used.append(str(hf.sids[w]))
         s = hf.heads[w]
         if not np.isfinite(s).all():
             s = pd.Series(s).interpolate(limit_direction="both").to_numpy()
@@ -1143,17 +1357,38 @@ def main(argv=None) -> None:
     recharge_dummy = torch.zeros(4, grid.n_active, n_steps, dtype=torch.float64)
 
     ground_elev = E = recharge_field = None
+    eta_class_names = None
     if not args.no_forcing:
         ground_elev = _load_ground_elev(grid, stn)
         E = _load_pumping_kwh(grid, args.pump_census, args.pump_kwh,
-                              "2012-01-01", "2023-01-01")[:, 1:]
+                              "2012-01-01", "2023-01-01", meter_filter=args.meter_filter,
+                              cap_duty=args.cap_duty, eta_classes=args.eta_classes)
+        if args.eta_classes:
+            E, eta_class_names = E
+            print(f"eta classes: {eta_class_names}", flush=True)
+        E = E[..., 1:]
         recharge_field = _load_recharge_field(grid, args.rf_timeseries, args.rf_stations,
                                               args.et_npz, args.gw_stations,
                                               "2012-01-01", "2023-01-01")[:, 1:]
 
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
+    nan_frac = float(np.isnan(np.stack([hf.heads[w] for w in range(len(hf))])).mean())
+    print(f"head field: {len(hf)} wells passed QC, {len(sids_used)} inside the grid, "
+          f"{100 * nan_frac:.2f}% NaN month-cells before interpolation", flush=True)
+    os.makedirs(args.out, exist_ok=True)
+    pd.DataFrame({"sid": sids_used, "layer": obs_layer_np + 1,
+                  "x": well_xy[:, 0], "y": well_xy[:, 1]}).to_csv(
+        os.path.join(args.out, "stage3_wells.csv"), index=False)
 
-    m = FlowModel(grid, n_layers=4, dt_days=30.0, device=device)
+    boundaries = None
+    if args.boundaries == "coast-apex":
+        boundaries = fan_boundaries(grid, proximal_km=(proximal_km if proximal_km
+                                                       is not None else 205.0))
+        print(f"boundaries: {boundaries.describe()}", flush=True)
+    else:
+        print("boundaries: none (closed basin)", flush=True)
+
+    m = FlowModel(grid, n_layers=4, dt_days=30.0, device=device, boundaries=boundaries)
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
@@ -1161,7 +1396,9 @@ def main(argv=None) -> None:
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
                    recharge_layer=args.recharge_layer, log_every=args.log_every,
-                   zone_of_cell=zone_of_cell)
+                   zone_of_cell=zone_of_cell, fix_eta=args.fix_eta,
+                   fix_head_extra=args.fix_head_extra, pump_split=args.pump_split,
+                   return_flow=args.return_flow)
     t_fit = time.perf_counter() - t0
 
     # Spec 6's PRIMARY decision rule -- "does the transmissivity clamp release, per zone?" --
@@ -1177,13 +1414,27 @@ def main(argv=None) -> None:
     cg_fit_nonconverged, cg_fit_worst = _cg_stats()
     print(f"wells={obs_h.shape[0]} cells={grid.n_active} dx={args.dx:.0f}m "
           f"param_mode={args.param_mode} n_params={ins['n_params']} "
-          f"forcing={'off' if args.no_forcing else 'on'} epochs={args.epochs}")
+          f"forcing={'off' if args.no_forcing else 'on'} boundaries={args.boundaries} "
+          f"meter_filter={args.meter_filter} eta_classes={eta_class_names} "
+          f"fixed={ins.get('fixed', [])} pump_split={args.pump_split} "
+          f"return_flow={args.return_flow} l_min={args.l_min} epochs={args.epochs}")
     print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
     print(_format_bounds_hit(ins["bounds_hit"]))
     if "theta" in ins:
         print(f"  theta={ins['theta']}")
     print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_fit_nonconverged}  "
           f"cg_worst_residual={cg_fit_worst:.3e}  git_commit={git_commit!r}", flush=True)
+
+    _write_theta(os.path.join(args.out, "stage3_theta.json"), ins.get("theta", {}),
+                 {"param_mode": args.param_mode, "boundaries": args.boundaries,
+                  "zone_boundaries": args.zone_boundaries, "dx": args.dx,
+                  "pump_layer": args.pump_layer, "recharge_layer": args.recharge_layer,
+                  "epochs": args.epochs, "git_commit": git_commit, "r2_insample": ins["r2"],
+                  "bounds_hit": ins["bounds_hit"], "n_wells": int(obs_h.shape[0]),
+                  "meter_filter": args.meter_filter, "cap_duty": args.cap_duty,
+                  "eta_classes": eta_class_names, "fix_eta": args.fix_eta,
+                  "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
+                  "return_flow": args.return_flow, "l_min": args.l_min})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -1216,8 +1467,14 @@ def main(argv=None) -> None:
                        device=device,
                        dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
                                   if args.dump_predictions else None),
-                       zone_of_cell=zone_of_cell)
+                       zone_of_cell=zone_of_cell, boundaries=boundaries,
+                       fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
+                       pump_split=args.pump_split, return_flow=args.return_flow)
     t_gate = time.perf_counter() - t0
+    with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
+        json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
+                    "r2_idw": f["r2_idw"], "theta": f["theta"]} for f in gate["per_fold"]],
+                  fh, indent=1)
     cg_nonconverged, cg_worst_residual = _cg_stats()
     # The in-sample block (R2, per-zone bounds_hit, theta) was printed before the gate began;
     # it is not repeated here. What follows is what only the gate can tell you.
@@ -1255,7 +1512,12 @@ def main(argv=None) -> None:
                    "zone_cell_counts": (str(zone_counts) if args.param_mode == "zonal"
                                         else ""),
                    "n_params": ins["n_params"],
-                   "forcing": "off" if args.no_forcing else "on", "epochs": args.epochs,
+                   "forcing": "off" if args.no_forcing else "on",
+                   "boundaries": args.boundaries, "meter_filter": args.meter_filter,
+                   "eta_classes": str(eta_class_names), "fix_eta": args.fix_eta,
+                   "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
+                   "return_flow": args.return_flow, "l_min": args.l_min,
+                   "epochs": args.epochs,
                    "n_folds": gate["n_folds"], "seed": args.seed,
                    "n_sites": gate["n_sites"],
                    "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
@@ -1269,6 +1531,20 @@ def main(argv=None) -> None:
                    "cg_worst_residual": cg_worst_residual, "git_commit": git_commit,
                    "fit_time_s": t_fit, "gate_time_s": t_gate}]).to_csv(path, index=False)
     print(f"wrote {path}")
+    # The theta file was written before the folds ran; stamp the verdict into it now so
+    # the forward twin and the viewer inherit it (they print it on every run).
+    theta_path = os.path.join(args.out, "stage3_theta.json")
+    try:
+        with open(theta_path) as fh:
+            obj = json.load(fh)
+        obj["meta"]["gate"] = {"r2_kfold": gate["r2_kfold"], "r2_idw": gate["r2_idw"],
+                               "margin": gate["r2_kfold"] - gate["r2_idw"],
+                               "verdict": "PASS" if gate["r2_kfold"] > gate["r2_idw"] else "FAIL",
+                               "n_folds": gate["n_folds"], "seed": args.seed}
+        with open(theta_path, "w") as fh:
+            json.dump(obj, fh, indent=1)
+    except OSError as e:
+        print(f"could not stamp the verdict into {theta_path}: {e}")
 
 
 if __name__ == "__main__":

@@ -377,6 +377,107 @@ two are refinements. **Re-run the gate before any further parameterisation work*
 FAIL was measured with a forcing now known to be wrong by an order of magnitude, so its
 −0.236 margin says nothing yet about the aquifer model.
 
+### 7.5 Two root causes found (2026-09-11) — the basin was closed and the census was double-counted
+
+The total-dynamic-head fix (§7.4) was re-run as a full gate on 2026-09-11 (500 epochs,
+5 folds, `results/twin_stage3_tdh/`). Its in-sample block already answered the question
+before the folds finished: `log_eta` pinned at the **floor** (0.05) again and the new
+`log_head_extra` pinned at its **ceiling** (200 m), with the recharge fraction falling from
+0.93 to 0.36. In-sample R² rose to +0.868 from +0.758. Two knobs at opposite stops is an
+optimiser asking for net forcing ≈ 0. That pattern has one cause:
+
+**TDH-only verdict (2026-09-12, `results/twin_stage3_tdh/`, commit `cd612c9`, 500 epochs,
+5 folds, closed basin, raw census): secondary rule **FAIL**, flow +0.622 vs IDW +0.702,
+margin **−0.080** against −0.236 before the lift fix. In-sample +0.868. `log_eta` at the
+floor and `log_head_extra` at the ceiling in the in-sample fit and in all five folds. The
+lift fix moved the margin by 0.156 and left the forcing clamped at both stops, which is
+the closed-basin signature described next.
+
+**1. The solver was a closed basin.** `flow._neighbour_index` lists faces between active
+cells only; every fan-edge face was no-flow. Nothing could leave to the Taiwan Strait and
+nothing could enter at the apex, so the monthly balance had to close through storage and
+the only way to fit heads that do *not* drift was to shrink both forcings. This also
+explains §7.3's layer pattern (losing to IDW where forcing enters, tying where IDW must
+extrapolate). Fix: `twin/boundaries.py` — general-head boundaries on the coast (westernmost
+cell per row, h_b = 0 m, one learnable conductance per layer) and the apex (easternmost
+cell per row inside the proximal zone, h_b = the initial IDW head, one shared
+conductance). C → 0 recovers the closed basin, so the data can still choose it. The
+implicit-function adjoint carries the new parameters (`tests/test_twin_boundaries.py`
+checks the gradient against finite differences). `--boundaries coast-apex` is the default;
+`none` reproduces every recorded run. n_params becomes 32 in zonal mode.
+
+**2. The pump census over-counted electricity 4.6×.** Two independent defects:
+
+| step | GWh 2012–2022 | what it removes |
+|---|---|---|
+| raw census (`--meter-filter none`) | 9,916 | — |
+| count each shared meter once (`dedupe`) | 6,278 | 7,869 meters serve >1 pump and the same kWh series was attached to every one of them (62% of all kWh sat on such rows); the two largest "industry" entries were one 30 HP meter counted twice at 1.28 TWh each |
+| drop meters over rated capacity (`dedupe-cap`, default) | **2,086** | a motor cannot draw more than HP × 0.746 kW × 730 h/month. The median *industrial* meter drew 194% of that and the top one 59,000%; livestock and aquaculture 90th percentiles sit at 5× and 1.5×. These are farm/factory supplies on an agricultural tariff, not water lifted. Irrigation (86% of installed HP) runs at 6% duty and loses little |
+
+`pumping.clean_census` counts each meter once, splits its energy across its pumps by HP,
+and drops meters whose mean monthly duty exceeds `--cap-duty` (1.0). §7.3's "roughly 4×
+too much water at any physical efficiency" was, to within the lift correction, exactly
+this electricity.
+
+**Ordering corrected again.** §7.4 said the remaining candidates were refinements. They
+were not: a missing outlet cannot be repaired by any forcing parameterisation, and a 4.6×
+over-count cannot be absorbed by an efficiency bounded below at 0.05. Per-purpose
+efficiency classes are now available as `--eta-classes` (opt-in) but are secondary to both.
+
+### 7.6 Verdict on the corrected model (2026-09-14) — secondary rule **PASS**, with a caveat
+
+`results/twin_runs/stage3_open_clean/` (published as `results/twin/stage3_zonal_open_clean.csv`),
+commit `cd612c9` + the 2026-09-11 working tree, zonal, 32 parameters, 500 epochs, 5
+site-grouped folds, `--boundaries coast-apex --meter-filter dedupe-cap`, 174-well head
+field (158 in grid), 35 h on the GPU, `cg_nonconverged = 0`.
+
+| | in-sample | 5-fold | IDW | margin |
+|---|---|---|---|---|
+| 2026-09-09 (closed, raw census) | +0.758 | +0.466 | +0.702 | −0.236 |
+| 2026-09-12 (closed, raw census, TDH lift) | +0.868 | +0.622 | +0.702 | −0.080 |
+| **2026-09-14 (open basin, clean census, TDH lift)** | **+0.906** | **+0.757** | +0.702 | **+0.055** |
+
+Per fold: +0.902/+0.867, +0.864/+0.846, +0.862/+0.853, +0.663/+0.443, +0.507/+0.746
+(flow/IDW). Four of five folds beat IDW; fold 4 does not.
+
+**Primary rule.** Lower-clamp `log_T` hits are 2/9 in-sample (proximal 1/1, distal 1/4),
+under the 4/9 threshold, so the rule passes on its count — but the *proximal* hit is the
+physically wrong one (10 m²/day in the gravel fan), and it coincides with the apex
+conductance sitting at its Dirichlet ceiling in every fold. The optimiser is insulating a
+fixed-head apex from the fan with a low-T proximal zone.
+
+**The caveat.** In-sample and in all five folds: `eta` = 0.05 (floor), `head_extra` =
+200 m (ceiling), `recharge_frac` = 0.06-0.08, `C_apex` = 1e5 (ceiling), layer-1 `C_coast`
+= 1e5 (ceiling) with layers 2-4 at 0.1-3 m²/day (closed), mid `S` at 0.3 in two layers.
+The model beats IDW by carrying the observed heads through boundary-pinned, storage-damped
+dynamics with ~2% of the published abstraction. It generalises across wells — that is
+what the gate measures — but the *derivative* of head with respect to pumping, which is
+what a policy scenario reads, is set by a conversion pinned at its floor. §7.5's
+data-only check shows the heads do respond to local pumping (seasonal amplitude Spearman
++0.51 with cleaned kWh). So the stress is real; the model is placing it wrongly — most
+likely all of it into layer 2 at the cell scale (p99 cell-month 3.4×10⁵ m³) with vertical
+leakage switched off (`log_L` −10 to −17).
+
+**Measured (2026-09-14, `results/twin_runs/stage3_fixed_eta/`, fit-only):** with the
+conversion held at physical values (`--fix-eta 0.5 --fix-head-extra 40`, implied
+abstraction ≈ 0.75 ×10⁹ m³/yr) the in-sample R² is **+0.877** against +0.906 free, and
+the rest of the parameter set turns physical: recharge fraction 0.43, proximal T 57
+m²/day (off the clamp), coast conductances 14-28 m²/day in layers 2-4. So the free fit's
++0.03 was bought by switching the stress off; a physical stress costs little and repairs
+the recharge and the boundaries. Mid-zone S at 0.3 and the Dirichlet apex remain. The
+k-fold gate of this configuration (`stage3_fixed_eta_gate/`, 2026-09-15) **FAILS**: +0.626
+vs IDW +0.702, margin −0.076, against +0.757 for the free fit. A physical stress placed
+where the model currently places it (all in layer 2, leakage switched off) generalises
+worse than no stress. The free fit therefore remains the gated parameter set, with its
+caveat, and the stress-placement candidates are being tested with the conversion held
+physical (`diag_split`, `diag_lmin`, `diag_return`, `diag_all`). Candidate refinements after that:
+pump→layer split by well depth, a leakance floor, irrigation return flow.
+
+**Next gate.** Zonal, 500 epochs, 5 folds, `--boundaries coast-apex --meter-filter
+dedupe-cap`, on the 174-well / 158-in-grid head field (declared canonical in STATE.md).
+The forward twin (`twin/forward.py`) and the viewer's forward mode are built and tested
+against the recorded closed-basin parameters, so a PASS turns directly into policy runs.
+
 ## 8. Cost
 
 - Implementation: one focused session.

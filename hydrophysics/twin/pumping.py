@@ -22,6 +22,96 @@ import torch
 RHO_G = 9800.0          # N/m3, rho * g for fresh water
 J_PER_KWH = 3.6e6
 MIN_LIFT_M = 2.0        # floor: a near-zero lift must not imply unbounded volume
+KW_PER_HP = 0.746
+HOURS_PER_MONTH = 730.0
+METER_COL = "電號1"      # the electricity meter number in the TPC census
+
+
+def clean_census(pumps: pd.DataFrame, kwh: pd.DataFrame, cap_duty: float | None = 1.0,
+                 t0: str | None = None, t1: str | None = None
+                 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """De-duplicate shared meters and drop meters that cannot physically be pumps.
+
+    Two defects in the raw census, found 2026-09-11 and both large:
+
+    1. **Shared meters.** 7,869 meter numbers (``電號1``) serve more than one registered
+       pump, and the monthly kWh series is attached to *every* pump on the meter. Those
+       pumps carry 62% of all recorded electricity, most of it duplicated -- the two
+       largest "industry" entries are one 30 HP meter counted twice at 1.28 TWh each.
+       Here each meter's series is counted once and split across its pumps by rated
+       horsepower, so per-cell and per-class aggregation stay pump-based.
+    2. **Meters that are not pumps.** A motor cannot draw more than its rating. Yet the
+       median *industrial* meter runs at 194% of ``HP x 0.746 kW x 730 h`` per month and
+       the top one at 59,000%; livestock and aquaculture have 90th percentiles at 5x and
+       1.5x. These are farm or factory supplies billed under an agricultural-water
+       tariff, not groundwater lifted. Irrigation -- 86% of installed HP -- runs at a
+       plausible 6% duty. Meters whose *mean* monthly duty exceeds ``cap_duty`` are
+       dropped whole; ``cap_duty=None`` keeps them (the pre-2026-09-11 forcing).
+
+    Returns ``(pumps, kwh, report)``: the census restricted to surviving pumps, the kWh
+    table re-keyed per pump with each meter's energy shared out, and a per-class report of
+    what was removed. ``t0``/``t1`` restrict the duty statistic to the modelled window.
+    """
+    pumps = pumps.copy()
+    pumps["sid"] = pumps["sid"].astype(str)
+    pumps["_hp"] = pd.to_numeric(pumps["PUMP_HP"], errors="coerce").fillna(0.0).clip(lower=0.0)
+    meter = pumps[METER_COL].astype(str) if METER_COL in pumps else pumps["sid"]
+    pumps["_meter"] = meter.where(meter.notna() & (meter != "nan") & (meter != ""),
+                                  pumps["sid"])
+
+    k = kwh.copy()
+    k["pump"] = k["pump"].astype(str)
+    k["datetime"] = pd.to_datetime(k["datetime"])
+    if t0 is not None:
+        k = k[k["datetime"] >= pd.Timestamp(t0)]
+    if t1 is not None:
+        k = k[k["datetime"] < pd.Timestamp(t1)]
+    k = k.dropna(subset=["electricity_kwh"])
+
+    # one series per meter: the first pump's copy (they are identical duplicates)
+    first_sid = pumps.groupby("_meter")["sid"].first()
+    meter_of_sid = pumps.set_index("sid")["_meter"]
+    k["_meter"] = k["pump"].map(meter_of_sid)
+    k = k.dropna(subset=["_meter"])
+    k_meter = k[k["pump"].isin(set(first_sid.values))].drop(columns=["pump"])
+
+    hp_meter = pumps.groupby("_meter")["_hp"].sum()
+    e_meter = k_meter.groupby("_meter")["electricity_kwh"].agg(["mean", "sum"])
+    cap = hp_meter.reindex(e_meter.index).fillna(0.0) * KW_PER_HP * HOURS_PER_MONTH
+    duty = e_meter["mean"] / cap.replace(0.0, np.nan)
+    drop = set(duty[(cap_duty is not None) & (duty > (cap_duty if cap_duty else np.inf))].index)
+
+    from .scenario import purpose_class
+    pumps["_cls"] = pumps["PURPOSE"].map(purpose_class)
+    pumps["_meter_kwh"] = pumps["_meter"].map(e_meter["sum"]).fillna(0.0)
+    pumps["_dropped"] = pumps["_meter"].isin(drop)
+    rep_rows = []
+    # a meter is reported under its first pump's class, so the per-class sums add up to
+    # the totals even where one meter's pumps straddle two classes
+    meter_cls = pumps.groupby("_meter")["_cls"].first()
+    for cls, g in pumps.groupby("_cls"):
+        raw = float(k[k["pump"].isin(set(g["sid"]))]["electricity_kwh"].sum())
+        per_meter = g.drop_duplicates("_meter")
+        per_meter = per_meter[per_meter["_meter"].map(meter_cls) == cls]
+        rep_rows.append({"class": cls, "n_pumps": int(len(g)),
+                         "n_meters": int(per_meter.shape[0]),
+                         "kwh_raw_GWh": raw / 1e6,
+                         "kwh_dedup_GWh": float(per_meter["_meter_kwh"].sum()) / 1e6,
+                         "kwh_kept_GWh": float(per_meter.loc[~per_meter["_dropped"],
+                                                             "_meter_kwh"].sum()) / 1e6,
+                         "n_meters_dropped": int(per_meter["_dropped"].sum())})
+    report = pd.DataFrame(rep_rows).set_index("class")
+
+    keep = pumps[~pumps["_dropped"]]
+    hp_share = keep["_hp"] / keep.groupby("_meter")["_hp"].transform("sum").replace(0.0, np.nan)
+    n_on_meter = keep.groupby("_meter")["sid"].transform("size")
+    share = hp_share.fillna(1.0 / n_on_meter)          # HP unknown: split evenly
+    share_of_sid = pd.Series(share.values, index=keep["sid"].values)
+    km = k_meter.merge(keep[["sid", "_meter"]], on="_meter", how="inner")
+    km["electricity_kwh"] = km["electricity_kwh"] * km["sid"].map(share_of_sid).to_numpy()
+    kwh_out = km.rename(columns={"sid": "pump"})[["datetime", "electricity_kwh", "pump"]]
+    pumps_out = keep.drop(columns=["_hp", "_meter", "_cls", "_meter_kwh", "_dropped"])
+    return pumps_out, kwh_out.reset_index(drop=True), report
 
 
 def _cell_lookup(pumps: pd.DataFrame, grid) -> dict[str, int]:

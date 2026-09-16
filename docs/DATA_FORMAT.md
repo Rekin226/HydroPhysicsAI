@@ -159,3 +159,32 @@ Optional: `intermediate/gw_coastal_inland_class.csv`, `gw_fit_results.csv`.
 The train/validation split defaults to `2019-01-01` and is configurable via
 `Config.split_date`. See `hydrophysics/config.py` and `hydrophysics/data.py` for the
 loader, and `hydrophysics/sample.py` for a script that emits every file above.
+
+
+## The twin's data cache (`AMP_V2/data/`, `chou-shui-data/data/`)
+
+The Choushui twin (`hydrophysics.twin`) reads two gitignored trees. Neither ships in the
+repository; both are rebuilt as below. Paths are the `DEFAULT_PATHS` in
+`hydrophysics/twin/calibrate_flow.py`, so no flag is needed once they exist.
+
+| path | content | how it is rebuilt |
+|---|---|---|
+| `AMP_V2/data/fan_stations.parquet` | every monitoring well in groundwater zone 50 with its metadata (`GroundwaterLayerCode`, `GroundHeight`, `LocationByTWD97`, …) | `python -m hydrophysics.twin.fetch_amp stations` |
+| `AMP_V2/data/wells/<sid>.parquet` | hourly water level per well, index `datetime`, column `value` | `python -m hydrophysics.twin.fetch_amp wells` |
+| `AMP_V2/data/tpc_pumps.parquet` | registered-pump census inside the fan polygon (`sid`, `電號1` meter number, `PUMP_HP`, `PURPOSE`, `TWD97_X/Y`) | `python -m hydrophysics.twin.fetch_amp pumps --polygon "<fan>.json"` |
+| `AMP_V2/data/pump_kwh_all.parquet` | monthly `electricity_kwh` per `pump` | same command (`--kwh-out`) |
+| `chou-shui-data/data/Zhuoshui Alluvial Fan/*.json` | the fan polygon (EPSG:4326) | **not available from the API**; from the original data delivery |
+| `chou-shui-data/data/rf_timeseries.csv`, `rf_stations.csv`, `gw_stations.csv` | rain gauges and the 61 curated wells (the ET0 cache is keyed on them) | original data delivery |
+| `chou-shui-data/data/mlcw_stations.csv` + `ls_cache/` | MLCW compaction sites and the leveling panel used by Stages 1–2 | original data delivery / backup |
+| `results/et/openmeteo_et0_2012_2022.npz` | cached ET0 per curated well | committed (`hydrophysics.et`) |
+
+The fetcher takes the API host and account from `WISENVR_BASE_URL`, `WISENVR_USERNAME`
+and `WISENVR_PASSWORD` only. It renews the bearer token on expiry and records *successes*
+in a `.fetched.json` beside the output, so an interrupted fetch resumes without skipping
+what failed.
+
+**Canonical head field.** `heads.build_head_field` on the current cache yields **174 wells
+passing QC, 158 inside the 1 km grid, 8.79 % NaN month-cells** (the numbers every run
+prints at startup). An earlier cache produced 147 wells at 1.1 % NaN; results recorded
+before 2026-09-05 were computed on it. The 174-well field is canonical from 2026-09-11:
+it is the one the fetcher reproduces, and every gate since has been run on it.

@@ -1,6 +1,6 @@
 # Project state — where to continue
 
-**Last updated:** 2026-09-09 · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-15 (23:30) · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -8,159 +8,280 @@ The goal, stated once so the gates below have a point:
 > aquifer forward in time, and animates where and how fast the ground sinks —
 > re-runnable on demand.**
 
-Not a static map: it must be *animated* (built), *scenario-responsive* (partly built), and
-*runnable forward past the end of the data* (not built — that needs a flow model that
-passes its gate).
+As of 2026-09-14 every link of that chain is built, tested, and the flow model **passes
+its k-fold gate** (+0.757 vs IDW +0.702). What is still open is whether its *pumping
+response* is physical: the fit still pins the pump conversion at its bounds, so policy
+deltas are consequences of a gated model, not yet validated sensitivities. §2 says how
+that is being measured.
 
 ---
 
 ## 1. Where the chain stands
 
 ```
-pumping ──▶ [flow model] ──▶ heads ──▶ [VEP column] ──▶ subsidence ──▶ [3D viewer]
-            GATE FAILED               PASSES              PASSES        BUILT
-            (secondary rule)          (Stage 2)      (R2 +0.242 vs      (head-space
-                                                      799 benchmarks)   scenarios only)
+pumping policy ──▶ [flow model] ──▶ heads ──▶ [VEP column] ──▶ subsidence ──▶ [3D viewer]
+                   GATE PASS         nudged      PASSES           PASSES          BUILT
+                   (+0.757 vs        to obs      (Stage 2)        (R² +0.299      (forward mode:
+                    IDW +0.702)      at origin                     vs leveling)    policy axis)
 ```
 
 | stage | status | evidence |
 |---|---|---|
 | Stage 1 — algebraic `Sk` on leveling | marginal | +0.040 tilt-corrected, 878 sites |
 | Stage 2 — VEP compaction | **PASS** | shared-VEP LOSO +0.465 vs baseline +0.031 |
-| Stage 3 primary — clamp released | **PASS** (2026-09-06) | `log_T` 3/9 ≤ 4/9, proximal free at T = 725 m²/day |
-| Stage 3 secondary — margin vs IDW | **FAIL** (2026-09-09) | flow +0.466 vs IDW +0.702, margin −0.236 |
-| Stage 4 — flow↔VEP coupling | built, **not started** | blocked by the gate, per remediation spec §6 |
-| Stage 5 — 3D scenario twin | partial | `explorer3d.py` ships; scenario axis is head decline, not pumping |
+| Stage 3 primary — clamp released | PASS (2026-09-06) on the closed basin | `log_T` 3/9 ≤ 4/9 |
+| Stage 3 secondary — margin vs IDW | **FAIL** (2026-09-09, closed basin, raw census) | flow +0.466 vs IDW +0.702 |
+| Stage 3 re-run, TDH fix only | **FAIL** (2026-09-12, `results/twin_stage3_tdh/`) | flow +0.622 vs IDW +0.702, margin −0.080 (was −0.236); eta at floor and head_extra at ceiling in every fold |
+| Stage 3 re-run, open basin + clean census | **PASS** (2026-09-14, `results/twin_runs/stage3_open_clean/`, published as `results/twin/stage3_zonal_open_clean.csv`) | in-sample +0.906; **5-fold +0.757 vs IDW +0.702, margin +0.055**; 4 of 5 folds beat IDW (fold 4: +0.507 vs +0.746). But eta floor, head_extra ceiling, recharge 7%, apex and layer-1 coast at the Dirichlet ceiling in every fold — see §2 |
+| Stage 4 — flow↔VEP coupling | built and exercised | `twin/forward.py` drives the column with the flow model's heads |
+| Stage 5 — 3D scenario twin | **built** | `explorer3d.py --forward-npz`: policy dropdown, month slider through the projection, verdict in the title |
 
-Canonical verdict and diagnosis: `specs/2026-08-29-choushui-stage3-zonal-remediation-design.md`
-§7.2 (verdict) and §7.3 (where the constraint moved).
-Session narrative and corrections: `specs/2026-09-05-twin-performance-and-3d-revision.md`.
+Canonical diagnosis: `specs/2026-08-29-choushui-stage3-zonal-remediation-design.md` §7.5.
 
 ## 2. The one thing to do next
 
-**Re-run the Stage-3 gate with the total-dynamic-head fix (2026-09-09, implemented).**
+**Establish whether the gated model's pumping response is physical.**
 
-The FAIL localised to the forcing, and the forcing had a specific physical defect:
-`energy_to_volume` divided pump energy by the **static lift** alone. On this flat coastal
-fan static lift is **median 6.65 m** (ground elevation median 9.1 m, heads near surface),
-20% of cell-months fall below `MIN_LIFT_M = 2.0`, and the 1st percentile is **-14.8 m** --
-artesian, where the old code clamped to the floor and therefore implied the *largest*
-volumes on the fan, exactly backwards.
+The gate passed on 2026-09-14 (32 parameters, 500 epochs, 5 site-grouped folds, 35 h on
+the GPU). The policy twin, the viewer and the surrogate are being run on its parameters
+by the post-gate chain (`results/twin_runs/post_gate_chain.log`). The open question is
+below, and the chain's third step measures it.
 
-Because volume goes as 1/head, that implied **~25e9 m3/yr at a physical eta = 0.45 against
-a published ~1.5-2.0e9** -- a 12-16x overestimate, not the 4x first estimated from an
-assumed 20 m lift. Even at the pinned eta = 0.05 the model still abstracted 2.78e9, above
-the published range: efficiency was floored *and still over-pumping*, which is why the
-clamp was unanimous across every fold.
+Two root causes were found on 2026-09-11 (spec §7.5), and both are now calibration
+defaults:
 
-**Fixed:** a pump works against the **total dynamic head** -- static lift plus well
-drawdown, friction, and the distribution system's discharge head. `energy_to_volume` now
-takes `head_extra`, and calibration learns one bounded scalar `log_head_extra` (1-200 m)
-threaded exactly like `log_eta`. Omitting the argument reproduces the old behaviour
-bit-for-bit, so recorded results still replay.
+1. **The solver was a closed basin.** No coastal outlet, no apex inflow. Now general-head
+   boundaries on the coast (h_b = 0) and the apex (h_b = initial head) with learnable
+   conductances (`--boundaries coast-apex`, `twin/boundaries.py`).
+2. **The census over-counted electricity 4.6×.** Shared meters attached to every pump
+   on them, and meters drawing many times their rated motor capacity. Now
+   `pumping.clean_census` (`--meter-filter dedupe-cap`): 9.9 → 2.1 TWh.
 
-Effect at the median cell **8.2x**, at an artesian cell **16.7x**. And the parameter it
-was distorting has been released: after 12 epochs `eta = 0.293` with
-`bounds_hit[global] = {log_eta: lo=0/1, log_head_extra: lo=0/1}` -- **neither clamped**,
-against `log_eta: lo=1/1` in every fold of the failed gate. `head_extra` learns toward
-~33 m; ~48 m at eta = 0.30 reconciles the published abstraction exactly.
-
-So the next action is simply to re-run the gate (§5) and see whether the margin moves.
-`n_params` is now 27.
-
-**Note on ordering, corrected.** An earlier version of this file listed per-`PURPOSE`
-efficiency classes first. That was wrong: more efficiency classes cannot repair a 12x
-error when eta is already pinned at its floor. The lift model was the dominant term. The
-remaining two candidates are now genuine refinements rather than fixes:
-
-- **per-`PURPOSE` efficiency classes** — `twin/scenario.py` has the mapping already;
-  irrigation is 86% of installed HP.
-- **an active/decommissioned census filter** — well metadata carries `DisuseDate`; the
-  pump census needs an equivalent. Dead meters inflate the forcing.
-
-Only if the gate still fails with a physical head and a free efficiency is the aquifer
-model the suspect again -- and then the honest move is a different forward model (a
-PhysicsNeMo FNO surrogate trained on MODFLOW), not another zoning scheme.
-
-## 3. Remaining gaps, beyond the immediate blocker
-
-**On the critical path to the goal**
-
-1. **Forward integration past 2022 does not exist.** Everything is hindcast. Running
-   forward needs future forcing — a pumping scenario *and* a rainfall/ET assumption
-   (`scenario.climatology()` is written for this, unused).
-2. **Re-run cost.** "On demand" means minutes, not the 14 h a zonal fit currently takes.
-   This is where **PhysicsNeMo finally earns its install** — an FNO surrogate trained on
-   the calibrated solver. Installed (2.2.1) and still **not used by any twin code path**.
-3. **Stage 4 coupling is built but unexercised** (`twin/coupled.py`, 9 tests). It waits on
-   a flow model that passes.
-
-**Credibility**
-
-4. **No uncertainty anywhere.** No ensemble, no data assimilation. `docs/GPU_SERVER.md` §4
-   names assimilation as layer 2 of the architecture and it does not exist. For anything
-   policy-facing this is the largest gap.
-5. **Modest subsidence skill** — R² +0.242, bias +3.1 cm against leveling.
-6. **Head-field provenance is ambiguous.** The refetched field is 174 wells / 8.79% NaN
-   against the recorded 147 / 1.1%. Stage 2 still passes on it, but no one has declared
-   which is canonical.
-7. **The mid/distal zone boundary has no independent justification** (remediation spec
-   §10), and **`--dx 500` grid convergence is not like-for-like** (the active-cell mask
-   changes the well set).
-8. **`log_S` presses its upper bound** in 3 of 4 mid-zone cells (4/4 in one fold), and
-   3 of 4 distal `log_T` remain at the lower clamp with one at the upper. The rule counts
-   only lower-clamp hits and 3/9 clears 4/9, but the distal zone is visibly straining.
-
-## 4. Traps that have already cost time
-
-- **Device placement.** `calibrate_flow` had no `--device` and constructed `FlowModel`
-  without one, so every flow run in this project's history — and every cost estimate drawn
-  from them (the 4.3 h fit, the 12,733 s/fold, the "~144 h, we need a better GPU"
-  conclusion) — silently ran on CPU. On the real problem **GPU is ~51× faster**
-  (67 s/epoch vs 3,452). Fixed, and `tests/test_twin_device.py` guards it. Always confirm
-  the `device:` line at startup.
-- **Synthetic benchmarks mispredicted the real system by two orders of magnitude.** A
-  3,224-cell synthetic grid said GPU was 1.1× CPU; the real problem is 51×. Do not size
-  this solver's cost from synthetic grids.
-- **Long runs need `--log-every`.** A 9 h run with no progress output cannot be triaged,
-  and `ptrace_scope=1` means py-spy needs sudo to attach after the fact.
-- **The WiseEnvr bearer token expires** and `demo.py` never renews it. Any fetch longer
-  than ~1 h must refresh. Resume state must record *successes*, not *attempts*, or a
-  restart silently skips whatever failed during an outage.
-- **`results/twin/*.csv` are tracked** (published gate results); a new run overwrites
-  committed files. `results/twin_stage3_*/` are ignored.
-
-## 5. Reproducing the two Stage-3 runs
+The command that produced the PASS (defaults now open the basin and clean the census):
 
 ```bash
 export HYDROMIND_GW_DATA=$PWD/chou-shui-data/data
-
-# primary rule (~14 h on GPU) -- the clamp report prints before --fit-only returns
-python -m hydrophysics.twin.calibrate_flow --param-mode zonal --fit-only \
-  --epochs 1500 --device cuda --compile-matvec --log-every 25 \
-  --polygon "chou-shui-data/data/Zhuoshui Alluvial Fan/Zhuoshui Alluvial Fan.json" \
-  --wells-dir AMP_V2/data/wells --stations AMP_V2/data/fan_stations.parquet \
-  --pump-census AMP_V2/data/tpc_pumps.parquet --pump-kwh AMP_V2/data/pump_kwh_all.parquet \
-  --rf-timeseries chou-shui-data/data/rf_timeseries.csv \
-  --rf-stations chou-shui-data/data/rf_stations.csv \
-  --gw-stations chou-shui-data/data/gw_stations.csv \
-  --et-npz results/et/openmeteo_et0_2012_2022.npz --out results/twin_stage3_zonal
-
-# secondary rule: drop --fit-only, add --n-folds 5 --dump-predictions (~25 h)
+tmux new -s gate
+python -m hydrophysics.twin.calibrate_flow --param-mode zonal --epochs 500 --n-folds 5 \
+  --seed 0 --device cuda --compile-matvec --log-every 25 --dump-predictions \
+  --out results/twin_runs/stage3_open_clean          # 35 h on the GPU (6 h fit + 5 folds)
 ```
 
-Note the paths: the CLI defaults still point at a doubled `chou-shui-data/chou-shui-data/`
-prefix and at a dead scratchpad for the pump census, so **pass them explicitly**.
+Defaults now point at the repo data paths, open the basin and clean the census, and the
+run writes `stage3_theta.json`, `stage3_fold_thetas.json`, `stage3_wells.csv` and
+`stage3_flow.csv` (with `boundaries` and `meter_filter` columns) into `--out`.
 
-Data that must exist (all gitignored, ~331 MB + ~1 GB):
-`chou-shui-data/data/` (restored from backup — the API cannot supply the fan polygon) and
-`AMP_V2/data/{wells/,fan_stations.parquet,tpc_pumps.parquet,pump_kwh_all.parquet}`
-(rebuilt from the WiseEnvr API; 26.0M kWh rows, 116,768 pumps).
+Then, whatever the verdict:
+
+```bash
+python -m hydrophysics.twin.forward \
+  --theta results/twin_runs/stage3_open_clean/stage3_theta.json \
+  --theta results/twin_runs/stage3_open_clean/stage3_fold_thetas.json \
+  --scenario "cut30:irrigation=0.7@2026-01" --scenario "retire_aqua:aquaculture=0" \
+  --horizon 120 --ic-members 2 --out results/twin_forward/open_clean
+python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/open_clean.npz \
+  --stride 3 --out results/twin/explorer3d_forward.html
+```
+
+The forward run prints the gate verdict it inherits and its hindcast skill against
+leveling. Measured 2026-09-12 with the same shared VEP column, 798 leveling sites:
+
+| head driver for the column | leveling R² | bias |
+|---|---|---|
+| observed heads, IDW (explorer3d head-decline mode) | +0.242 | +3.1 cm |
+| flow model, 2026-09-09 gate parameters (closed, raw census) | −0.036 | +2.3 cm |
+| flow model, TDH-gate parameters (closed, raw census, hindcast R² +0.873) | **+0.299** | −0.3 cm |
+
+| flow model, **gated** parameters (open basin, clean census), 18-member ensemble | **+0.299** | +0.7 cm |
+
+The coupled chain beats the observed-head-driven column on the independent leveling
+network. The gated run (`results/twin_forward/open_clean.*`, viewer
+`results/twin/explorer3d_forward.html`, 43 MB, 86 frames, 3 policies) took 609 s on the
+GPU for 18 members × 3 scenarios × 252 months — the "re-runnable on demand" requirement is
+met by the solver itself. Fan-mean projection to 2032, ± = spread over the 6 parameter
+sets × 3 initial fields:
+
+| policy from 2026-01 | layer-2 head change | forward subsidence (p95) |
+|---|---|---|
+| baseline | +0.74 ± 0.27 m | 2.72 ± 0.16 cm (5.4 cm) |
+| irrigation −30 % | +1.02 ± 0.34 m | 2.64 ± 0.13 cm (5.3 cm) |
+| retire aquaculture | +1.71 ± 0.56 m | 2.46 ± 0.06 cm (4.9 cm) |
+
+Read these with the caveat below: the policy *deltas* are small because the gated model
+converts electricity at its efficiency floor. The same three policies through the
+physical-conversion fit (`results/twin_forward/fixed_eta.*`, one member, not yet gated):
+
+| policy from 2026-01 | layer-2 head change | forward subsidence (p95) |
+|---|---|---|
+| baseline | +1.01 m | 3.76 cm (7.3 cm) |
+| irrigation −30 % | +1.84 m | 3.50 cm (6.7 cm) |
+| retire aquaculture | +2.49 m | 3.22 cm (6.0 cm) |
+
+Three times the head response per policy, and a 7 % subsidence reduction for a 30 %
+irrigation cut instead of 3 %. Its hindcast leveling skill is +0.274 (bias +2.3 cm).
+Which of the two tables is evidence is what the running fixed-eta gate decides.
+
+**The caveat that governs the policy numbers.** Fit +0.906
+(+0.868 TDH, +0.758 original). Yet `eta` = 0.05 (floor), `head_extra` = 200 m (ceiling),
+`recharge_frac` = 0.07, `C_apex` and layer-1 `C_coast` = 1e5 m²/day (Dirichlet ceiling),
+layers 2-4 coast conductance ≈ 0.2-1.4 (closed), proximal `log_T` = 10 m²/day (lower
+clamp, in the gravel fan), mid `S` = 0.3 (ceiling) in two layers. The implied abstraction
+at those values is ~0.02 ×10⁹ m³/yr, two orders below the published 1.5-2.0. Opening the
+basin and cleaning the census raised the fit and did not change the verdict of the
+optimiser: it still wants the pumping stress gone and the storage maximal. The cheapest
+next diagnostics, both runnable on CPU while the folds finish:
+
+- `calibrate_flow --fix-eta 0.5 --fix-head-extra 40`, **done 2026-09-14**
+  (`results/twin_runs/stage3_fixed_eta/`, fit-only, 500 epochs, 4.1 h GPU): in-sample
+  **+0.877** against +0.906 free — the price of a physical pumping stress is 0.03 of R².
+  And the rest of the model becomes physical with it: recharge fraction **0.43** (was
+  0.07), proximal T 57 m²/day (off the clamp, at Liu et al.'s 58 floor), coast conductance
+  14-28 m²/day in layers 2-4 (open, was closed), distal T high. Mid-zone S still sits at
+  0.3 in three layers and the apex stays Dirichlet. Implied abstraction ≈ 0.75 ×10⁹
+  m³/yr, within a factor two of the published range. Its k-fold gate
+  (`results/twin_runs/stage3_fixed_eta_gate/`, 2026-09-15): **FAIL, +0.626 vs IDW +0.702**
+  (margin −0.076). So a physical pumping stress under the *current* placement of that
+  stress (all of it in layer 2, leakage off) generalises worse than the free fit that
+  switches the stress off. The verdict is stamped in its theta file. Its policy run
+  (`results/twin_forward/fixed_eta.*`) shows the sensitivities such a model has, but that
+  model is not gated. What is being measured next is whether moving the stress
+  (`--pump-split`, `--l-min`, `--return-flow`) lets a physical conversion pass.
+- a data-only check, done 2026-09-13 (`results/twin_runs/diag_head_vs_pumping.csv`, 147
+  wells): observed seasonal head amplitude **rises** with cleaned kWh within 3 km
+  (Spearman +0.51 overall, +0.57 in aquifer 2, +0.69 in aquifer 3) and the 2012-2022
+  trend falls with it (−0.28). The heads carry the pumping signal. What they cannot carry
+  is its *concentration*: cleaned kWh per 1 km cell has median 1,170 but p90 255,000 and
+  max 1,003,000 kWh/yr, so at a physical conversion the 99th-percentile cell's peak month
+  is 3.4×10⁵ m³ — hundreds of metres of drawdown in a confined cell unless storage is
+  maximal, which is exactly the fit the optimiser keeps finding (S at 0.3, eta at 0.05).
+  The next physics candidates therefore concern *where the stress lands*: pump→layer
+  allocation (shallow wells pump layer 1, where S is large), vertical leakage that the
+  fit is currently switching off (log_L ≈ −10 to −17), and irrigation return flow.
+
+**If the gate still fails with an open basin and a clean census,** the remaining
+suspects are, in order: the river boundaries (Choushui river across the fan; the Wu and
+Beigang rivers on the north and south edges are still no-flow), pump-to-layer
+allocation (everything pumps layer 2; shallow wells pump layer 1), and irrigation return
+flow. Only after those is a different forward model the honest move.
+
+## 3. Remaining gaps, beyond the gate — and what was built for each on 2026-09-14
+
+1. **Uncertainty.** Built: `twin/uncertainty.py`, a Laplace posterior around the
+   calibrated vector (Jacobian by central finite differences through the rebuilt model,
+   residual variance, weak log-prior; parameters at a bound are reported and held, not
+   sampled). Its samples are `--theta` members for the forward twin. Built:
+   sequential assimilation through the record (`twin.forward --hindcast-gain g
+   --hindcast-every k`), nudging the state toward the observed field every k months.
+   Still true: a Laplace posterior is local and linear; the truncated posteriors of
+   pinned parameters are not represented. **Run on the gated model (2026-09-15,
+   `stage3_open_clean/stage3_posterior.json`):** 32 free parameters, 10 at a bound and
+   held; residual sd 6.6 m; posterior sd 0.45-0.7 in log-T/log-S for the mid zone,
+   1.3-2.0 for the distal deep layers and the coast conductances (weakly identified).
+   Policy run with 18 members (in-sample + 5 folds + 12 posterior draws), sequential
+   nudging (gain 0.5 every 12 months) and the per-zone leveling column
+   (`results/twin_forward/open_clean_posterior.*`, viewer re-rendered): hindcast
+   leveling R² **+0.526**, bias 0.0 cm; 2023-2032 fan-mean subsidence 10.0 ± 1.3 cm
+   baseline, 9.5 ± 1.1 cm with aquaculture retired. This is the twin's current
+   deliverable.
+2. **Subsidence skill.** Built: `twin/calibrate_coupled.py` — Stage 4 in practice. The
+   column is refit against the MLCW rings with the *flow model's* heads as driver, in
+   three configurations (shared; shared with learnable layer weights; one set per fan
+   zone), each scored by leave-one-site-out over the rings and by the independent
+   leveling network. The leveling winner is a `vep_<config>.json` the forward twin takes.
+   **Result on the gated parameters (2026-09-14, `stage3_open_clean/coupled/`):** the
+   ring-fitted columns score *worse* on leveling than the Stage-2 column under the same
+   driver — shared +0.036, zonal −0.023, weighted −0.827 (it puts 78 % of the weight on
+   aquifer 4 and fits the rings best, LOSO +0.164) — against +0.299 for Stage-2's
+   parameters. Fourteen rings cannot constrain a fan-wide field; the leveling network
+   (798 sites) can. So a `--target leveling` mode was added (site-grouped 5-fold
+   scoring, rings as the independent check). **Result (2026-09-14,
+   `stage3_open_clean/coupled_leveling/`):**
+
+   | column, driver = gated flow heads | leveling out-of-fold R² | bias | rings (independent) |
+   |---|---|---|---|
+   | Stage-2 shared (fitted on observed heads vs rings) | +0.299 (all sites) | +0.7 cm | — |
+   | shared, fitted vs leveling | +0.371 | +0.1 cm | +0.015 |
+   | **zonal (3 × 4 params), fitted vs leveling** | **+0.546** | +0.1 cm | **+0.371** |
+
+   The per-zone column doubles the fan-wide subsidence skill and still scores +0.371 on
+   the 14 rings it never saw. `vep_zonal_leveling.json` is now what the forward twin
+   takes (`--vep-json`; per-zone columns are supported since 2026-09-14). Rerun of the
+   gated 6-member policy twin with it (`results/twin_forward/open_clean_zonalvep.*`,
+   viewer re-rendered): hindcast leveling R² **+0.494**, bias +0.6 cm, RMSE 6.8 cm.
+   Projected fan-mean subsidence 2023-2032 is now 10.2 ± 1.9 cm (p95 20 cm) under the
+   baseline, 9.4 ± 1.6 cm with aquaculture retired — the Stage-2 column had given 2.7 cm,
+   which was the wrong rheology for a fan-wide field. Caveat: the mid-zone viscous time
+   constant sits at its ceiling (3,960 d, the record length × dt), so decadal creep is
+   bounded by the calibration window; the column's `tau` bound should be revisited with
+   a longer record.
+3. **Where the stress lands.** Built as opt-in calibration options: `--pump-split`
+   (learned share of abstraction from layer 1), `--return-flow` (learned irrigation
+   return fraction ≤ 0.7 into layer 1), `--l-min` (leakance floor). Queued on the GPU
+   after the fixed-eta gate (`results/twin_runs/post_gate2_chain.log`): four fit-only
+   diagnostics at the physical conversion (split, floor, return, all three), the best
+   one gated, then posterior → column refit → policy runs with assimilation → viewer →
+   surrogate on the winner. **Diagnostics so far (2026-09-15, fit-only, 300 epochs,
+   eta 0.5 / head_extra 40 m; reference without them +0.877):**
+
+   | option | in-sample R² | what it learned |
+   |---|---|---|
+   | `--pump-split` | +0.867 | 75 % of abstraction from layer 1; recharge fraction 0.85 |
+   | `--l-min 1e-4` | +0.876 | leakance at the new floor in two mid interfaces |
+   | `--return-flow` | **+0.884** | return fraction 0.69 (near its 0.7 cap); recharge fraction 0.21 |
+   | all three | running | |
+
+   Irrigation return flow is the first stress-placement change that beats the physical
+   reference in sample, and it wants to sit at its cap, so the cap (0.7) is itself a
+   claim to revisit. Whichever wins is gated next by the queue.
+4. **Zone boundary and grid convergence.** The mid/distal boundary at 182 km has no
+   independent justification (spec §10). The `--dx 500` check can now be made
+   like-for-like with `--wells-from <1 km run>/stage3_wells.csv`, but has not been run.
+5. **The surrogate is trained on the gated parameters** (`results/surrogate/open_clean_*`,
+   2026-09-14, GPU): 256 solver rollouts × 24 months under random policies (6,144
+   one-step pairs), 200 epochs, one-step validation rel-L2 **0.0145**; a 24-month
+   autoregressive rollout stays within **0.03-0.04 m RMSE** of the solver in every layer,
+   at 13-34× the solver's GPU speed (0.08-0.2 s vs 2.7 s per 24-month scenario). It is
+   PhysicsNeMo's one job in the twin: sweeps and large ensembles. It inherits the solver's
+   physics, so it must be retrained whenever the gated parameters change (the fixed-eta
+   model, if it passes).
+6. **Per-purpose efficiency** (`--eta-classes`) is implemented and tested but not yet run
+   through a gate; the clean census makes irrigation 60% of the energy, so the class
+   split matters less than it did.
+
+## 4. Traps that have already cost time
+
+- **Device placement.** Every flow run before 2026-09-07 silently ran on CPU. GPU is
+  ~51× faster on the real problem (67 s/epoch vs 3,452). `tests/test_twin_device.py`
+  guards it. Always confirm the `device:` line at startup.
+- **Synthetic benchmarks mispredicted the real system by two orders of magnitude.** Do not
+  size this solver's cost from synthetic grids. A real 132-month rollout is ~210 s on CPU.
+- **Long runs need `--log-every`.** `ptrace_scope=1` means py-spy needs sudo after the fact.
+- **The WiseEnvr bearer token expires**; `twin/fetch_amp.py` renews it and records
+  successes, not attempts.
+- **`results/twin/*.csv` are the published results**; `calibrate_flow` now defaults to
+  `results/twin_runs/stage3_<UTC stamp>/` so a new run never overwrites them.
+  `results/twin_stage3_*/` stay ignored.
+- **Old CLI defaults were dead** (doubled `chou-shui-data/chou-shui-data/`, a scratchpad
+  path for the census). `DEFAULT_PATHS` in `calibrate_flow.py` is the single table now.
+- **Two runs on the GPU at once** roughly double both wall-clocks; the solver is
+  launch-bound. Queue gates, do not overlap them.
+
+## 5. Reproducing the recorded Stage-3 runs
+
+```bash
+export HYDROMIND_GW_DATA=$PWD/chou-shui-data/data
+# the 2026-09-09 verdict (closed basin, raw census, 500 epochs, 5 folds, ~25 h on GPU)
+python -m hydrophysics.twin.calibrate_flow --param-mode zonal --epochs 500 --n-folds 5 \
+  --seed 0 --device cuda --compile-matvec --log-every 100 --dump-predictions \
+  --boundaries none --meter-filter none --out results/twin_stage3_folds_repro
+```
+
+Note the epochs: the recorded verdict used **500**, not the 1500 an earlier version of
+this file listed. Data that must exist: see `docs/DATA_FORMAT.md`, "The twin's data
+cache" (~331 MB + ~1 GB, rebuilt with `twin/fetch_amp.py` except the fan polygon).
 
 ## 6. Environment
 
 torch 2.11.0+cu128, CUDA 12.8, cuDNN 9.19, PhysicsNeMo 2.2.1, warp-lang 1.17.0, driver
 535.230.02, Quadro RTX 6000 (Turing sm_75 — no bf16, no FP8, no FA2). conda env `hydro`.
-The cu128 wheels ship sm_75 and run on driver 535 via minor-version compatibility.
-Forecaster throughput was flat across the upgrade (24.81 s → 24.61 s): the upgrade was an
-access fee for PhysicsNeMo, not a speedup. Baseline in `~/bench_baseline/COMPARISON.md`.
+The twin's solver is float64 and uses no AMP; the FNO surrogate is fp32.
