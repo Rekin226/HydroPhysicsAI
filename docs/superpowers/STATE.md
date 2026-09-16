@@ -237,7 +237,14 @@ flow. Only after those is a different forward model the honest move.
    generalises across wells. The reading is that cell-scale pumping hot spots do not
    transfer to wells the fit never saw, so a model that damps them predicts held-out
    heads better than one that carries them. This is where the twin stands: heads and
-   subsidence gated, pumping sensitivity not. The next honest steps are a coarser
+   subsidence gated, pumping sensitivity not. For the record, the stress-placement
+   model's own chain (`stage3_all_gate/coupled_leveling/`, `results/twin_forward/
+   final_zonalvep.*`, viewer `results/twin_forward/all_gate_viewer.html`): per-zone
+   column +0.570 out of fold on leveling, full-chain hindcast +0.481 with 26 members,
+   and a policy response about three times the gated model's (irrigation −30 %:
+   subsidence 5.72 → 5.29 cm over the decade, layer-2 head +0.6 m). Those are the
+   sensitivities a physical stress gives; that model does not pass its gate.
+   `results/twin/explorer3d_forward.html` is the gated model's run. The next honest steps are a coarser
    placement of the stress (smoothing the census over its billing radius, or a learned
    spread kernel) and a gate that scores the *response to pumping* directly, e.g.
    held-out years rather than held-out wells.
