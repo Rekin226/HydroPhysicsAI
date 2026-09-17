@@ -1,6 +1,6 @@
 # Project state — where to continue
 
-**Last updated:** 2026-09-17 · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-17 (10:40) · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -212,8 +212,14 @@ flow. Only after those is a different forward model the honest move.
    baseline, 9.4 ± 1.6 cm with aquaculture retired — the Stage-2 column had given 2.7 cm,
    which was the wrong rheology for a fan-wide field. Caveat: the mid-zone viscous time
    constant sits at its ceiling (3,960 d, the record length × dt), so decadal creep is
-   bounded by the calibration window; the column's `tau` bound should be revisited with
-   a longer record.
+   bounded by the calibration window. Revisited 2026-09-17 with the ceiling lifted to 30
+   years (`--tau-max-years 30`, `coupled_leveling_tau30/`): out-of-fold +0.554 against
+   +0.546, and the mid and distal time constants go straight to the new ceiling (30 and
+   29 years) with the inelastic coefficient doubling (0.18 → 0.40) to compensate. The
+   pair is not identifiable from an 11-year record: a longer tau with a larger Skv gives
+   the same creep inside the window and more of it afterwards. Decadal projections
+   therefore carry a rheology uncertainty the ensemble does not show; the ceiling is a
+   modelling choice and is recorded with each column file (`tau_max_years`).
 3. **Where the stress lands.** Built as opt-in calibration options: `--pump-split`
    (learned share of abstraction from layer 1), `--return-flow` (learned irrigation
    return fraction ≤ 0.7 into layer 1), `--l-min` (leakance floor). Queued on the GPU
