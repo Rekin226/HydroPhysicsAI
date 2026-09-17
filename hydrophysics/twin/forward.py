@@ -186,6 +186,12 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         if k in th:
             scalars[k] = torch.tensor(np.asarray(th[k], dtype="float64"),
                                       dtype=torch.float64, device=device)
+    if "spread_km" in th:
+        from .spread import pairwise_d2_km, spread_matrix
+
+        scalars["spread_W"] = spread_matrix(
+            pairwise_d2_km(grid, device=device),
+            torch.tensor(math.log(float(th["spread_km"])), dtype=torch.float64, device=device))
     return model, scalars, zone_of_cell
 
 
@@ -203,7 +209,8 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
             log_head_extra=scalars.get("log_head_extra"), ground_elev=ground_elev,
             pump_layer=pump_layer, log_C_coast=model.log_C_coast, log_C_apex=model.log_C_apex,
             pump_split_logit=scalars.get("pump_split_logit"),
-            return_frac_logit=scalars.get("return_frac_logit"))
+            return_frac_logit=scalars.get("return_frac_logit"),
+            spread_W=scalars.get("spread_W"))
 
 
 # ---------------------------------------------------------------------------------------

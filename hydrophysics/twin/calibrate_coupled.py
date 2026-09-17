@@ -54,12 +54,20 @@ from .forward import N_LAYERS, build_model, load_members, rollout
 from .inputs import load_twin_inputs
 from .zones import N_ZONES, fan_zones
 
+TAU_MAX_YEARS: float | None = None      # set by --tau-max-years; None = the record length
+
 
 def _clamp_column(col: VEPColumn, T: int) -> None:
+    """Stage-2's bounds, except that the viscous time constant may be allowed past the
+    record (``TAU_MAX_YEARS``): the mid-zone column sits on the record-length ceiling
+    when fitted to leveling, and a residual-clay time constant of decades is what the
+    literature reports for this fan (Lees et al. 2022)."""
+    tau_max = (TAU_MAX_YEARS * 365.25 if TAU_MAX_YEARS is not None
+               else float(T) * col.dt_days)
     with torch.no_grad():
         col.log_ske.clamp_(min=math.log(1e-6), max=math.log(1e-1))
         col.log_skv.clamp_(min=math.log(1e-5), max=math.log(1e0))
-        col.log_tau.clamp_(min=math.log(1.0), max=math.log(float(T) * col.dt_days))
+        col.log_tau.clamp_(min=math.log(1.0), max=math.log(tau_max))
 
 
 class _WeightedColumn(nn.Module):
@@ -259,6 +267,9 @@ def main(argv=None) -> None:
                     help="calibration target: the 14 MLCW rings (Stage-2 convention) or "
                          "the ~800 leveling benchmarks with site-grouped 5-fold scoring")
     ap.add_argument("--n-folds", type=int, default=5)
+    ap.add_argument("--tau-max-years", type=float, default=None,
+                    help="ceiling on the viscous time constant (default: the record "
+                         "length); the mid-zone column sits on that ceiling")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -269,6 +280,8 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     set_compile_matvec(args.compile_matvec)
+    global TAU_MAX_YEARS
+    TAU_MAX_YEARS = args.tau_max_years
     device = pick_device(args.device)
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir)
@@ -334,7 +347,8 @@ def main(argv=None) -> None:
         params = column_json(model_c)
         with open(os.path.join(args.out, f"vep_{config}_{args.target}.json"), "w") as fh:
             json.dump({**params, "config": config, "driver": "flow-model heads",
-                       "target": args.target, "theta": args.theta, "loss": loss,
+                       "target": args.target, "tau_max_years": args.tau_max_years,
+                       "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)
         rows.append({"config": config, "target": args.target,

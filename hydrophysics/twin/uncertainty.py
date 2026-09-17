@@ -40,7 +40,7 @@ from .inputs import load_twin_inputs
 
 # keys in a theta dict that are derived, not parameters
 _DERIVED = {"eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2day",
-            "pump_frac_shallow", "return_frac"}
+            "pump_frac_shallow", "return_frac", "spread_km"}
 
 
 def flatten(theta: dict, fixed: tuple[str, ...] = ()) -> tuple[np.ndarray, list[tuple[str, int]]]:

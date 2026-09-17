@@ -183,3 +183,68 @@ def test_l_min_raises_the_leakance_floor():
         assert BOUNDS["log_L"][1] == pytest.approx(np.log(1e-1))
     finally:
         BOUNDS["log_L"] = (lo0, BOUNDS["log_L"][1])
+
+
+def test_spread_kernel_conserves_energy_and_widens_with_sigma():
+    from hydrophysics.twin.spread import pairwise_d2_km, spread_energy, spread_matrix
+
+    g = FanGrid(nx=6, ny=6, dx=1000.0, x0=0.0, y0=0.0, mask=np.ones((6, 6), dtype=bool))
+    d2 = pairwise_d2_km(g)
+    E = torch.zeros(g.n_active, 3, dtype=torch.float64)
+    E[14, :] = 1000.0                                   # one hot cell
+    for sigma in (0.5, 2.0):
+        W = spread_matrix(d2, torch.tensor(np.log(sigma), dtype=torch.float64))
+        assert torch.allclose(W.sum(dim=0), torch.ones(g.n_active, dtype=torch.float64))
+        Es = spread_energy(E, W)
+        assert torch.allclose(Es.sum(dim=0), E.sum(dim=0))          # mass conserved
+    narrow = spread_energy(E, spread_matrix(d2, torch.tensor(np.log(0.5), dtype=torch.float64)))
+    wide = spread_energy(E, spread_matrix(d2, torch.tensor(np.log(2.0), dtype=torch.float64)))
+    assert narrow[14, 0] > wide[14, 0]                              # wider kernel = flatter
+    E3 = torch.stack([E, 2 * E])
+    assert spread_energy(E3, W).shape == E3.shape
+
+
+def test_fit_flow_learns_or_fixes_the_spread_radius():
+    g = FanGrid(nx=4, ny=4, dx=1000.0, x0=0.0, y0=0.0, mask=np.ones((4, 4), dtype=bool))
+    A, steps = g.n_active, 3
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    h0 = torch.full((2, A), 5.0, dtype=torch.float64)
+    rech = torch.zeros(2, A, steps, dtype=torch.float64)
+    E = torch.zeros(A, steps, dtype=torch.float64)
+    E[5, :] = 500.0
+    ge = torch.full((A,), 10.0, dtype=torch.float64)
+    obs_idx = torch.tensor([0, 7])
+    obs_layer = torch.tensor([1, 1])
+    obs_h = torch.full((2, steps), 4.9, dtype=torch.float64)
+    fit = fit_flow(m, obs_h, obs_idx, obs_layer, rech, E=E, ground_elev=ge, h0=h0,
+                   epochs=2, lr=0.01, learn_spread=True)
+    assert 0.5 <= fit["theta"]["spread_km"] <= 10.0
+    assert "log_spread_km" in fit["bounds_hit"]
+    fixed = fit_flow(m, obs_h, obs_idx, obs_layer, rech, E=E, ground_elev=ge, h0=h0,
+                     epochs=2, lr=0.01, spread_km=3.0)
+    assert fixed["theta"]["spread_km"] == 3.0 and "log_spread_km" not in fixed["theta"]
+
+
+def test_temporal_gate_scores_a_continuation_against_climatology():
+    from hydrophysics.twin.calibrate_flow import temporal_gate
+
+    g = FanGrid(nx=4, ny=4, dx=1000.0, x0=0.0, y0=0.0, mask=np.ones((4, 4), dtype=bool))
+    A, T_full, T_fit = g.n_active, 30, 24
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    h0 = torch.full((2, A), 5.0, dtype=torch.float64)
+    E = torch.full((A, T_full), 50.0, dtype=torch.float64)
+    R = torch.full((A, T_full), 1e-4, dtype=torch.float64)
+    ge = torch.full((A,), 10.0, dtype=torch.float64)
+    obs_idx = torch.tensor([0, 7])
+    obs_layer = torch.tensor([1, 1])
+    obs_full = 5.0 + 0.3 * torch.sin(torch.arange(T_full, dtype=torch.float64) * 2 * np.pi / 12)
+    obs_full = obs_full[None, :].repeat(2, 1)
+    fit = fit_flow(m, obs_full[:, :T_fit], obs_idx, obs_layer,
+                   torch.zeros(2, A, T_fit, dtype=torch.float64), E=E[:, :T_fit],
+                   ground_elev=ge, h0=h0, epochs=2, lr=0.01, recharge_field=R[:, :T_fit])
+    out = temporal_gate(m, fit, h0, obs_full, obs_idx, obs_layer, T_fit, E, R, ge)
+    assert set(out) == {"r2_model", "r2_clim", "r2_persist", "n_months"}
+    assert out["n_months"] == T_full - T_fit
+    # a pure seasonal signal is reproduced by its own climatology
+    assert out["r2_clim"] > 0.9
+    assert np.isfinite(out["r2_model"]) and np.isfinite(out["r2_persist"])

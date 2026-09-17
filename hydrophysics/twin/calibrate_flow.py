@@ -88,6 +88,7 @@ from .flow import (
     set_compile_matvec,
 )
 from .grid import build_grid
+from .spread import SPREAD_KM_BOUNDS, pairwise_d2_km, spread_energy, spread_matrix
 from .zones import N_ZONES, ZONE_NAMES, fan_zones
 
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
@@ -122,6 +123,7 @@ BOUNDS = {
     # data get to say "no boundary here" if that is what they say.
     "log_C_coast": (math.log(1e-2), math.log(1e5)),
     "log_C_apex": (math.log(1e-2), math.log(1e5)),
+    "log_spread_km": SPREAD_KM_BOUNDS,             # spread.py: learned stress radius
 }
 
 
@@ -213,7 +215,8 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              log_C_coast: torch.Tensor | None = None,
              log_C_apex: torch.Tensor | None = None,
              pump_split_logit: torch.Tensor | None = None,
-             return_frac_logit: torch.Tensor | None = None) -> torch.Tensor:
+             return_frac_logit: torch.Tensor | None = None,
+             spread_W: torch.Tensor | None = None) -> torch.Tensor:
     """The same backward-Euler rollout as ``FlowModel.forward``, but taking log-parameter
     tensors as arguments instead of reading ``model``'s own registered nn.Parameters, and
     (fix round 1) supporting a *dynamic* forcing mode alongside the original static one.
@@ -289,6 +292,9 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     #  * the leakance floor is a BOUNDS change (``--l-min``), not a rollout term.
     pump_split_logit = _here(pump_split_logit)
     return_frac_logit = _here(return_frac_logit)
+    if E is not None and spread_W is not None:
+        # spatial spread of the stress (spread.py): the same energy, applied over a radius
+        E = spread_energy(E, _here(spread_W))
     T = torch.exp(log_T)
     S = torch.exp(log_S)
     L = torch.exp(log_L) if model.n_layers > 1 else None
@@ -355,8 +361,8 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
 
 def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
                              use_recharge: bool = False, n_eta: int = 1,
-                             pump_split: bool = False, return_flow: bool = False
-                             ) -> dict[str, nn.Parameter]:
+                             pump_split: bool = False, return_flow: bool = False,
+                             learn_spread: bool = False) -> dict[str, nn.Parameter]:
     """One (log_T, log_S) per layer and one log_L per interface, shape ``(k, 1)`` so it
     broadcasts against ``(n_layers, n_active)`` via ``.expand``. Initialised from the
     model's own (uniform, per Task 3/4's constructor) starting values.
@@ -390,6 +396,9 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
     if use_pumping and return_flow:
         theta["return_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 0.35
+    if use_pumping and learn_spread:
+        theta["log_spread_km"] = nn.Parameter(
+            torch.tensor(float(np.log(2.0)), dtype=torch.float64, device=dev))
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -410,8 +419,8 @@ def _base_param_name(name: str) -> str:
 
 def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
                        use_recharge: bool = False, n_eta: int = 1,
-                       pump_split: bool = False, return_flow: bool = False
-                       ) -> dict[str, nn.Parameter]:
+                       pump_split: bool = False, return_flow: bool = False,
+                       learn_spread: bool = False) -> dict[str, nn.Parameter]:
     """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
     with both drivers, against the homogeneous mode's 13 (spec §5).
 
@@ -461,6 +470,9 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     if use_pumping and return_flow:
         theta["return_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))      # start at 0.35
+    if use_pumping and learn_spread:
+        theta["log_spread_km"] = nn.Parameter(
+            torch.tensor(float(np.log(2.0)), dtype=torch.float64, device=dev))
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
@@ -527,7 +539,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              pump_layer: int = 1, recharge_layer: int = 0,
              log_every: int = 0, fix_eta: float | None = None,
              fix_head_extra: float | None = None, pump_split: bool = False,
-             return_flow: bool = False) -> dict:
+             return_flow: bool = False, spread_km: float | None = None,
+             learn_spread: bool = False) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
 
     ``fix_eta``/``fix_head_extra`` (2026-09-13) hold the pump energy->volume conversion at
@@ -645,11 +658,19 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
         theta = _make_zonal_params(model, use_pumping=use_pumping,
                                    use_recharge=use_recharge, n_eta=n_eta,
-                                   pump_split=pump_split, return_flow=return_flow)
+                                   pump_split=pump_split, return_flow=return_flow,
+                                   learn_spread=learn_spread)
     else:
         theta = _make_homogeneous_params(model, use_pumping=use_pumping,
                                          use_recharge=use_recharge, n_eta=n_eta,
-                                         pump_split=pump_split, return_flow=return_flow)
+                                         pump_split=pump_split, return_flow=return_flow,
+                                         learn_spread=learn_spread)
+    # spatial spread of the pumping stress: fixed radius, learned radius, or none
+    d2_km = (pairwise_d2_km(model.grid, device=dev)
+             if use_pumping and (learn_spread or spread_km is not None) else None)
+    fixed_W = (spread_matrix(d2_km, torch.tensor(math.log(spread_km), dtype=torch.float64,
+                                                  device=dev))
+               if d2_km is not None and not learn_spread else None)
     if init_scatter > 0.0:
         g = torch.Generator().manual_seed(int(seed) if seed is not None else 0)
         with torch.no_grad():
@@ -693,6 +714,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             log_C_apex=theta.get("log_C_apex"),
             pump_split_logit=theta.get("pump_split_logit"),
             return_frac_logit=theta.get("return_frac_logit"),
+            spread_W=(spread_matrix(d2_km, theta["log_spread_km"])
+                      if "log_spread_km" in theta else fixed_W),
         )
 
     r2_trace: list[tuple[int, float]] = []
@@ -754,6 +777,10 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if "return_frac_logit" in theta_out:
         theta_out["return_frac"] = float(RETURN_FRAC_MAX
                                          / (1.0 + np.exp(-theta_out["return_frac_logit"])))
+    if "log_spread_km" in theta_out:
+        theta_out["spread_km"] = float(np.exp(theta_out["log_spread_km"]))
+    elif spread_km is not None:
+        theta_out["spread_km"] = float(spread_km)          # fixed, recorded for the forward twin
     if "recharge_frac_logit" in theta_out:
         theta_out["recharge_frac"] = float(1.0 / (1.0 + np.exp(-theta_out["recharge_frac_logit"])))
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
@@ -793,6 +820,11 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                  if "pump_split_logit" in theta else None)
         ret = (torch.tensor(theta["return_frac_logit"], dtype=torch.float64)
                if "return_frac_logit" in theta else None)
+        W = None
+        if E is not None and "spread_km" in theta:
+            W = spread_matrix(pairwise_d2_km(model.grid, device=model.log_T.device),
+                              torch.tensor(math.log(theta["spread_km"]), dtype=torch.float64,
+                                           device=model.log_T.device))
         return _rollout(model, log_T, log_S, log_L, h0, n_steps,
                         recharge=None if recharge_field is not None else recharge,
                         recharge_field=recharge_field, recharge_scale=rfrac,
@@ -801,7 +833,43 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                         log_head_extra=log_head_extra,
                         ground_elev=ground_elev, pump_layer=pump_layer,
                         log_C_coast=model.log_C_coast, log_C_apex=model.log_C_apex,
-                        pump_split_logit=split, return_frac_logit=ret)
+                        pump_split_logit=split, return_frac_logit=ret, spread_W=W)
+
+
+def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch.Tensor,
+                  obs_idx: torch.Tensor, obs_layer: torch.Tensor, T_fit: int,
+                  E_full, recharge_full, ground_elev, recharge_layer: int = 0,
+                  pump_layer: int = 1) -> dict:
+    """Score a free-running continuation over the months the fit never saw.
+
+    The k-fold gate holds out *wells* and asks whether the model interpolates in space
+    better than IDW. This one holds out *time*: the model rolls from the record's start
+    under the recorded forcing through the fitted months and on across the held-out
+    months, and its held-out heads are scored against two baselines a forecaster would
+    face -- each well's month-of-year climatology built from the fitted months, and
+    persistence of its last fitted value. Beating climatology here means the model's
+    response to the forcing carries information about what the heads did next.
+    """
+    T_full = obs_full.shape[1]
+    with torch.no_grad():
+        h = _predict_homogeneous(model, fit, h0, T_full, recharge_field=recharge_full,
+                                 E=E_full, ground_elev=ground_elev,
+                                 recharge_layer=recharge_layer, pump_layer=pump_layer)
+        pred = h[obs_layer.to(h.device), obs_idx.to(h.device), 1:].cpu().numpy()
+    obs = obs_full.cpu().numpy()
+    held = slice(T_fit, T_full)
+    # month-of-year climatology from the fitted months; obs columns are months 1..T-1 of
+    # the record (month 0 is the initial condition), so calendar month = (t + 1) % 12
+    months = (np.arange(T_full) + 1) % 12
+    clim = np.zeros_like(obs)
+    for mth in range(12):
+        sel_fit = (months[:T_fit] == mth)
+        clim[:, months == mth] = obs[:, :T_fit][:, sel_fit].mean(axis=1, keepdims=True)
+    persist = np.repeat(obs[:, T_fit - 1:T_fit], T_full - T_fit, axis=1)
+    return {"r2_model": _r2(pred[:, held], obs[:, held]),
+            "r2_clim": _r2(clim[:, held], obs[:, held]),
+            "r2_persist": _r2(persist, obs[:, held]),
+            "n_months": int(T_full - T_fit)}
 
 
 def _kfold_indices(n: int, n_folds: int, seed: int = 0,
@@ -874,7 +942,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 zone_of_cell: np.ndarray | None = None,
                 dump_path: str | None = None, device=None, boundaries=None,
                 fix_eta: float | None = None, fix_head_extra: float | None = None,
-                pump_split: bool = False, return_flow: bool = False) -> dict:
+                pump_split: bool = False, return_flow: bool = False,
+                spread_km: float | None = None, learn_spread: bool = False) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -941,7 +1010,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        pump_layer=pump_layer, recharge_layer=recharge_layer,
                        zone_of_cell=zone_of_cell, fix_eta=fix_eta,
                        fix_head_extra=fix_head_extra, pump_split=pump_split,
-                       return_flow=return_flow)
+                       return_flow=return_flow, spread_km=spread_km, learn_spread=learn_spread)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -1252,6 +1321,17 @@ def main(argv=None) -> None:
     ap.add_argument("--return-flow", action="store_true",
                     help="learn an irrigation return-flow fraction (<= 0.7) of the pumped "
                          "volume that re-enters layer 1 the same month; one logit")
+    ap.add_argument("--pump-spread-km", type=float, default=None,
+                    help="spread each cell's pumping energy over a Gaussian of this radius "
+                         "(km, mass-conserving) before conversion -- spread.py")
+    ap.add_argument("--learn-spread", action="store_true",
+                    help="learn the spread radius (log, bounded 0.5-10 km) instead")
+    ap.add_argument("--holdout-months", type=int, default=0,
+                    help="temporal gate: fit on the record minus its last N months, then "
+                         "score a free-running continuation over those N months against a "
+                         "per-well month-of-year climatology built from the fitted months. "
+                         "This scores the response to the forcing in time, which the "
+                         "held-out-well gate cannot.")
     ap.add_argument("--l-min", type=float, default=None,
                     help="leakance floor in 1/day (default 1e-8): raises BOUNDS['log_L']")
     ap.add_argument("--wells-from", default=None,
@@ -1371,6 +1451,14 @@ def main(argv=None) -> None:
                                               args.et_npz, args.gw_stations,
                                               "2012-01-01", "2023-01-01")[:, 1:]
 
+    # temporal gate: the fit sees the record minus its last --holdout-months
+    T_full = obs_h.shape[1]
+    T_fit = T_full - int(args.holdout_months) if args.holdout_months > 0 else T_full
+    if T_fit < 24:
+        raise SystemExit("--holdout-months leaves fewer than 24 months to fit")
+    obs_h_full_t, obs_h = obs_h, obs_h[:, :T_fit]
+    n_steps = T_fit
+    recharge_dummy = torch.zeros(4, grid.n_active, n_steps, dtype=torch.float64)
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
     nan_frac = float(np.isnan(np.stack([hf.heads[w] for w in range(len(hf))])).mean())
     print(f"head field: {len(hf)} wells passed QC, {len(sids_used)} inside the grid, "
@@ -1392,14 +1480,30 @@ def main(argv=None) -> None:
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
+    E_full, recharge_full = E, recharge_field
+    if E is not None:
+        E = E[..., :T_fit]
+    if recharge_field is not None:
+        recharge_field = recharge_field[:, :T_fit]
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
                    recharge_layer=args.recharge_layer, log_every=args.log_every,
                    zone_of_cell=zone_of_cell, fix_eta=args.fix_eta,
                    fix_head_extra=args.fix_head_extra, pump_split=args.pump_split,
-                   return_flow=args.return_flow)
+                   return_flow=args.return_flow, spread_km=args.pump_spread_km,
+                   learn_spread=args.learn_spread)
     t_fit = time.perf_counter() - t0
+    temporal = None
+    if args.holdout_months > 0:
+        temporal = temporal_gate(m, ins, h0_all, obs_h_full_t, obs_idx, obs_layer, T_fit,
+                                 E_full, recharge_full, ground_elev,
+                                 recharge_layer=args.recharge_layer, pump_layer=args.pump_layer)
+        print(f"  TEMPORAL GATE ({args.holdout_months} held-out months, free-running "
+              f"continuation): flow R2={temporal['r2_model']:+.3f}  climatology "
+              f"R2={temporal['r2_clim']:+.3f}  persistence R2={temporal['r2_persist']:+.3f}  "
+              f"-> {'PASS' if temporal['r2_model'] > temporal['r2_clim'] else 'FAIL'}",
+              flush=True)
 
     # Spec 6's PRIMARY decision rule -- "does the transmissivity clamp release, per zone?" --
     # is computed from THIS fit, not from the k-fold gate that follows. So it is printed here,
@@ -1417,7 +1521,9 @@ def main(argv=None) -> None:
           f"forcing={'off' if args.no_forcing else 'on'} boundaries={args.boundaries} "
           f"meter_filter={args.meter_filter} eta_classes={eta_class_names} "
           f"fixed={ins.get('fixed', [])} pump_split={args.pump_split} "
-          f"return_flow={args.return_flow} l_min={args.l_min} epochs={args.epochs}")
+          f"return_flow={args.return_flow} l_min={args.l_min} "
+          f"spread_km={ins.get('theta', {}).get('spread_km')} holdout_months="
+          f"{args.holdout_months} epochs={args.epochs}")
     print(f"  in-sample R2={ins['r2']:+.3f}  fit_time={t_fit:.1f}s")
     print(_format_bounds_hit(ins["bounds_hit"]))
     if "theta" in ins:
@@ -1434,7 +1540,9 @@ def main(argv=None) -> None:
                   "meter_filter": args.meter_filter, "cap_duty": args.cap_duty,
                   "eta_classes": eta_class_names, "fix_eta": args.fix_eta,
                   "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
-                  "return_flow": args.return_flow, "l_min": args.l_min})
+                  "return_flow": args.return_flow, "l_min": args.l_min,
+                  "pump_spread_km": args.pump_spread_km, "learn_spread": args.learn_spread,
+                  "holdout_months": args.holdout_months, "temporal_gate": temporal})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -1469,7 +1577,8 @@ def main(argv=None) -> None:
                                   if args.dump_predictions else None),
                        zone_of_cell=zone_of_cell, boundaries=boundaries,
                        fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
-                       pump_split=args.pump_split, return_flow=args.return_flow)
+                       pump_split=args.pump_split, return_flow=args.return_flow,
+                       spread_km=args.pump_spread_km, learn_spread=args.learn_spread)
     t_gate = time.perf_counter() - t0
     with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
         json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
@@ -1517,6 +1626,10 @@ def main(argv=None) -> None:
                    "eta_classes": str(eta_class_names), "fix_eta": args.fix_eta,
                    "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
                    "return_flow": args.return_flow, "l_min": args.l_min,
+                   "spread_km": ins.get("theta", {}).get("spread_km"),
+                   "holdout_months": args.holdout_months,
+                   "r2_temporal": temporal["r2_model"] if temporal else "",
+                   "r2_temporal_clim": temporal["r2_clim"] if temporal else "",
                    "epochs": args.epochs,
                    "n_folds": gate["n_folds"], "seed": args.seed,
                    "n_sites": gate["n_sites"],
