@@ -249,3 +249,23 @@ def test_temporal_gate_scores_a_continuation_against_climatology():
     # a pure seasonal signal is reproduced by its own climatology
     assert out["r2_clim"] > 0.9
     assert np.isfinite(out["r2_model"]) and np.isfinite(out["r2_persist"])
+
+
+def test_anomaly_loss_ignores_a_pure_level_offset_but_level_loss_does_not():
+    g = FanGrid(nx=4, ny=4, dx=1000.0, x0=0.0, y0=0.0, mask=np.ones((4, 4), dtype=bool))
+    A, steps = g.n_active, 4
+    m = FlowModel(g, n_layers=2, dt_days=30.0)
+    h0 = torch.full((2, A), 5.0, dtype=torch.float64)
+    rech = torch.zeros(2, A, steps, dtype=torch.float64)
+    obs_idx = torch.tensor([0, 7])
+    obs_layer = torch.tensor([1, 1])
+    obs_h = torch.full((2, steps), 25.0, dtype=torch.float64)      # 20 m above the model
+    level = fit_flow(m, obs_h, obs_idx, obs_layer, rech, epochs=1, lr=0.0, h0=h0)
+    anom = fit_flow(m, obs_h, obs_idx, obs_layer, rech, epochs=1, lr=0.0, h0=h0,
+                    loss_mode="anomaly", level_weight=0.0)
+    assert level["loss"] == pytest.approx(400.0, rel=1e-6)
+    assert anom["loss"] == pytest.approx(0.0, abs=1e-9)
+    assert anom["loss_mode"] == "anomaly" and level["loss_mode"] == "level"
+    weighted = fit_flow(m, obs_h, obs_idx, obs_layer, rech, epochs=1, lr=0.0, h0=h0,
+                        loss_mode="anomaly", level_weight=0.1)
+    assert weighted["loss"] == pytest.approx(40.0, rel=1e-6)

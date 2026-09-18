@@ -540,7 +540,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              log_every: int = 0, fix_eta: float | None = None,
              fix_head_extra: float | None = None, pump_split: bool = False,
              return_flow: bool = False, spread_km: float | None = None,
-             learn_spread: bool = False) -> dict:
+             learn_spread: bool = False, loss_mode: str = "level",
+             level_weight: float = 0.1) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
 
     ``fix_eta``/``fix_head_extra`` (2026-09-13) hold the pump energy->volume conversion at
@@ -678,6 +679,17 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 if name.endswith("_logit"):
                     continue   # unconstrained scalars; scatter would just re-centre them
                 par.add_(torch.randn(par.shape, generator=g) * init_scatter)
+    def _loss(pred: torch.Tensor) -> torch.Tensor:
+        """``"level"``: plain MSE on heads (every gate before 2026-09-18). ``"anomaly"``:
+        MSE on each well's departures from its own mean over the fitted months, plus
+        ``level_weight`` x the MSE of the means. The level misfit is dominated by
+        between-well differences of tens of metres, so a level fit is never asked to get
+        a well's variations right -- and the held-out-years gate found exactly that."""
+        if loss_mode == "level":
+            return ((pred - obs_h) ** 2).mean()
+        pm, om = pred.mean(dim=1, keepdim=True), obs_h.mean(dim=1, keepdim=True)
+        return (((pred - pm) - (obs_h - om)) ** 2).mean() + level_weight * ((pm - om) ** 2).mean()
+
     fixed: dict[str, torch.Tensor] = {}
     if use_pumping and fix_eta is not None:
         fixed["log_eta"] = torch.full_like(theta.pop("log_eta").detach(),
@@ -723,7 +735,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         opt.zero_grad()
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
-        loss = ((pred - obs_h) ** 2).mean()
+        loss = _loss(pred)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(free, 1.0)
         opt.step()
@@ -786,7 +798,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
             "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
             "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
-            "fixed": sorted(fixed)}
+            "fixed": sorted(fixed), "loss_mode": loss_mode}
 
 
 def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps: int,
@@ -961,7 +973,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 dump_path: str | None = None, device=None, boundaries=None,
                 fix_eta: float | None = None, fix_head_extra: float | None = None,
                 pump_split: bool = False, return_flow: bool = False,
-                spread_km: float | None = None, learn_spread: bool = False) -> dict:
+                spread_km: float | None = None, learn_spread: bool = False,
+                loss_mode: str = "level", level_weight: float = 0.1) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
@@ -1028,7 +1041,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        pump_layer=pump_layer, recharge_layer=recharge_layer,
                        zone_of_cell=zone_of_cell, fix_eta=fix_eta,
                        fix_head_extra=fix_head_extra, pump_split=pump_split,
-                       return_flow=return_flow, spread_km=spread_km, learn_spread=learn_spread)
+                       return_flow=return_flow, spread_km=spread_km, learn_spread=learn_spread,
+                       loss_mode=loss_mode, level_weight=level_weight)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -1350,6 +1364,10 @@ def main(argv=None) -> None:
                          "per-well month-of-year climatology built from the fitted months. "
                          "This scores the response to the forcing in time, which the "
                          "held-out-well gate cannot.")
+    ap.add_argument("--loss", choices=("level", "anomaly"), default="level",
+                    help="'anomaly' fits each well's departures from its own mean plus "
+                         "--level-weight x the means (2026-09-18); 'level' is plain MSE")
+    ap.add_argument("--level-weight", type=float, default=0.1)
     ap.add_argument("--l-min", type=float, default=None,
                     help="leakance floor in 1/day (default 1e-8): raises BOUNDS['log_L']")
     ap.add_argument("--wells-from", default=None,
@@ -1510,7 +1528,8 @@ def main(argv=None) -> None:
                    zone_of_cell=zone_of_cell, fix_eta=args.fix_eta,
                    fix_head_extra=args.fix_head_extra, pump_split=args.pump_split,
                    return_flow=args.return_flow, spread_km=args.pump_spread_km,
-                   learn_spread=args.learn_spread)
+                   learn_spread=args.learn_spread, loss_mode=args.loss,
+                   level_weight=args.level_weight)
     t_fit = time.perf_counter() - t0
     temporal = None
     if args.holdout_months > 0:
@@ -1564,7 +1583,8 @@ def main(argv=None) -> None:
                   "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
                   "return_flow": args.return_flow, "l_min": args.l_min,
                   "pump_spread_km": args.pump_spread_km, "learn_spread": args.learn_spread,
-                  "holdout_months": args.holdout_months, "temporal_gate": temporal})
+                  "holdout_months": args.holdout_months, "temporal_gate": temporal,
+                  "loss": args.loss, "level_weight": args.level_weight})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -1600,7 +1620,8 @@ def main(argv=None) -> None:
                        zone_of_cell=zone_of_cell, boundaries=boundaries,
                        fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
                        pump_split=args.pump_split, return_flow=args.return_flow,
-                       spread_km=args.pump_spread_km, learn_spread=args.learn_spread)
+                       spread_km=args.pump_spread_km, learn_spread=args.learn_spread,
+                       loss_mode=args.loss, level_weight=args.level_weight)
     t_gate = time.perf_counter() - t0
     with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
         json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
@@ -1649,7 +1670,7 @@ def main(argv=None) -> None:
                    "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
                    "return_flow": args.return_flow, "l_min": args.l_min,
                    "spread_km": ins.get("theta", {}).get("spread_km"),
-                   "holdout_months": args.holdout_months,
+                   "holdout_months": args.holdout_months, "loss_mode": args.loss,
                    "r2_temporal": temporal["r2_model"] if temporal else "",
                    "r2_temporal_clim": temporal["r2_clim"] if temporal else "",
                    "epochs": args.epochs,
