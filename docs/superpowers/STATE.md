@@ -277,9 +277,26 @@ flow. Only after those is a different forward model the honest move.
    pumping sensitivity. For the deliverable: projections are anchored by nudging to the
    observed field at the origin (and every 12 months through the record), so the first
    years are held by the data, but the decade-scale trend is the model's and the
-   temporal gate says not to trust it. The continuation error in metres, free-running
-   and restarted from observations at the origin, is in
-   `results/twin_runs/temporal_predictions.npz`. The next honest steps are a coarser
+   temporal gate says not to trust it. The continuation error over those 36 months, in
+   metres at the 158 wells (`results/twin_runs/temporal_predictions.npz`):
+
+   | | bias | RMSE | median abs. error |
+   |---|---|---|---|
+   | climatology | +1.14 m | 2.01 m | 1.18 m |
+   | persistence | +1.90 m | 3.16 m | 1.49 m |
+   | free fit, free-running from 2012 | +0.90 m | 6.58 m | 2.72 m |
+   | free fit, restarted from the observed field at the origin | +0.35 m | 8.08 m | 2.26 m |
+   | physical + split/floor/return, free-running | +0.32 m | 7.31 m | 4.15 m |
+   | physical + learned spread, free-running | +0.11 m | 6.29 m | 3.97 m |
+
+   Biases are small; the error is spread, three times climatology's, and restarting from
+   the observed field does not help the RMSE (the injected state is not the model's own
+   and it relaxes). Two readings, both testable next: the free fit's recharge fraction of
+   0.07 makes it nearly blind to rainfall, so it cannot follow the 2020-21 drought; and
+   the calibration objective is a level misfit, which the between-well variance
+   dominates, so the fit is never asked to get anomalies right. A per-well anomaly term
+   in the loss (or fitting anomalies outright) and a held-out-years gate as a first-class
+   verdict are the next calibration changes, ahead of any more stress placement. The next honest steps are a coarser
    placement of the stress (smoothing the census over its billing radius, or a learned
    spread kernel) and a gate that scores the *response to pumping* directly, e.g.
    held-out years rather than held-out wells.

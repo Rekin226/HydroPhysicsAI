@@ -115,8 +115,10 @@ why. Hardware notes and stack decisions are in `docs/GPU_SERVER.md`.
 
 ## Limits
 
-- A free-running continuation drifts within three years (held-out-years gate), so the
-  twin is a hindcast-and-nudged-projection tool, not a free forecaster.
+- A free-running continuation drifts within three years (held-out-years gate: RMSE
+  6.6 m at the wells against 2.0 m for climatology), so the twin is a hindcast-and-nudged-
+  projection tool, not a free forecaster. Fitting anomalies rather than levels is the next
+  calibration change.
 - The pump conversion sits at its bounds in every gated fit, so policy sensitivities are
   model consequences, not validated forecasts. Stress placement (pump-layer split,
   leakance floor, irrigation return flow, a spread radius) is implemented; no physical
