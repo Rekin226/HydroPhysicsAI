@@ -43,12 +43,15 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 Every verdict, including the two failed configurations that preceded the pass, is
 recorded in [`docs/superpowers/STATE.md`](docs/superpowers/STATE.md).
 
-**One caveat governs the policy numbers.** The gated flow model keeps its pump
-energy-to-volume conversion at its bounds and generalises with a small fraction of the
-published abstraction. Heads and subsidence are validated; the model's *sensitivity* to
-pumping is not yet. Holding the conversion at physical values fits nearly as well in
-sample but fails the gate; irrigation return flow is the leading fix and its gate is
-queued.
+**Two caveats govern the policy numbers.** First, the flow gate holds out *wells*: it
+validates spatial interpolation under the recorded forcing. A gate that holds out
+*years* (fit to 2019, free-run 2020–2022) finds that the model's own dynamics drift
+within three years, worse than climatology on per-well anomalies. Projections are
+therefore anchored by nudging to observations at the origin, and their decade-scale
+trend is the model's, not yet validated. Second, the gated model keeps its pump
+energy-to-volume conversion at its bounds; configurations with a physical conversion
+fit as well in sample but fail the well gate, so the *sensitivity* to pumping is not yet
+validated either. Both are stated with numbers in the state doc.
 
 ## Data
 
@@ -112,9 +115,12 @@ why. Hardware notes and stack decisions are in `docs/GPU_SERVER.md`.
 
 ## Limits
 
+- A free-running continuation drifts within three years (held-out-years gate), so the
+  twin is a hindcast-and-nudged-projection tool, not a free forecaster.
 - The pump conversion sits at its bounds in every gated fit, so policy sensitivities are
-  model consequences, not validated forecasts. The stress-placement candidates (pump-layer
-  split, leakance floor, irrigation return flow) are implemented and being gated.
+  model consequences, not validated forecasts. Stress placement (pump-layer split,
+  leakance floor, irrigation return flow, a spread radius) is implemented; no physical
+  configuration has passed the well gate yet.
 - The mid-zone viscous time constant reaches the length of the record; decadal creep is
   bounded by the calibration window.
 - The posterior is a local Laplace approximation; parameters at a bound are held, not

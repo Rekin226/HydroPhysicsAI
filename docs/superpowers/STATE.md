@@ -1,6 +1,6 @@
 # Project state — where to continue
 
-**Last updated:** 2026-09-17 (10:40) · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-18 · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -250,7 +250,36 @@ flow. Only after those is a different forward model the honest move.
    and a policy response about three times the gated model's (irrigation −30 %:
    subsidence 5.72 → 5.29 cm over the decade, layer-2 head +0.6 m). Those are the
    sensitivities a physical stress gives; that model does not pass its gate.
-   `results/twin/explorer3d_forward.html` is the gated model's run. The next honest steps are a coarser
+   `results/twin/explorer3d_forward.html` is the gated model's run.
+
+   **Spread radius (2026-09-17/18, on top of all three, physical conversion):** 2 km
+   +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling — the first
+   physical-stress configuration to beat the free fit's +0.906 in sample. Its k-fold gate
+   (`stage3_spreadL_gate/`) is running.
+
+   **Temporal gate (held-out years, 2026-09-18) — a hard result.** Fit on 2012-2019,
+   free-running continuation over 2020-2022 (36 months) from the record's start:
+
+   | configuration | pooled R² | anomaly R² (per-well departures from the fitted mean) | per-well median R² |
+   |---|---|---|---|
+   | climatology of the fitted years | +0.991 | +0.154 | −0.38 |
+   | persistence of the last fitted month | +0.978 | −1.10 | −1.84 |
+   | free fit (gated) | +0.907 | **−8.1** | −3.9 |
+   | physical + split/floor/return | +0.885 | −10.2 | −10.2 |
+   | physical + learned spread | +0.915 | −7.3 | −8.5 |
+
+   Pooled R² is a between-well statistic and says nothing here. On anomalies every
+   configuration is far worse than climatology: a free-running continuation of this
+   model **drifts within three years**, over a window that contains the 2020-21
+   drought. The held-out-*well* gate measures spatial interpolation under the recorded
+   forcing; it does not measure whether the model's own dynamics carry the heads
+   forward, and they do not yet. This is now the twin's governing caveat, ahead of the
+   pumping sensitivity. For the deliverable: projections are anchored by nudging to the
+   observed field at the origin (and every 12 months through the record), so the first
+   years are held by the data, but the decade-scale trend is the model's and the
+   temporal gate says not to trust it. The continuation error in metres, free-running
+   and restarted from observations at the origin, is in
+   `results/twin_runs/temporal_predictions.npz`. The next honest steps are a coarser
    placement of the stress (smoothing the census over its billing radius, or a learned
    spread kernel) and a gate that scores the *response to pumping* directly, e.g.
    held-out years rather than held-out wells.
