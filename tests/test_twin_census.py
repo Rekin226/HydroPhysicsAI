@@ -243,7 +243,8 @@ def test_temporal_gate_scores_a_continuation_against_climatology():
                    torch.zeros(2, A, T_fit, dtype=torch.float64), E=E[:, :T_fit],
                    ground_elev=ge, h0=h0, epochs=2, lr=0.01, recharge_field=R[:, :T_fit])
     out = temporal_gate(m, fit, h0, obs_full, obs_idx, obs_layer, T_fit, E, R, ge)
-    assert set(out) == {"r2_model", "r2_clim", "r2_persist", "n_months"}
+    assert {"r2_model", "r2_clim", "r2_persist", "r2_anom_model", "r2_anom_clim",
+            "r2_well_median_model", "n_months"} <= set(out)
     assert out["n_months"] == T_full - T_fit
     # a pure seasonal signal is reproduced by its own climatology
     assert out["r2_clim"] > 0.9

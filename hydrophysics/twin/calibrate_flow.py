@@ -865,10 +865,28 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
     for mth in range(12):
         sel_fit = (months[:T_fit] == mth)
         clim[:, months == mth] = obs[:, :T_fit][:, sel_fit].mean(axis=1, keepdims=True)
-    persist = np.repeat(obs[:, T_fit - 1:T_fit], T_full - T_fit, axis=1)
+    persist = np.zeros_like(obs)
+    persist[:, held] = np.repeat(obs[:, T_fit - 1:T_fit], T_full - T_fit, axis=1)
+    # Pooled R2 over wells is dominated by between-well level differences (tens of
+    # metres), which makes climatology trivially strong. The number that tests the
+    # response in time is R2 on per-well ANOMALIES from each well's fitted-period mean,
+    # plus the median per-well R2, reported alongside the pooled one.
+    mean_fit = obs[:, :T_fit].mean(axis=1, keepdims=True)
+
+    def _anom(x):
+        return _r2((x[:, held] - mean_fit).reshape(-1), (obs[:, held] - mean_fit).reshape(-1))
+
+    def _median_per_well(x):
+        return float(np.median([_r2(x[w, held], obs[w, held]) for w in range(obs.shape[0])]))
+
     return {"r2_model": _r2(pred[:, held], obs[:, held]),
             "r2_clim": _r2(clim[:, held], obs[:, held]),
-            "r2_persist": _r2(persist, obs[:, held]),
+            "r2_persist": _r2(persist[:, held], obs[:, held]),
+            "r2_anom_model": _anom(pred), "r2_anom_clim": _anom(clim),
+            "r2_anom_persist": _anom(persist),
+            "r2_well_median_model": _median_per_well(pred),
+            "r2_well_median_clim": _median_per_well(clim),
+            "r2_well_median_persist": _median_per_well(persist),
             "n_months": int(T_full - T_fit)}
 
 
@@ -1500,10 +1518,14 @@ def main(argv=None) -> None:
                                  E_full, recharge_full, ground_elev,
                                  recharge_layer=args.recharge_layer, pump_layer=args.pump_layer)
         print(f"  TEMPORAL GATE ({args.holdout_months} held-out months, free-running "
-              f"continuation): flow R2={temporal['r2_model']:+.3f}  climatology "
-              f"R2={temporal['r2_clim']:+.3f}  persistence R2={temporal['r2_persist']:+.3f}  "
-              f"-> {'PASS' if temporal['r2_model'] > temporal['r2_clim'] else 'FAIL'}",
-              flush=True)
+              f"continuation): pooled R2 flow {temporal['r2_model']:+.3f} / climatology "
+              f"{temporal['r2_clim']:+.3f} / persistence {temporal['r2_persist']:+.3f}; "
+              f"anomaly R2 flow {temporal['r2_anom_model']:+.3f} / climatology "
+              f"{temporal['r2_anom_clim']:+.3f} / persistence {temporal['r2_anom_persist']:+.3f}; "
+              f"per-well median R2 flow {temporal['r2_well_median_model']:+.3f} / climatology "
+              f"{temporal['r2_well_median_clim']:+.3f} -> "
+              f"{'PASS' if temporal['r2_anom_model'] > temporal['r2_anom_clim'] else 'FAIL'} "
+              "(rule: anomaly R2 beats climatology)", flush=True)
 
     # Spec 6's PRIMARY decision rule -- "does the transmissivity clamp release, per zone?" --
     # is computed from THIS fit, not from the k-fold gate that follows. So it is printed here,
