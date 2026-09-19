@@ -34,7 +34,7 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 
 | | gate | result |
 |---|---|---|
-| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS** — R² +0.757 vs +0.702 |
+| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS** — R² +0.804 vs +0.702, with a physical pump conversion and a learned stress radius |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.546** out of fold, bias +0.1 cm |
 | **Full chain hindcast** | 798 leveling sites, 18-member ensemble | R² **+0.526**, RMSE 6.6 cm |
 | **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.0 ± 1.3 cm baseline · 9.5 ± 1.1 cm with aquaculture retired |
@@ -48,10 +48,11 @@ validates spatial interpolation under the recorded forcing. A gate that holds ou
 *years* (fit to 2019, free-run 2020–2022) finds that the model's own dynamics drift
 within three years, worse than climatology on per-well anomalies. Projections are
 therefore anchored by nudging to observations at the origin, and their decade-scale
-trend is the model's, not yet validated. Second, the gated model keeps its pump
-energy-to-volume conversion at its bounds; configurations with a physical conversion
-fit as well in sample but fail the well gate, so the *sensitivity* to pumping is not yet
-validated either. Both are stated with numbers in the state doc.
+trend is the model's, not yet validated. Second, the gated model's pumping stress is
+physical (efficiency 0.5, 40 m extra head, irrigation return flow) only because each
+cell's electricity is spread over a learned radius that sits at its 10 km bound; the
+earlier free fit passed by switching the stress off. Both are stated with numbers in
+the state doc.
 
 ## Data
 
@@ -119,10 +120,9 @@ why. Hardware notes and stack decisions are in `docs/GPU_SERVER.md`.
   6.6 m at the wells against 2.0 m for climatology), so the twin is a hindcast-and-nudged-
   projection tool, not a free forecaster. Fitting anomalies rather than levels is the next
   calibration change.
-- The pump conversion sits at its bounds in every gated fit, so policy sensitivities are
-  model consequences, not validated forecasts. Stress placement (pump-layer split,
-  leakance floor, irrigation return flow, a spread radius) is implemented; no physical
-  configuration has passed the well gate yet.
+- The spread radius of the pumping stress sits at its 10 km bound in every fold; the
+  bound is being raised and re-gated. Policy sensitivities are consequences of a gated
+  model, not validated forecasts of a policy's effect.
 - The mid-zone viscous time constant reaches the length of the record; decadal creep is
   bounded by the calibration window.
 - The posterior is a local Laplace approximation; parameters at a bound are held, not

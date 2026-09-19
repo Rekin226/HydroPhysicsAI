@@ -472,9 +472,13 @@ worse than no stress. The free fit therefore remains the gated parameter set, wi
 caveat. The stress-placement candidates were tested with the conversion held physical
 (fit-only, 300 epochs): pump-layer split +0.867, leakance floor +0.876, irrigation
 return flow +0.884, all three +0.884. The last was gated (`stage3_all_gate/`,
-2026-09-17): in-sample +0.887, **5-fold +0.632 vs IDW +0.702, FAIL**. Every physical
-stress placement tried generalises worse than the free fit; see STATE.md §3 for the
-reading and the next steps. Candidate refinements after that:
+2026-09-17): in-sample +0.887, **5-fold +0.632 vs IDW +0.702, FAIL**. At cell scale every
+physical stress placement generalised worse than the free fit. **Spreading the stress
+changed that (2026-09-19, `stage3_spreadL_gate/`):** the same physical conversion with
+split, floor and return flow plus a learned Gaussian spread radius (at its 10 km ceiling)
+fits +0.913 in sample and passes the k-fold gate at **+0.804 vs IDW +0.702**, ahead of
+the free fit's +0.757. The billing-coordinate hot spots were the obstacle, not the
+physics of the conversion. The held-out-years gate (STATE.md §3) still fails for it. Candidate refinements after that:
 pump→layer split by well depth, a leakance floor, irrigation return flow.
 
 **Next gate.** Zonal, 500 epochs, 5 folds, `--boundaries coast-apex --meter-filter

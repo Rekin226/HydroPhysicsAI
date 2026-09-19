@@ -1,6 +1,6 @@
 # Project state — where to continue
 
-**Last updated:** 2026-09-18 · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-19 · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -20,9 +20,10 @@ that is being measured.
 
 ```
 pumping policy ──▶ [flow model] ──▶ heads ──▶ [VEP column] ──▶ subsidence ──▶ [3D viewer]
-                   GATE PASS         nudged      PASSES           PASSES          BUILT
-                   (+0.757 vs        to obs      (Stage 2)        (R² +0.299      (forward mode:
-                    IDW +0.702)      at origin                     vs leveling)    policy axis)
+                   GATE PASS with    nudged      per-zone, vs     +0.526 hindcast   BUILT
+                   a PHYSICAL stress to obs      leveling         (798 sites)       (policy axis)
+                   (+0.804 vs        at origin   +0.546 o.o.f.
+                    IDW +0.702)
 ```
 
 | stage | status | evidence |
@@ -254,8 +255,17 @@ flow. Only after those is a different forward model the honest move.
 
    **Spread radius (2026-09-17/18, on top of all three, physical conversion):** 2 km
    +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling — the first
-   physical-stress configuration to beat the free fit's +0.906 in sample. Its k-fold gate
-   (`stage3_spreadL_gate/`) is running.
+   physical-stress configuration to beat the free fit's +0.906 in sample. **Its k-fold
+   gate PASSES (2026-09-19, `stage3_spreadL_gate/`, published as
+   `results/twin/stage3_zonal_physical_spread.csv`): 5-fold +0.804 vs IDW +0.702, margin
+   +0.102, four of five folds ahead** — better than the free fit's +0.757, with eta 0.5,
+   40 m extra head, return flow 0.69, 5 % of the stress in layer 1, recharge fraction
+   0.16, leakance at the 1e-4 floor in four of six interfaces, and the spread radius on
+   its 10 km ceiling in every fold. Spreading the cell-scale stress was the missing
+   piece: the same physical conversion that failed at cell scale (+0.632) passes once
+   each cell's electricity is applied over a 10 km Gaussian. The twin's parameters are
+   now this model; the free fit is kept as the record of how the pass was reached. Next:
+   raise the radius bound and re-gate, since the fit wants more than 10 km.
 
    **Temporal gate (held-out years, 2026-09-18) — a hard result.** Fit on 2012-2019,
    free-running continuation over 2020-2022 (36 months) from the record's start:
