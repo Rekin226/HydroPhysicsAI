@@ -25,6 +25,12 @@ independent check. Motivated by the first run on the gated model, where every ri
 configuration scored worse on leveling than the Stage-2 column (+0.036 vs +0.299): 14
 rings are too few and too local to constrain a fan-wide field.
 
+The column must be fitted on the SAME head trajectory the twin will later run. Crossing
+them costs a lot (measured 2026-09-19 on the leveling network): free-fit heads with their
+own column +0.552 and the physical model's heads with theirs +0.599, but each with the
+other's column +0.264 and +0.395. Nudging the hindcast toward observations is the same
+mistake in time rather than in parameters: it costs +0.599 -> +0.391.
+
 Gates. In-sample against the rings is not the number; two out-of-sample numbers are:
 leave-one-site-out over the MLCW rings (pooled R², same statistic as Stage 2) and the
 independent leveling R² over ~800 benchmarks (``explorer3d.validate_against_leveling``).

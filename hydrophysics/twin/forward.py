@@ -488,8 +488,13 @@ def main(argv=None) -> None:
     ap.add_argument("--hindcast-gain", type=float, default=0.0,
                     help="sequential assimilation through the record: nudge the state "
                          "toward the observed field by this gain every --hindcast-every "
-                         "months (0 = plain hindcast). The hindcast R2 printed per member "
-                         "is then an assimilated score, not a free-running one.")
+                         "months (0 = plain hindcast, the default). The hindcast R2 "
+                         "printed per member is then an assimilated score, not a "
+                         "free-running one. WARNING (2026-09-19): the compaction column "
+                         "is calibrated on the FREE-RUNNING hindcast, so nudged heads are "
+                         "out of its distribution and subsidence skill falls (measured: "
+                         "leveling R2 0.599 -> 0.391). Use it only with a column refit on "
+                         "nudged heads.")
     ap.add_argument("--hindcast-every", type=int, default=12)
     ap.add_argument("--ic-members", type=int, default=0,
                     help="extra members per parameter set, each restarting from the "

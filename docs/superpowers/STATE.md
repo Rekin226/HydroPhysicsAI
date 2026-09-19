@@ -253,6 +253,24 @@ flow. Only after those is a different forward model the honest move.
    sensitivities a physical stress gives; that model does not pass its gate.
    `results/twin/explorer3d_forward.html` is the gated model's run.
 
+   **The column belongs to its head field (2026-09-19).** Scored on the 798 leveling
+   sites, single member, free-running hindcast:
+
+   | heads | column | leveling R² |
+   |---|---|---|
+   | free fit | free fit's | +0.552 |
+   | physical + spread | its own | **+0.599** |
+   | free fit | the physical model's | +0.264 |
+   | physical + spread | the free fit's | +0.395 |
+
+   Paired correctly the physical model is the better of the two; crossed, either loses
+   about half its skill. The same applies in time: nudging the hindcast toward
+   observations every 12 months drops it to +0.391, because the column was calibrated on
+   the free-running trajectory. That, not the model, explains the +0.338 the first
+   36-member run reported. Ensemble averaging costs almost nothing (+0.572 over six
+   members). The deliverable is therefore re-run without hindcast nudging, and
+   `--hindcast-gain` now carries the warning.
+
    **Spread radius (2026-09-17/18, on top of all three, physical conversion):** 2 km
    +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling, the first
    physical-stress configuration to beat the free fit's +0.906 in sample. **Its k-fold
