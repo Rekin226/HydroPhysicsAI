@@ -891,6 +891,17 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
     def _median_per_well(x):
         return float(np.median([_r2(x[w, held], obs[w, held]) for w in range(obs.shape[0])]))
 
+    def _shape(x):
+        """R2 of the held-out variation alone: each series minus ITS OWN fitted-period
+        mean. ``_anom`` removes the observed mean from both, so it charges a model for a
+        level offset as well as for a wrong shape; this one isolates the shape, which is
+        what drives compaction (subsidence follows head CHANGE)."""
+        return _r2((x[:, held] - x[:, :T_fit].mean(axis=1, keepdims=True)).reshape(-1),
+                   (obs[:, held] - mean_fit).reshape(-1))
+
+    def _level_err(x):
+        return float(np.abs(x[:, :T_fit].mean(axis=1) - mean_fit.ravel()).mean())
+
     return {"r2_model": _r2(pred[:, held], obs[:, held]),
             "r2_clim": _r2(clim[:, held], obs[:, held]),
             "r2_persist": _r2(persist[:, held], obs[:, held]),
@@ -899,6 +910,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
             "r2_well_median_model": _median_per_well(pred),
             "r2_well_median_clim": _median_per_well(clim),
             "r2_well_median_persist": _median_per_well(persist),
+            "r2_shape_model": _shape(pred), "r2_shape_clim": _shape(clim),
+            "level_err_model_m": _level_err(pred),
             "n_months": int(T_full - T_fit)}
 
 
@@ -1542,7 +1555,9 @@ def main(argv=None) -> None:
               f"anomaly R2 flow {temporal['r2_anom_model']:+.3f} / climatology "
               f"{temporal['r2_anom_clim']:+.3f} / persistence {temporal['r2_anom_persist']:+.3f}; "
               f"per-well median R2 flow {temporal['r2_well_median_model']:+.3f} / climatology "
-              f"{temporal['r2_well_median_clim']:+.3f} -> "
+              f"{temporal['r2_well_median_clim']:+.3f}; shape R2 flow "
+              f"{temporal['r2_shape_model']:+.3f} / climatology {temporal['r2_shape_clim']:+.3f} "
+              f"at a mean level error of {temporal['level_err_model_m']:.2f} m -> "
               f"{'PASS' if temporal['r2_anom_model'] > temporal['r2_anom_clim'] else 'FAIL'} "
               "(rule: anomaly R2 beats climatology)", flush=True)
 

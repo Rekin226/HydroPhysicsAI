@@ -324,7 +324,28 @@ flow. Only after those is a different forward model the honest move.
    the calibration objective is a level misfit, which the between-well variance
    dominates, so the fit is never asked to get anomalies right. A per-well anomaly term
    in the loss (or fitting anomalies outright) and a held-out-years gate as a first-class
-   verdict are the next calibration changes, ahead of any more stress placement. The next honest steps are a coarser
+   verdict are the next calibration changes, ahead of any more stress placement.
+
+   **The anomaly loss, tested 2026-09-19 (`--loss anomaly`, level weight 0.1).** On the
+   gate's own metric it looks worse (anomaly R² −20 free, −31 physical, against −8 and
+   −7 for the level loss). That metric removes the *observed* fitted-period mean from
+   both series, so it charges a model for a level offset as well as for a wrong shape.
+   Scoring the shape alone, each series minus its own fitted mean, reverses the reading:
+
+   | fit | shape R² of the continuation | mean level error over the fitted years |
+   |---|---|---|
+   | climatology | +0.154 | n/a |
+   | free, level loss | −0.405 | 3.33 m |
+   | free, anomaly loss | −0.037 | 5.58 m |
+   | physical + spread, level loss | −1.052 | 3.73 m |
+   | physical + spread, anomaly loss | **+0.059** | 6.39 m |
+
+   So the anomaly loss does what it was meant to: it nearly closes the shape gap to
+   climatology, on the model that carries a physical pumping stress. It pays for that by
+   letting the absolute level drift, because at a level weight of 0.1 the anchor is too
+   weak. The next runs restore it (`--level-weight 1` and `3`, queued), and the temporal
+   gate now reports shape R² and the level error beside the anomaly score, since the
+   pooled and anomaly numbers on their own hid this. The next honest steps are a coarser
    placement of the stress (smoothing the census over its billing radius, or a learned
    spread kernel) and a gate that scores the *response to pumping* directly, e.g.
    held-out years rather than held-out wells.
