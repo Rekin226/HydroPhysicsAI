@@ -112,7 +112,17 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
   for policy sweeps and large ensembles.
 
 Modules live under `hydrophysics/twin/`; each file's docstring states what it does and
-why. Hardware notes and stack decisions are in `docs/GPU_SERVER.md`.
+why.
+
+**Hardware.** The twin is developed and run on a Quadro RTX 6000 (Turing, sm_75, 24 GB),
+with torch 2.11 on CUDA 12.8 and PhysicsNeMo 2.2.1. The solver is float64 throughout and
+uses no mixed precision: on this card fp64 runs at 0.32 TFLOP/s against 9.1 for fp32, and
+bf16 has no tensor-core support (5.3 TFLOP/s, slower than fp32), so precision is chosen
+for the conjugate-gradient solve rather than for speed. The flow solver still runs about
+51× faster on the GPU than on the CPU, because it is bound by kernel launches rather than
+arithmetic. A newer card would help the surrogate and the forecaster far more than it
+helps the solver. Stack decisions and the full constraint list are in
+`docs/GPU_SERVER.md`.
 
 ## Limits
 

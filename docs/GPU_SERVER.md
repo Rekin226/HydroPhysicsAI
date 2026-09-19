@@ -25,7 +25,10 @@ file, see `GPU_SERVER.local.md`, which is gitignored. This repo is public.
 
 sm_75 predates several things modern GPU tooling assumes:
 
-- **No bfloat16.** `torch.cuda.is_bf16_supported()` returns `False`.
+- **No bfloat16 in hardware.** `torch.cuda.is_bf16_supported()` returns `True` on
+  torch 2.11 (it reports emulation, not tensor cores), so the flag is not a safe test.
+  Measured on this card, 4096-cube matmul: fp16 **61.9**, fp32 **9.1**, bf16 **5.3**,
+  fp64 **0.32** TFLOP/s. bf16 is slower than fp32 here; use fp16 or fp32.
 - **No FP8.** Requires Hopper/Ada (sm_89+). Transformer Engine FP8 paths are unavailable.
 - **No NVFP4.** Requires Blackwell.
 - **No Flash Attention 2.** Requires sm_80+. Attention-heavy models run unaccelerated.

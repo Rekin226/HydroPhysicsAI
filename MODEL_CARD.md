@@ -59,7 +59,7 @@ assimilation is an easier task).
 | Forecast 30-day | LSTM **KGE 0.899** | persistence 0.703 |
 | Forecast probabilistic | CRPS 0.143 / 0.286 (7/30 d), PICP ≈ 0.90 | persistence-Gaussian 0.260 / 0.590 |
 
-GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-AMP at
+GPU: on an RTX 4070 SUPER (Ada, a different machine from the project's server) the forecaster trains 14× faster than CPU under bf16-AMP at
 ~half the memory (`python -m hydrophysics.bench`).
 
 ## Limitations
