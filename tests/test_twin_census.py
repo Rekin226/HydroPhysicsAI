@@ -218,7 +218,7 @@ def test_fit_flow_learns_or_fixes_the_spread_radius():
     obs_h = torch.full((2, steps), 4.9, dtype=torch.float64)
     fit = fit_flow(m, obs_h, obs_idx, obs_layer, rech, E=E, ground_elev=ge, h0=h0,
                    epochs=2, lr=0.01, learn_spread=True)
-    assert 0.5 <= fit["theta"]["spread_km"] <= 10.0
+    assert 0.5 <= fit["theta"]["spread_km"] <= 25.0
     assert "log_spread_km" in fit["bounds_hit"]
     fixed = fit_flow(m, obs_h, obs_idx, obs_layer, rech, E=E, ground_elev=ge, h0=h0,
                      epochs=2, lr=0.01, spread_km=3.0)

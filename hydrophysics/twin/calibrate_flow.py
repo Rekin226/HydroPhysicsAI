@@ -1357,7 +1357,7 @@ def main(argv=None) -> None:
                     help="spread each cell's pumping energy over a Gaussian of this radius "
                          "(km, mass-conserving) before conversion -- spread.py")
     ap.add_argument("--learn-spread", action="store_true",
-                    help="learn the spread radius (log, bounded 0.5-10 km) instead")
+                    help="learn the spread radius (log, bounded 0.5-25 km) instead")
     ap.add_argument("--holdout-months", type=int, default=0,
                     help="temporal gate: fit on the record minus its last N months, then "
                          "score a free-running continuation over those N months against a "

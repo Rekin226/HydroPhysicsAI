@@ -7,7 +7,7 @@ as cell-scale hot spots (p99 cell-month 3.4e5 m3); a held-out well next to one i
 predicted with a drawdown the observations do not show. A farm's wells are not at its
 meter, and a well's cone of depression is not a cell. This module redistributes each
 cell's energy with a mass-conserving Gaussian kernel of width ``sigma_km``, either fixed
-(``--pump-spread-km``) or learned (``--learn-spread``, bounded 0.5-10 km) so the data
+(``--pump-spread-km``) or learned (``--learn-spread``, bounded 0.5-25 km) so the data
 decide how local the stress is.
 """
 
@@ -18,7 +18,7 @@ import math
 import numpy as np
 import torch
 
-SPREAD_KM_BOUNDS = (math.log(0.5), math.log(10.0))
+SPREAD_KM_BOUNDS = (math.log(0.5), math.log(25.0))   # raised from 10 km 2026-09-19: the gated fit sat on it
 
 
 def pairwise_d2_km(grid, device=None) -> torch.Tensor:
