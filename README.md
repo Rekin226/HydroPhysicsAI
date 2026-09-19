@@ -1,6 +1,6 @@
 # HydroPhysicsAI
 
-**A differentiable digital twin of the Choushui alluvial fan, Taiwan — pumping policy in, groundwater heads and land subsidence out, gated against held-out data at every stage.**
+**A differentiable digital twin of the Choushui alluvial fan, Taiwan: pumping policy in, groundwater heads and land subsidence out, gated against held-out data at every stage.**
 
 [![CI](https://github.com/Rekin226/HydroPhysicsAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Rekin226/HydroPhysicsAI/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
@@ -34,7 +34,7 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 
 | | gate | result |
 |---|---|---|
-| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS** — R² +0.804 vs +0.702, with a physical pump conversion and a learned stress radius |
+| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.804 vs +0.702, with a physical pump conversion and a learned stress radius |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.546** out of fold, bias +0.1 cm |
 | **Full chain hindcast** | 798 leveling sites, 18-member ensemble | R² **+0.526**, RMSE 6.6 cm |
 | **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.0 ± 1.3 cm baseline · 9.5 ± 1.1 cm with aquaculture retired |
@@ -151,12 +151,11 @@ tests/                   CPU-only test suite
 
 ## Contributing
 
-Contributions are welcome, from documentation fixes to open research. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, the GPU install and the evaluation
-rules, and the [issues](https://github.com/Rekin226/HydroPhysicsAI/issues) for claimable
-work. Negative results documented honestly are valued.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup,
+the GPU install and the evaluation rules, and the
+[issues](https://github.com/Rekin226/HydroPhysicsAI/issues) for claimable work.
 
 ## Author and license
 
-Abdoul Rachid Ouedraogo, Ph.D. — hydrogeology × AI. Also: [AquaScope](https://github.com/Rekin226/aquascope).
+Abdoul Rachid Ouedraogo, Ph.D., hydrogeology and AI. Also: [AquaScope](https://github.com/Rekin226/aquascope).
 MIT, see [LICENSE](LICENSE).

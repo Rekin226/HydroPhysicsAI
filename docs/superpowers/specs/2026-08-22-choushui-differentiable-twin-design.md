@@ -1,4 +1,4 @@
-# Choushui Differentiable Digital Twin — Design
+# Choushui Differentiable Digital Twin: Design
 
 **Date:** 2026-08-22 (rev. 2026-08-23, §4/§4.1 after the AMP_V2 experiment)
 **Status:** Approved (brainstorming), pending spec review
@@ -18,7 +18,7 @@ subsidence if abstraction changes.
 The scientific gap it fills, established by the review in `docs/LIT_SUBSIDENCE_TAIWAN.md`:
 coupled 3D flow-deformation modelling exists on this fan (Ni; Shih-Jung Wang), and
 deep learning exists on this fan (Chu; Ku), but **no differentiable model exists anywhere**
-— OpenAlex returns 52 works for `"physics-informed" AND (subsidence OR land deformation OR
+- OpenAlex returns 52 works for `"physics-informed" AND (subsidence OR land deformation OR
 InSAR)`, exactly one couples heads to subsidence with a PINN (Dezhou, China), and
 `hybrid physics machine learning land subsidence compaction` returns **zero**.
 
@@ -27,7 +27,7 @@ InSAR)`, exactly one couples heads to subsidence with a PINN (Dezhou, China), an
 `hydrophysics/subsidence.py` fits `S = Sk · cumulative_drawdown` and reports honestly
 negative leave-one-site-out R² (−0.28 to −2.40, README). The literature explains it:
 Tsai & Hsu 2018 (`10.1016/j.enggeo.2018.07.025`) show deformation on *this fan* is
-visco-elasto-plastic — elastic, plastic **and viscous with a delay** — and Lees et al. 2022
+visco-elasto-plastic, elastic, plastic **and viscous with a delay**, and Lees et al. 2022
 (`10.1029/2021WR031390`) find residual clay compaction time constants of decades. A
 memory-less scalar cannot absorb a rheology. The negative result is correct and expected.
 
@@ -36,7 +36,7 @@ memory-less scalar cannot absorb a rheology. The negative result is correct and 
 - **Quasi-3D, not full Biot.** Vertical strain dominates; the MLCW observations *are* 1D
   vertical profiles, so the model is calibrated at the resolution of the data; and it is
   the physics the subsidence community already accepts (MODFLOW SUB-WT). Full 3D
-  poroelasticity + neural-operator surrogate is **Approach B, explicitly deferred** —
+  poroelasticity + neural-operator surrogate is **Approach B, explicitly deferred** -
   attempted only after this succeeds, seeded by this model as data generator.
 - **One-way coupling, flow → compaction.** Compaction-induced storage loss is real but
   second-order, and adding it makes the system stiff. Deferred, not designed in.
@@ -89,7 +89,7 @@ pumping. Gradients via implicit differentiation of the linear solve.
 - inelastic, coefficient `S_kv` (10–100× larger), gated on `h < h_pc`;
 - viscous relaxation toward equilibrium: `τ · dε_i/dt + ε_i = ε_i^eq(h)`.
 
-`h_pc` is a **learned, evolving state**, not a running minimum — the variable-preconsolidation
+`h_pc` is a **learned, evolving state**, not a running minimum, the variable-preconsolidation
 upgrade of Li et al. 2022 (`10.1016/j.jhydrol.2021.127420`).
 
 Surface subsidence `S(x,y,t) = Σ_l b_l ε_l(t)`.
@@ -103,7 +103,7 @@ position. Log-parameterization enforces positivity; published ranges act as soft
 
 **Mandatory ablation, treated as a deliverable, not diagnostics:** attribute-driven
 parameters vs free per-site parameters. The gap between them measures how much rheology is
-predictable from hydrogeology — the question Shih-Jung Wang's group has published on
+predictable from hydrogeology, the question Shih-Jung Wang's group has published on
 directly (`10.1016/j.enggeo.2022.106543` at Huwei, Yunlin, inside this study area;
 `10.1016/j.enggeo.2025.107991` on borehole density). The answer is publishable either way.
 
@@ -123,7 +123,7 @@ low-rank spatiotemporal inversion and removes the largest technical risk in the 
 as stress, `Q_local ≈ a · C(T,S)`, with the drawdown coefficient supplied by the learned
 parameters. Measurement showed amplitude alone is a weak cross-well discriminator
 (ρ = +0.255 against irrigation electricity, n=71) because it confounds pumping with `T` and
-`S` — exactly the limitation the 2023 AMP paper flagged. **Duty cycle solves it**: being a
+`S`, exactly the limitation the 2023 AMP paper flagged. **Duty cycle solves it**: being a
 timing property it is not scaled by `T` or `S`, and `volume = amplitude × duty` reaches
 ρ = +0.424 (p = 0.007), a 48% improvement on identical wells. The twin therefore ingests
 volume, not stress.
@@ -133,10 +133,10 @@ unregistered-abstraction field**, not absorbed into noise.
 
 **Physical consequence worth stating:** as heads fall, lift rises, so the same electricity
 delivers less water. This energy–water feedback is real, policy-relevant, and unmodelled on
-this fan. It also lets a scenario be expressed in something a regulator controls —
+this fan. It also lets a scenario be expressed in something a regulator controls -
 electricity supply or tariff to agricultural wells.
 
-### 4.1 AMP-G (built and evaluated — see `AMP_V2/README.md`)
+### 4.1 AMP-G (built and evaluated: see `AMP_V2/README.md`)
 
 Extends Ouédraogo, Hsu & Wang 2023 (`10.1061/JHYEFF.HEENG-5760`). An unconstrained survey
 of 34 wells over 11 years finds a **median 3.9 coherent spectral lines per well**; AMP
@@ -150,12 +150,12 @@ attributes them physically, and inverts the harmonic ladder for **duty cycle**
 |---|---|
 | HGT/GAFD beats the published band-pass on amplitude | **No.** 0.988 vs 0.994 synthetic; +0.231 vs +0.303 per-well real |
 | Multi-band amplitude adds information | **No.** +7%, p = 0.19 |
-| Sub-daily "irrigation rotation" band helps | **No — it hurts.** ρ 0.202, p = 0.027. Hypothesis rejected |
+| Sub-daily "irrigation rotation" band helps | **No: it hurts.** ρ 0.202, p = 0.027. Hypothesis rejected |
 | Duty cycle is a new, aquifer-independent observable | **Yes.** volume ρ = +0.424 (p = 0.007) vs amplitude +0.286, same 40 wells |
 | `α` is a usable T/S diagnostic | **Plausible.** Splits by layer: 0.21 at 38 m vs 0.49 at 119 m |
 
 Bootstrap on the improvement: +0.137, 95% CI **[−0.008, +0.323]**, P(improvement) = 0.964.
-Real but not conclusively established — it enters the twin as an observable with honest
+Real but not conclusively established, it enters the twin as an observable with honest
 uncertainty, never as a headline claim.
 
 **Availability limit, load-bearing for Plan B:** duty needs ≥3 detected harmonics and is
@@ -166,7 +166,7 @@ models for the two cases.
 **AMP is irrigation-specific.** Seasonal correlation with rice/dry-crop electricity is
 +0.66 to +0.75, but −0.17 with aquaculture and −0.15 with domestic. Consequence for §4:
 the gap between AMP-implied and electricity-implied abstraction is **not** purely
-unregistered pumping — it also contains the non-irrigation purpose mix, which must be
+unregistered pumping, it also contains the non-irrigation purpose mix, which must be
 modelled separately before any unregistered-abstraction claim is made.
 
 ## 5. Observation model and uncertainty
@@ -195,7 +195,7 @@ pumping signal swamps tectonics near the coast, but at proximal/inland benchmark
 is small, so the ratio is worst exactly where the fit is most fragile. **Mitigation:** fit or
 subtract a per-site tectonic linear offset and *report the variance it absorbs*.
 
-**Attribute information limit.** See §3 — handled as a measured ablation rather than an
+**Attribute information limit.** See §3, handled as a measured ablation rather than an
 assumption.
 
 ## 7. Staging and gates
@@ -205,12 +205,12 @@ Each stage is independently valuable and each gate is a genuine continue/kill de
 | Stage | Deliverable | Gate |
 |---|---|---|
 | 0 | Data foundation: 344 heads, 1,239 leveling, 16 MLCW, grid + 4-layer geometry, attribute rasters, tectonic detrend | Panel assembled; tectonic correction measured |
-| 1 | Refit existing algebraic `Sk` on 556 leveling sites instead of 14 | A number that motivates or descopes Stage 2. If LOSO R² > 0 the wall was sparsity, and the *rheology* is simplified accordingly — the flow/pumping stages still stand, since counterfactuals need them regardless |
+| 1 | Refit existing algebraic `Sk` on 556 leveling sites instead of 14 | A number that motivates or descopes Stage 2. If LOSO R² > 0 the wall was sparsity, and the *rheology* is simplified accordingly, the flow/pumping stages still stand, since counterfactuals need them regardless |
 | 2 | Differentiable VEP compaction column, calibrated at 16 MLCW sites | Beats algebraic `Sk` on leave-one-site-out at MLCW sites |
 | 3 | Differentiable 4-layer flow + AMP v2 + electricity-driven pumping | Predicts held-out wells better than current IDW interpolation |
 | 4 | Coupled model, joint calibration on heads + MLCW + leveling | **Positive leave-one-site-out R² on leveling subsidence** |
 | 5 | Counterfactual scenarios + ensemble uncertainty | Physically coherent rebound/residual behaviour; calibrated coverage |
-| — | Agentic research loop, from Stage 2 onward | Ledger + lab notebook; sealed-gate discipline holds |
+| n/a | Agentic research loop, from Stage 2 onward | Ledger + lab notebook; sealed-gate discipline holds |
 | 6 | *(deferred)* Approach B: PhysicsNeMo neural-operator surrogate, 3D visualization, optimal control | Not planned here |
 
 Stages 1 and 2 can each kill or redirect the project within weeks, before the expensive
@@ -218,7 +218,7 @@ machinery exists. That ordering is the main risk control.
 
 ### Results (2026-08-23, commit `011df32`, final fix wave on `feat/choushui-twin-plan-a`)
 
-**Stage 1 — 888 leveling sites** (`python -m hydrophysics.twin.sk_leveling --min-obs 5`):
+**Stage 1: 888 leveling sites** (`python -m hydrophysics.twin.sk_leveling --min-obs 5`):
 
 | tectonic | n_sites | var_removed | sk_single (in-sample) | sk_loso_pooled | coast-regression LOSO (compaction) | coast-regression LOSO (Sk-space) |
 |---|---|---|---|---|---|---|
@@ -227,12 +227,12 @@ machinery exists. That ordering is the main risk control.
 
 Gate: LOSO compaction R² > 0 means spatial sparsity was the wall; still negative means the
 model form is. Result: positive (+0.062 to +0.116) with no tectonic correction, negative
-once the planar tilt is removed — inconclusive rather than a clean pass, but nowhere near
+once the planar tilt is removed, inconclusive rather than a clean pass, but nowhere near
 as negative as the 14-site MLCW numbers below, consistent with sparsity being *part* of
 the original problem even though the algebraic form still underperforms once the tectonic
 correction is applied.
 
-**Stage 2 — 14 MLCW compaction wells** (`python -m hydrophysics.twin.calibrate_mlcw --epochs 2000`):
+**Stage 2: 14 MLCW compaction wells** (`python -m hydrophysics.twin.calibrate_mlcw --epochs 2000`):
 
 | n_sites | n_cells | loss | sk_insample | sk_loso | sk_coast_loso | vep_loso | vep_shared_loso |
 |---|---|---|---|---|---|---|---|
@@ -263,7 +263,7 @@ per-item 2 of the final fix wave.
 The pipeline is **fully deterministic**: rerunning the committed code reproduces
 `results/twin/stage2_vep_mlcw.csv` byte-for-byte, and `fit_column` is bit-identical across
 repeats on both CPU and CUDA. An earlier note in this project claimed a ~0.2 run-to-run
-swing; that was an error — the two figures compared came from different code versions
+swing; that was an error, the two figures compared came from different code versions
 during the fix wave (in-sample loss 0.0077 before the anchor-alignment fix, 0.00466 after),
 not from two runs of the same code.
 
@@ -293,10 +293,10 @@ export HYDROMIND_GW_DATA="$(pwd)/chou-shui-data/chou-shui-data/data"
 python -m hydrophysics.twin.calibrate_mlcw --epochs 2000 --ensemble 8 --init-scatter 0.5
 ```
 
-### CORRECTION (2026-08-24): the Stage-2 gate PASSES — the earlier failure was a model bug
+### CORRECTION (2026-08-24): the Stage-2 gate PASSES: the earlier failure was a model bug
 
 Everything recorded above for Stage 2 is superseded. `VEPColumn` computed the
-preconsolidation head as `h_pc = min(h_pc0, h[:, 0])` with `h_pc0` initialised to **0.0** —
+preconsolidation head as `h_pc = min(h_pc0, h[:, 0])` with `h_pc0` initialised to **0.0** -
 an absolute head, i.e. the survey datum. Inelastic strain accrues only where `h < h_pc`, so
 **at every site whose heads never crossed 0 m the inelastic term was structurally disabled
 and `log_skv` / `log_tau` received no gradient at all**. That was **7 of the 14** MLCW sites
@@ -304,8 +304,8 @@ and `log_skv` / `log_tau` received no gradient at all**. That was **7 of the 14*
 choice, not a physical preconsolidation head; the reviewer's "6/14 folds gave zero gradient"
 observation was this bug, not a data limitation.
 
-`h_pc0` is now an **offset relative to each site's starting head** — `h_pc = h[:, 0] +
-h_pc0`, init 0 meaning "normally consolidated at t = 0" — which is datum-independent.
+`h_pc0` is now an **offset relative to each site's starting head**, `h_pc = h[:, 0] +
+h_pc0`, init 0 meaning "normally consolidated at t = 0", which is datum-independent.
 `tests/test_twin_compaction.py::test_inelastic_gate_opens_for_all_positive_heads` pins it.
 
 Re-running the identical gate (14 sites, 1,296 cells, 2000 epochs):
@@ -323,8 +323,8 @@ sites regained a working inelastic term. The init-scatter ensemble (8 runs, sd 0
 space) gives mean **+0.3232**, sd **0.0043**, range +0.3171 to +0.3290, and **8/8 runs beat
 the pooled single-`Sk` baseline**.
 
-**Revised Stage-2 verdict: PASS.** The shared-parameter VEP — 4 global parameters, no
-per-site covariates, the exact structural analogue of pooled single-`Sk` — achieves a
+**Revised Stage-2 verdict: PASS.** The shared-parameter VEP, 4 global parameters, no
+per-site covariates, the exact structural analogue of pooled single-`Sk`, achieves a
 **positive** leave-one-site-out R² on head→subsidence coupling. Every coupling previously
 reported for this fan is negative (README: −0.28 in-sample single-`Sk`, −2.40 spatial-IDW,
 −0.29 coast regression; and −0.556 for the honest pooled LOSO baseline computed here).
@@ -343,21 +343,21 @@ arm, not the shared arm. For the record, that per-site arm gets 8 of 14 held-out
 positive but is destroyed in the pool by two outliers (嘉興國小 −228.9, 北辰國小 −54.6).
 Per-fold diagnostics for the shared arm should be added before Plan B.
 
-**Caveat that survives:** Stage 1 is unaffected — the algebraic `Sk` coupling still fails on
+**Caveat that survives:** Stage 1 is unaffected, the algebraic `Sk` coupling still fails on
 888 leveling sites. What passes here is the *rheology with memory*, at the 14 depth-resolved
 compaction wells, transferred by a pooled estimator.
 
-### FINAL RESULTS (2026-08-25) — the head field was the binding constraint
+### FINAL RESULTS (2026-08-25): the head field was the binding constraint
 
 The head field had been built from `chou-shui-data`'s curated **61** wells. That selection
 came from the gray-box study, which required every well to have an *upstream partner* for
-its ODE — a constraint with no bearing on subsidence. The provided raw file holds **174**
+its ODE, a constraint with no bearing on subsidence. The provided raw file holds **174**
 wells, and the API exposes **344** on the fan, each with a `GroundwaterLayerCode`.
 `twin/heads.py` rebuilds the field from the API network: robust despike at median ± 15·MAD,
 ≥80% coverage, ≤180 d max gap, valid layer code → **147 wells** (L1 34, L2 69, L3 31,
 L4 13), 1.1% NaN month-cells, nothing gap-filled. This is now the default (`--heads api`).
 
-**Stage 1** — 878 leveling sites (10 benchmark resets screened at `--max-rate 0.5`), single-`Sk` LOSO pooled:
+**Stage 1**, 878 leveling sites (10 benchmark resets screened at `--max-rate 0.5`), single-`Sk` LOSO pooled:
 
 | head field | no tectonic correction | tilt removed |
 |---|---|---|
@@ -366,10 +366,10 @@ L4 13), 1.1% NaN month-cells, nothing gap-filled. This is now the default (`--he
 
 Head-field density was a real confound: the tilt-corrected gate flips from negative to
 positive. Per-layer fields are *worse* than pooled (L1 −0.215, L2 −0.099, L3 +0.036),
-which is expected — subsidence integrates compaction over the whole column, so no single
+which is expected, subsidence integrates compaction over the whole column, so no single
 aquifer's head drives it. That is direct motivation for the four-layer solver.
 
-**Stage 2** — 14 compaction wells, 1,296 cells, identical arrays:
+**Stage 2**, 14 compaction wells, 1,296 cells, identical arrays:
 
 | model | evaluation | 61-well heads | **147-well heads** |
 |---|---|---|---|
@@ -387,13 +387,13 @@ picture is consistent: the algebraic `Sk` becomes weakly predictive out-of-sampl
 (+0.106 at MLCW sites, +0.040 across 878 leveling sites), and the visco-elasto-plastic
 rheology adds **+0.37 R²** on top of it (+0.478 vs +0.106) under a pooled estimator with no
 per-site covariates. Stage 2 passes decisively; Stage 1 is marginal, which is itself
-informative — the algebraic form is adequate at compaction wells and not across the
+informative, the algebraic form is adequate at compaction wells and not across the
 leveling network.
 
 **Plan B is justified**, and the layer results say what it must be: a genuinely four-layer
 solver, not a single-layer proxy.
 
-### Stage-3 result (2026-08-26) — FAIL, provisional
+### Stage-3 result (2026-08-26): FAIL, provisional
 
 `hydrophysics/twin/{grid,flow,pumping,calibrate_flow}.py`. Four-layer differentiable flow on
 a 1 km grid (2,148 active cells), float64, Jacobi-preconditioned CG with an exact adjoint,
@@ -414,7 +414,7 @@ census; recharge from 26 rain gauges minus cached ET.
 
 Two things keep this honest rather than damning. Adding real forcing moved in-sample R² from
 −0.022 to +0.126, and the recovered `T` sits inside the measured Choushui range (Liu et al.
-2002, 58–6,034 m²/day) — the model behaves, it just does not fit. And `epochs=45` was chosen
+2002, 58–6,034 m²/day), the model behaves, it just does not fit. And `epochs=45` was chosen
 to land the 11-fit gate inside two hours, not because the fit converged; by the criterion
 stated before the run, an in-sample R² this poor reads as under-training, so **this gate is
 provisional**.
@@ -422,20 +422,20 @@ provisional**.
 The baseline is also genuinely hard: 147 wells over 2,144 km² is ~4 km spacing, and IDW
 interpolates directly between the same wells the model is scored against.
 
-Candidate limiters, in test order: (1) epoch budget, (2) homogeneity — 13 parameters cannot
+Candidate limiters, in test order: (1) epoch budget, (2) homogeneity, 13 parameters cannot
 express the fan's proximal-to-distal texture gradient, though Plan A settled that free
 per-cell parameters are the wrong fix, (3) pump-layer allocation, currently all into layer 2.
 
 **Plan C (Stage 4 coupling) does not start until this gate passes.**
 
-### Stage-3 re-run (2026-08-27) — RETRACTED. The gate measures the wrong thing.
+### Stage-3 re-run (2026-08-27): RETRACTED. The gate measures the wrong thing.
 
 The 2026-08-26 FAIL above was under-trained, as suspected. Re-running at a converged budget
 produced a second FAIL, and chasing an unrelated well-count discrepancy then showed that
 result is **also** invalid. Both are recorded here because the reasons matter more than the
 numbers.
 
-**Confounder 1 — `--epochs` drives the LR schedule.** `fit_flow` builds
+**Confounder 1: `--epochs` drives the LR schedule.** `fit_flow` builds
 `CosineAnnealingLR(opt, T_max=epochs)`, so epoch *N* of a 400-epoch run is not comparable to
 epoch *N* of a 100-epoch run. The "converges at epoch ~75-100" reading was taken off a
 400-epoch trace; passing `--epochs 100` anneals to zero by epoch 100 and plateaus at in-sample
@@ -454,13 +454,13 @@ logged points exactly and gave:
 | IDW baseline R² (identical folds) | +0.880 |
 | bounds binding | `log_T` 3 of 4, `log_S` 2 of 4, `log_eta` 1 |
 
-**Confounder 2 — the folds leak by co-location, so the baseline is a near-oracle.** The
+**Confounder 2: the folds leak by co-location, so the baseline is a near-oracle.** The
 "136-well network" is 66 physical sites carrying layer-coded screens. `_kfold_indices` split
 the 136 *entries* at random with no grouping, so co-located screens landed on opposite sides
 of the split: **95 of 136 held-out entries (69.9%) sit at zero distance from a training
 entry** (per fold: 61%, 93%, 63%, 78%, 56%). `idw_interp` weights by
 `1/(d² + 1e-6)`, so a zero-distance source gets weight 1e6 against 1e-6 for a neighbour 1 km
-out — a ratio of 1e12. For ~70% of the held-out set the "IDW baseline" is not interpolating,
+out, a ratio of 1e12. For ~70% of the held-out set the "IDW baseline" is not interpolating,
 it is copying another screen in the same borehole.
 
 The flow model cannot exploit that: it reproduces each head through a 13-parameter
@@ -478,14 +478,14 @@ and it is independent of how the folds are drawn.
 **Two data-handling facts found on the way.** `calibrate_flow.py` silently drops wells whose
 coordinates miss the active mask (`grid.active_index(...) is None` → bare `continue`): 147 →
 136, all 11 from 3 sites outside the fan, one of them west of 99.3% of kept wells. The drop
-is also grid-dependent — dx=1 km keeps 136, dx=500 m keeps **134** — so the planned
+is also grid-dependent, dx=1 km keeps 136, dx=500 m keeps **134**, so the planned
 `--dx 500` grid-convergence check is not like-for-like unless the well sets are intersected
 first.
 
 **Gate status: unresolved, not failed.** Re-run only after the folds are grouped by physical
 site. Plan C stays blocked either way.
 
-### Stage-3 result (2026-08-27, grouped folds) — FAIL by 0.033, and the margin may be noise
+### Stage-3 result (2026-08-27, grouped folds): FAIL by 0.033, and the margin may be noise
 
 Folds grouped by physical site (`68f422a`), co-location rate confirmed **0.000** in-run.
 This is the first Stage-3 number not confounded by budget or by leakage.
@@ -513,10 +513,10 @@ channel.
 | gap | 0.216 | **0.033** | |
 
 Leakage accounted for ~85% of the apparent gap. The in-sample fit is byte-identical across
-the two runs (loss 29.282276968357287, same `theta`), as it must be — it does not depend on
+the two runs (loss 29.282276968357287, same `theta`), as it must be, it does not depend on
 the fold construction.
 
-**GATE: FAIL — but read it as undecided, not as a kill.** 0.033 is one 5-fold split with no
+**GATE: FAIL: but read it as undecided, not as a kill.** 0.033 is one 5-fold split with no
 variance estimate. Fold-assignment variance is unmeasured and can plausibly exceed half that
 margin, so this number does not by itself establish that IDW beats the physics model.
 A seed-variance pass over the fold assignment is required before Stage 3 is called either
@@ -536,16 +536,16 @@ the fix is not "add parameters".
 
 Extends existing conventions (`train.py` argparse CLI, `results/<name>/`, `inner_select.py`).
 
-**Division of labour:** numeric hyperparameter search goes to ASHA/Bayesian optimization —
+**Division of labour:** numeric hyperparameter search goes to ASHA/Bayesian optimization -
 an LLM must not do what Optuna does better. The agent's role is reading the accumulated
 ledger, forming hypotheses ("variants without the viscous term fail at coastal sites but not
 inland"), and proposing **structural** experiments.
 
 **Guardrails:**
 
-1. **Sealed test set by construction** — the data layer refuses held-out sites and 2019+ to
+1. **Sealed test set by construction**, the data layer refuses held-out sites and 2019+ to
    the agent. Not a convention; an architectural constraint.
-2. **Multiple-comparisons accounting** — top-k candidates get *one* sealed-gate evaluation
+2. **Multiple-comparisons accounting**, top-k candidates get *one* sealed-gate evaluation
    at the end, reported *with the number of comparisons made*.
 3. Fixed experiment budget and stopping rule per round.
 4. Full provenance per run: config hash, seed, git SHA, data version.
@@ -569,7 +569,7 @@ from our own synthetic data are meaningless on real data.
 
 **Baselines, named in advance:** persistence/climatology; the existing algebraic `Sk`;
 **Chu et al. 2021** spatially-varying drawdown function (`10.1016/j.ejrh.2021.100808`, the
-published incumbent for this fan); and a pure-ML model on identical inputs — that last one
+published incumbent for this fan); and a pure-ML model on identical inputs, that last one
 is what demonstrates the physics earns its place.
 
 **Held out in space and time:** leave-one-site-out *plus* a temporal holdout (train ≤2018).
@@ -581,7 +581,7 @@ split (Nguyen & Ni 2024 report half the major compaction is shallow; Lees et al.
 from the lower confined aquifer in San Joaquin). A model that fits well while learning absurd
 parameters must be detectable as a failure.
 
-**Unregistered pumping carries a weaker evidentiary standard** — there is no ground truth. It
+**Unregistered pumping carries a weaker evidentiary standard**, there is no ground truth. It
 is validated only by (a) whether the residual field improves held-out well prediction over
 assuming zero, and (b) whether total abstraction stays within WRA's published basin water
 balance. Reported as a bounded inference, never as a measurement.
@@ -602,16 +602,16 @@ problem. Pre-committing removes the incentive to rationalize.
 This spec is deliberately larger than one implementation plan. It decomposes into three,
 each written and executed separately, with the gates in §7 as the hand-off points:
 
-- **Plan A — Stages 0–2** (data foundation, the `Sk` refit, the differentiable VEP column).
+- **Plan A: Stages 0–2** (data foundation, the `Sk` refit, the differentiable VEP column).
   Self-contained, needs no flow solver, and settles the central scientific question.
-- **Plan B — Stage 3 only** (grid + layer geometry, differentiable four-layer flow solver,
+- **Plan B: Stage 3 only** (grid + layer geometry, differentiable four-layer flow solver,
   electricity-driven pumping, flow calibration gate). Begins only after Stage 2's gate
-  passes — it has. *Revised 2026-08-25: originally scoped as Stages 3–4. Split because the
+  passes, it has. *Revised 2026-08-25: originally scoped as Stages 3–4. Split because the
   Stage-3 gate ("predicts held-out wells better than IDW") is a genuine kill point, and
   because the flow solver is a large enough subsystem to warrant its own review surface.*
-- **Plan C — Stage 4** (coupling flow to the VEP column, joint calibration against heads +
+- **Plan C: Stage 4** (coupling flow to the VEP column, joint calibration against heads +
   MLCW + leveling). Begins only after Stage 3's gate passes.
-- **Plan D — Stage 5 + research-loop hardening** (counterfactual scenarios, ensembles,
+- **Plan D: Stage 5 + research-loop hardening** (counterfactual scenarios, ensembles,
   uncertainty calibration).
 
 Only Plan A should be written now. Writing B and C before A's results exist would be
@@ -621,18 +621,18 @@ planning against unknowns.
 
 New modules under `hydrophysics/`, each independently testable:
 
-- `twin/grid.py` — fan polygon → masked grid, 4-layer geometry, attribute rasters.
-- `twin/flow.py` — differentiable 4-layer flow solver. Input: parameters, forcing, pumping.
+- `twin/grid.py`, fan polygon → masked grid, 4-layer geometry, attribute rasters.
+- `twin/flow.py`, differentiable 4-layer flow solver. Input: parameters, forcing, pumping.
   Output: head field. Depends on nothing but tensors.
-- `twin/compaction.py` — differentiable VEP column. Input: layer heads + rheology.
+- `twin/compaction.py`, differentiable VEP column. Input: layer heads + rheology.
   Output: strain and surface subsidence.
-- `twin/pumping.py` — electricity → volume, AMP → stress, unregistered residual.
-- `twin/amp.py` — AMP v1 (band-pass) and v2 (GAFD+Hilbert); pure signal processing, no
+- `twin/pumping.py`, electricity → volume, AMP → stress, unregistered residual.
+- `twin/amp.py`, AMP v1 (band-pass) and v2 (GAFD+Hilbert); pure signal processing, no
   model dependency.
-- `twin/observe.py` — observation operators and likelihood.
-- `twin/params.py` — attribute network.
-- `twin/calibrate.py` — staged optimization driver.
-- `research_loop/` — experiment spec, ledger, agent interface, guardrails.
+- `twin/observe.py`, observation operators and likelihood.
+- `twin/params.py`, attribute network.
+- `twin/calibrate.py`, staged optimization driver.
+- `research_loop/`, experiment spec, ledger, agent interface, guardrails.
 
 Each answers: what does it do, how is it used, what does it depend on. `flow.py` and
 `compaction.py` in particular must be usable and testable without any of the others.
@@ -640,7 +640,7 @@ Each answers: what does it do, how is it used, what does it depend on. `flow.py`
 ## 11. Open questions deferred to implementation planning
 
 - Aquitard thickness/geometry source: derived from well screen depths and layer codes, or
-  from published Choushui stratigraphy — decide during Stage 0 once borehole coverage is
+  from published Choushui stratigraphy, decide during Stage 0 once borehole coverage is
   assessed.
 - Pump→layer allocation: learned soft assignment vs HP/diameter heuristic; both are
   candidates for the Stage 3 ablation.

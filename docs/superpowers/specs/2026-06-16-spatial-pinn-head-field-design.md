@@ -1,4 +1,4 @@
-# Spatial PINN Head Field — Design
+# Spatial PINN Head Field: Design
 
 **Date:** 2026-06-16
 **Status:** Implemented; concluded as a documented negative/neutral baseline (see "Outcome" at end)
@@ -7,14 +7,14 @@
 ## Summary
 
 Extend HydroPhysicsAI from a 0D-in-space, per-well lumped UDE to a **continuous
-spatial head field** `h(x, y, t)` over the Zhuoshui alluvial fan — a
+spatial head field** `h(x, y, t)` over the Zhuoshui alluvial fan, a
 physics-informed neural network (PINN) trained against the 61 wells as scattered
 observation points, regularized by the 2D depth-averaged groundwater flow PDE.
 
 One model, reported three ways:
 1. **In-sample simulation** vs the per-well gray-box ODE (bar: KGE 0.736; current
    UDE 0.591).
-2. **Leave-one-well-out (LOWO) spatial skill** — predict a well never seen in the
+2. **Leave-one-well-out (LOWO) spatial skill**, predict a well never seen in the
    data loss, from the field the neighbors + physics build. **Headline metric is
    the unanchored (pure-spatial) LOWO score**, reported alongside the anchored
    variant for comparability with today's 0.565.
@@ -28,7 +28,7 @@ domain): plain-PyTorch autodiff first, optional PhysicsNeMo port after.
 
 - **"3D" means a spatial (x, y, t) field**, not a volumetric (x, y, z) aquifer.
   The data has only 2D well coordinates, daily heads, rainfall, and a
-  coastal/inland class — no aquifer-layer geometry, conductivity fields,
+  coastal/inland class, no aquifer-layer geometry, conductivity fields,
   screen depths, DEM, or pumping records. A faithful volumetric 3D solve would
   require inventing the subsurface, which would violate this repo's honest,
   out-of-sample-scored benchmark ethos. A depth-averaged 2D field is the most
@@ -53,10 +53,10 @@ domain): plain-PyTorch autodiff first, optional PhysicsNeMo port after.
 
 ### Learned interpretable spatial fields
 Small auxiliary sub-networks of `(x, y)` only:
-- `T(x, y)` — transmissivity, parameterized as `exp(g_φ(x,y))` so it stays
+- `T(x, y)`, transmissivity, parameterized as `exp(g_φ(x,y))` so it stays
   positive.
-- `α(x, y)` — recharge gain on rainfall.
-- `d(x, y)` — net discharge / drift, absorbing the unobserved pumping + ET sink.
+- `α(x, y)`, recharge gain on rainfall.
+- `d(x, y)`, net discharge / drift, absorbing the unobserved pumping + ET sink.
 
 Storativity `S` starts as a single learned scalar; promote to a field only if
 the inner-split says it helps (YAGNI).
@@ -68,14 +68,14 @@ the inner-split says it helps (YAGNI).
 S · ∂h/∂t = ∇·(T ∇h) + α(x,y)·R(x,y,t) − d(x,y)
 ```
 
-- `∂h/∂t`, `∇h`, `∇·(T∇h)` all from autodiff — no mesh, no finite differences.
+- `∂h/∂t`, `∇h`, `∇·(T∇h)` all from autodiff, no mesh, no finite differences.
 - **`R(x,y,t)` is a continuous rainfall field** interpolated from the rainfall
   stations (`rf_stations.csv` coords + `rf_timeseries.csv`), e.g. inverse-distance
   weighting or a tiny interpolation net. This is how forcing reaches arbitrary
   collocation points.
 - **Western coast boundary**: soft (penalty) sea-level Dirichlet condition built
   from `water/sea_TWD97.shp` + the coastal/inland classification. Other fan
-  edges: optional soft no-flow (Neumann) — add only if residuals demand it.
+  edges: optional soft no-flow (Neumann), add only if residuals demand it.
 
 ## Data flow
 
@@ -114,15 +114,15 @@ sea_TWD97.shp + coastal class ──► coast boundary geometry
   **inner pre-2019 split** (inner-train < 2018, inner-val 2018), identical to the
   existing discipline. The 2019+ benchmark is evaluated exactly once.
 
-## Validation — three reports from one model
+## Validation: three reports from one model
 
 ### 1. In-sample simulation
 Train on all wells' pre-2019 data; query `h` at each well's `(x,y)` over 2019+;
 score with the existing harness. Compare to gray-box 0.736 and current UDE 0.591.
 
-### 2. LOWO (spatial) — headline
+### 2. LOWO (spatial): headline
 For each held-out well:
-- Its observations are excluded **entirely** from `MSE_data` (no leakage — see
+- Its observations are excluded **entirely** from `MSE_data` (no leakage, see
   testing). Its coordinate `(x,y)` and any static attributes remain available
   (the coordinate *is* the query input).
 - Predict its full 2019+ series from the field built by the other wells + physics.
@@ -136,11 +136,11 @@ is a product deliverable; its credibility is the LOWO numbers, not eyeballing.
 
 ## Repo integration
 
-- **New** `hydrophysics/models/pinn_field.py` — the PINN, learned fields, PDE
+- **New** `hydrophysics/models/pinn_field.py`, the PINN, learned fields, PDE
   residual, training loop. Implements the existing `GroundwaterModel` interface
   (`simulate` returns per-well series at well coordinates) so `bench.py` and the
   benchmark table wire up unchanged.
-- **New** `hydrophysics/field_inputs.py` — rainfall field interpolation + coast
+- **New** `hydrophysics/field_inputs.py`, rainfall field interpolation + coast
   boundary geometry loading (keeps `pinn_field.py` focused).
 - **LOWO** reuses / extends `hydrophysics/lowo.py`; the field model plugs into the
   same leave-one-out loop with the masking guarantee above.
@@ -157,7 +157,7 @@ is a product deliverable; its credibility is the LOWO numbers, not eyeballing.
   SIREN; report this as a known risk.
 - **Units / boundary leakage**: nondimensionalize once, centrally; unit-test the
   residual; keep BC soft initially.
-- **Sparse-data overfit of `T(x,y)`**: 61 points is thin for a 2D field —
+- **Sparse-data overfit of `T(x,y)`**: 61 points is thin for a 2D field -
   regularize `g_φ` (smoothness/L2) and validate via LOWO, not in-sample fit.
 
 ## Testing
@@ -173,16 +173,16 @@ is a product deliverable; its credibility is the LOWO numbers, not eyeballing.
 
 ## Staging
 
-1. **Data plumbing** — fan bbox, nondimensionalization, rainfall field, coast BC.
-2. **PINN core + in-sample benchmark** — network, learned fields, residual,
+1. **Data plumbing**, fan bbox, nondimensionalization, rainfall field, coast BC.
+2. **PINN core + in-sample benchmark**, network, learned fields, residual,
    training loop; report vs gray-box.
-3. **LOWO spatial eval** — both unanchored (headline) and anchored.
-4. **Map rendering + docs** — `h(x,y,t)` + `T(x,y)` figures, README + model-card
+3. **LOWO spatial eval**, both unanchored (headline) and anchored.
+4. **Map rendering + docs**, `h(x,y,t)` + `T(x,y)` figures, README + model-card
    update, optional PhysicsNeMo port.
 
 ## Out of scope (YAGNI)
 
-- Volumetric (x, y, z) / multi-layer aquifer modeling — no supporting data.
+- Volumetric (x, y, z) / multi-layer aquifer modeling, no supporting data.
 - Pumping/ET reconstruction beyond the lumped `d(x,y)` sink.
 - Real-time data assimilation (that's the separate forecast track).
 - FNO / gridded-operator approach (61 scattered points → fabricated grid).
@@ -203,13 +203,13 @@ full record; evaluated on 2019+ once.
 
 | Model | KGE median | beats climatology | reference |
 |---|---|---|---|
-| climatology | 0.446 | — | — |
+| climatology | 0.446 | n/a |, |
 | **SpatialPINN** in-sample | 0.334 | 21/61 | gray-box 0.736 · UDE 0.591 |
 | **SpatialPINN** LOWO unanchored (headline) | 0.105 | 13/61 | UDE LOWO 0.565 |
-| SpatialPINN LOWO anchored | 0.189 | 13/61 | — |
+| SpatialPINN LOWO anchored | 0.189 | 13/61 | n/a |
 | SpatialPINN LOWO unanchored, 3× ensemble | 0.091 | 10/61 | (ensembling did not help) |
 
-RMSE is more flattering (in-sample 2.10 m median, LOWO anchored 1.88 m — near climatology's
+RMSE is more flattering (in-sample 2.10 m median, LOWO anchored 1.88 m, near climatology's
 1.63 m), but KGE and NSE show the field does not match per-well variability or generalize to
 unseen wells.
 
@@ -220,14 +220,14 @@ unseen wells.
    field amortizes these away.
 2. **Spatial proximity alone is weakly predictive on this fan.** Wells are 5–10 km apart with
    genuinely different local behavior, so interpolating an unseen well from neighbors (LOWO)
-   is hard — hence KGE ~0.10.
+   is hard, hence KGE ~0.10.
 3. **The UDE wins LOWO (0.565) precisely because it uses per-well information** the pure field
    forgoes: observable training-history signatures as input features, plus equilibrium
    anchoring to the observed mean. Adding only the observed mean back here (the anchored row)
    lifts LOWO 0.10 → 0.19, confirming the per-well signal is what carries skill.
 4. **Two real bugs were found and fixed during evaluation:** (a) `_grad` needed
    `allow_unused=True`; (b) collocation originally sampled only training days, leaving the
-   forecast window physically unconstrained (KGE −0.63) — fixed to enforce the PDE over the
+   forecast window physically unconstrained (KGE −0.63), fixed to enforce the PDE over the
    full record (no observed levels used → no leakage).
 
 ### Decision
@@ -236,5 +236,5 @@ Wind down the pure-field approach. The committed `SpatialPINN` is the fair, inne
 version and is documented as a continuous-field baseline. The **continuous head-field map**
 (`results/pinn/head_field_map.png`, via `viz.plot_head_field`) is retained: it shows a
 physically plausible inland→coast head gradient and is the genuine deliverable. A competitive
-field model would require per-well conditioning — i.e. the UDE plus a spatial deviation field
+field model would require per-well conditioning, i.e. the UDE plus a spatial deviation field
 (considered as future work, not pursued here).

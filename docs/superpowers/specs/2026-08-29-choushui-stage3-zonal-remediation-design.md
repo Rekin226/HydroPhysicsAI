@@ -1,4 +1,4 @@
-# Stage-3 zonal remediation — design
+# Stage-3 zonal remediation: design
 
 **Date:** 2026-08-29
 **Status:** approved, not yet implemented
@@ -13,29 +13,29 @@ downstream depends on its outcome.
 ## 1. Why this exists
 
 The Stage-3 gate failed on leak-free, seed-verified folds. The failure is real, but the
-diagnosis is not "the physics model cannot work" — it is **"the parameterization cannot
+diagnosis is not "the physics model cannot work", it is **"the parameterization cannot
 express the fan."** Two independent pieces of evidence say so.
 
-**Evidence 1 — the transmissivity clamp binds.**
+**Evidence 1: the transmissivity clamp binds.**
 
 ```
 bounds_hit = {'log_T': 3, 'log_S': 2, 'log_L': 0, 'log_eta': 1}
 log_T      = [log 10, 5.304, log 10, log 10]
 ```
 
-Three of four layers sit pinned at the **lower** `log_T` clamp, T = 10 m²/day — below the
+Three of four layers sit pinned at the **lower** `log_T` clamp, T = 10 m²/day, below the
 58 m²/day floor of the range Liu et al. 2002 measured at Choushui. A single homogeneous
 transmissivity is being asked to describe coarse proximal gravel and fine distal silt at
 once, and it resolves that by leaving the physically measured range.
 
-**Evidence 2 — the leakages are uniformly, implausibly small.**
+**Evidence 2: the leakages are uniformly, implausibly small.**
 
 ```
 log_L = [-11.3, -15.4, -10.0]      # interior, no bound hit
 ```
 
 Layers essentially decoupled everywhere. But the published hydrogeology says the
-**proximal fan has no confining layers at all** — thick gravel, indistinct stratification,
+**proximal fan has no confining layers at all**, thick gravel, indistinct stratification,
 aquifers merged, vertical flow unrestricted. Leakage there should be high. One homogeneous
 value cannot be both high and low, so the fit split the difference and is wrong at both ends.
 
@@ -55,7 +55,7 @@ distance-degradation analysis (code already committed at `8f53147`, compute defe
 
 Decided during brainstorming, and it sets the bar for everything below:
 
-- The twin's job is an **operational decision tool** — real pumping-policy counterfactuals.
+- The twin's job is an **operational decision tool**, real pumping-policy counterfactuals.
 - Decisions are expressed **per zone**, not basin-wide and not per well. A 1 km grid
   calibrated on 66 sites cannot resolve individual wells.
 - Zones are **physical** (proximal/mid/distal) for parameterization, and results are
@@ -65,7 +65,7 @@ Decided during brainstorming, and it sets the bar for everything below:
 The operational bar has a hard consequence: **scenarios must not ship from a bound-saturated
 model.** Someone acts on the output. That is why this sub-project gates everything downstream.
 
-## 4. Zone definition — `hydrophysics/twin/zones.py`
+## 4. Zone definition: `hydrophysics/twin/zones.py`
 
 New module, one responsibility: map coordinates to a zone id.
 
@@ -108,7 +108,7 @@ Required: re-run the gate at **178 km and 186 km** and report whether the verdic
 the verdict is sensitive to a boundary we cannot independently justify, that is a result to
 publish, not a knob to tune until the answer is agreeable.
 
-## 5. Parameterization — `--param-mode zonal`
+## 5. Parameterization: `--param-mode zonal`
 
 Structural: zones differ in **form**, not only in parameter values.
 
@@ -144,13 +144,13 @@ Same machinery as the seed sweep: grouped 5-fold (co-location rate must print 0.
 comparable.
 
 **These rules are fixed before the run.** This stage has produced four confident wrong answers
-already — the under-trained gate, the LR-schedule budget, the leaky folds, and a distance
+already, the under-trained gate, the LR-schedule budget, the leaky folds, and a distance
 correlation that died on the fifth seed. Post-hoc reading is the recurring failure mode.
 
-- **Primary — does the clamp release?** Report `bounds_hit` **per zone**, never pooled.
+- **Primary: does the clamp release?** Report `bounds_hit` **per zone**, never pooled.
   Currently 3 of 4 `log_T` are pinned. If a majority remain pinned with three zones available,
   the parameterization is not the binding constraint and further zoning will not help.
-- **Secondary — does the margin improve?** Mean and sd of `(r2_kfold − r2_idw)` over 5 seeds,
+- **Secondary: does the margin improve?** Mean and sd of `(r2_kfold − r2_idw)` over 5 seeds,
   against the homogeneous baseline of −0.048 ± 0.013.
 
 | verdict | condition | consequence |
@@ -160,7 +160,7 @@ correlation that died on the fifth seed. Post-hoc reading is the recurring failu
 | **FAIL** | clamp still pinned | Stop. The forward model is missing physics; zoning is not the answer. Escalate to a design conversation, do not retry. |
 
 Note on PARTIAL: it is a legitimate verdict, not a hedge. IDW has no pumping input and cannot
-answer a counterfactual. But PARTIAL is only available **if the clamp releases** — a model
+answer a counterfactual. But PARTIAL is only available **if the clamp releases**, a model
 still fitting outside the measured physical range gives confident wrong counterfactuals, and
 at the operational bar that is the failure that matters.
 
@@ -171,7 +171,7 @@ TDD, matching the grouped-fold work.
 **`zones.py`**
 - every coordinate in the fan gets exactly one zone; no gaps, no overlaps
 - boundary coordinates land in the documented zone (half-open intervals, explicit)
-- deterministic and pure — same input, same output, no global state
+- deterministic and pure, same input, same output, no global state
 - the 66 calibration sites split **12 / 33 / 21** and the 2,148 cells split
   **264 / 1,235 / 649** with the default boundaries
 
@@ -188,7 +188,7 @@ TDD, matching the grouped-fold work.
 - `homogeneous` and `percell` behaviour unchanged
 - full suite green (117 collected: 116 passed, 1 skipped), ruff clean
 
-### 7.1 Implementation result — 2026-09-01
+### 7.1 Implementation result: 2026-09-01
 
 Deliverables 1-4 are **complete** (`13cf7d2`, `031ae15`, `d2c84a3`, `42efbda`, `a6f8bbf`).
 Suite: 166 passed, 1 skipped, ruff clean. Every task independently reviewed.
@@ -196,7 +196,7 @@ Suite: 166 passed, 1 skipped, ruff clean. Every task independently reviewed.
 Two defects were found and fixed during the work, both outside the original design:
 
 **The CG iteration cap truncated every zonal solve.** Pinning proximal `log_L` at the top of
-its range — §5's structural statement — raises the operator's condition number past what
+its range, §5's structural statement, raises the operator's condition number past what
 Jacobi-CG reaches in `maxiter=400`. The first gate run produced median true relative residual
 **4.955e-02** (max 2.542e+04), and its last 400 solves before abort had median **1.079e+00**,
 i.e. worse than returning zero. `flow.py`'s own `_cg` docstring states a stalled solve
@@ -205,7 +205,7 @@ run would have produced was junk. The operator is still SPD at the pin (200 Rayl
 quotients, min 1.813e+04, none ≤ 0) and converges to 9.607e-09 at `maxiter=2000`; bisected
 iteration counts are 237 (L=1e-4, T=500), 947 (L=1e-1, T=500), **1242** (L=1e-1, T=10, the
 worst realistic case), 457 (L=1e-1, T=2e4). Fixed in `38b7ecc` by raising the cap, **not** by
-lowering the pin — the pin is this design's physical claim, and §4.2's own reasoning forbids
+lowering the pin, the pin is this design's physical claim, and §4.2's own reasoning forbids
 tuning it to suit the solver. Re-verified on the real grid: zero non-convergence warnings at
 every leakance including the pin.
 
@@ -219,15 +219,15 @@ reproducible from the per-seed artifacts in `results/twin/`.
 absolute counts over unequal denominators (proximal `log_T` is 1 value, mid and distal 4
 each), so `proximal: 1` beside `mid: 2` read as "proximal less pinned" when it is 100% vs
 50%, and "majority" was undefined across zones of size 1, 4, 4. Worse, the physically worst
-outcome — the proximal gravel zone alone still pinned at T = 10, below the 58 m²/day floor
-this remediation exists to escape — is a *minority of 9* and would have read as "clamp
+outcome, the proximal gravel zone alone still pinned at T = 10, below the 58 m²/day floor
+this remediation exists to escape, is a *minority of 9* and would have read as "clamp
 released." That is §1's own documented failure (`log_L` reading healthy in aggregate while
 wrong at both ends) about to repeat with `log_T`. Fixed in `ad5b5da`: hits are now split
 lower-bound from upper-bound and reported as `n/total` per zone, and the counting rule was
 written down **before any zonal number existed** (SDD ledger, "PRE-REGISTERED"):
 
 > Clamp **released** iff pooled lower-clamp `log_T` ≤ 4/9 **and** the proximal zone's single
-> `log_T` is not at the lower clamp. Only lower-clamp hits count — fitting *below* the
+> `log_T` is not at the lower clamp. Only lower-clamp hits count, fitting *below* the
 > measured range is the documented failure. Otherwise **FAIL** per §6: stop, escalate.
 
 The same commit added run provenance (`cg_maxiter`, `git_commit`, `cg_nonconverged`,
@@ -235,27 +235,27 @@ The same commit added run provenance (`cg_maxiter`, `git_commit`, `cg_nonconverg
 solver settings and gradient soundness, and `6f3c8bb` moved the in-sample clamp report ahead
 of the k-fold gate so a run killed during the folds still yields the primary answer.
 
-### 7.2 Verdict — REACHED 2026-09-09: primary rule **PASS**, secondary rule **FAIL**
+### 7.2 Verdict: REACHED 2026-09-09: primary rule **PASS**, secondary rule **FAIL**
 
 Deliverable 5 is complete. Both rules have been evaluated on seed 0 with sound gradients.
 
-#### Primary rule: PASS — the clamp released
+#### Primary rule: PASS: the clamp released
 
 `--param-mode zonal --fit-only --epochs 1500 --device cuda`, 14.3 h on a Quadro RTX 6000:
 
 | condition (pre-registered) | measured | |
 |---|---|---|
 | pooled lower-clamp `log_T` ≤ 4/9 | proximal 0/1 + mid 0/4 + distal 3/4 = **3/9** | PASS |
-| proximal `log_T` not at lower clamp | **0/1** — free | PASS |
+| proximal `log_T` not at lower clamp | **0/1**, free | PASS |
 
 `log_T_proximal` = 6.585 → **T = 725 m²/day**, inside the 58–6,034 m²/day of Liu et al.
-2002. The pin at T = 10 below the 58 m²/day floor — the finding that survived the
-2026-08-27 retraction, and the reason this remediation exists — **is gone. Zoning the
+2002. The pin at T = 10 below the 58 m²/day floor, the finding that survived the
+2026-08-27 retraction, and the reason this remediation exists, **is gone. Zoning the
 transmissivity worked.** In-sample R² +0.760, `cg_nonconverged=0`, trajectory
 `PLATEAUED (structural)` from epoch 250. Reproduced independently at 500 epochs
 (R² +0.758, identical clamp pattern), so the verdict is not an artefact of the budget.
 
-#### Secondary rule: FAIL — the flow model does not beat IDW
+#### Secondary rule: FAIL: the flow model does not beat IDW
 
 5 folds, seed 0, 500 epochs, 24.6 h. **Pooled flow R² +0.466 vs IDW +0.702, margin −0.236.**
 IDW wins in all five folds:
@@ -291,12 +291,12 @@ which §7 itself called "undecided, not a kill". This one has none of those esca
 
 **GATE: FAIL. Plan C (Stage 4 coupling) does not start.** Per §6: stop and escalate.
 
-### 7.3 Where the constraint moved — read this before re-parameterising
+### 7.3 Where the constraint moved: read this before re-parameterising
 
 The remediation succeeded at its stated target and the model still lost, so the binding
 constraint is elsewhere. Three diagnostics from the same run point the same way.
 
-**1. `log_eta` is pinned at its LOWER clamp, unanimously** — in-sample and in all five
+**1. `log_eta` is pinned at its LOWER clamp, unanimously**, in-sample and in all five
 folds (`lo=1/1` everywhere). Wire-to-water efficiency floored at η = 0.05, against a
 `BOUNDS` ceiling of 0.9 and a physical range for irrigation pumps of roughly 0.4–0.7.
 The fit is using η as an escape valve and hitting the stop. What it is escaping:
@@ -325,25 +325,25 @@ In the deep aquifers, where pumping and recharge matter least, the flow model is
 with IDW. It loses in layers 1–2, which is where the forcing enters.
 
 **3. Where IDW must genuinely extrapolate, the gap nearly closes.** Restricted to the 39
-entries more than 5 km from any training well, flow +0.430 vs IDW +0.496 — a margin of
+entries more than 5 km from any training well, flow +0.430 vs IDW +0.496, a margin of
 **−0.065** against −0.236 pooled. The physics is doing what physics is for; it is being
 beaten on local interpolation, not on extrapolation.
 
 **Conclusion for the next iteration.** Do not re-zone. The transmissivity field is no
-longer the problem — §7.2 proves that. The suspect is the **energy→volume conversion in
+longer the problem, §7.2 proves that. The suspect is the **energy→volume conversion in
 `twin/pumping.py`**: a single global η over 116,768 heterogeneous meters, a lift floored
 at `MIN_LIFT_M = 2.0`, and an assumption that every metered kWh lifts groundwater. Any of
 those could carry the 4× discrepancy. Candidate remedies, cheapest first: per-`PURPOSE`
 efficiency classes (the census supports it, and irrigation is 86% of installed HP); an
 active/decommissioned filter on the census; and a lift model that does not floor at 2 m.
 
-### 7.4 Root cause found and fixed (2026-09-09) — it was the lift, and it was worse than 4×
+### 7.4 Root cause found and fixed (2026-09-09): it was the lift, and it was worse than 4×
 
 The 4× above assumed a 20 m lift. **Measured**, static lift on this fan is **median
-6.65 m** — ground elevation is median 9.1 m and heads sit near the surface. 20.4% of
+6.65 m**, ground elevation is median 9.1 m and heads sit near the surface. 20.4% of
 cell-months fall below `MIN_LIFT_M = 2.0`, and the 1st percentile is **−14.8 m**:
 artesian, where the old code clamped to the floor and therefore implied the *largest*
-volumes anywhere on the fan. Exactly backwards — an artesian cell needs the least work.
+volumes anywhere on the fan. Exactly backwards, an artesian cell needs the least work.
 
 With the real lift the overestimate is **12–16×** (~25 ×10⁹ m³/yr at η = 0.45 against a
 published ~1.5–2.0 ×10⁹). And even at the pinned η = 0.05 the model abstracts 2.78 ×10⁹,
@@ -351,7 +351,7 @@ still above the published range: efficiency was floored **and still over-pumping
 is why the clamp was unanimous rather than merely common.
 
 **The defect.** `energy_to_volume` divided energy by the **static lift** where the physics
-requires the **total dynamic head** — static lift plus well drawdown, entrance and
+requires the **total dynamic head**, static lift plus well drawdown, entrance and
 friction losses, and the discharge head the distribution system needs. Where static lift
 is metres, omitting the rest is an order-of-magnitude error, and it lands on the one
 parameter with any freedom to absorb it.
@@ -363,7 +363,7 @@ behaviour bit-for-bit, so every recorded result still replays. Median cell **8.2
 artesian cell **16.7×**. Tests: `tests/test_twin_pumping_head.py`, 8 cases.
 
 **Evidence it addresses the right thing.** A 12-epoch zonal fit gives `eta = 0.293` with
-`bounds_hit[global] = {log_eta: lo=0/1, log_head_extra: lo=0/1}` — *neither clamped* —
+`bounds_hit[global] = {log_eta: lo=0/1, log_head_extra: lo=0/1}`, *neither clamped* -
 against `log_eta: lo=1/1` in the in-sample fit and all five folds of the failed gate. The
 parameter the model was abusing is free again, and it settled on an ordinary wire-to-water
 efficiency. `head_extra` learns toward ~33 m; ~48 m at η = 0.30 reconciles the published
@@ -373,11 +373,11 @@ are counted. `n_params` 26 → 27.
 **Correction to the ordering above.** "Cheapest first" put per-`PURPOSE` efficiency
 classes ahead of the lift model. That was wrong: more efficiency classes cannot repair a
 12× error while η sits on its floor. The lift model was the dominant term and the other
-two are refinements. **Re-run the gate before any further parameterisation work** — the
+two are refinements. **Re-run the gate before any further parameterisation work**, the
 FAIL was measured with a forcing now known to be wrong by an order of magnitude, so its
 −0.236 margin says nothing yet about the aquifer model.
 
-### 7.5 Two root causes found (2026-09-11) — the basin was closed and the census was double-counted
+### 7.5 Two root causes found (2026-09-11): the basin was closed and the census was double-counted
 
 The total-dynamic-head fix (§7.4) was re-run as a full gate on 2026-09-11 (500 epochs,
 5 folds, `results/twin_stage3_tdh/`). Its in-sample block already answered the question
@@ -398,7 +398,7 @@ cells only; every fan-edge face was no-flow. Nothing could leave to the Taiwan S
 nothing could enter at the apex, so the monthly balance had to close through storage and
 the only way to fit heads that do *not* drift was to shrink both forcings. This also
 explains §7.3's layer pattern (losing to IDW where forcing enters, tying where IDW must
-extrapolate). Fix: `twin/boundaries.py` — general-head boundaries on the coast (westernmost
+extrapolate). Fix: `twin/boundaries.py`, general-head boundaries on the coast (westernmost
 cell per row, h_b = 0 m, one learnable conductance per layer) and the apex (easternmost
 cell per row inside the proximal zone, h_b = the initial IDW head, one shared
 conductance). C → 0 recovers the closed basin, so the data can still choose it. The
@@ -410,7 +410,7 @@ checks the gradient against finite differences). `--boundaries coast-apex` is th
 
 | step | GWh 2012–2022 | what it removes |
 |---|---|---|
-| raw census (`--meter-filter none`) | 9,916 | — |
+| raw census (`--meter-filter none`) | 9,916 | n/a |
 | count each shared meter once (`dedupe`) | 6,278 | 7,869 meters serve >1 pump and the same kWh series was attached to every one of them (62% of all kWh sat on such rows); the two largest "industry" entries were one 30 HP meter counted twice at 1.28 TWh each |
 | drop meters over rated capacity (`dedupe-cap`, default) | **2,086** | a motor cannot draw more than HP × 0.746 kW × 730 h/month. The median *industrial* meter drew 194% of that and the top one 59,000%; livestock and aquaculture 90th percentiles sit at 5× and 1.5×. These are farm/factory supplies on an agricultural tariff, not water lifted. Irrigation (86% of installed HP) runs at 6% duty and loses little |
 
@@ -424,7 +424,7 @@ were not: a missing outlet cannot be repaired by any forcing parameterisation, a
 over-count cannot be absorbed by an efficiency bounded below at 0.05. Per-purpose
 efficiency classes are now available as `--eta-classes` (opt-in) but are secondary to both.
 
-### 7.6 Verdict on the corrected model (2026-09-14) — secondary rule **PASS**, with a caveat
+### 7.6 Verdict on the corrected model (2026-09-14): secondary rule **PASS**, with a caveat
 
 `results/twin_runs/stage3_open_clean/` (published as `results/twin/stage3_zonal_open_clean.csv`),
 commit `cd612c9` + the 2026-09-11 working tree, zonal, 32 parameters, 500 epochs, 5
@@ -441,7 +441,7 @@ Per fold: +0.902/+0.867, +0.864/+0.846, +0.862/+0.853, +0.663/+0.443, +0.507/+0.
 (flow/IDW). Four of five folds beat IDW; fold 4 does not.
 
 **Primary rule.** Lower-clamp `log_T` hits are 2/9 in-sample (proximal 1/1, distal 1/4),
-under the 4/9 threshold, so the rule passes on its count — but the *proximal* hit is the
+under the 4/9 threshold, so the rule passes on its count, but the *proximal* hit is the
 physically wrong one (10 m²/day in the gravel fan), and it coincides with the apex
 conductance sitting at its Dirichlet ceiling in every fold. The optimiser is insulating a
 fixed-head apex from the fan with a low-T proximal zone.
@@ -450,11 +450,11 @@ fixed-head apex from the fan with a low-T proximal zone.
 200 m (ceiling), `recharge_frac` = 0.06-0.08, `C_apex` = 1e5 (ceiling), layer-1 `C_coast`
 = 1e5 (ceiling) with layers 2-4 at 0.1-3 m²/day (closed), mid `S` at 0.3 in two layers.
 The model beats IDW by carrying the observed heads through boundary-pinned, storage-damped
-dynamics with ~2% of the published abstraction. It generalises across wells — that is
-what the gate measures — but the *derivative* of head with respect to pumping, which is
+dynamics with ~2% of the published abstraction. It generalises across wells, that is
+what the gate measures, but the *derivative* of head with respect to pumping, which is
 what a policy scenario reads, is set by a conversion pinned at its floor. §7.5's
 data-only check shows the heads do respond to local pumping (seasonal amplitude Spearman
-+0.51 with cleaned kWh). So the stress is real; the model is placing it wrongly — most
++0.51 with cleaned kWh). So the stress is real; the model is placing it wrongly, most
 likely all of it into layer 2 at the cell scale (p99 cell-month 3.4×10⁵ m³) with vertical
 leakage switched off (`log_L` −10 to −17).
 
@@ -493,7 +493,7 @@ against the recorded closed-basin parameters, so a PASS turns directly into poli
 - Full sweep: seeds 1–4, ~8 h.
 - Boundary sensitivity: 178 km and 186 km at seed 0, ~4 h.
 
-Cost is driven by **CG iteration count, not epoch count** — a 400-epoch fold ran cheaper than
+Cost is driven by **CG iteration count, not epoch count**, a 400-epoch fold ran cheaper than
 a 100-epoch one because the gentler LR schedule keeps `log_T` better conditioned. Do not
 estimate from epochs. Fold times swing 12.6–33.4 min at identical settings.
 
@@ -503,12 +503,12 @@ estimate from epochs. Fold times swing 12.6–33.4 min at identical settings.
 2. `--param-mode zonal` in `calibrate_flow.py` + tests
 3. Per-zone `bounds_hit` reporting, in stdout and in `stage3_flow.csv`
 4. `--zone-boundaries` CLI flag for the sensitivity check
-5. ~~Gate results for seeds 0–4 and both sensitivity boundaries~~ — **seed 0 done**
+5. ~~Gate results for seeds 0–4 and both sensitivity boundaries~~, **seed 0 done**
    (§7.2). Seeds 1–4 and the §4.2 boundary runs are **not worth spending**: §6 stops the
    sub-project on a FAIL, and at −0.236 the margin is 7× the seed spread that motivated a
    multi-seed pass in the first place. A seed sweep answers "is −0.033 noise?", which is
    no longer the question being asked.
-6. ~~Spec §7 updated with the verdict, stated plainly, pass or fail~~ — §7.2, §7.3.
+6. ~~Spec §7 updated with the verdict, stated plainly, pass or fail~~, §7.2, §7.3.
 7. SDD ledger updated
 
 ## 10. Open questions carried forward
@@ -524,19 +524,19 @@ estimate from epochs. Fold times swing 12.6–33.4 min at identical settings.
   the convergence check measures the wrong thing (Plan B Task 6).
 - **CG tolerance is set too tight.** ~5,000 `_cg did not converge within maxiter=400` warnings
   per run, worst true relative residual 2.9e-07 against tol 1e-8. Three orders better than the
-  2.8e-4 that was a genuine bug, and the reference trace reproduces exactly — so this reads as
+  2.8e-4 that was a genuine bug, and the reference trace reproduces exactly, so this reads as
   a cost driver rather than bad gradients. Loosening it would speed every run above.
 
 ## 11. References
 
-- Liu, Chang & Yeh (2002) — Choushui transmissivity, 58–6,034 m²/day. The `log_T` clamp's basis.
-- Tsai & Hsu (2018), *Eng. Geol.* `10.1016/J.ENGGEO.2018.07.025` — VEP poromechanism applied
+- Liu, Chang & Yeh (2002), Choushui transmissivity, 58–6,034 m²/day. The `log_T` clamp's basis.
+- Tsai & Hsu (2018), *Eng. Geol.* `10.1016/J.ENGGEO.2018.07.025`, VEP poromechanism applied
   to proximal, middle and distal fan wells; Young's modulus rises from distal to proximal.
   The compaction column this project uses is built on this model.
-- Hung, Hwang, Sneed, Chen & Chu (2021), *WRR* `10.1029/2020WR028194` — MLCW magnetic rings at
+- Hung, Hwang, Sneed, Chen & Chu (2021), *WRR* `10.1029/2020WR028194`, MLCW magnetic rings at
   25 depths to 300 m, tested across proximal, middle and distal fan. Source of the compaction
   data this project holds.
-- Kassie et al. (2023), *Water* 15:1703 `10.3390/w15091703` — TEM mapping of CRAF
+- Kassie et al. (2023), *Water* 15:1703 `10.3390/w15091703`, TEM mapping of CRAF
   hydrogeological structure, middle and distal fan. Candidate constraint for §4.2.
-- Chang et al. (2022), *Water* 14:1494 `10.3390/w14091494` — proximal/mid/distal differences in
+- Chang et al. (2022), *Water* 14:1494 `10.3390/w14091494`, proximal/mid/distal differences in
   soil texture and hydrogeology across the fan.

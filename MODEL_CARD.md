@@ -1,4 +1,4 @@
-# Model Card — HydroPhysicsAI
+# Model Card: HydroPhysicsAI
 
 Physics-informed neural operators for daily groundwater levels on the Zhuoshui alluvial
 fan (Taiwan, 61 wells, 2012–2022). This card covers the three trainable models in the
@@ -66,15 +66,15 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
 
 - **Trails the classical baseline in simulation:** 0.591 vs the per-well gray-box 0.736.
   The operator wins on 18/61 wells; a few hard wells dominate the gap.
-- **Generalization to unseen wells — improved, with caveats.** Leave-one-well-out median
+- **Generalization to unseen wells: improved, with caveats.** Leave-one-well-out median
   KGE went 0.236 (geographic attrs) → 0.389 (observable history signatures) → 0.491
-  (pinning each well's free-run equilibrium to its observed mean — fixes a 5–15 m level
+  (pinning each well's free-run equilibrium to its observed mean, fixes a 5–15 m level
   drift) → **0.565** (a self-consistency gate that falls back to climatology where the
   operator can't reproduce a well's own history). The operator alone now beats climatology
   (0.491 vs 0.446), and the held-out median (0.565) nearly matches the in-sample operator
   (0.591); averaging a K=3 ensemble lifts it to ≈0.59, matching in-sample. **But** it is
   not a clean sweep: the hybrid is *worse* than climatology on ~8 wells, and these resist
-  fixing — an ensemble-disagreement (uncertainty) gate caught only 2, because the rest are
+  fixing, an ensemble-disagreement (uncertainty) gate caught only 2, because the rest are
   **non-stationary** (their 2019+ departs from training; climatology fails them too), which
   no training-time signal can detect. KGE's unbounded tail means median/clipped-mean are
   the trustworthy aggregates (raw mean is not). All choices were made on the inner 2018
@@ -83,7 +83,7 @@ GPU: on an RTX 4070 SUPER the forecaster trains 14× faster than CPU under bf16-
   origin; it is not a free-running model and its scores must not be compared to
   simulation mode.
 - **SpatialPINN is a negative result, not a contender.** The continuous-field PINN reaches
-  in-sample KGE 0.334 and leave-one-well-out 0.105 — below climatology (0.446), the UDE
+  in-sample KGE 0.334 and leave-one-well-out 0.105, below climatology (0.446), the UDE
   (0.591/LOWO 0.565), and the gray-box (0.736). A field conditioned only on `(x, y)` cannot
   match per-well dynamics, and on this fan coordinates alone barely place an unseen well; the
   UDE wins by conditioning on per-well observable history and anchoring to the observed mean.

@@ -116,7 +116,7 @@ Good first contributions:
 - Swap the semi-implicit rollout in `PhysicsUDE._rollout` for `torchdiffeq.odeint_adjoint`
   (constant-memory backprop) and benchmark it against the current loop.
 - Add a Fourier Neural Operator / DeepONet model for leave-one-well-out generalization
-  (the open problem — see the `leave_one_well_out` harness in `hydrophysics.lowo`).
+  (the open problem, see the `leave_one_well_out` harness in `hydrophysics.lowo`).
 - Run `PhysicsNeMoUDE` multi-GPU via PhysicsNeMo's distributed utilities.
 - Add deep-ensemble or MC-dropout uncertainty to the `simulate` output.
 - A small Gradio/Streamlit demo that plots observed vs simulated per well.

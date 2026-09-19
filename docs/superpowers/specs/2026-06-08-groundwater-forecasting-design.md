@@ -1,4 +1,4 @@
-# Groundwater operational forecasting (Task B) — design
+# Groundwater operational forecasting (Task B): design
 
 ## Goal
 
@@ -20,7 +20,7 @@ do forecasting first and measure the accuracy.
 - **Decoder / head**: produce the next `H = 30` daily levels in one shot (direct
   multi-horizon). Horizons 1/7/30 are read off the 30-vector.
 - **Future forcing**: rainfall, upstream level, sin/cos(doy) for `t0+1..t0+H` are fed to
-  the head (perfect-forcing assumption — actual future forcing in hindcast). This matches
+  the head (perfect-forcing assumption, actual future forcing in hindcast). This matches
   the project convention of treating upstream level and rainfall as external drivers, and
   mirrors operational use of weather forecasts. Documented as an assumption.
 - Output is the level **anomaly** relative to the last observed level `y[t0]` (predict the
@@ -36,7 +36,7 @@ do forecasting first and measure the accuracy.
 ## Evaluation protocol (no leakage)
 
 - **Split**: train on pre-2019; evaluate forecasts whose origin `t0` is in 2019+.
-  Assimilation uses observed levels up to `t0` only — never on/after the predicted day.
+  Assimilation uses observed levels up to `t0` only, never on/after the predicted day.
 - **Scoring**: for each horizon h, assemble the series of h-ahead predictions across the
   val period per well and score KGE / NSE / RMSE (existing `metrics.py`), reported as the
   per-well distribution (median + mean), vs persistence and climatology at the SAME h.
@@ -46,12 +46,12 @@ do forecasting first and measure the accuracy.
 
 ## Components / files
 
-- `hydrophysics/models/forecast_lstm.py` — `GlobalForecastLSTM` (`fit`, `forecast`):
+- `hydrophysics/models/forecast_lstm.py`, `GlobalForecastLSTM` (`fit`, `forecast`):
   builds sliding-window samples, standardizes, trains the LSTM, produces (well, origin, h)
   forecasts. Self-contained; does NOT use the simulation-mode `GroundwaterModel` contract.
-- `hydrophysics/forecast_eval.py` — windowed forecast harness + horizon-wise scoring
+- `hydrophysics/forecast_eval.py`, windowed forecast harness + horizon-wise scoring
   against persistence/climatology; a `python -m hydrophysics.forecast_eval` CLI.
-- `tests/test_forecast_smoke.py` — shape/finiteness smoke test (skips without torch).
+- `tests/test_forecast_smoke.py`, shape/finiteness smoke test (skips without torch).
 - Results: `results/forecast/` aggregate horizon-wise skill tables (no raw level series).
 
 ## Success criteria

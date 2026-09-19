@@ -1,4 +1,4 @@
-# Choushui Head + Subsidence Explorer — Design
+# Choushui Head + Subsidence Explorer: Design
 
 **Date:** 2026-06-19
 **Status:** Approved (brainstorming), pending spec review
@@ -6,7 +6,7 @@
 
 ## Summary
 
-A single self-contained **interactive HTML** (Plotly, no server) — the "Choushui
+A single self-contained **interactive HTML** (Plotly, no server), the "Choushui
 groundwater + subsidence explorer." One **date slider** animates two linked layers over
 the real Zhuoshui alluvial-fan basemap:
 
@@ -25,7 +25,7 @@ between-well tool (that limitation is documented for the head field).
 ## Scope decisions (locked)
 
 - **Head surface = IDW of the 61 observed heads**, explicitly labeled as observation
-  interpolation — *not* the SpatialPINN field (documented as untrustworthy between wells,
+  interpolation, *not* the SpatialPINN field (documented as untrustworthy between wells,
   see `2026-06-16-spatial-pinn-head-field-design.md`). This explorer shows what was
   observed, so observed interpolation is the honest source. The UDE is not used here.
 - **Subsidence coupling = per-site calibrated proxy.** The 14 MLCW sites now have
@@ -35,7 +35,7 @@ between-well tool (that limitation is documented for the head field).
   cadence.
 - **Standalone HTML** (Plotly frames + slider). No Streamlit/server.
 - **Out of scope (YAGNI):** UDE-driven drought/wet *scenario* re-run (a separate
-  follow-on); the rivers shapefile (27 MB) — coast + fan outline suffice; GNSS surface
+  follow-on); the rivers shapefile (27 MB), coast + fan outline suffice; GNSS surface
   stations (kept for a later layer).
 
 ## Data (verified on disk)
@@ -55,28 +55,28 @@ between-well tool (that limitation is documented for the head field).
 
 Two new focused modules, each independently testable.
 
-### `hydrophysics/subsidence.py` — the science
-- `load_mlcw_stations(path) -> DataFrame[sub_id, x, y]` — read `mlcw_stations.csv`.
-- `mlcw_compaction(data_dir) -> dict[sub_id -> pd.Series]` — for each MLCW file, decode the
+### `hydrophysics/subsidence.py`: the science
+- `load_mlcw_stations(path) -> DataFrame[sub_id, x, y]`, read `mlcw_stations.csv`.
+- `mlcw_compaction(data_dir) -> dict[sub_id -> pd.Series]`, for each MLCW file, decode the
   name, read `NO1..NO31`, and compute the site's **total cumulative compaction** time
   series = displacement of the shallowest ring relative to the deepest (reference) ring,
   re-zeroed to the first observation. Sanity: compaction is broadly monotonic (land sinks);
   flag/keep sign convention positive = subsidence.
-- `head_at(points_xy, data) -> (N, T)` — IDW-interpolate the 61 observed daily heads to
+- `head_at(points_xy, data) -> (N, T)`, IDW-interpolate the 61 observed daily heads to
   arbitrary `(x, y)` (reuse the IDW pattern from `field_inputs.RainfallField`; power 2).
-- `calibrate_sk(data, mlcw_series, mlcw_xy) -> {sk, r2, pairs}` — for each MLCW site,
+- `calibrate_sk(data, mlcw_series, mlcw_xy) -> {sk, r2, pairs}`, for each MLCW site,
   resample head to monthly, compute **cumulative drawdown** `D(t) = Σ max(0, runningmin
   drop)` of the head at that site, pool all (D, compaction) pairs across the 14 sites, and
   fit a single slope `Sk` by least squares through the origin. Return `Sk`, `R²`, and the
   per-site predicted/observed arrays for the validation panel.
 
-### `hydrophysics/explorer.py` — the visualization
-- `head_grid(data, n, dates) -> (XX, YY, HH[t])` — IDW the observed heads onto an `n×n`
+### `hydrophysics/explorer.py`: the visualization
+- `head_grid(data, n, dates) -> (XX, YY, HH[t])`, IDW the observed heads onto an `n×n`
   grid over the fan bounding box per monthly date; mask to the fan polygon (shapely
   `contains`) → NaN outside.
-- `subsidence_grid(HH, sk) -> SS[t]` — `Sk · cumulative_drawdown` per grid cell from the
+- `subsidence_grid(HH, sk) -> SS[t]`, `Sk · cumulative_drawdown` per grid cell from the
   head-grid history (same running-min-drop rule as calibration).
-- `build_explorer(data, out_html) -> Path` — assemble a Plotly figure:
+- `build_explorer(data, out_html) -> Path`, assemble a Plotly figure:
   - **3D surface** of head (z = head, color = head) over the fan, with animation **frames**
     (one per month) and a **slider** + play button.
   - a second trace/toggle for the **subsidence surface** (z = subsidence) sharing the slider.
@@ -114,12 +114,12 @@ gw wells (data) ────┴─► head_grid() ─► HH[t] ─► subsidence
   positive = subsidence. Unit-tested on a synthetic monotone case.
 - **IDW outside the well hull:** mask the grid to the fan polygon AND drop cells far from
   any well (so we don't extrapolate into empty corners); NaN renders as a hole.
-- **Time alignment:** heads are daily, MLCW monthly — resample heads to month-end means
+- **Time alignment:** heads are daily, MLCW monthly, resample heads to month-end means
   before pairing/calibration.
 - **HTML size/performance:** monthly steps (~150 frames) and `n≈60` grid keep it light;
   `include_plotlyjs="cdn"` avoids a multi-MB inline bundle. If still heavy, coarsen to
-  quarterly — logged, not silent.
-- **CRS:** everything stays in EPSG:3826 meters (wells, MLCW, fan polygon all match) — no
+  quarterly, logged, not silent.
+- **CRS:** everything stays in EPSG:3826 meters (wells, MLCW, fan polygon all match), no
   reprojection needed; assert ranges overlap.
 
 ## Testing
@@ -133,7 +133,7 @@ gw wells (data) ────┴─► head_grid() ─► HH[t] ─► subsidence
 
 ## Deliverable
 
-`results/explorer/choushui_explorer.html` — open in any browser: scrub the slider to watch
+`results/explorer/choushui_explorer.html`, open in any browser: scrub the slider to watch
 the head surface and calibrated subsidence evolve 2010–2022 over the real fan, with wells
 and the 14 MLCW sites, and a validation panel grounding the subsidence magnitude in the
 measured compaction.

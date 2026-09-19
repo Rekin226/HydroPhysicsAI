@@ -1,11 +1,11 @@
-# Project state — where to continue
+# Project state: where to continue
 
 **Last updated:** 2026-09-19 · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
 > **A living 3D digital twin of the Choushui fan that takes a pumping scenario, runs the
-> aquifer forward in time, and animates where and how fast the ground sinks —
+> aquifer forward in time, and animates where and how fast the ground sinks -
 > re-runnable on demand.**
 
 As of 2026-09-14 every link of that chain is built, tested, and the flow model **passes
@@ -28,14 +28,14 @@ pumping policy ──▶ [flow model] ──▶ heads ──▶ [VEP column] ─
 
 | stage | status | evidence |
 |---|---|---|
-| Stage 1 — algebraic `Sk` on leveling | marginal | +0.040 tilt-corrected, 878 sites |
-| Stage 2 — VEP compaction | **PASS** | shared-VEP LOSO +0.465 vs baseline +0.031 |
-| Stage 3 primary — clamp released | PASS (2026-09-06) on the closed basin | `log_T` 3/9 ≤ 4/9 |
-| Stage 3 secondary — margin vs IDW | **FAIL** (2026-09-09, closed basin, raw census) | flow +0.466 vs IDW +0.702 |
+| Stage 1, algebraic `Sk` on leveling | marginal | +0.040 tilt-corrected, 878 sites |
+| Stage 2, VEP compaction | **PASS** | shared-VEP LOSO +0.465 vs baseline +0.031 |
+| Stage 3 primary, clamp released | PASS (2026-09-06) on the closed basin | `log_T` 3/9 ≤ 4/9 |
+| Stage 3 secondary, margin vs IDW | **FAIL** (2026-09-09, closed basin, raw census) | flow +0.466 vs IDW +0.702 |
 | Stage 3 re-run, TDH fix only | **FAIL** (2026-09-12, `results/twin_stage3_tdh/`) | flow +0.622 vs IDW +0.702, margin −0.080 (was −0.236); eta at floor and head_extra at ceiling in every fold |
-| Stage 3 re-run, open basin + clean census | **PASS** (2026-09-14, `results/twin_runs/stage3_open_clean/`, published as `results/twin/stage3_zonal_open_clean.csv`) | in-sample +0.906; **5-fold +0.757 vs IDW +0.702, margin +0.055**; 4 of 5 folds beat IDW (fold 4: +0.507 vs +0.746). But eta floor, head_extra ceiling, recharge 7%, apex and layer-1 coast at the Dirichlet ceiling in every fold — see §2 |
-| Stage 4 — flow↔VEP coupling | built and exercised | `twin/forward.py` drives the column with the flow model's heads |
-| Stage 5 — 3D scenario twin | **built** | `explorer3d.py --forward-npz`: policy dropdown, month slider through the projection, verdict in the title |
+| Stage 3 re-run, open basin + clean census | **PASS** (2026-09-14, `results/twin_runs/stage3_open_clean/`, published as `results/twin/stage3_zonal_open_clean.csv`) | in-sample +0.906; **5-fold +0.757 vs IDW +0.702, margin +0.055**; 4 of 5 folds beat IDW (fold 4: +0.507 vs +0.746). But eta floor, head_extra ceiling, recharge 7%, apex and layer-1 coast at the Dirichlet ceiling in every fold, see §2 |
+| Stage 4, flow↔VEP coupling | built and exercised | `twin/forward.py` drives the column with the flow model's heads |
+| Stage 5, 3D scenario twin | **built** | `explorer3d.py --forward-npz`: policy dropdown, month slider through the projection, verdict in the title |
 
 Canonical diagnosis: `specs/2026-08-29-choushui-stage3-zonal-remediation-design.md` §7.5.
 
@@ -98,7 +98,7 @@ leveling. Measured 2026-09-12 with the same shared VEP column, 798 leveling site
 The coupled chain beats the observed-head-driven column on the independent leveling
 network. The gated run (`results/twin_forward/open_clean.*`, viewer
 `results/twin/explorer3d_forward.html`, 43 MB, 86 frames, 3 policies) took 609 s on the
-GPU for 18 members × 3 scenarios × 252 months — the "re-runnable on demand" requirement is
+GPU for 18 members × 3 scenarios × 252 months, the "re-runnable on demand" requirement is
 met by the solver itself. Fan-mean projection to 2032, ± = spread over the 6 parameter
 sets × 3 initial fields:
 
@@ -134,7 +134,7 @@ next diagnostics, both runnable on CPU while the folds finish:
 
 - `calibrate_flow --fix-eta 0.5 --fix-head-extra 40`, **done 2026-09-14**
   (`results/twin_runs/stage3_fixed_eta/`, fit-only, 500 epochs, 4.1 h GPU): in-sample
-  **+0.877** against +0.906 free — the price of a physical pumping stress is 0.03 of R².
+  **+0.877** against +0.906 free, the price of a physical pumping stress is 0.03 of R².
   And the rest of the model becomes physical with it: recharge fraction **0.43** (was
   0.07), proximal T 57 m²/day (off the clamp, at Liu et al.'s 58 floor), coast conductance
   14-28 m²/day in layers 2-4 (open, was closed), distal T high. Mid-zone S still sits at
@@ -153,7 +153,7 @@ next diagnostics, both runnable on CPU while the folds finish:
   trend falls with it (−0.28). The heads carry the pumping signal. What they cannot carry
   is its *concentration*: cleaned kWh per 1 km cell has median 1,170 but p90 255,000 and
   max 1,003,000 kWh/yr, so at a physical conversion the 99th-percentile cell's peak month
-  is 3.4×10⁵ m³ — hundreds of metres of drawdown in a confined cell unless storage is
+  is 3.4×10⁵ m³, hundreds of metres of drawdown in a confined cell unless storage is
   maximal, which is exactly the fit the optimiser keeps finding (S at 0.3, eta at 0.05).
   The next physics candidates therefore concern *where the stress lands*: pump→layer
   allocation (shallow wells pump layer 1, where S is large), vertical leakage that the
@@ -165,7 +165,7 @@ Beigang rivers on the north and south edges are still no-flow), pump-to-layer
 allocation (everything pumps layer 2; shallow wells pump layer 1), and irrigation return
 flow. Only after those is a different forward model the honest move.
 
-## 3. Remaining gaps, beyond the gate — and what was built for each on 2026-09-14
+## 3. Remaining gaps, beyond the gate: and what was built for each on 2026-09-14
 
 1. **Uncertainty.** Built: `twin/uncertainty.py`, a Laplace posterior around the
    calibrated vector (Jacobian by central finite differences through the rebuilt model,
@@ -184,15 +184,15 @@ flow. Only after those is a different forward model the honest move.
    leveling R² **+0.526**, bias 0.0 cm; 2023-2032 fan-mean subsidence 10.0 ± 1.3 cm
    baseline, 9.5 ± 1.1 cm with aquaculture retired. This is the twin's current
    deliverable.
-2. **Subsidence skill.** Built: `twin/calibrate_coupled.py` — Stage 4 in practice. The
+2. **Subsidence skill.** Built: `twin/calibrate_coupled.py`, Stage 4 in practice. The
    column is refit against the MLCW rings with the *flow model's* heads as driver, in
    three configurations (shared; shared with learnable layer weights; one set per fan
    zone), each scored by leave-one-site-out over the rings and by the independent
    leveling network. The leveling winner is a `vep_<config>.json` the forward twin takes.
    **Result on the gated parameters (2026-09-14, `stage3_open_clean/coupled/`):** the
    ring-fitted columns score *worse* on leveling than the Stage-2 column under the same
-   driver — shared +0.036, zonal −0.023, weighted −0.827 (it puts 78 % of the weight on
-   aquifer 4 and fits the rings best, LOSO +0.164) — against +0.299 for Stage-2's
+   driver, shared +0.036, zonal −0.023, weighted −0.827 (it puts 78 % of the weight on
+   aquifer 4 and fits the rings best, LOSO +0.164), against +0.299 for Stage-2's
    parameters. Fourteen rings cannot constrain a fan-wide field; the leveling network
    (798 sites) can. So a `--target leveling` mode was added (site-grouped 5-fold
    scoring, rings as the independent check). **Result (2026-09-14,
@@ -200,7 +200,7 @@ flow. Only after those is a different forward model the honest move.
 
    | column, driver = gated flow heads | leveling out-of-fold R² | bias | rings (independent) |
    |---|---|---|---|
-   | Stage-2 shared (fitted on observed heads vs rings) | +0.299 (all sites) | +0.7 cm | — |
+   | Stage-2 shared (fitted on observed heads vs rings) | +0.299 (all sites) | +0.7 cm | n/a |
    | shared, fitted vs leveling | +0.371 | +0.1 cm | +0.015 |
    | **zonal (3 × 4 params), fitted vs leveling** | **+0.546** | +0.1 cm | **+0.371** |
 
@@ -210,7 +210,7 @@ flow. Only after those is a different forward model the honest move.
    gated 6-member policy twin with it (`results/twin_forward/open_clean_zonalvep.*`,
    viewer re-rendered): hindcast leveling R² **+0.494**, bias +0.6 cm, RMSE 6.8 cm.
    Projected fan-mean subsidence 2023-2032 is now 10.2 ± 1.9 cm (p95 20 cm) under the
-   baseline, 9.4 ± 1.6 cm with aquaculture retired — the Stage-2 column had given 2.7 cm,
+   baseline, 9.4 ± 1.6 cm with aquaculture retired, the Stage-2 column had given 2.7 cm,
    which was the wrong rheology for a fan-wide field. Caveat: the mid-zone viscous time
    constant sits at its ceiling (3,960 d, the record length × dt), so decadal creep is
    bounded by the calibration window. Revisited 2026-09-17 with the ceiling lifted to 30
@@ -254,11 +254,11 @@ flow. Only after those is a different forward model the honest move.
    `results/twin/explorer3d_forward.html` is the gated model's run.
 
    **Spread radius (2026-09-17/18, on top of all three, physical conversion):** 2 km
-   +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling — the first
+   +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling, the first
    physical-stress configuration to beat the free fit's +0.906 in sample. **Its k-fold
    gate PASSES (2026-09-19, `stage3_spreadL_gate/`, published as
    `results/twin/stage3_zonal_physical_spread.csv`): 5-fold +0.804 vs IDW +0.702, margin
-   +0.102, four of five folds ahead** — better than the free fit's +0.757, with eta 0.5,
+   +0.102, four of five folds ahead**, better than the free fit's +0.757, with eta 0.5,
    40 m extra head, return flow 0.69, 5 % of the stress in layer 1, recharge fraction
    0.16, leakance at the 1e-4 floor in four of six interfaces, and the spread radius on
    its 10 km ceiling in every fold. Spreading the cell-scale stress was the missing
@@ -267,7 +267,7 @@ flow. Only after those is a different forward model the honest move.
    now this model; the free fit is kept as the record of how the pass was reached. Next:
    raise the radius bound and re-gate, since the fit wants more than 10 km.
 
-   **Temporal gate (held-out years, 2026-09-18) — a hard result.** Fit on 2012-2019,
+   **Temporal gate (held-out years, 2026-09-18): a hard result.** Fit on 2012-2019,
    free-running continuation over 2020-2022 (36 months) from the record's start:
 
    | configuration | pooled R² | anomaly R² (per-well departures from the fitted mean) | per-well median R² |
@@ -360,5 +360,5 @@ cache" (~331 MB + ~1 GB, rebuilt with `twin/fetch_amp.py` except the fan polygon
 ## 6. Environment
 
 torch 2.11.0+cu128, CUDA 12.8, cuDNN 9.19, PhysicsNeMo 2.2.1, warp-lang 1.17.0, driver
-535.230.02, Quadro RTX 6000 (Turing sm_75 — no bf16, no FP8, no FA2). conda env `hydro`.
+535.230.02, Quadro RTX 6000 (Turing sm_75, no bf16, no FP8, no FA2). conda env `hydro`.
 The twin's solver is float64 and uses no AMP; the FNO surrogate is fp32.

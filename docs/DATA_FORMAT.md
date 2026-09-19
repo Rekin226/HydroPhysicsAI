@@ -44,7 +44,7 @@ your_gw_data/
 
 ## Files
 
-### 1. `gw_timeseries.csv` — groundwater levels (required)
+### 1. `gw_timeseries.csv`: groundwater levels (required)
 Wide format: first column is the timestamp, then **one column per well**, whose header is
 that well's `st_id`.
 
@@ -53,7 +53,7 @@ that well's `st_id`.
 | `date time` (first column) | timestamp, parseable by pandas (e.g. `2019-03-01 00:00:00`). Sub-daily is fine; the loader resamples to daily means. |
 | `<st_id>` (one per well) | groundwater level in metres. `st1`, `st2`, … in the sample. Missing values allowed (blank / NaN). |
 
-### 2. `rf_timeseries.csv` — rainfall (required)
+### 2. `rf_timeseries.csv`: rainfall (required)
 Wide format: first column timestamp, then **one column per rain gauge**, header = `rf_id`.
 
 | column | meaning |
@@ -61,16 +61,16 @@ Wide format: first column timestamp, then **one column per rain gauge**, header 
 | `date time` (first column) | timestamp (daily). |
 | `<rf_id>` (one per gauge) | rainfall in mm/day. `rf1`, `rf2`, … in the sample. |
 
-### 3. `gw_stations.csv` — station metadata (required)
+### 3. `gw_stations.csv`: station metadata (required)
 One row per well.
 
 | column | meaning |
 |---|---|
 | `st_id` | well id; must match the column headers in `gw_timeseries.csv`. |
-| `TM_X97`, `TM_Y97` | projected coordinates in metres (EPSG:3826 for the ET driver — see note). |
+| `TM_X97`, `TM_Y97` | projected coordinates in metres (EPSG:3826 for the ET driver, see note). |
 | `Station`, `NAME_C` | numeric station code and a display name (used for labels; not modelled). |
 
-### 4. `gray_box_input.csv` — per-well topology + attributes (required, the key file)
+### 4. `gray_box_input.csv`: per-well topology + attributes (required, the key file)
 One row per well. This encodes the **hydrological pairing** the model consumes: which
 upstream well drives each well, which rain gauge forces it, and the lags. These are
 domain decisions you make; the tool does not infer them.
@@ -86,7 +86,7 @@ domain decisions you make; the tool does not infer them.
 | `active` | `1` to include the well, `0` to skip it. |
 | `gw_TM_X97`, `gw_TM_Y97` | the well's coordinates (metres), duplicated here for convenience. |
 
-### 5. `intermediate/gw_coastal_inland_class.csv` — coastal/tidal descriptors (optional)
+### 5. `intermediate/gw_coastal_inland_class.csv`: coastal/tidal descriptors (optional)
 Extra static attributes used to condition the operator. If absent, the related features
 are zero-filled and conditioning degrades gracefully (inland-only networks can skip it).
 
@@ -97,7 +97,7 @@ are zero-filled and conditioning degrades gracefully (inland-only networks can s
 | `dom_amp`, `dom_freq_cpd`, `m2_amp` | dominant spectral amplitude/frequency and M2 tidal amplitude (from a tidal analysis of the level record). |
 | `is_near_coast`, `is_m2_like`, `group` | boolean/label flags. |
 
-### 6. `gw_fit_results.csv` — external gray-box baseline (optional)
+### 6. `gw_fit_results.csv`: external gray-box baseline (optional)
 Per-well scores from a separately-calibrated gray-box model, used only as a reference row
 in the benchmark table (not recomputed by this repo).
 
@@ -112,7 +112,7 @@ in the benchmark table (not recomputed by this repo).
 
 If your data is already in memory, you don't need to write any CSV files.
 
-**From arrays** — you have `(n_wells, n_days)` arrays:
+**From arrays**, you have `(n_wells, n_days)` arrays:
 
 ```python
 from hydrophysics import GWData
@@ -132,7 +132,7 @@ print(data.validate())           # [] means good to go; otherwise a list of issu
 pred = climatology_prediction(data)
 ```
 
-**From tidy long tables** — "declare your columns" with `column_map`:
+**From tidy long tables**, "declare your columns" with `column_map`:
 
 ```python
 from hydrophysics import load_dataset_from_frames
