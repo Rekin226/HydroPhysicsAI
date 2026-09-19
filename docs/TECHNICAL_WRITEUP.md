@@ -130,7 +130,9 @@ be trusted*, and the limit: *self-knowledge can't catch a world that changed.*
   `physicsnemo.Module`, capability metadata + single-file `.mdlus` checkpointing, and
   reproduces the simulation headline exactly on CUDA.
 - **Mixed precision.** The forecaster trains under bf16 autocast: 14× faster than CPU and
-  ~half the GPU memory of fp32 on an RTX 4070 SUPER.
+  ~half the GPU memory of fp32 on an RTX 4070 SUPER. Historical, and specific to that
+  card: the project's server is a Turing Quadro RTX 6000 with no bf16 tensor cores, where
+  bf16 is slower than fp32 and the twin runs in float64. See `docs/GPU_SERVER.md`.
 - **Reproducible everything.** CI (ruff + pytest) on every push; figures and the GPU
   benchmark regenerate from the bundled synthetic sample with no real data or GPU.
 

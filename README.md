@@ -114,15 +114,25 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
 Modules live under `hydrophysics/twin/`; each file's docstring states what it does and
 why.
 
-**Hardware.** The twin is developed and run on a Quadro RTX 6000 (Turing, sm_75, 24 GB),
-with torch 2.11 on CUDA 12.8 and PhysicsNeMo 2.2.1. The solver is float64 throughout and
-uses no mixed precision: on this card fp64 runs at 0.32 TFLOP/s against 9.1 for fp32, and
-bf16 has no tensor-core support (5.3 TFLOP/s, slower than fp32), so precision is chosen
-for the conjugate-gradient solve rather than for speed. The flow solver still runs about
-51× faster on the GPU than on the CPU, because it is bound by kernel launches rather than
-arithmetic. A newer card would help the surrogate and the forecaster far more than it
-helps the solver. Stack decisions and the full constraint list are in
-`docs/GPU_SERVER.md`.
+**Hardware.** Everything here runs on a single GPU server: one NVIDIA Quadro RTX 6000
+(Turing, sm_75, 24 GB), torch 2.11 on CUDA 12.8, PhysicsNeMo 2.2.1, Ubuntu, long jobs in
+tmux. Calibration takes about 35 hours per gate; a policy run takes minutes.
+
+The solver is float64 throughout and uses no mixed precision, because the conjugate-
+gradient solve needs the precision, not because of speed. Measured on this card with a
+4096-cube matmul:
+
+| precision | TFLOP/s | used for |
+|---|---|---|
+| fp16 | 61.9 | nothing (accuracy) |
+| fp32 | 9.1 | the FNO surrogate |
+| bf16 | 5.3 | nothing: Turing has no bf16 tensor cores, so it is slower than fp32 |
+| fp64 | 0.32 | the flow solver |
+
+The flow solver still gains about 51× over CPU despite running in the slowest precision,
+because it is bound by kernel launches rather than arithmetic. A newer card would help
+the surrogate far more than the solver. Stack decisions and the full constraint list are
+in `docs/GPU_SERVER.md`.
 
 ## Limits
 
