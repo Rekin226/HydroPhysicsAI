@@ -1,6 +1,6 @@
 # Project state: where to continue
 
-**Last updated:** 2026-09-20 (10:30) · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-20 (17:30) · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -304,6 +304,29 @@ flow. Only after those is a different forward model the honest move.
    irrigation districts move water laterally. Worth testing against the well-permit
    coordinates if they can be obtained.
 
+   **And the wider radius is not the better twin (2026-09-20).** Running both through the
+   whole chain, the 21 km model wins the head gate by 0.006 and loses everything that
+   matters downstream:
+
+   | | 10 km spread | 21 km spread |
+   |---|---|---|
+   | head k-fold R² | +0.804 | **+0.810** |
+   | column out of fold, leveling | **+0.589** | +0.545 |
+   | compaction rings, independent | **+0.295** | −0.125 |
+   | full-chain hindcast, leveling | **+0.579** | +0.556 |
+   | projected baseline subsidence to 2032 | 10.7 cm | 16.4 cm |
+   | response to a 30 % irrigation cut | **−0.77 cm** | −0.18 cm |
+   | response to retiring aquaculture | **−1.66 cm** | −0.19 cm |
+
+   Spreading the stress over 21 km smooths away the policy signal along with the hot
+   spots: that model cannot tell a 30 % irrigation cut from doing nothing. A twin whose
+   purpose is policy response fails at its purpose even while passing its gate, so
+   **the 10 km model stays the deliverable** and the viewer is rendered from it. The
+   lesson is about the gate, not the model: held-out-well R² measures interpolation under
+   the recorded forcing and is blind to whether the forcing does any work. Every
+   candidate from here should be scored on the policy response and on the leveling chain,
+   not on the head gate alone.
+
    **Temporal gate (held-out years, 2026-09-18): a hard result.** Fit on 2012-2019,
    free-running continuation over 2020-2022 (36 months) from the record's start:
 
@@ -344,6 +367,17 @@ flow. Only after those is a different forward model the honest move.
    dominates, so the fit is never asked to get anomalies right. A per-well anomaly term
    in the loss (or fitting anomalies outright) and a held-out-years gate as a first-class
    verdict are the next calibration changes, ahead of any more stress placement.
+
+   **The level anchor sweep (2026-09-20) closes the anomaly-loss experiment.** At weight
+   1 and 3 the in-sample fit and the level error come back (+0.916 and +0.925, 3.5 and
+   3.1 m) but the shape degrades to −1.29 and −2.15, worse than the level loss's −1.05.
+   Only the unanchored weight of 0.1 bought shape (+0.059), and it cost 6.4 m of level.
+   There is no setting that wins both: the anomaly loss trades one for the other rather
+   than fixing the drift. The held-out-years failure is therefore structural, not a loss
+   function choice, and the next candidates are physical: a storage term that can release
+   water slowly (the fit pins mid-zone S at 0.3), and forcing the model has never seen
+   (surface-water irrigation deliveries, which would explain both the drift and the 21 km
+   radius).
 
    **The anomaly loss, tested 2026-09-19 (`--loss anomaly`, level weight 0.1).** On the
    gate's own metric it looks worse (anomaly R² −20 free, −31 physical, against −8 and
