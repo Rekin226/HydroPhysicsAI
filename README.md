@@ -93,16 +93,24 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
 
 `pytest -q` runs the test suite on CPU in about 13 minutes.
 
-### Looking at the twin
+### The application
 
-`results/twin/explorer3d_forward.html` is a single self-contained page (about 43 MB, no
-server or install needed): four aquifer head surfaces under a deforming ground surface, a
-dropdown to switch pumping policy, and a month slider running from 2012 through the
-record and on to 2032, with projected months marked. Hovering a cell gives its subsidence
-and the spread across ensemble members, and the title carries the gate verdict the run
-inherited. Open it in any browser; from a headless server, copy it first
-(`scp server:HydroPhysicsAI/results/twin/explorer3d_forward.html .`) or serve the folder
-with `python -m http.server` and forward the port.
+```bash
+python -m hydrophysics.twin.viewer_app --forward results/twin_forward/<run>.npz \
+    --basis results/twin_forward/response_basis.npz --out results/twin/twin_app.html
+```
+
+`results/twin/twin_app.html` is the twin as something to operate: one self-contained page,
+about 8 MB, nothing to install. The fan is a block model, four aquifers at their per-zone
+screen depths with the clay aquitards between them, standing on the real ground surface,
+and the ground descends as the record plays. A slider per water-use class sets the pumping
+policy and the field updates as you drag; the response comes from a precomputed basis, one
+solver run per class, combined by superposition, which reproduces a solved half-cut to
+within 0.06 cm and a four-year delay to within 0.02 cm. Click any cell for its heads,
+its sinking and the ensemble spread. Analyst mode adds layer toggles, head and drawdown
+colouring, an exploded view, a west-to-east cut-away and the vertical exaggeration.
+
+The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
 
 ## How it works
 
