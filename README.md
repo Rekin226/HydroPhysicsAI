@@ -34,7 +34,7 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 
 | | gate | result |
 |---|---|---|
-| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.804 vs +0.702, with a physical pump conversion and a learned stress radius |
+| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.810 vs +0.702, with a physical pump conversion and a learned 21 km stress radius |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.546** out of fold, bias +0.1 cm |
 | **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.579**, RMSE 6.2 cm |
 | **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.7 ± 0.6 cm baseline · 9.9 with irrigation cut 30 % · 9.0 with aquaculture retired |
@@ -151,9 +151,10 @@ in `docs/GPU_SERVER.md`.
   6.6 m at the wells against 2.0 m for climatology), so the twin is a hindcast-and-nudged-
   projection tool, not a free forecaster. Fitting anomalies rather than levels is the next
   calibration change.
-- The spread radius of the pumping stress sits at its 10 km bound in every fold; the
-  bound is being raised and re-gated. Policy sensitivities are consequences of a gated
-  model, not validated forecasts of a policy's effect.
+- The pumping stress has to be spread over about 21 km for the model to generalise,
+  which is far wider than a well's drawdown cone. It is standing in for something not yet
+  modelled, probably that the census locates meters rather than wells. Policy
+  sensitivities are consequences of a gated model, not validated forecasts.
 - The mid-zone viscous time constant reaches the length of the record; decadal creep is
   bounded by the calibration window.
 - The posterior is a local Laplace approximation; parameters at a bound are held, not

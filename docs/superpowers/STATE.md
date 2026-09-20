@@ -1,6 +1,6 @@
 # Project state: where to continue
 
-**Last updated:** 2026-09-20 · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-20 (10:30) · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -291,9 +291,18 @@ flow. Only after those is a different forward model the honest move.
    0.16, leakance at the 1e-4 floor in four of six interfaces, and the spread radius on
    its 10 km ceiling in every fold. Spreading the cell-scale stress was the missing
    piece: the same physical conversion that failed at cell scale (+0.632) passes once
-   each cell's electricity is applied over a 10 km Gaussian. The twin's parameters are
-   now this model; the free fit is kept as the record of how the pass was reached. Next:
-   raise the radius bound and re-gate, since the fit wants more than 10 km.
+   each cell's electricity is applied over a 10 km Gaussian.
+
+   **Re-gated with the bound raised to 25 km (2026-09-20, `stage3_spread25_gate/`,
+   published as `results/twin/stage3_zonal_physical_spread.csv`): PASS, 5-fold +0.810 vs
+   IDW +0.702, in-sample +0.918, and the radius settles at 21.2 km, interior to the new
+   bound in four of five folds.** So the fit does have a preferred stress radius, around
+   20 km, not an unbounded appetite for smoothing. This is the twin's model; the free fit
+   and the 10 km run are kept as the record of how the pass was reached. A ~20 km radius
+   is far larger than a well's cone of depression, so it is standing in for something
+   else: most likely that billing coordinates locate the *meter*, not the well, and that
+   irrigation districts move water laterally. Worth testing against the well-permit
+   coordinates if they can be obtained.
 
    **Temporal gate (held-out years, 2026-09-18): a hard result.** Fit on 2012-2019,
    free-running continuation over 2020-2022 (36 months) from the record's start:
