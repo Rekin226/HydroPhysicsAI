@@ -36,8 +36,8 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 |---|---|---|
 | **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.804 vs +0.702, with a physical pump conversion and a learned stress radius |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.546** out of fold, bias +0.1 cm |
-| **Full chain hindcast** | 798 leveling sites, 18-member ensemble | R² **+0.526**, RMSE 6.6 cm |
-| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.0 ± 1.3 cm baseline · 9.5 ± 1.1 cm with aquaculture retired |
+| **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.579**, RMSE 6.2 cm |
+| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.7 ± 0.6 cm baseline · 9.9 with irrigation cut 30 % · 9.0 with aquaculture retired |
 | **Re-run cost** | 18 members × 3 policies × 21 years | 609 s on one GPU; FNO surrogate 13–34× faster again |
 
 Every verdict, including the two failed configurations that preceded the pass, is
@@ -92,6 +92,17 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
 ```
 
 `pytest -q` runs the test suite on CPU in about 13 minutes.
+
+### Looking at the twin
+
+`results/twin/explorer3d_forward.html` is a single self-contained page (about 43 MB, no
+server or install needed): four aquifer head surfaces under a deforming ground surface, a
+dropdown to switch pumping policy, and a month slider running from 2012 through the
+record and on to 2032, with projected months marked. Hovering a cell gives its subsidence
+and the spread across ensemble members, and the title carries the gate verdict the run
+inherited. Open it in any browser; from a headless server, copy it first
+(`scp server:HydroPhysicsAI/results/twin/explorer3d_forward.html .`) or serve the folder
+with `python -m http.server` and forward the port.
 
 ## How it works
 

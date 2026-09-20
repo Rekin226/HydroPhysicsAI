@@ -1,6 +1,6 @@
 # Project state: where to continue
 
-**Last updated:** 2026-09-19 · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-20 · Read this first if you are picking the twin up cold.
 
 The goal, stated once so the gates below have a point:
 
@@ -268,8 +268,18 @@ flow. Only after those is a different forward model the honest move.
    observations every 12 months drops it to +0.391, because the column was calibrated on
    the free-running trajectory. That, not the model, explains the +0.338 the first
    36-member run reported. Ensemble averaging costs almost nothing (+0.572 over six
-   members). The deliverable is therefore re-run without hindcast nudging, and
-   `--hindcast-gain` now carries the warning.
+   members). `--hindcast-gain` now carries the warning.
+
+   **The deliverable, re-run without hindcast nudging (2026-09-19,
+   `results/twin_forward/physical_spread_nonudge.*`, viewer
+   `results/twin/explorer3d_forward.html`):** 36 members (in-sample + 5 folds + 12
+   posterior draws, each from two initial fields), hindcast against 798 leveling sites
+   **R² +0.579**, RMSE 6.2 cm, bias -0.8 cm. Fan-mean subsidence 2023-2032: baseline
+   10.68 ± 0.57 cm, irrigation -30 % 9.91 ± 0.53, aquaculture retired 9.02 ± 0.50; the
+   corresponding layer-2 head changes are +1.09, +1.90 and +2.35 m. This is the twin's
+   current state: a gated flow model with a physical pumping stress, a column calibrated
+   on its own heads, and a policy response of about 0.8 cm per decade for a 30 % cut in
+   irrigation.
 
    **Spread radius (2026-09-17/18, on top of all three, physical conversion):** 2 km
    +0.895, 4 km +0.908, learned +0.913 with the radius at its 10 km ceiling, the first
