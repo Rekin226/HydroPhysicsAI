@@ -74,6 +74,33 @@ section h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:
 #probe .row b{font-family:"IBM Plex Mono",monospace;font-weight:500;font-variant-numeric:tabular-nums}
 #probe svg{width:100%;height:74px;margin-top:7px}
 #probe .hint{font-size:10.5px;color:var(--ink-3);line-height:1.4}
+.tabs{display:flex;gap:2px;margin:-3px -3px 9px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-bottom:2px solid transparent;background:none;color:var(--ink-3);
+  font:inherit;font-size:11px;padding:5px 2px;cursor:pointer}
+.tabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#probe.wide{width:390px}
+#secWrap svg,#cmpWrap svg{width:100%;display:block}
+.tbl{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+.tbl th{text-align:left;font-weight:500;color:var(--ink-3);font-size:10px;text-transform:uppercase;
+  letter-spacing:.06em;padding:3px 4px;cursor:pointer;white-space:nowrap}
+.tbl th[aria-sort]{color:var(--accent)}
+.tbl td{padding:3px 4px;border-top:1px solid var(--line)}
+.tbl tr:hover td{background:var(--surface-2)}
+.tbl .num{font-family:"IBM Plex Mono",monospace;text-align:right}
+.tbl .bar{height:5px;border-radius:2px;background:var(--accent);opacity:.75}
+.tblwrap{max-height:230px;overflow-y:auto}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.mini figure{margin:0}
+.mini figcaption{font-size:10px;color:var(--ink-3);margin-bottom:3px}
+.mini canvas{width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:3px;background:var(--surface-2)}
+.btnrow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.btnrow button{flex:1;min-width:92px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);
+  border-radius:3px;padding:5px 7px;font:inherit;font-size:11px;cursor:pointer}
+.btnrow button:hover{border-color:var(--accent);color:var(--accent)}
+.btnrow button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.said{font-size:10.5px;color:var(--good);min-height:13px;margin-top:5px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .view-btns{display:flex;gap:6px;flex-wrap:wrap}
 .view-btns button{flex:1;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);border-radius:3px;padding:5px;font:inherit;font-size:11.5px;cursor:pointer}
 .view-btns button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
@@ -162,11 +189,62 @@ section h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:
       <div class="cap" id="legCap"></div>
     </div>
     <div id="probe">
-      <h3 id="pTitle">Click the ground</h3>
-      <div class="loc" id="pLoc"></div>
-      <div id="pRows"></div>
-      <svg id="pChart" viewBox="0 0 250 74" aria-label="subsidence over time at the selected cell"></svg>
-      <div class="hint" id="pHint">Pick a cell to read its heads, its sinking, and the ensemble spread.</div>
+      <div class="tabs" role="tablist">
+        <button id="tabCell" aria-pressed="true">Cell</button>
+        <button id="tabSec" aria-pressed="false">Section</button>
+        <button id="tabCmp" aria-pressed="false">Compare</button>
+        <button id="tabTown" aria-pressed="false">Townships</button>
+      </div>
+
+      <div id="paneCell">
+        <h3 id="pTitle">Click the ground</h3>
+        <div class="loc" id="pLoc"></div>
+        <div id="pRows"></div>
+        <svg id="pChart" viewBox="0 0 250 74" aria-label="subsidence over time at the selected cell"></svg>
+        <div class="hint" id="pHint">Pick a cell to read its heads, its sinking, and the ensemble spread.</div>
+      </div>
+
+      <div id="paneSec" hidden>
+        <h3>Cross-section</h3>
+        <div class="loc" id="secHint">Click two points on the ground to cut a line through the fan.</div>
+        <div id="secWrap"><svg id="secSvg" viewBox="0 0 380 210" aria-label="vertical section through the aquifers"></svg></div>
+        <div class="btnrow">
+          <button id="secDraw">Draw section</button>
+          <button id="secWE">West to east</button>
+          <button id="secCopy">Copy CSV</button>
+        </div>
+        <div class="said" id="secSaid"></div>
+      </div>
+
+      <div id="paneCmp" hidden>
+        <h3>Compare policies</h3>
+        <div class="loc">Your policy against a reference, at <span id="cmpYear"></span>.</div>
+        <div class="mini">
+          <figure><figcaption id="cmpAName">Your policy</figcaption><canvas id="cmpA" width="59" height="77"></canvas></figure>
+          <figure><figcaption id="cmpBName">Reference</figcaption><canvas id="cmpB" width="59" height="77"></canvas></figure>
+        </div>
+        <label class="loc" for="cmpRef">Reference</label>
+        <select id="cmpRef" style="width:100%;font:inherit;font-size:11.5px;padding:4px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)">
+          <option value="base">Baseline, no change</option>
+          <option value="irr30">Irrigation −30%</option>
+          <option value="aqua0">Retire aquaculture</option>
+          <option value="all20">All users −20%</option>
+        </select>
+        <div id="cmpRows" style="margin-top:8px"></div>
+        <div class="btnrow"><button id="cmpOn" aria-pressed="false">Colour the block by difference</button></div>
+      </div>
+
+      <div id="paneTown" hidden>
+        <h3>Township report</h3>
+        <div class="loc">Mean subsidence at <span id="townYear"></span> and the change your policy makes.</div>
+        <div class="tblwrap"><table class="tbl" id="townTbl"></table></div>
+        <div class="btnrow">
+          <button id="townCopy">Copy CSV</button>
+          <button id="townDl">Download CSV</button>
+          <button id="shotPng">Save image</button>
+        </div>
+        <div class="said" id="townSaid"></div>
+      </div>
     </div>
   </div>
 
@@ -213,8 +291,27 @@ function dLerp(arr, stride, base, t) {          // arr[(base)*P + slot], interpo
 const state = {
   t: T - 1, playing: false, mode: "decide", field: "subs", headMode: "head",
   factors: D.classes.map(() => 1), start: 0, layers: [true, true, true, true],
-  aquitards: true, explode: 0, clip: 1, exag: 40, sel: -1
+  aquitards: true, explode: 0, clip: 1, exag: 40, sel: -1,
+  tab: "cell", secMode: false, secA: null, secB: null, cmpRef: "base", cmpOn: false
 };
+// (col,row) -> active cell index, so a section can walk the grid
+const cellAt = new Int32Array(D.nx * D.ny).fill(-1);
+for (let i = 0; i < A; i++) cellAt[rows[i] * D.nx + cols[i]] = i;
+const presetFactors = p => D.classes.map(c =>
+  p === "base" ? 1 : p === "irr30" ? (c === "irrigation" ? 0.7 : 1)
+  : p === "aqua0" ? (c === "aquaculture" ? 0 : 1) : 0.8);
+function subsWith(factors, cell, t) {
+  let v = subsBase[cell * T + t] * 0.01;
+  if (!C) return v;
+  const lag = startMonths[state.start] - startMonths[0], ts = t - lag;
+  if (ts < 0) return v;
+  const tc = Math.min(T - 1, ts);
+  for (let c = 0; c < C; c++) {
+    const f = factors[c]; if (f === 1) continue;
+    v += (1 - f) * dLerp(dSub, 1, c * A + cell, tc) * 0.01;
+  }
+  return v;
+}
 const startMonths = [D.startMonth, Math.min(T - 1, D.startMonth + 48)];
 const startLabels = [D.months[startMonths[0]].slice(0, 4), D.months[startMonths[1]].slice(0, 4)];
 
@@ -259,6 +356,10 @@ function ramp(r, u) {
   return r[r.length-1][1];
 }
 const CLAY = [0.55,0.50,0.42], ROCK = {0:[0.72,0.66,0.55],1:[0.78,0.71,0.57],2:[0.64,0.63,0.57]};
+// difference: one cool pole, a neutral midpoint, one warm pole
+const diffRamp = [[0.0,[0.10,0.42,0.42]],[0.35,[0.55,0.74,0.72]],[0.5,[0.88,0.87,0.83]],
+                  [0.65,[0.88,0.66,0.44]],[1.0,[0.60,0.20,0.14]]];
+const rgb = c => "rgb(" + c.map(v => Math.round(v*255)).join(",") + ")";
 
 // ---- scene -------------------------------------------------------------------------
 const canvas = document.getElementById("c");
@@ -340,7 +441,10 @@ function recolour() {
     for (let i = 0; i < A; i++) {
       let c;
       if (kind === "ground") {
-        c = ramp(subsRamp, subsAt(i, t) / subsMax);
+        if (state.cmpOn) {
+          const d = subsAt(i, t) - subsWith(presetFactors(state.cmpRef), i, t);
+          c = ramp(diffRamp, 0.5 + d / (2 * cmpScale));
+        } else c = ramp(subsRamp, subsAt(i, t) / subsMax);
       } else if (kind === "aquifer") {
         if (state.field === "subs") {
           c = ROCK[zone[i]].slice();
@@ -406,7 +510,14 @@ function pick(e) {
   const m = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   ray.setFromCamera(m, camera);
   const hits = ray.intersectObjects(meshes.filter(x => x.mesh.visible).map(x => x.mesh));
-  if (hits.length) { state.sel = hits[0].instanceId; drawProbe(); }
+  if (!hits.length) return;
+  const id = hits[0].instanceId;
+  if (state.secMode) {
+    if (!state.secA || state.secB) { state.secA = id; state.secB = null; }
+    else state.secB = id;
+    if (state.secA && state.secB) { state.secMode = false; $("secDraw").setAttribute("aria-pressed", false); }
+    drawSectionLine(); drawSection();
+  } else { state.sel = id; drawProbe(); }
 }
 
 // ---- UI ----------------------------------------------------------------------------
@@ -526,7 +637,10 @@ function refresh(geom) {
   $("legHi").textContent = subsMax.toFixed(0) + " cm";
   rebuildGeometry(geom === "ground");
   recolour();
-  if (state.sel >= 0) drawProbe();
+  if (state.sel >= 0 && state.tab === "cell") drawProbe();
+  if (state.tab === "sec") { drawSectionLine(); drawSection(); }
+  if (state.tab === "cmp") drawCompare();
+  if (state.tab === "town") drawTownships();
 }
 function setMode(m) {
   state.mode = m;
@@ -535,6 +649,244 @@ function setMode(m) {
   document.querySelectorAll(".analyst").forEach(el => el.hidden = (m === "decide"));
   state.field = m === "analyst" ? "head" : "subs";
   recolour();
+}
+
+// ---- cross-section -----------------------------------------------------------------
+let secLine = null;
+function drawSectionLine() {
+  if (secLine) { scene.remove(secLine); secLine.geometry.dispose(); secLine = null; }
+  if (!(state.secA >= 0 && state.secB >= 0 && state.secB !== null)) return;
+  const pt = i => new THREE.Vector3(cols[i] - W/2 + 0.5,
+    (ground[i]*0.01 - subsAt(i, state.t)) * state.exag / 40 + 3, -(rows[i] - H/2 + 0.5));
+  const g = new THREE.BufferGeometry().setFromPoints([pt(state.secA), pt(state.secB)]);
+  secLine = new THREE.Line(g, new THREE.LineBasicMaterial({color: 0x1f6f8b, linewidth: 2}));
+  scene.add(secLine);
+}
+function sectionCells(n) {
+  if (!(state.secA >= 0 && state.secB >= 0 && state.secB !== null)) return [];
+  const c0 = [cols[state.secA], rows[state.secA]], c1 = [cols[state.secB], rows[state.secB]];
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const u = k / (n - 1);
+    const cx = Math.round(c0[0] + (c1[0]-c0[0]) * u), cy = Math.round(c0[1] + (c1[1]-c0[1]) * u);
+    const cell = cellAt[cy * D.nx + cx];
+    out.push({u, cell, km: Math.hypot((c1[0]-c0[0]) * u, (c1[1]-c0[1]) * u) * D.dx / 1000});
+  }
+  return out;
+}
+function drawSection() {
+  const pts = sectionCells(120).filter(p => p.cell >= 0);
+  const svg = $("secSvg");
+  if (pts.length < 3) { svg.innerHTML = ""; $("secHint").textContent =
+    "Click two points on the ground to cut a line through the fan."; return; }
+  const t = state.t, len = pts[pts.length-1].km;
+  const X = u => 34 + 336 * u;
+  const yMin = -320, yMax = 60;                          // metres, depth axis
+  const Y = m => 16 + 168 * (yMax - m) / (yMax - yMin);
+  let out = "";
+  // aquifers and aquitards as filled bands, drawn deep to shallow
+  for (let l = L - 1; l >= 0; l--) {
+    let top = "", bot = "";
+    for (const p of pts) {
+      const z = zone[p.cell], g = ground[p.cell] * 0.01;
+      const d = D.layerDepths[D.zoneNames[z]][l], th = D.layerThick[D.zoneNames[z]][l];
+      top += X(p.u).toFixed(1) + "," + Y(g - d + th/2).toFixed(1) + " ";
+      bot = X(p.u).toFixed(1) + "," + Y(g - d - th/2).toFixed(1) + " " + bot;
+    }
+    const mid = pts[Math.floor(pts.length/2)];
+    const hv = headAt(l, mid.cell, t);
+    out += `<polygon points="${top}${bot}" fill="${rgb(ramp(headRamp,(hv+20)/90))}" stroke="rgba(0,0,0,.18)" stroke-width=".5"></polygon>`;
+    if (l < L - 1) {                                     // the clay between this and the next
+      let a = "", b = "";
+      for (const p of pts) {
+        const z = zone[p.cell], g = ground[p.cell] * 0.01, zn = D.zoneNames[z];
+        const d1 = D.layerDepths[zn][l], t1 = D.layerThick[zn][l];
+        const d2 = D.layerDepths[zn][l+1], t2 = D.layerThick[zn][l+1];
+        a += X(p.u).toFixed(1) + "," + Y(g - d1 - t1/2).toFixed(1) + " ";
+        b = X(p.u).toFixed(1) + "," + Y(g - d2 + t2/2).toFixed(1) + " " + b;
+      }
+      out += `<polygon points="${a}${b}" fill="${rgb(CLAY)}" opacity=".9"></polygon>`;
+    }
+  }
+  // head line per aquifer
+  for (let l = 0; l < L; l++) {
+    let ln = "";
+    for (const p of pts) ln += X(p.u).toFixed(1) + "," + Y(headAt(l, p.cell, t)).toFixed(1) + " ";
+    out += `<polyline points="${ln}" fill="none" stroke="var(--ink)" stroke-width="1" opacity=".55" stroke-dasharray="${l?"3 2":""}"></polyline>`;
+  }
+  // ground and the subsidence profile above it
+  let gl = "", sl = "", smax = 0;
+  for (const p of pts) smax = Math.max(smax, subsAt(p.cell, t));
+  const sScale = Math.max(5, Math.ceil(smax/5)*5);
+  for (const p of pts) {
+    gl += X(p.u).toFixed(1) + "," + Y(ground[p.cell]*0.01).toFixed(1) + " ";
+    sl += X(p.u).toFixed(1) + "," + (14 - 11 * subsAt(p.cell, t) / sScale).toFixed(1) + " ";
+  }
+  out += `<polyline points="${gl}" fill="none" stroke="var(--ink)" stroke-width="1.4"></polyline>`;
+  out += `<polyline points="${sl}" fill="none" stroke="${rgb(subsRamp[3][1])}" stroke-width="1.6"></polyline>`;
+  for (const m of [0, -100, -200, -300])
+    out += `<text x="4" y="${(Y(m)+3).toFixed(1)}" font-size="8" fill="var(--ink-3)">${m}</text>`;
+  out += `<text x="4" y="10" font-size="8" fill="var(--ink-3)">m</text>`;
+  out += `<text x="${X(0)}" y="205" font-size="8" fill="var(--ink-3)">0 km</text>`;
+  out += `<text x="${X(1)-26}" y="205" font-size="8" fill="var(--ink-3)">${len.toFixed(0)} km</text>`;
+  out += `<text x="${X(0.5)-52}" y="205" font-size="8" fill="var(--ink-3)">subsidence to ${sScale} cm, top line</text>`;
+  svg.innerHTML = out;
+  const a = D.townNames[town[state.secA]], b = D.townNames[town[state.secB]];
+  $("secHint").textContent = `${len.toFixed(1)} km, ${a === "unlabelled" ? "cell " + state.secA : a} to ${b === "unlabelled" ? "cell " + state.secB : b}, at ${D.months[t]}.`;
+}
+function sectionCsv() {
+  const pts = sectionCells(120).filter(p => p.cell >= 0), t = state.t;
+  let csv = "km,cell,township,zone,ground_m,subsidence_cm,head_L1_m,head_L2_m,head_L3_m,head_L4_m\n";
+  for (const p of pts) {
+    const h = [0,1,2,3].map(l => headAt(l, p.cell, t).toFixed(2)).join(",");
+    csv += `${p.km.toFixed(3)},${p.cell},${D.townNames[town[p.cell]]},${D.zoneNames[zone[p.cell]]},` +
+           `${(ground[p.cell]*0.01).toFixed(2)},${subsAt(p.cell,t).toFixed(3)},${h}\n`;
+  }
+  return csv;
+}
+
+// ---- compare ------------------------------------------------------------------------
+let cmpScale = 2;
+function miniMap(id, factors) {
+  const cv = $(id), ctx = cv.getContext("2d");
+  const img = ctx.createImageData(D.nx, D.ny);
+  img.data.fill(0);
+  for (let i = 0; i < A; i++) {
+    const c = ramp(subsRamp, subsWith(factors, i, state.t) / subsMax);
+    const o = ((D.ny - 1 - rows[i]) * D.nx + cols[i]) * 4;
+    img.data[o] = c[0]*255; img.data[o+1] = c[1]*255; img.data[o+2] = c[2]*255; img.data[o+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function drawCompare() {
+  const ref = presetFactors(state.cmpRef);
+  miniMap("cmpA", state.factors); miniMap("cmpB", ref);
+  let mA = 0, mB = 0, worst = 0, best = 0;
+  for (let i = 0; i < A; i++) {
+    const a = subsAt(i, state.t), b = subsWith(ref, i, state.t);
+    mA += a; mB += b; worst = Math.max(worst, a - b); best = Math.min(best, a - b);
+  }
+  mA /= A; mB /= A;
+  cmpScale = Math.max(0.5, Math.max(Math.abs(worst), Math.abs(best)));
+  const label = {base:"Baseline, no change", irr30:"Irrigation −30%", aqua0:"Retire aquaculture", all20:"All users −20%"}[state.cmpRef];
+  $("cmpBName").textContent = label;
+  $("cmpRows").innerHTML =
+    `<div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0"><span>Your policy</span><b>${mA.toFixed(2)} cm</b></div>
+     <div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0"><span>${label}</span><b>${mB.toFixed(2)} cm</b></div>
+     <div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0;border-top:1px solid var(--line);margin-top:3px;padding-top:5px">
+       <span>Difference</span><b style="color:${mA <= mB ? "var(--good)" : "var(--bad)"}">${mA-mB>=0?"+":""}${(mA-mB).toFixed(2)} cm</b></div>
+     <div class="hint" style="margin-top:6px">Best cell ${best.toFixed(2)} cm, worst ${worst>=0?"+":""}${worst.toFixed(2)} cm.</div>`;
+}
+
+// ---- townships ----------------------------------------------------------------------
+let townSort = {key: "now", dir: -1};
+function townshipRows() {
+  const t = state.t, base = presetFactors("base");
+  const m = new Map();
+  for (let i = 0; i < A; i++) {
+    const k = town[i]; if (!k) continue;
+    const e = m.get(k) || {n:0, now:0, base:0, over:0, peak:0};
+    const v = subsAt(i, t);
+    e.n++; e.now += v; e.base += subsWith(base, i, t); e.over += v > 5 ? 1 : 0;
+    e.peak = Math.max(e.peak, v); m.set(k, e);
+  }
+  const out = [];
+  m.forEach((e, k) => out.push({name: D.townNames[k], n: e.n, now: e.now/e.n,
+    delta: (e.now - e.base)/e.n, over: e.over, peak: e.peak}));
+  out.sort((a, b) => (a[townSort.key] > b[townSort.key] ? 1 : -1) * townSort.dir);
+  return out;
+}
+function drawTownships() {
+  const r = townshipRows();
+  const mx = Math.max(...r.map(x => x.now), 1);
+  const th = (k, l) => `<th data-k="${k}"${townSort.key===k?' aria-sort="descending"':''}>${l}</th>`;
+  $("townTbl").innerHTML = `<thead><tr>${th("name","Township")}${th("now","cm")}${th("delta","Δ policy")}${th("over","km² >5cm")}${th("peak","Peak")}</tr></thead><tbody>` +
+    r.map(x => `<tr><td>${x.name}<div class="bar" style="width:${(x.now/mx*100).toFixed(0)}%"></div></td>
+      <td class="num">${x.now.toFixed(1)}</td>
+      <td class="num" style="color:${x.delta < -0.005 ? "var(--good)" : x.delta > 0.005 ? "var(--bad)" : "var(--ink-3)"}">${x.delta>=0?"+":""}${x.delta.toFixed(2)}</td>
+      <td class="num">${x.over}</td><td class="num">${x.peak.toFixed(1)}</td></tr>`).join("") + "</tbody>";
+  $("townTbl").querySelectorAll("th").forEach(h => h.addEventListener("click", () => {
+    const k = h.dataset.k;
+    townSort = {key: k, dir: townSort.key === k ? -townSort.dir : (k === "name" ? 1 : -1)};
+    drawTownships();
+  }));
+}
+function townCsv() {
+  const r = townshipRows();
+  let csv = `township,cells_km2,subsidence_cm,delta_vs_baseline_cm,cells_over_5cm,peak_cm,month,policy\n`;
+  const pol = D.classes.map((c, i) => `${c}=${state.factors[i].toFixed(2)}`).join(" ");
+  for (const x of r) csv += `${x.name},${x.n},${x.now.toFixed(3)},${x.delta.toFixed(3)},${x.over},${x.peak.toFixed(3)},${D.months[state.t]},${pol}\n`;
+  return csv;
+}
+
+// ---- export -------------------------------------------------------------------------
+function say(id, msg) { const e = $(id); e.textContent = msg; setTimeout(() => { e.textContent = ""; }, 2600); }
+async function copyText(text, sayId) {
+  try { await navigator.clipboard.writeText(text); say(sayId, "Copied to the clipboard."); }
+  catch (e) { say(sayId, "Could not copy here; use Download instead."); }
+}
+// Saving a file: on claude.ai the page has to ask the viewer through the downloads
+// capability, which resolves null where it is not granted; opened as a local file there
+// is no such shell, so fall back to an anchor. Either way the button only ever fires on
+// a deliberate click, and the page says what happened.
+let downloadsApi = null, downloadsReady = false;
+(async () => {
+  try { downloadsApi = await window.claude?.use?.("downloads"); } catch (e) { downloadsApi = null; }
+  downloadsReady = true;
+})();
+async function download(name, text, sayId) {
+  if (downloadsApi) {
+    try { await downloadsApi.save({filename: name, data: text}); say(sayId, "Saved " + name + "."); }
+    catch (e) { say(sayId, e && e.code === "cancelled" ? "Save cancelled." : "Could not save; use Copy CSV."); }
+    return;
+  }
+  try {
+    const url = URL.createObjectURL(new Blob([text], {type:"text/csv"}));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    say(sayId, "Saved " + name + ".");
+  } catch (e) { say(sayId, "Download blocked here; use Copy CSV."); }
+}
+async function savePng() {
+  renderer.render(scene, camera);
+  const url = canvas.toDataURL("image/png");
+  const name = "choushui-twin-" + D.months[state.t] + ".png";
+  if (downloadsApi) {
+    try {
+      const blob = await (await fetch(url)).blob();
+      await downloadsApi.save({filename: name, data: blob});
+      say("townSaid", "Saved " + name + "."); return;
+    } catch (e) {
+      say("townSaid", e && e.code === "cancelled" ? "Save cancelled." : "Could not save the image.");
+      return;
+    }
+  }
+  try {
+    const blob = await (await fetch(url)).blob();
+    await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]);
+    say("townSaid", "Image copied to the clipboard.");
+  } catch (e) {
+    try {
+      const a = document.createElement("a");
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      say("townSaid", "Saved the image.");
+    } catch (e2) { say("townSaid", "Blocked here; screenshot the window instead."); }
+  }
+}
+
+// ---- tabs ---------------------------------------------------------------------------
+function setTab(name) {
+  state.tab = name;
+  const panes = {cell:"paneCell", sec:"paneSec", cmp:"paneCmp", town:"paneTown"};
+  for (const [k, id] of Object.entries(panes)) {
+    $(id).hidden = k !== name;
+    $("tab" + k[0].toUpperCase() + k.slice(1)).setAttribute("aria-pressed", k === name);
+  }
+  $("probe").classList.toggle("wide", name !== "cell");
+  if (name === "sec") drawSection();
+  if (name === "cmp") drawCompare();
+  if (name === "town") drawTownships();
 }
 
 // wiring
@@ -559,11 +911,53 @@ $("vTop").addEventListener("click", () => { camPhi = 0.14; camR = 95; place(); }
 $("mDecide").addEventListener("click", () => setMode("decide"));
 $("mAnalyst").addEventListener("click", () => setMode("analyst"));
 
+$("tabCell").addEventListener("click", () => setTab("cell"));
+$("tabSec").addEventListener("click", () => setTab("sec"));
+$("tabCmp").addEventListener("click", () => setTab("cmp"));
+$("tabTown").addEventListener("click", () => setTab("town"));
+$("secDraw").addEventListener("click", e => {
+  state.secMode = !state.secMode; state.secA = state.secB = null;
+  e.target.setAttribute("aria-pressed", state.secMode);
+  drawSectionLine();
+  $("secHint").textContent = state.secMode
+    ? "Click the start of the line, then its end."
+    : "Click two points on the ground to cut a line through the fan.";
+});
+$("secWE").addEventListener("click", () => {          // the fan's own axis, apex to coast
+  const mid = Math.round(D.ny / 2);
+  let west = -1, east = -1;
+  for (let c = 0; c < D.nx; c++) { const i = cellAt[mid * D.nx + c]; if (i >= 0) { if (west < 0) west = i; east = i; } }
+  state.secA = west; state.secB = east; state.secMode = false;
+  $("secDraw").setAttribute("aria-pressed", false);
+  drawSectionLine(); drawSection();
+});
+$("secCopy").addEventListener("click", () => copyText(sectionCsv(), "secSaid"));
+$("cmpRef").addEventListener("change", e => { state.cmpRef = e.target.value; drawCompare(); if (state.cmpOn) recolour(); });
+$("cmpOn").addEventListener("click", e => {
+  state.cmpOn = !state.cmpOn;
+  e.target.setAttribute("aria-pressed", state.cmpOn);
+  e.target.textContent = state.cmpOn ? "Colour the block by subsidence" : "Colour the block by difference";
+  $("legTitle").textContent = state.cmpOn ? "Difference from the reference" : "Cumulative subsidence";
+  $("legBar").style.background = "linear-gradient(90deg," +
+    (state.cmpOn ? diffRamp : subsRamp).map(s2 => rgb(s2[1]) + " " + s2[0]*100 + "%").join(",") + ")";
+  $("legLo").textContent = state.cmpOn ? "−" + cmpScale.toFixed(1) + " cm" : "0";
+  $("legHi").textContent = state.cmpOn ? "+" + cmpScale.toFixed(1) + " cm" : subsMax.toFixed(0) + " cm";
+  $("legCap").textContent = state.cmpOn
+    ? "Teal is less sinking than the reference, warm is more."
+    : "Ground colour. Aquifer colour is head, dark is low.";
+  recolour();
+});
+$("townCopy").addEventListener("click", () => copyText(townCsv(), "townSaid"));
+$("townDl").addEventListener("click", () => download("choushui-townships-" + D.months[state.t] + ".csv", townCsv(), "townSaid"));
+$("shotPng").addEventListener("click", savePng);
+
 const g = D.gate || {};
 $("verdict").textContent = g.verdict
   ? `Flow model ${g.verdict} · held-out wells R² ${g.r2_kfold.toFixed(3)} vs ${g.r2_idw.toFixed(3)}`
   : "Gate verdict not recorded";
 $("horizonYear").textContent = D.months[T-1].slice(0,4);
+$("cmpYear").textContent = D.months[T-1].slice(0,7);
+$("townYear").textContent = D.months[T-1].slice(0,7);
 $("legBar").style.background = "linear-gradient(90deg," +
   subsRamp.map(s => `rgb(${s[1].map(v=>Math.round(v*255)).join(",")}) ${s[0]*100}%`).join(",") + ")";
 $("legCap").textContent = "Ground colour. Aquifer colour is head, dark is low.";
@@ -575,7 +969,7 @@ $("caveat").innerHTML = `Heads and subsidence are validated against wells and 79
 
 subsMax = (() => { let m = 0; for (let i = 0; i < A; i++) m = Math.max(m, subsBase[i*T + T-1] * 0.01); return Math.ceil(m/5)*5; })();
 $("startYear").max = 1;
-place(); applyVisibility(); setMode("decide"); refresh();
+place(); applyVisibility(); setMode("decide"); setTab("cell"); refresh();
 
 let last = 0;
 function loop(ts) {

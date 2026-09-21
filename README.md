@@ -110,6 +110,14 @@ within 0.06 cm and a four-year delay to within 0.02 cm. Click any cell for its h
 its sinking and the ensemble spread. Analyst mode adds layer toggles, head and drawdown
 colouring, an exploded view, a west-to-east cut-away and the vertical exaggeration.
 
+Four panels sit beside the block. **Cell** reads one location. **Section** cuts a line
+between two clicked points and draws the vertical profile: the aquifers and clay
+aquitards at their real depths, the head in each, and the subsidence along the transect.
+**Compare** puts your policy and a reference side by side as maps, reports the difference
+in centimetres, and can recolour the block by that difference. **Townships** is a sortable
+report card for the twenty townships on the fan. Both table and section export as CSV,
+and the view saves as an image.
+
 The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
 
 ## How it works
