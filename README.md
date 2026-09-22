@@ -67,6 +67,12 @@ the repository; the cache is rebuilt from the WiseEnvr API with
 | Rain gauges + ERA5 ET₀ | 26 gauges, daily | recharge |
 | Leveling benchmarks | 798 sites, 7,539 surveys | subsidence calibration and validation |
 | Multi-layer compaction wells | 14 sites | independent compaction check |
+| NLSC tile service | orthophoto and topographic base, 252 tiles at zoom 13 | the ground the viewer recognises |
+| SRTM 1 arc-second | terrain over the fan, −5 to 194 m | real elevation, replacing interpolated well collars |
+
+The last two are fetched by `python -m hydrophysics.twin.basemap`; both are public and need
+no credentials. Interpolating 279 well collar elevations had put the fan a median 5 m too
+low and as much as 83 m out at the foothills.
 
 ## Quickstart
 
@@ -101,9 +107,11 @@ python -m hydrophysics.twin.viewer_app --forward results/twin_forward/<run>.npz 
 ```
 
 `results/twin/twin_app.html` is the twin as something to operate: one self-contained page,
-about 8 MB, nothing to install. The fan is a block model, four aquifers at their per-zone
-screen depths with the clay aquitards between them, standing on the real ground surface,
-and the ground descends as the record plays. A slider per water-use class sets the pumping
+about 11 MB, nothing to install. The ground is the real thing: SRTM terrain carrying the
+Taiwanese orthophoto, so the braided Choushui channel, the coastal aquaculture ponds and
+the foothills are all where they belong. A slider blends the imagery into the subsidence
+colouring, and the surface descends as the record plays. Under it stand four aquifers at
+their per-zone screen depths with the clay aquitards between them. A slider per water-use class sets the pumping
 policy and the field updates as you drag; the response comes from a precomputed basis, one
 solver run per class, combined by superposition, which reproduces a solved half-cut to
 within 0.06 cm and a four-year delay to within 0.02 cm. Click any cell for its heads,

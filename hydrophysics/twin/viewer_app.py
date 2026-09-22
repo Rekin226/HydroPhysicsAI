@@ -68,7 +68,7 @@ def _q(a: np.ndarray, scale: float) -> np.ndarray:
 
 def build(forward_npz: str, basis_npz: str | None, out_html: str,
           townships_csv: str | None = None, quarter: int = 3, delta_step: int = 12,
-          log=print) -> dict:
+          basemap_npz: str | None = None, log=print) -> dict:
     fw = np.load(forward_npz, allow_pickle=False)
     mask = fw["mask"].astype(bool)
     nx, ny, dx = int(fw["nx"]), int(fw["ny"]), float(fw["dx"])
@@ -102,6 +102,23 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
             return cent
 
     ground = _idw_field(_G(), np.array(gxy), np.array(gval))
+    # Real terrain and imagery replace the interpolated collar heights where available
+    # (twin/basemap.py). The interpolation put the fan a median 5 m too low and missed
+    # the terraces entirely, so this is a correction, not decoration.
+    imagery, attrib = {}, []
+    if basemap_npz and os.path.exists(basemap_npz):
+        bm = np.load(basemap_npz, allow_pickle=False)
+        if "dem" in bm:
+            srtm = bm["dem"].astype("float64")
+            log(f"terrain: SRTM {srtm.min():.1f} to {srtm.max():.1f} m replaces the IDW "
+                f"collar field ({ground.min():.1f} to {ground.max():.1f} m)")
+            ground = srtm
+        for k in bm.files:
+            if k in ("dem", "attrib"):
+                continue
+            imagery[k] = base64.b64encode(bm[k].tobytes()).decode("ascii")
+            log(f"imagery: {k}, {len(imagery[k]) / 1e6:.2f} MB base64")
+        attrib = [str(a) for a in bm["attrib"]] if "attrib" in bm.files else []
 
     town_idx = np.zeros(A, dtype="uint8")
     town_names = ["unlabelled"]
@@ -209,6 +226,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "dHead": _b64(_q(dhead[:, :, :, dsel] if len(classes) else np.zeros((0,)), 0.01)),
         "startMonth": start_month if start_month is not None else origin,
         "layerDepths": LAYER_DEPTHS, "layerThick": AQUIFER_THICK, "zoneNames": list(ZONE_NAMES),
+        "imagery": imagery, "attrib": attrib,
         "gate": gate, "linErr": lin_err, "shiftErr": shift_err,
         "scenarios": [str(s) for s in fw["scenarios"]],
         "nMembers": int(fw["n_members"]),
@@ -225,7 +243,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
 
 _PAGE = r"""<title>Choushui Fan Twin</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.128.0/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 <style>
 :root{
   --paper:#f4f2ed; --surface:#fbfaf7; --surface-2:#eceae4; --line:#d8d5cc;
@@ -386,6 +404,17 @@ section h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:
         <button id="vHead" aria-pressed="true">Head</button>
         <button id="vDraw" aria-pressed="false">Drawdown</button>
       </div>
+    </section>
+
+    <section>
+      <h2>Ground</h2>
+      <div class="rng"><label for="blend">Imagery to subsidence</label><span class="val" id="blendVal">45%</span>
+        <input type="range" id="blend" min="0" max="100" value="45"></div>
+      <div class="view-btns">
+        <button id="bPhoto" aria-pressed="true">Aerial</button>
+        <button id="bMap" aria-pressed="false">Topographic</button>
+      </div>
+      <p class="loc" id="attrib" style="margin:8px 0 0;font-size:10px;line-height:1.4"></p>
     </section>
 
     <section class="analyst">
@@ -623,13 +652,125 @@ function makeLayer(kind, layer) {
   meshes.push({mesh:inst, kind, layer});
   return inst;
 }
-const ground3 = makeLayer("ground", -1);
 for (let l = 0; l < L; l++) { makeLayer("aquifer", l); if (l < L-1) makeLayer("aquitard", l); }
+
+// ---- terrain: one displaced, textured surface, not a field of boxes ------------------
+// The ground is what a viewer recognises, so it gets the orthophoto and the real
+// elevation. A shader blends the photo against the subsidence ramp, so the same surface
+// serves "where am I" and "how fast is it sinking" without swapping meshes.
+const terrainGeo = new THREE.PlaneGeometry(W - 1, H - 1, W - 1, H - 1);
+terrainGeo.rotateX(-Math.PI / 2);
+const terrainVal = new Float32Array(W * H);      // subsidence, cm
+const terrainIn = new Float32Array(W * H);       // 1 inside the fan, 0 outside
+terrainGeo.setAttribute("aVal", new THREE.BufferAttribute(terrainVal, 1));
+terrainGeo.setAttribute("aIn", new THREE.BufferAttribute(terrainIn, 1));
+const rampTex = (() => {                          // the subsidence ramp as a 1-D texture
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 1;
+  const g2 = cv.getContext("2d").createLinearGradient(0, 0, 128, 0);
+  for (const st of subsRamp) g2.addColorStop(st[0], rgb(st[1]));
+  const ctx = cv.getContext("2d"); ctx.fillStyle = g2; ctx.fillRect(0, 0, 128, 1);
+  const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
+})();
+function imageTexture(key) {
+  const b = D.imagery && D.imagery[key];
+  if (!b) return null;
+  const img = new Image();
+  img.src = "data:image/jpeg;base64," + b;
+  const t = new THREE.Texture(img);
+  img.onload = () => { t.needsUpdate = true; };
+  t.flipY = true;
+  return t;
+}
+const texPhoto = imageTexture("PHOTO2"), texMap = imageTexture("EMAP");
+const blank = new THREE.DataTexture(new Uint8Array([200, 200, 195, 255]), 1, 1, THREE.RGBAFormat);
+blank.needsUpdate = true;
+const terrainMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uPhoto: {value: texPhoto || blank}, uRamp: {value: rampTex},
+    uBlend: {value: 0.45},              // 0 imagery only, 1 subsidence only
+    uMax: {value: 40.0}, uLight: {value: new THREE.Vector3(-0.5, 0.78, 0.35)},
+    uDiff: {value: 0.0}, uScale: {value: 2.0}
+  },
+  vertexShader: `
+    #include <clipping_planes_pars_vertex>
+    attribute float aVal; attribute float aIn;
+    varying float vVal; varying float vIn; varying vec2 vUv; varying vec3 vN;
+    void main(){
+      vVal = aVal; vIn = aIn; vUv = uv; vN = normalize(normalMatrix * normal);
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mvPosition;
+      #include <clipping_planes_vertex>
+    }`,
+  fragmentShader: `
+    #include <clipping_planes_pars_fragment>
+    uniform sampler2D uPhoto; uniform sampler2D uRamp;
+    uniform float uBlend; uniform float uMax; uniform float uDiff; uniform float uScale;
+    uniform vec3 uLight;
+    varying float vVal; varying float vIn; varying vec2 vUv; varying vec3 vN;
+    void main(){
+      #include <clipping_planes_fragment>
+      vec3 photo = texture2D(uPhoto, vUv).rgb;
+      float u = uDiff > 0.5 ? clamp(0.5 + vVal / (2.0 * uScale), 0.0, 1.0)
+                            : clamp(vVal / uMax, 0.0, 1.0);
+      vec3 heat = texture2D(uRamp, vec2(u, 0.5)).rgb;
+      float b = vIn > 0.5 ? uBlend : 0.0;
+      vec3 c = mix(photo, heat, b);
+      float lam = 0.45 + 0.55 * max(dot(normalize(vN), normalize(uLight)), 0.0);
+      gl_FragColor = vec4(c * lam, 1.0);
+    }`,
+  clippingPlanes: [clipPlane], clipping: true
+});
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+scene.add(terrain);
+const cellOfVertex = new Int32Array(W * H).fill(-1);
+for (let i = 0; i < A; i++) cellOfVertex[rows[i] * W + cols[i]] = i;
+function updateTerrain() {
+  const pos = terrainGeo.attributes.position.array;
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const v = r * W + c;                       // plane rows run north to south
+    const gi = (H - 1 - r) * W + c;
+    const cell = cellOfVertex[gi];
+    const g = cell >= 0 ? ground[cell] * 0.01 : NaN;
+    const sub = cell >= 0 ? subsAt(cell, state.t) : 0;
+    const near = cell >= 0 ? g : nearestGround(c, H - 1 - r);
+    pos[v * 3 + 1] = (near - sub) * state.exag / 40;
+    terrainVal[v] = cell >= 0 ? (state.cmpOn
+      ? sub - subsWith(presetFactors(state.cmpRef), cell, state.t) : sub) : 0;
+    terrainIn[v] = cell >= 0 ? 1 : 0;
+  }
+  terrainGeo.attributes.position.needsUpdate = true;
+  terrainGeo.attributes.aVal.needsUpdate = true;
+  terrainGeo.attributes.aIn.needsUpdate = true;
+  terrainGeo.computeVertexNormals();
+  terrainMat.uniforms.uMax.value = subsMax;
+  terrainMat.uniforms.uDiff.value = state.cmpOn ? 1 : 0;
+  terrainMat.uniforms.uScale.value = cmpScale;
+}
+let groundFill = null;
+function nearestGround(c, r) {                 // outside the fan, follow the nearest cell
+  if (groundFill === null) {
+    groundFill = new Float32Array(W * H);
+    const q = [];
+    for (let i = 0; i < A; i++) { const k = rows[i] * W + cols[i]; groundFill[k] = ground[i] * 0.01; q.push(k); }
+    const seen = new Uint8Array(W * H);
+    for (let i = 0; i < A; i++) seen[rows[i] * W + cols[i]] = 1;
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h], kc = k % W, kr = (k - kc) / W;
+      for (const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const c2 = kc + dc, r2 = kr + dr;
+        if (c2 < 0 || c2 >= W || r2 < 0 || r2 >= H) continue;
+        const k2 = r2 * W + c2;
+        if (seen[k2]) continue;
+        seen[k2] = 1; groundFill[k2] = groundFill[k]; q.push(k2);
+      }
+    }
+  }
+  return groundFill[r * W + c];
+}
 
 const mtx = new THREE.Matrix4(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1,1,1), qt = new THREE.Quaternion();
 function layerY(kind, layer, cell) {
   const z = zone[cell], g = ground[cell] * 0.01;
-  if (kind === "ground") return {y: g, h: 2.0};
   const d = DEPTH[z][layer], th = THICK[z][layer];
   if (kind === "aquifer") return {y: g - d, h: th};
   const d2 = DEPTH[z][layer+1], th2 = THICK[z][layer+1];
@@ -637,17 +778,17 @@ function layerY(kind, layer, cell) {
   return {y: (top + bot) / 2, h: Math.max(4, top - bot)};
 }
 function rebuildGeometry(onlyGround) {
+  updateTerrain();
+  if (onlyGround) return;
   const ex = state.explode;
   for (const rec of meshes) {
-    if (onlyGround && rec.kind !== "ground") continue;
     const {mesh, kind, layer} = rec;
     let n = 0;
     for (let i = 0; i < A; i++) {
       const {y, h} = layerY(kind, layer, i);
-      const li = kind === "ground" ? 0 : (kind === "aquifer" ? layer + 1 : layer + 1.5);
+      const li = kind === "aquifer" ? layer + 1 : layer + 1.5;
       const lift = ex * li * 1.1;
-      const sink = kind === "ground" ? -subsAt(i, state.t) * state.exag : 0;
-      pos.set(cols[i] - W/2 + 0.5, (y + sink) * state.exag / 40 + lift, -(rows[i] - H/2 + 0.5));
+      pos.set(cols[i] - W/2 + 0.5, y * state.exag / 40 + lift, -(rows[i] - H/2 + 0.5));
       scl.set(0.98, Math.max(0.6, h * state.exag / 40), 0.98);
       mtx.compose(pos, qt, scl);
       mesh.setMatrixAt(n++, mtx);
@@ -665,12 +806,7 @@ function recolour() {
     const col = mesh.instanceColor.array;
     for (let i = 0; i < A; i++) {
       let c;
-      if (kind === "ground") {
-        if (state.cmpOn) {
-          const d = subsAt(i, t) - subsWith(presetFactors(state.cmpRef), i, t);
-          c = ramp(diffRamp, 0.5 + d / (2 * cmpScale));
-        } else c = ramp(subsRamp, subsAt(i, t) / subsMax);
-      } else if (kind === "aquifer") {
+      if (kind === "aquifer") {
         if (state.field === "subs") {
           c = ROCK[zone[i]].slice();
         } else if (state.headMode === "draw") {
@@ -689,8 +825,7 @@ function recolour() {
 }
 function applyVisibility() {
   for (const rec of meshes) {
-    if (rec.kind === "ground") rec.mesh.visible = true;
-    else if (rec.kind === "aquifer") rec.mesh.visible = state.layers[rec.layer];
+    if (rec.kind === "aquifer") rec.mesh.visible = state.layers[rec.layer];
     else rec.mesh.visible = state.aquitards && state.layers[rec.layer] && state.layers[rec.layer+1];
   }
   const x = -W/2 + state.clip * W;
@@ -734,9 +869,17 @@ function pick(e) {
   const r = canvas.getBoundingClientRect();
   const m = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   ray.setFromCamera(m, camera);
-  const hits = ray.intersectObjects(meshes.filter(x => x.mesh.visible).map(x => x.mesh));
+  const targets = meshes.filter(x => x.mesh.visible).map(x => x.mesh);
+  targets.push(terrain);
+  const hits = ray.intersectObjects(targets);
   if (!hits.length) return;
-  const id = hits[0].instanceId;
+  let id;
+  if (hits[0].object === terrain) {            // a face index on the plane -> a grid cell
+    const f = hits[0].face;
+    const v = f.a, c = v % W, r = (v - c) / W;
+    id = cellOfVertex[(H - 1 - r) * W + c];
+    if (id === undefined || id < 0) return;
+  } else id = hits[0].instanceId;
   if (state.secMode) {
     if (!state.secA || state.secB) { state.secA = id; state.secB = null; }
     else state.secB = id;
@@ -1133,6 +1276,18 @@ $("vDraw").addEventListener("click", () => { state.headMode = "draw"; state.fiel
   $("vHead").setAttribute("aria-pressed", false); $("vDraw").setAttribute("aria-pressed", true); recolour(); });
 $("vReset").addEventListener("click", () => { camR = 105; camTheta = -0.9; camPhi = 0.92; target.set(0,0,0); place(); });
 $("vTop").addEventListener("click", () => { camPhi = 0.14; camR = 95; place(); });
+$("blend").addEventListener("input", e => {
+  terrainMat.uniforms.uBlend.value = (+e.target.value) / 100;
+  $("blendVal").textContent = e.target.value + "%";
+});
+$("bPhoto").addEventListener("click", () => {
+  if (texPhoto) terrainMat.uniforms.uPhoto.value = texPhoto;
+  $("bPhoto").setAttribute("aria-pressed", true); $("bMap").setAttribute("aria-pressed", false);
+});
+$("bMap").addEventListener("click", () => {
+  if (texMap) terrainMat.uniforms.uPhoto.value = texMap;
+  $("bPhoto").setAttribute("aria-pressed", false); $("bMap").setAttribute("aria-pressed", true);
+});
 $("mDecide").addEventListener("click", () => setMode("decide"));
 $("mAnalyst").addEventListener("click", () => setMode("analyst"));
 
@@ -1185,7 +1340,8 @@ $("cmpYear").textContent = D.months[T-1].slice(0,7);
 $("townYear").textContent = D.months[T-1].slice(0,7);
 $("legBar").style.background = "linear-gradient(90deg," +
   subsRamp.map(s => `rgb(${s[1].map(v=>Math.round(v*255)).join(",")}) ${s[0]*100}%`).join(",") + ")";
-$("legCap").textContent = "Ground colour. Aquifer colour is head, dark is low.";
+$("legCap").textContent = "Ground colour over the orthophoto. Aquifer colour is head, dark is low.";
+$("attrib").textContent = (D.attrib || []).join(" · ");
 $("caveat").innerHTML = `Heads and subsidence are validated against wells and 798 leveling
   benchmarks. The response to a policy is a model consequence, not a validated forecast:
   a free-running continuation drifts within three years, so read the shape and the
@@ -1228,10 +1384,12 @@ def main(argv=None) -> None:
     ap.add_argument("--quarter", type=int, default=3, help="months per stored head sample")
     ap.add_argument("--delta-step", type=int, default=12,
                     help="months per stored policy-response sample (interpolated in the page)")
+    ap.add_argument("--basemap", default="results/twin/basemap.npz",
+                    help="orthophoto, base map and terrain from twin/basemap.py")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     build(args.forward, args.basis, args.out, townships_csv=args.townships,
-          quarter=args.quarter, delta_step=args.delta_step)
+          quarter=args.quarter, delta_step=args.delta_step, basemap_npz=args.basemap)
 
 
 if __name__ == "__main__":
