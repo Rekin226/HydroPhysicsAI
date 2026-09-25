@@ -188,3 +188,38 @@ passing QC, 158 inside the 1 km grid, 8.79 % NaN month-cells** (the numbers ever
 prints at startup). An earlier cache produced 147 wells at 1.1 % NaN; results recorded
 before 2026-09-05 were computed on it. The 174-well field is canonical from 2026-09-11:
 it is the one the fetcher reproduces, and every gate since has been run on it.
+
+### Backing up and restoring the cache
+
+Part of the cache cannot be fetched again: the fan polygon, the rain gauges, the curated
+wells and `ls_cache/` exist only in `chou-shui-data/`. `hydrophysics.twin.data_snapshot`
+writes both trees to a dated, checksummed tarball **outside the repository**:
+
+```bash
+python -m hydrophysics.twin.data_snapshot snapshot       # writes, then verifies against the live tree
+python -m hydrophysics.twin.data_snapshot list
+python -m hydrophysics.twin.data_snapshot verify  <tarball>          # archive integrity only
+python -m hydrophysics.twin.data_snapshot verify  <tarball> --tree   # has the live cache drifted?
+python -m hydrophysics.twin.data_snapshot restore <tarball> --dest . # into a fresh checkout
+```
+
+- **Where it goes.** `~/twin_data_backups/` by default, `$HYDRO_TWIN_BACKUP_DIR` to
+  override, or `--out`. The command refuses a directory inside the repository. Copy the
+  tarball and its manifest off the machine (for example to institutional storage). A
+  backup on the same disk does not protect against losing the disk.
+- **What it writes.** `twin_data_<UTC stamp>.tar.gz` holds the files under their
+  repo-relative paths, with `MANIFEST.json` as the first member.
+  `twin_data_<UTC stamp>.manifest.json` sits beside it and holds the tarball's SHA256 and
+  one SHA256 and size per file. The manifest stores repo-relative paths only, and archive
+  members carry no owner names.
+- **Verify.** This command re-hashes the tarball and every member. `--tree` also reports
+  files in the live cache that are missing, changed or new since the snapshot. That is
+  how you catch a silent cache change like the 147 → 174-well episode above. Run
+  `verify --tree` against the last snapshot before starting a gate. A cache that no longer
+  matches it is a new cache: snapshot it and note it in the run.
+- **Restore.** The tarball is verified before anything is extracted. Every file is
+  hashed again as it lands. If any target file already exists, the command stops before
+  writing, unless you pass `--force`. `--only AMP_V2/data` restores one tree.
+
+The first snapshot (2026-09-23) holds 661 files and 938 MB, which pack to 608 MB in about
+2 minutes.

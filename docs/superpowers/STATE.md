@@ -1,6 +1,7 @@
 # Project state: where to continue
 
-**Last updated:** 2026-09-20 (17:30) · Read this first if you are picking the twin up cold.
+**Last updated:** 2026-09-24 · Read §0 first if you are picking the twin up cold; §1-§6
+are the history that led there.
 
 The goal, stated once so the gates below have a point:
 
@@ -8,11 +9,73 @@ The goal, stated once so the gates below have a point:
 > aquifer forward in time, and animates where and how fast the ground sinks -
 > re-runnable on demand.**
 
-As of 2026-09-14 every link of that chain is built, tested, and the flow model **passes
-its k-fold gate** (+0.757 vs IDW +0.702). What is still open is whether its *pumping
-response* is physical: the fit still pins the pump conversion at its bounds, so policy
-deltas are consequences of a gated model, not yet validated sensitivities. §2 says how
-that is being measured.
+---
+
+## 0. State on 2026-09-24
+
+**The deliverable.** Flow model `results/twin_runs/stage3_spreadL_gate/` (physical pump
+conversion, 10 km stress spread; head k-fold +0.804 vs IDW +0.702), its per-zone column
+`coupled_leveling/`, and the corrected forward run `results/twin_forward/physical_spread_fixed`
+(36 members, `--column-hpc0-fast-days 365 --column-heads free --restart-taper-km 5
+--save-members yearly`). The decision app `results/twin/twin_app.html` is built from it.
+
+| fan-mean forward subsidence 2023-2032 | 11-yr creep ceiling (deliverable) | 30-yr creep ceiling |
+|---|---|---|
+| baseline | **4.47 ± 0.77 cm** | 8.18 ± 1.25 cm |
+| irrigation −30 % from 2026 | 3.56 (avoids 0.91, p10-p90 0.74-1.04) | 7.17 (avoids 1.01) |
+| aquaculture retired from 2026 | 2.68 (avoids 1.79, p10-p90 1.36-2.00) | 6.18 (avoids 2.00) |
+| leveling hindcast R² (798 sites) | +0.579 | +0.605 |
+
+All 18 parameter sets agree on the sign of both policy effects. The creep ceiling moves
+the baseline by 3.6 cm and the policy effects by under 0.1 cm: decisions are robust to it,
+the absolute projection is not (`physical_spread_rheo2_fixed`).
+
+**The earlier 10.68 cm baseline was about half artefact** (2026-09-23): (A1) the proximal
+column started 4.7 m under-consolidated with a 24-day time constant and released ~121 cm per
+cell in the first months of 2012, invisible to leveling because each site is re-zeroed at its
+first survey; (A2) the gain-1 restart at the forecast origin overwrote the proximal deep
+layers with IDW heads from distant wells (−21/−25 m). Both are fixed by opt-in forward flags;
+leveling skill is unchanged.
+
+**What was closed 2026-09-22 to 09-24** (flags are opt-in; defaults reproduce old results):
+
+| gap | outcome |
+|---|---|
+| decision app | rebuilt from a visualization literature review (spec `specs/2026-09-23-twin-decision-app-redesign.md`): impact strip first, linked 2D map + time series, difference/swipe/side-by-side, per-run agreement hatching, story mode, township cards, rail profile, caveats beside the numbers they qualify; 3D block is a drawer. 1.8 MB, was 10.7 |
+| posterior at bounds | `uncertainty --bounded truncnorm` samples bounded parameters; every earlier posterior had the spread radius unsampled (zero Jacobian column) |
+| creep identifiability | forward takes several columns (`--vep-json a,b`) as a rheology axis (table above) |
+| 500 m grid | 1 km parameters on the 500 m grid: heads +0.878 vs +0.915, leveling +0.587 vs +0.599: close to converged. A 500 m *refit* landed in a worse basin (+0.810) |
+| mid/distal boundary | 172 / 182 / 192 km give in-sample +0.917 / +0.913 / +0.916: insensitive |
+| per-purpose efficiency | `--eta-classes` +0.917 vs +0.913 for 6 more parameters: not worth it |
+| 182 km subsidence step | caused by the per-zone *column* (swap test 98 %); leveling shows no step. Blended columns fix the step only by going degenerate (rings −0.28 / −0.15): rejected; stated as a caveat |
+| constrained column | `--tau-min-days 180 --ske-min 1e-3 --ske-skv-max 0.3`: leveling +0.584, rings +0.309, no degenerate parameter (`coupled_leveling_c180`): equal skill, physically cleaner alternative |
+| data | `hydrophysics.twin.data_snapshot` backup with SHA256 manifest outside the repo |
+| parallel GPU | 3 jobs under NVIDIA MPS = 2.86x throughput (`results/twin_runs/par*/`) |
+
+**What is still open.**
+
+1. **The held-out-years gate fails for every candidate.** The decomposition
+   (`twin/drift_diag.py`) shows 70-92 % of the held-out error is a per-well level offset
+   already present in 2012-2019, not drift after 2019. A fair verdict (datum from the fitted
+   years only, late-start wells excluded, climatology + trend baseline; pre-registered rule
+   datum-RMSE ≤ 1.25x best baseline and shape R² ≥ climatology − 0.05) is written by every new
+   run and by `python -m hydrophysics.twin.rescore_temporal`. Screens so far (fair ratio):
+   ref10 2.12, slow storage 1.47, canal water 1.83, rivers 1.67, all three 1.58,
+   merged proximal IC + DEM ground 1.92, + proximal split + T floor 58: **1.65** (raw RMSE
+   6.64 → 5.39 m). Canal water is rejected by the fit (scale → 0.01); slow storage kills the
+   policy response.
+2. **The proximal zone is the structural problem.** The outlier-well audit found no datum
+   errors: proximal layers 3-4 have 1 and 0 wells, so their initial and apex-boundary heads
+   came from mid-fan wells (fixed by `--ic-merged-proximal`), 60 wells carry GroundHeight 0.0
+   (fixed by `--ground-elev dem`), and single well nests show 30 m vertical gradients that a
+   merged proximal aquifer cannot hold. Correcting the proximal initial heads improves heads
+   but drops leveling to +0.39 with the candidate's own column: part of the deliverable's
+   proximal subsidence skill rested on the wrong initial state. Next: a layered proximal
+   aquifer (leakance not pinned), then re-screen.
+3. **The 10 km stress radius** remains unexplained (meter vs well location).
+4. **The 2022 head recovery** after the drought is missed by every model; rain minus ET0 says
+   2022 was dry, so something outside the forcing (canal deliveries resuming, fallowing
+   policy) drove it.
 
 ---
 

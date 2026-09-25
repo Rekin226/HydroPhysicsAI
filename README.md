@@ -35,20 +35,25 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 | | gate | result |
 |---|---|---|
 | **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.804 vs +0.702, with a physical pump conversion and a 10 km stress radius |
-| **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.546** out of fold, bias +0.1 cm |
+| **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.589** out of fold, bias +0.1 cm |
 | **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.579**, RMSE 6.2 cm |
-| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 10.7 ± 0.6 cm baseline · 9.9 with irrigation cut 30 % · 9.0 with aquaculture retired |
+| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 4.5 ± 0.8 cm baseline · 3.6 with irrigation cut 30 % · 2.7 with aquaculture retired (all 18 parameter sets agree on both effects) |
+| **Creep uncertainty** | same, with a 30-year creep ceiling (equal leveling skill) | baseline 8.2 cm; the policy effects move by under 0.1 cm |
 | **Re-run cost** | 18 members × 3 policies × 21 years | 609 s on one GPU; FNO surrogate 13–34× faster again |
 
 Every verdict, including the two failed configurations that preceded the pass, is
 recorded in [`docs/superpowers/STATE.md`](docs/superpowers/STATE.md).
 
+An earlier projection of 10.7 cm was about half artefact: a column start-up release in
+the proximal zone and a restart step at the forecast origin. Both are fixed; hindcast skill
+is unchanged (state doc §0).
+
 **Two caveats govern the policy numbers.** First, the flow gate holds out *wells*: it
 validates spatial interpolation under the recorded forcing. A gate that holds out
-*years* (fit to 2019, free-run 2020–2022) finds that the model's own dynamics drift
-within three years, worse than climatology on per-well anomalies. Projections are
-therefore anchored by nudging to observations at the origin, and their decade-scale
-trend is the model's, not yet validated. Second, the gated model's pumping stress is
+*years* (fit to 2019, free-run 2020–2022) fails for every model tried. Most of that error
+is a per-well level offset already present in the fitted years, concentrated in the
+proximal fan; after removing a per-well datum the model is still 1.5–2x worse than
+climatology plus trend. The decade-scale trend is the model's, not yet validated. Second, the gated model's pumping stress is
 physical (efficiency 0.5, 40 m extra head, irrigation return flow) only because each
 cell's electricity is spread over a learned radius that sits at its 10 km bound; the
 earlier free fit passed by switching the stress off. Both are stated with numbers in
@@ -102,29 +107,28 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
 ### The application
 
 ```bash
-python -m hydrophysics.twin.viewer_app --forward results/twin_forward/<run>.npz \
+python -m hydrophysics.twin.viewer_app --forward results/twin_forward/physical_spread_fixed.npz \
     --basis results/twin_forward/response_basis.npz --out results/twin/twin_app.html
 ```
 
-`results/twin/twin_app.html` is the twin as something to operate: one self-contained page,
-about 11 MB, nothing to install. The ground is the real thing: SRTM terrain carrying the
-Taiwanese orthophoto, so the braided Choushui channel, the coastal aquaculture ponds and
-the foothills are all where they belong. A slider blends the imagery into the subsidence
-colouring, and the surface descends as the record plays. Under it stand four aquifers at
-their per-zone screen depths with the clay aquitards between them. A slider per water-use class sets the pumping
-policy and the field updates as you drag; the response comes from a precomputed basis, one
-solver run per class, combined by superposition, which reproduces a solved half-cut to
-within 0.06 cm and a four-year delay to within 0.02 cm. Click any cell for its heads,
-its sinking and the ensemble spread. Analyst mode adds layer toggles, head and drawdown
-colouring, an exploded view, a west-to-east cut-away and the vertical exaggeration.
-
-Four panels sit beside the block. **Cell** reads one location. **Section** cuts a line
-between two clicked points and draws the vertical profile: the aquifers and clay
-aquitards at their real depths, the head in each, and the subsidence along the transect.
-**Compare** puts your policy and a reference side by side as maps, reports the difference
-in centimetres, and can recolour the block by that difference. **Townships** is a sortable
-report card for the twenty townships on the fan. Both table and section export as CSV,
-and the view saves as an image.
+`results/twin/twin_app.html` is the twin as a decision page: one self-contained file of
+about 1.8 MB, nothing to install (spec: `docs/superpowers/specs/2026-09-23-twin-decision-app-redesign.md`).
+It opens on the answer. A generated headline and six tiles compare the current policy with
+business as usual: subsidence avoided by 2032 with its 36-run range, area sinking faster
+than a threshold, the high-speed-rail gradient, layer-2 head recovery, the pumping energy
+given up, and how many runs agree. Below them sit a 2D map of the policy's change from
+baseline, drawn on a fixed symmetric scale, and a linked time series. The series marks the
+fitted, tested and not-validated periods and has a policy-minus-baseline panel. A slider per
+water-use class and a 2026/2030 start set the policy. When the policy matches a solved run
+the page uses the full 36-run fields; otherwise it builds the result from the per-class
+response basis and prints that fast estimate's error. Tabs hold township small multiples
+(low-confidence townships flagged from the leveling support), the THSR profile, a
+cross-section, pinned-policy comparison and "where the model is trusted". The 3D exploded
+block is a drawer, built only when opened. A five-step story mode guides first-time
+readers, and the page offers EN/中文, keyboard control, table views and CSV/PNG export.
+The known limits from `docs/superpowers/STATE.md` are named next to the numbers they
+qualify. Rail and river lines are OpenStreetMap traces (`python -m hydrophysics.twin.app.geo`,
+committed under `hydrophysics/twin/app/geodata/`).
 
 The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
 
@@ -171,20 +175,23 @@ in `docs/GPU_SERVER.md`.
 
 ## Limits
 
-- A free-running continuation drifts within three years (held-out-years gate: RMSE
-  6.6 m at the wells against 2.0 m for climatology), so the twin is a hindcast-and-nudged-
-  projection tool, not a free forecaster. Fitting anomalies rather than levels is the next
-  calibration change.
+- The held-out-years gate fails (RMSE 6.6 m at the wells against 2.0 m for climatology;
+  1.5–2x the climatology-plus-trend baseline after a per-well datum). The error lives in the
+  proximal fan, whose deep layers have one well between them; its merged-aquifer
+  representation is the next structural change. Slow storage, canal deliveries and river
+  boundaries were each screened and none closes the gap.
 - The pumping stress has to be spread over about 10 km for the model to generalise,
   which is wider than a well's drawdown cone. It is standing in for something not yet
   modelled, probably that the census locates meters rather than wells. Widening it to
   21 km scores marginally better on the head gate and erases the policy response, so the
   head gate alone is not a sufficient selection criterion. Policy sensitivities are
   consequences of a gated model, not validated forecasts.
-- The mid-zone viscous time constant reaches the length of the record; decadal creep is
-  bounded by the calibration window.
-- The posterior is a local Laplace approximation; parameters at a bound are held, not
-  sampled.
+- The mid-zone viscous time constant reaches the length of the record; a 30-year ceiling
+  fits leveling equally well and adds 3.6 cm to the baseline projection (shown as a range).
+- The per-zone column produces a subsidence step at the 182 km mid/distal line that the
+  leveling data do not show; the app marks it.
+- The posterior is a local Laplace approximation (`--bounded truncnorm` samples parameters
+  at a bound).
 
 ## Earlier phase
 
