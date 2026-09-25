@@ -64,7 +64,7 @@ hydrophysics-baselines = "hydrophysics.run_baselines:main"
 include = ["hydrophysics*"]
 
 [tool.setuptools.package-data]
-hydrophysics = ["sample_data/**/*.csv"]
+hydrophysics = ["sample_data/**/*.csv", "twin/app/template.html", "twin/app/geodata/*.csv"]
 
 [tool.ruff]
 line-length = 100

@@ -1,49 +1,109 @@
-"""Build the twin's decision application: one self-contained page, no server.
+"""Build the twin's decision page: one self-contained HTML file, no server.
 
     python -m hydrophysics.twin.viewer_app --forward results/twin_forward/<run>.npz \\
         --basis results/twin_forward/response_basis.npz --out results/twin/twin_app.html
 
-``explorer3d`` draws a Plotly figure: four surfaces and a slider. This builds the thing a
-decision maker can be handed instead. The fan is a block model -- four aquifers at their
-per-zone screen depths with the aquitards between them, standing on the real polygon --
-and the controls are the levers a water authority actually has: how much each class of
-user pumps, and from when.
+What the page is for (spec ``docs/superpowers/specs/2026-09-23-twin-decision-app-redesign.md``).
+A water authority asks *what does this policy change, where, by when, how sure are we,
+and does it protect the high-speed rail and my township*. So the page opens on the answer:
+a generated headline and six tiles comparing the current policy with the named baseline
+("business as usual"), over a large 2D map of the policy's change from baseline on a
+fixed, symmetric scale, linked to a time series with the fitted, tested and untested
+periods marked. The 3D block model is a context view in a drawer, built only when opened.
 
-Where the interactivity comes from. A solver run per policy is minutes, too slow to put
-behind a slider, so the page ships a **response basis** instead: the baseline projection
-plus one run per water-use class with that class retired. The page forms
+Where the interactivity comes from. A solver run per policy is minutes, so the page ships
+a **response basis**: one run per water-use class with that class retired, from 2026 and
+from 2030. The page forms ``Δ(policy) = Σ_k (1 - f_k) · (retired_k - baseline)``. The basis
+is one parameter set, so each class's rows are rescaled to the ensemble's solved run for
+that class (``prep.calibrate_basis``; classes without one take the mean factor, marked
+assumed), and moving a slider onto a solved scenario does not make the numbers jump. The
+builder reports the superposition error before rescaling (against the basis file's
+``check_*`` runs and the solved scenarios). When the policy *is* a solved scenario of the
+forward run, the page uses that run's ensemble-mean fields and its paired members.
 
-    subsidence(policy) = baseline + sum_c (1 - factor_c) * (retired_c - baseline)
+Model artefacts. A forward run made with the 2026-09-23 fixes (``twin.forward
+--column-hpc0-fast-days`` and ``--column-heads free``; ``_artefacts_fixed_upstream``) has no
+start-up or restart step, so nothing is removed and forward change is measured from the
+last fitted year-end, the ledger's base (``meta.yRef``); the builder still measures the
+steps and the page reports what it finds. For an older run the proximal column jumps when
+it settles onto the first heads and again after the restart from observed heads at the
+origin; both steps are removed from every field (``prep.artefact_steps``), what the restart
+leaves elsewhere is bridged at year-end resolution (``prep.restart_bridge``), and forward
+change is measured from the first year-end after the restart. Policy differences are
+unaffected either way: the steps are identical in every scenario.
 
-which is exact for a linear system and close for this one (``--basis`` carries a
-half-cut run so the builder can report the error, which it prints and the page shows). A
-later start year is the same response shifted in time; the builder checks that against a
-real delayed run when the basis has one.
+Per-member output (``<forward stem>.members.npz``, ``--save-members yearly``) gives the
+page its real agreement: per-cell sign agreement over the parameter sets (the map hatches
+below ``prep.AGREE_MIN``), per-township agreement, per-year run bands, run ranges for the
+area and rail tiles, and every run's fan-average series for "play runs one by one".
+``--rheo-forward`` (a run with a second column) puts the creep-ceiling note on the
+baseline number, never on a policy difference.
 
-Everything is quantised to int16 and base64'd into the page: about 8 MB for the fan at
-1 km, 252 months, six classes. That is what keeps it one file with nothing to install.
+Observations. By default the page is **public**: the leveling and the wells enter only as
+aggregates (chain and township skill, the fan-average of the layer-2 wells). ``--private``
+embeds every benchmark and well with its location and series, for a local page that must
+never be committed.
+
+Every number on the page is computed here or in ``app/prep.py`` from the npz files (and
+the optional inputs below); the page itself only superposes, averages and samples. Arrays
+are quantised, byte-shuffled and gzipped (``prep.pack``), so the page is about 2 MB.
+
+Optional inputs, each of which the page survives without ("not loaded" panels):
+``--hsr`` (THSR centreline traced from OSM, ``app/geo.py``), ``--members-csv`` (paired
+member deltas; default ``<forward stem>.members.csv``), ``--leveling`` (skill against the
+benchmarks, default ``$HYDROMIND_GW_DATA``), ``--wells`` (``auto`` loads the calibration's
+wells and the class energies through ``twin.inputs``, about a minute on CPU),
+``--temporal`` (the held-out-years test: the tested horizon and the drift caveat),
+``--column-csv`` (column skill), ``--theta`` (the learned stress radius).
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
+import io
 import json
 import os
+import re
+import sys
+import warnings
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 
+from .app import geo, prep
 from .zones import ZONE_NAMES, fan_zones
 
+TEMPLATE = os.path.join(os.path.dirname(__file__), "app", "template.html")
+THREE_CDN = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"
+THREE_LOCAL = os.path.join(os.path.dirname(__file__), "app", "vendor", "three.min.js")
+MAX_BYTES = 8_000_000                 # the builder refuses to write a page larger than this
+TARGET_BYTES = 5_000_000
+# the held-out-years screen of the deliverable recipe (fit 2012-2019, free-run 2020-2022);
+# the other ``temporal_*`` screens beside it are the structural extensions that were tried
+DEFAULT_TEMPORAL = "results/twin_runs/temporal_ref10/stage3_temporal_pred.npz"
+TEMPORAL_GLOB = "results/twin_runs/temporal_*/scorecard.json"
+# the rheology axis: a forward run with a second column (``rheology_labels``), here the one
+# fitted with a 30-year creep ceiling, and that column's skill table
+DEFAULT_RHEO = "results/twin_forward/physical_spread_rheo2.npz"
+DEFAULT_RHEO_COLUMN = ("results/twin_runs/stage3_spreadL_gate/coupled_leveling_tau30/"
+                       "stage4_column.csv")
+DEFAULT_COLUMN = "results/twin_runs/stage3_spreadL_gate/coupled_leveling/stage4_column.csv"
+DEFAULT_THETA = "results/twin_runs/stage3_spreadL_gate/stage3_theta.json"
+# the structural alternative (STATE.md §3): the 21 km stress-spread model, which fits the
+# wells as well as the deliverable and responds several times less to the same policies
+DEFAULT_ALT = "results/twin_forward/final.npz"
+DEFAULT_ALT_THETA = "results/twin_runs/stage3_spread25_gate/stage3_theta.json"
+# columns fitted with a longer creep ceiling (``--tau-max-years``), for the creep caveat
+TAU_ALT_GLOB = "results/twin_runs/*/coupled_leveling_tau*/vep_*.json"
+HSR_REACH_KM = 1.5          # half the 2 km smoothing plus half the 1 km distortion window
+
 # Per-zone aquifer geometry, metres below ground, from the median screen depth of the
-# zone-50 wells in each layer (AMP_V2 station metadata; see the module docstring of
-# heads.py for the QC). The proximal fan has no layer-4 wells and no aquitards -- the
-# confining muds pinch out there, which is the published geology and the reason the
-# zonal parameterisation merges its aquifers.
-# The proximal layer-4 depth is extrapolated, not measured: no zone-50 well is screened
-# in layer 4 there, which is itself the geology (the confining muds pinch out and the
-# aquifers merge). It only places a slab in the drawing; nothing numerical uses it.
+# zone-50 wells in each layer (AMP_V2 station metadata; see heads.py for the QC). The
+# proximal layer-4 depth is extrapolated (no zone-50 well is screened there); it only
+# places a slab in the drawing, nothing numerical uses it.
 LAYER_DEPTHS = {
     "proximal": [67.0, 125.0, 205.0, 250.0],
     "mid": [35.5, 119.8, 214.0, 289.0],
@@ -52,1345 +112,1087 @@ LAYER_DEPTHS = {
 AQUIFER_THICK = {"proximal": [40.0, 45.0, 45.0, 40.0],
                  "mid": [30.0, 45.0, 45.0, 40.0],
                  "distal": [35.0, 40.0, 45.0, 40.0]}
-CLASS_LABELS = {"irrigation": "Irrigation", "aquaculture": "Aquaculture",
-                "livestock": "Livestock", "domestic": "Domestic", "industry": "Industry",
-                "other": "Other"}
+CLASS_LABELS = {"irrigation": ("Irrigation", "農業灌溉"), "aquaculture": ("Aquaculture", "養殖"),
+                "livestock": ("Livestock", "畜牧"), "domestic": ("Domestic", "民生"),
+                "industry": ("Industry", "工業"), "other": ("Other", "其他")}
 
 
-def _b64(a: np.ndarray) -> str:
-    return base64.b64encode(np.ascontiguousarray(a).tobytes()).decode("ascii")
+def _encode_image(raw: np.ndarray, long_side: int = 1200, quality: int = 60) -> str:
+    """Re-encode a basemap JPEG at ``long_side`` px and ``quality`` -> base64."""
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(raw.tobytes())).convert("RGB")
+    s = long_side / max(img.size)
+    if s < 1:
+        img = img.resize((round(img.size[0] * s), round(img.size[1] * s)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def _q(a: np.ndarray, scale: float) -> np.ndarray:
-    """Quantise to int16 at ``scale`` units per count, clipped to the int16 range."""
-    return np.clip(np.round(np.asarray(a) / scale), -32768, 32767).astype("int16")
+def _parse_policy(desc: str) -> tuple[list[float], int] | None:
+    """``"cut30: irrigation x0.7 from 2026-01"`` -> (factors per class, start year)."""
+    f = [1.0] * len(prep.CLASSES)
+    hits = re.findall(r"(\w+) x([\d.]+) from (\d{4})", desc)
+    if not hits:
+        return None
+    start = int(hits[0][2])
+    for cls, val, yr in hits:
+        if cls not in prep.CLASSES or int(yr) != start:
+            return None
+        f[prep.CLASSES.index(cls)] = float(val)
+    return f, start
+
+
+def _load_inputs():
+    """The calibration's wells and class energies via ``twin.inputs`` (CPU, ~1 min)."""
+    from .inputs import load_twin_inputs
+
+    return load_twin_inputs(verbose=False)
+
+
+def _ground_idw(cent: np.ndarray, log=print) -> np.ndarray | None:
+    """Ground elevation at the cell centres, interpolated from the wells' ground heights.
+
+    Only a fallback: the basemap's terrain (``--basemap``) is used when present.
+    """
+    try:
+        from ..subsidence import idw_interp
+        from .calibrate_flow import DEFAULT_PATHS
+
+        stn = pd.read_parquet(DEFAULT_PATHS["stations"])
+    except (ImportError, OSError, KeyError, ValueError) as e:
+        log(f"ground elevation unavailable ({type(e).__name__}: {e}); section and 3D use 0 m")
+        return None
+    need = {"GroundwaterZoneIdentifier", "LocationByTWD97", "GroundHeight"}
+    if not need <= set(stn.columns):
+        log(f"ground elevation unavailable (stations lack {sorted(need - set(stn.columns))})")
+        return None
+    stn = stn[stn.GroundwaterZoneIdentifier == 50]
+    xy = stn["LocationByTWD97"].astype(str).str.split(expand=True)
+    x = pd.to_numeric(xy[0], errors="coerce") if 0 in xy else pd.Series(np.nan, stn.index)
+    y = pd.to_numeric(xy[1], errors="coerce") if 1 in xy else pd.Series(np.nan, stn.index)
+    g = pd.to_numeric(stn["GroundHeight"], errors="coerce")
+    # the same plausibility window as the head field's station parser
+    ok = (x.between(140000, 240000) & y.between(2580000, 2700000) & np.isfinite(g)).to_numpy()
+    if ok.sum() < 3:
+        log("ground elevation unavailable (fewer than 3 stations); section and 3D use 0 m")
+        return None
+    src = np.column_stack([x.to_numpy()[ok], y.to_numpy()[ok]]).astype("float64")
+    return idw_interp(np.asarray(cent, dtype="float64"), src,
+                      g.to_numpy()[ok].astype("float64").reshape(-1, 1))[:, 0]
+
+
+def _leveling_dir(leveling: str | None) -> str | None:
+    if leveling in (None, "none"):
+        return None
+    if leveling == "auto":
+        leveling = os.environ.get("HYDROMIND_GW_DATA", "chou-shui-data/data")
+    return leveling if os.path.exists(os.path.join(leveling, "ls_cache")) else None
+
+
+def _geometry(fw) -> SimpleNamespace:
+    """Grid, time axis and zones of a forward run."""
+    g = SimpleNamespace()
+    g.mask = fw["mask"].astype(bool)
+    g.nx, g.ny, g.dx = int(fw["nx"]), int(fw["ny"]), float(fw["dx"])
+    g.x0, g.y0 = float(fw["x0"]), float(fw["y0"])
+    g.dates = [str(d)[:10] for d in fw["dates"]]
+    g.origin = int(fw["origin"])
+    g.ye, g.years = prep.year_ends(g.dates)
+    g.y_obs = int(np.searchsorted(g.ye, g.origin, side="right") - 1)   # last fitted year-end
+    # forward changes are measured from the first year-end after the restart has settled;
+    # a run with the restart removed upstream has nothing to settle, so they are measured
+    # from the last fitted year-end, the ledger's base (STATE.md)
+    g.fixed = _artefacts_fixed_upstream(fw)
+    g.y_ref = g.y_obs if g.fixed else min(
+        int(np.searchsorted(g.ye, g.origin + prep.RESTART_WINDOW, side="left")), len(g.ye) - 2)
+    g.A = int(g.mask.sum())
+    g.rows, g.cols = np.nonzero(g.mask)
+    g.cent = np.column_stack([g.x0 + (g.cols + 0.5) * g.dx, g.y0 + (g.rows + 0.5) * g.dx])
+    g.gate_all = {}
+    with contextlib.suppress(Exception):
+        g.gate_all = json.loads(str(fw["gate"]))
+    g.zb = [float(v) for v in str(g.gate_all.get("zone_boundaries", "205,182")).split(",")]
+    g.zone = fan_zones(g.cent, proximal_km=g.zb[0], distal_km=g.zb[1])
+    return g
+
+
+def _artefacts_fixed_upstream(fw) -> str:
+    """Non-empty (a description) when the forward run removed both model steps at the
+    source: the proximal start-up load (A1) and the restart (``column_heads == "free"``).
+
+    A1 counts as fixed when the run released it (``column_hpc0_fast_days`` set, or a
+    non-empty ``hpc0_released``), or when every column was refitted with the offset
+    guard (``hpc0_guard_days``), which leaves nothing to release (review D1)."""
+    if "forward_options" not in fw.files:
+        return ""
+    try:
+        opt = json.loads(str(fw["forward_options"]))
+    except ValueError:
+        return ""
+    guards = opt.get("hpc0_guard_days") or []
+    a1 = (bool(opt.get("column_hpc0_fast_days")) or any(opt.get("hpc0_released") or [])
+          or (bool(guards) and all(g is not None and float(g) > 0 for g in guards)))
+    a2 = opt.get("column_heads") == "free"
+    return "start-up load released, column on free-running heads" if (a1 and a2) else ""
+
+
+def _forward_options(fw) -> dict:
+    with contextlib.suppress(KeyError, ValueError):
+        return json.loads(str(fw["forward_options"]))
+    return {}
+
+
+def _forward_fields(fw, g, log) -> SimpleNamespace:
+    """Year-end fields of the forward run, with the proximal column's model steps removed."""
+    f = SimpleNamespace()
+    raw = fw["subs_mean"].astype("float64") * 100.0                # (S, A, T) cm
+    prox = g.zone == ZONE_NAMES.index("proximal")
+    # a forward run made with the artefact fixes of 2026-09-23 (twin.forward
+    # --column-hpc0-fast-days and --column-heads free) has no steps to remove
+    fixed = g.fixed
+    if fixed:
+        log("forward run has the start-up and restart fixes applied upstream "
+            f"({fixed}); no artefact steps removed")
+    # measured in the proximal cells either way; removed only when not fixed upstream
+    measured = prep.artefact_steps(raw[0], g.origin, prox)
+    steps = prep.artefact_steps(raw[0], g.origin, prox & (not fixed))
+    f.subs = np.stack([prep.remove_artefacts(s, steps) for s in raw])
+    # what is left of the restart elsewhere (a rebound of a few cm), bridged at year-end
+    # resolution; computed on the baseline and applied to every scenario alike
+    bridge = (np.zeros(g.A) if fixed else prep.restart_bridge(f.subs[0], g.ye, g.y_obs))
+    f.subs = np.stack([prep.apply_bridge(s, bridge, g.origin) for s in f.subs])
+    sstd = fw["subs_std"].astype("float64") * 100.0
+    f.heads = fw["heads_mean"]                                      # (S, L, A, T) m
+    f.L = f.heads.shape[1]
+    f.base_ye = f.subs[0][:, g.ye]
+    shift = raw[0][:, g.ye] - f.base_ye
+    f.band = prep.band_from_std(raw[0][:, g.ye], sstd[0][:, g.ye]) - shift[None]
+    f.head_ye = f.heads[0][:, :, g.ye].astype("float64")
+    fan = prep.model_artefacts(raw[0].mean(0), g.origin)
+    free = prep.artefact_steps(raw[0], g.origin, ~prox)           # the start-up elsewhere
+    other = bridge[~prox] if (~prox).any() else np.zeros(1)
+    fwd = f.subs[0][:, g.ye[-1]] - f.subs[0][:, g.ye[g.y_ref]]
+    x_km = g.cent[:, 0] / 1000.0
+    opt = _forward_options(fw)
+
+    def _cell(key, fn):
+        return float(fn(measured[key][prox])) if prox.any() else 0.0
+
+    f.artefacts = {
+        **fan, "zone": "proximal", "zone_km": g.zb[0], "n_cells": int(prox.sum()),
+        # fixed upstream: nothing is removed, and the steps below are what a check of
+        # this run still finds (the same measure the removal would use)
+        "fixed_upstream": fixed, "removed": not fixed,
+        "hpc0_fast_days": opt.get("column_hpc0_fast_days"),
+        "column_heads": opt.get("column_heads"),
+        "restart_taper_km": opt.get("restart_taper_km"),
+        "startup_cell_median": _cell("startup", np.median),
+        "startup_cell_max": _cell("startup", np.max),
+        "restart_cell_median": _cell("restart", np.median),
+        "restart_cell_max": _cell("restart", np.max),
+        "other_startup_p95_cm": float(np.percentile(np.abs(free["startup"][~prox]), 95))
+        if (~prox).any() else 0.0,
+        "bridge_median_cm": float(np.median(other)), "bridge_p05_cm": float(np.percentile(other, 5)),
+        "bridge_max_abs_cm": float(np.abs(other).max()),
+        # the zone lines: the column's parameters change there, so the field steps
+        "boundaries": [b for b in (prep.boundary_contrast(fwd, x_km, zb) for zb in sorted(g.zb))
+                       if b["n_east"] and b["n_west"]],
+        "windows": steps["windows"], "ref_year": g.years[g.y_ref]}
+    names = [str(s) for s in fw["scenario_names"]] if "scenario_names" in fw.files else \
+        [str(s).split(":")[0] for s in fw["scenarios"]]
+    desc = [str(s) for s in fw["scenarios"]]
+    f.solved = []
+    for s in range(1, f.subs.shape[0]):
+        pol = _parse_policy(desc[s])
+        if pol is None:
+            continue
+        fan_d = (f.subs[s] - f.subs[0]).mean(0)
+        f.solved.append({"name": names[s], "desc": desc[s], "factors": pol[0],
+                         "start": pol[1], "_dsub": f.subs[s][:, g.ye] - f.base_ye,
+                         "_dh2": f.heads[s, 1][:, g.ye] - f.heads[0, 1][:, g.ye],
+                         "fast": prep.fast_share(fan_d, g.dates, pol[1])})
+    # the ledger's (STATE.md) forward subsidence is Dec of the last fitted year to the
+    # horizon on the raw field, start-up and restart steps included; the page counts from
+    # ``y_ref`` with them removed, and says which base it uses
+    f.raw_fwd_fan = float((raw[0][:, g.ye[-1]] - raw[0][:, g.ye[g.y_obs]]).mean())
+    # per scenario, what the page's corrections took off the fan average at each year-end
+    # (zero when fixed upstream); the per-member series are shifted by the same amount
+    f.names = names
+    f.fan_shift = raw[:, :, g.ye].mean(axis=1) - f.subs[:, :, g.ye].mean(axis=1)
+    f.cell_shift0 = raw[0][:, g.ye] - f.base_ye                     # (A, Y), the baseline's
+    return f
+
+
+def _q(x, q=(10, 50, 90)) -> list[float]:
+    """Percentiles to four significant figures (angular distortions are ~1e-5)."""
+    return [float(f"{v:.4g}") for v in np.percentile(np.asarray(x, dtype="float64"), q)]
+
+
+def _member_fields_block(forward_npz: str, members_npz: str | None, g, f, solved: list,
+                         town_idx: np.ndarray, n_towns: int, hsr_out: dict | None,
+                         log) -> tuple[dict, dict | None]:
+    """Per-member results from ``<forward stem>.members.npz`` (``twin.forward
+    --save-members yearly``), when it exists.
+
+    For each solved scenario this adds:
+    - ``solvedAgree<i>``: an (A, Y) uint8 percentage of parameter sets that agree with
+      the sign of the ensemble-mean change (policy minus baseline, since ``yRef``). The
+      map hatches where it is below ``prep.AGREE_MIN``.
+    - ``bandYr`` / ``bandYrHead``: the real per-year p10/p25/p50/p75/p90 over the runs of
+      the fan-average change (subsidence since ``yRef``, cm; layer-2 head, m).
+    - ``townAgree``: per township, the sets whose township-average change is a benefit at
+      the horizon.
+    - ``area`` / ``hsr``: p10/p50/p90 over the sets of the rate-area count (per threshold)
+      and of the rail's largest angular distortion, the policy's and the paired change.
+
+    ``memberFields`` carries the baseline's per-year bands, its area and rail ranges, and
+    every run's fan-average series per scenario (``fan``), which the page plays one run at
+    a time. A parameter set's initial fields are one opinion, so agreement counts sets.
+    Without the file nothing is added, and the page keeps its fallback (the |change| rule
+    and the constructed bands)."""
+    if members_npz == "auto":
+        members_npz = os.path.splitext(forward_npz)[0] + ".members.npz"
+    if not (members_npz and os.path.exists(members_npz)):
+        log("no per-member yearly fields (--save-members yearly): map agreement falls back "
+            "to the |change| rule")
+        return {}, None
+    mf = prep.load_member_fields(members_npz)
+    if mf["years"] != list(g.years) or mf["subs"].shape[2] != g.A:
+        log(f"{members_npz}: years/cells do not match the forward run; ignored")
+        return {}, None
+    names = mf["scenario_names"]
+    if names[0] != "baseline":
+        log(f"{members_npz}: the first scenario is not the baseline; ignored")
+        return {}, None
+    sets, n_sets = mf["sets"], len(dict.fromkeys(mf["sets"]))
+    qs = (10, 25, 50, 75, 90)
+    # every run's fan average, on the page's field (the corrections the page applied to
+    # the ensemble mean, if any, are applied to every run alike)
+    fan_s = prep.member_fan(mf["subs"])                                  # (S, M, Y) cm
+    fan_h = prep.member_fan(mf["headL2"])                                # (S, Mh, Y) m
+    for s, n in enumerate(names):
+        if n in f.names:
+            fan_s[s] -= f.fan_shift[f.names.index(n)][None]
+    fan = {"subs": {n: np.round(fan_s[s], 3).tolist() for s, n in enumerate(names)},
+           "head": {n: np.round(fan_h[s], 3).tolist() for s, n in enumerate(names)}}
+    labels = [f"{m} · ic {i}" for m, i in zip(mf["member"], mf["ic"], strict=True)]
+    thr = (1, 2, 3)
+    base_area = {t: prep.area_by_set(mf["subs"][0], sets, t) for t in thr}
+    hsr_args = None
+    if hsr_out is not None:
+        hsr_args = (np.array(hsr_out["idx"]), np.array(hsr_out["w"]), hsr_out["step"],
+                    np.array(hsr_out["mixed"], dtype=bool))
+
+    def fwd_of(s):
+        x = mf["subs"][s]
+        return x[..., -1] - x[..., g.y_ref]
+
+    base_hsr = prep.hsr_max_by_set(fwd_of(0), sets, *hsr_args) if hsr_args else None
+    arrays = {}
+    for i, x in enumerate(solved):
+        if x["name"] not in names:
+            continue
+        s = names.index(x["name"])
+        d = prep.member_delta(mf, s, g.y_ref)
+        agree = prep.cell_agreement(d, sets)
+        arrays[f"solvedAgree{i}"] = prep.pack(np.rint(agree * 100.0).astype("uint8"), None,
+                                              "uint8")
+        x["bandYr"] = [[round(float(v), 4) for v in row] for row in prep.fan_member_band(d)]
+        dh = mf["headL2"][s].astype("float64") - mf["headL2"][0]
+        x["bandYrHead"] = [[round(float(v), 4) for v in row]
+                           for row in np.percentile(dh.mean(axis=1), qs, axis=0)]
+        x["townAgree"] = prep.township_agreement(d, sets, town_idx, n_towns)
+        area = {}
+        for t in thr:
+            pa = prep.area_by_set(mf["subs"][s], sets, t)
+            area[str(t)] = {"pol": _q(pa), "d": _q(pa - base_area[t])}
+        x["area"] = area
+        if hsr_args:
+            ph = prep.hsr_max_by_set(fwd_of(s), sets, *hsr_args)
+            x["hsr"] = {"pol": _q(ph), "d": _q(ph - base_hsr)}
+        # the same share over all runs, for the log: the initial fields change nothing
+        dm = d[..., -1]
+        sign = np.sign(dm.mean(axis=0))
+        runs = ((np.sign(dm) == sign[None]) & (sign[None] != 0)).mean(axis=0)
+        ok = np.abs(dm.mean(axis=0)) >= 0.1
+        log(f"members {x['name']}: {n_sets} sets; cells where >= {prep.AGREE_MIN:.0%} of sets "
+            f"agree at the horizon: {int((agree[:, -1] >= prep.AGREE_MIN).sum())}/{g.A} "
+            f"({int((agree[ok, -1] >= prep.AGREE_MIN).sum())}/{int(ok.sum())} where the mean "
+            f"change is >= 1 mm; over all {dm.shape[0]} runs "
+            f"{int((runs[ok] >= prep.AGREE_MIN).sum())}); fan-average change p10/p50/p90 "
+            f"{x['bandYr'][0][-1]:+.2f} / {x['bandYr'][2][-1]:+.2f} / "
+            f"{x['bandYr'][4][-1]:+.2f} cm")
+    info = {"n": int(mf["subs"].shape[1]), "n_sets": n_sets, "agreeMin": prep.AGREE_MIN,
+            "source": os.path.basename(members_npz), "labels": labels,
+            "baseBandYr": np.round(np.percentile(fan_s[0], qs, axis=0), 3).tolist(),
+            "baseHeadBandYr": np.round(np.percentile(fan_h[0], qs, axis=0), 3).tolist(),
+            "baseFwd": _q(fan_s[0][:, -1] - fan_s[0][:, g.y_ref]),
+            "area": {str(t): _q(base_area[t]) for t in thr},
+            "hsr": None if base_hsr is None else _q(base_hsr),
+            "fan": fan}
+    return arrays, info
+
+
+def _response_basis(basis_npz, g, solved, log) -> tuple[dict | None, dict, dict | None]:
+    """The per-class response basis, rescaled to the ensemble's solved runs."""
+    if not (basis_npz and os.path.exists(basis_npz)):
+        log("no response basis: the levers are disabled; solved scenarios still show")
+        return None, {}, None
+    bs = np.load(basis_npz, allow_pickle=False)
+    bnames = [str(n) for n in bs["scenario_names"]]
+    bsubs = bs["subs_mean"].astype("float64") * 100.0
+    bd = prep.basis_deltas(bsubs, bs["heads_mean"].astype("float64"), bnames, g.ye)
+    berr = prep.basis_error(bd["dsub"], bsubs, bnames, g.ye, g.y_ref, solved)
+    calib = prep.calibrate_basis(bd["dsub"], bd["dheadL2"], solved, g.y_ref)
+    bd["dsub"] = prep.apply_calibration(bd["dsub"], calib["subs"])
+    bd["dheadL2"] = prep.apply_calibration(bd["dheadL2"], calib["head"])
+    bd["dhead_end"] = prep.apply_calibration(bd["dhead_end"], calib["head"])
+    if bd["missing"]:
+        log(f"basis rows missing (left at zero): {bd['missing']}")
+    return bd, berr, calib
+
+
+def _wells_block(inp, g, head_ye, public: bool) -> tuple[list | None, dict | None, dict | None]:
+    """Class energies, the layer-2 wells' fan-average series and (private) the well points."""
+    if inp is None:
+        return None, None, None
+    nyr = len(inp.dates) / 12.0
+    # the projection repeats the record's month-of-year mean (scenario.climatology),
+    # so the 2023-2032 annual energy per class is the record's annual mean
+    class_gwh = [float(inp.E_by_class[c].sum() / nyr / 1e6) if c in inp.E_by_class
+                 else 0.0 for c in prep.CLASSES]
+    obs_years = g.years[:g.y_obs + 1]
+    ann = np.full((len(inp.sids), len(obs_years)), np.nan)
+    yrs = inp.dates.year.to_numpy()
+    for j, y in enumerate(obs_years):
+        sel = yrs == y
+        if sel.any():
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                ann[:, j] = np.nanmean(inp.obs_h[:, sel], axis=1)
+    # an aggregate only: the annual mean over the layer-2 wells with a record that year,
+    # observed and modelled at the same wells
+    l2 = np.nonzero(inp.obs_layer == 1)[0]
+    fo, fm, fn = [], [], []
+    for j in range(len(obs_years)):
+        ok = l2[np.isfinite(ann[l2, j])]
+        fn.append(int(len(ok)))
+        fo.append(round(float(ann[ok, j].mean()), 3) if len(ok) else None)
+        fm.append(round(float(head_ye[1][inp.obs_idx[ok], j].mean()), 3) if len(ok) else None)
+    fan = {"years": obs_years, "obs": fo, "model": fm, "n": fn, "n_wells": int(len(l2))}
+    points = None
+    if not public:
+        points = {"x": np.round((inp.well_xy[:, 0] - g.x0) / 1000.0, 3).tolist(),
+                  "y": np.round((inp.well_xy[:, 1] - g.y0) / 1000.0, 3).tolist(),
+                  "cell": inp.obs_idx.astype(int).tolist(),
+                  "layer": inp.obs_layer.astype(int).tolist(),
+                  "obs": prep.pack(ann, 0.01)}
+    return class_gwh, fan, points
+
+
+def _leveling_block(ldir, g, base_monthly, town_idx, n_towns, public: bool, log):
+    """Leveling support: the chain skill, township skill and (private) the benchmarks."""
+    if not ldir:
+        return None, None, None
+    from .leveling import load_panel, site_subsidence, site_xy
+
+    try:
+        # only reading the data is allowed to fail quietly; a bug in the comparison below
+        # must surface, not turn into a page that silently lacks its leveling skill
+        panel = load_panel(ldir)
+    except (OSError, KeyError, ValueError) as e:
+        log(f"leveling unavailable ({type(e).__name__}: {e})")
+        return None, None, None
+    T_obs = g.origin + 1
+    obs = site_subsidence(panel, g.dates[0], str(pd.Timestamp(g.dates[g.origin])
+                                                 + pd.offsets.MonthBegin(1))[:10],
+                          min_obs=5, max_rate=0.5)
+    obs_years = g.years[:g.y_obs + 1]
+    lev = prep.leveling_support(obs, site_xy(panel), g.cent, g.dx, base_monthly[:, :T_obs],
+                                g.dates[:T_obs], obs_years)
+    if not len(lev["cell"]):
+        log("leveling unavailable (no benchmark falls on the grid)")
+        return None, None, None
+    diff = np.concatenate([p - o for p, o in lev["pairs"]])
+    chain = {"r2": prep.pooled_r2(lev["pairs"]), "n": int(len(lev["cell"])),
+             "rmse": float(np.sqrt(np.mean(diff ** 2))), "bias": float(np.mean(diff))}
+    town_skill = prep.township_skill(lev, town_idx, n_towns)
+    lev_out = None
+    if not public:
+        lim = prep.snap(float(np.percentile(np.abs(lev["resid"]), 95)), (2.0, 5.0, 10.0, 20.0))
+        lev_out = {"x": np.round((lev["x"] - g.x0) / 1000.0, 3).tolist(),
+                   "y": np.round((lev["y"] - g.y0) / 1000.0, 3).tolist(),
+                   "cell": lev["cell"].astype(int).tolist(),
+                   "resid": np.round(lev["resid"], 2).tolist(),
+                   "bias": np.round(lev["bias"], 2).tolist(), "lim": lim,
+                   "years": obs_years, "series": prep.pack(lev["series"], 0.01)}
+    return chain, town_skill, (lev_out, lev)
+
+
+def _hsr_block(hsr_csv, hsr_stations_csv, g) -> dict | None:
+    hsr = geo.load_hsr(hsr_csv)
+    if hsr is None:
+        return None
+    idx, w, ok = prep.bilinear_weights(hsr.x_twd97.to_numpy(), hsr.y_twd97.to_numpy(),
+                                       g.x0, g.y0, g.dx, g.mask)
+    if ok.sum() < 8:
+        return None
+    h = hsr[ok].reset_index(drop=True)
+    ch = h.chainage_km.to_numpy() - h.chainage_km.iloc[0]
+    stations = []
+    st = pd.read_csv(hsr_stations_csv) if hsr_stations_csv and \
+        os.path.exists(hsr_stations_csv) else None
+    if st is not None:
+        for _, r in st.iterrows():
+            d = np.hypot(h.x_twd97 - r.x_twd97, h.y_twd97 - r.y_twd97)
+            if d.min() < 1500:
+                stations.append({"zh": r.name_zh, "en": r.name_en,
+                                 "ch": round(float(ch[int(d.argmin())]), 2)})
+    step = float(np.median(np.diff(ch))) if len(ch) > 1 else 0.25
+    # where the rail's gradient reads cells on both sides of a zone line, the gradient is
+    # the model's parameter boundary; the rail tile leaves those points out
+    mixed = prep.zone_mixed(idx[ok], w[ok], g.zone, step, HSR_REACH_KM)
+    return {"ch": np.round(ch, 3).tolist(),
+            "x": np.round((h.x_twd97.to_numpy() - g.x0) / 1000.0, 3).tolist(),
+            "y": np.round((h.y_twd97.to_numpy() - g.y0) / 1000.0, 3).tolist(),
+            "idx": idx[ok].astype(int).tolist(),
+            "w": np.round(w[ok], 4).tolist(), "stations": stations,
+            "step": step, "mixed": mixed.astype(int).tolist(), "reach": HSR_REACH_KM,
+            "thr": 1000, "attrib": geo.ATTRIB}
+
+
+def _rivers_block(rivers_csv, g) -> list | None:
+    rv = geo.load_rivers(rivers_csv)
+    if rv is None or not len(rv):
+        return None
+    out = []
+    for (name, zh, _part), gr in rv.groupby(["river", "name_zh", "part"], sort=False):
+        out.append({"en": name, "zh": zh,
+                    "pts": np.round(np.column_stack([(gr.x_twd97 - g.x0) / 1000.0,
+                                                     (gr.y_twd97 - g.y0) / 1000.0]),
+                                    2).tolist()})
+    return out
+
+
+def _temporal_block(temporal_npz, temporal_key="auto") -> dict | None:
+    """The held-out-years test: fit to month ``T_fit``, run free for the rest.
+
+    ``temporal_key`` names the prediction array; ``auto`` takes ``pred`` (the layout of
+    ``calibrate_flow``'s ``stage3_temporal_pred.npz``) or else ``temporal_spreadL`` (the
+    older combined file). When a ``scorecard.json`` sits beside the file its shape and
+    per-well scores are added, and every other ``temporal_*`` screen (``TEMPORAL_GLOB``)
+    is listed under ``others``: the extensions that were tried and how they did."""
+    if not (temporal_npz and os.path.exists(temporal_npz)):
+        return None
+    tz = np.load(temporal_npz, allow_pickle=False)
+    if temporal_key == "auto":
+        temporal_key = next((k for k in ("pred", "temporal_spreadL") if k in tz.files), "")
+    if temporal_key not in tz.files or "clim" not in tz.files:
+        return None
+    T_fit = int(tz["T_fit"])
+    o = tz["obs"][:, T_fit:]
+
+    def _rmse(p):
+        p = p[:, T_fit:] if p.shape[1] == tz["obs"].shape[1] else p
+        ok_ = np.isfinite(p) & np.isfinite(o[:, :p.shape[1]])
+        return float(np.sqrt(np.mean((p - o[:, :p.shape[1]])[ok_] ** 2)))
+
+    rm, rc = _rmse(tz[temporal_key]), _rmse(tz["clim"])
+    out = {"rmse_model": rm, "rmse_clim": rc, "months": int(o.shape[1]),
+           "n_wells": int(o.shape[0]), "fit_months": T_fit, "passed": bool(rm <= rc),
+           "source": os.path.relpath(temporal_npz)}
+    here = os.path.dirname(os.path.abspath(temporal_npz))
+    sc = _scorecard(os.path.join(here, "scorecard.json"))
+    if sc:
+        out.update({k: sc.get(k) for k in ("r2_shape", "r2_well_median", "level_err_m",
+                                           "verdict")})
+    import glob
+
+    others = []
+    for p in sorted(glob.glob(TEMPORAL_GLOB)):
+        if os.path.dirname(os.path.abspath(p)) == here:
+            continue
+        o2 = _scorecard(p)
+        if o2 and o2.get("rmse") is not None:
+            others.append({"name": os.path.basename(os.path.dirname(p)), **o2})
+    out["others"] = others
+    return out
+
+
+def _scorecard(path: str) -> dict | None:
+    """The temporal block of a ``calibrate_flow`` scorecard, the fields the page quotes."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            t = json.load(fh).get("temporal") or {}
+    except (OSError, ValueError):
+        return None
+
+    def num(k):
+        v = t.get(k)
+        return None if v is None or not np.isfinite(float(v)) else round(float(v), 3)
+
+    ext = [k for k, on in (("delay storage", t.get("delay_storage") not in (None, "off")),
+                           ("rivers", t.get("rivers") not in (None, "none")),
+                           ("canal water", isinstance(t.get("sw_recharge"), str)
+                            and bool(t.get("sw_recharge"))))
+           if on]
+    return {"rmse": num("rmse_model_m"), "rmse_clim": num("rmse_clim_m"),
+            "r2_shape": num("r2_shape_model"), "r2_well_median": num("r2_well_median_model"),
+            "level_err_m": num("level_err_model_m"), "verdict": t.get("verdict"),
+            "extensions": ext}
+
+
+def _rheology_block(rheo_npz: str | None, rheo_column_csv: str | None,
+                    column: dict | None, log) -> dict | None:
+    """What a longer creep ceiling adds, from a forward run with two columns.
+
+    The run (``twin.forward`` with two ``rheology_labels``) carries every member under
+    both columns; ``<stem>.members.csv`` pairs them by (scenario, member, ic). Reported:
+    the paired difference (second column minus first) of the baseline's forward
+    subsidence (mean, p10, p90), the largest change it makes to any policy's paired
+    response (which is why the note sits on the baseline number only), the two columns'
+    leveling skill out of fold, the second column's creep ceiling, and whether that run
+    still carried the start-up and restart steps (it then over- or under-states the
+    total, but the steps are common to both columns)."""
+    if not (rheo_npz and os.path.exists(rheo_npz)):
+        return None
+    csv = os.path.splitext(rheo_npz)[0] + ".members.csv"
+    z = np.load(rheo_npz, allow_pickle=False)
+    labels = [str(v) for v in z["rheology_labels"]] if "rheology_labels" in z.files else []
+    if len(labels) < 2 or not os.path.exists(csv):
+        return None
+    m = pd.read_csv(csv)
+    if "rheology" not in m.columns:
+        return None
+    key = ["scenario", "member", "ic"] if "ic" in m.columns else ["scenario", "member"]
+    p = m.pivot_table(index=key, columns="rheology", values="subs_forward_cm")
+    ref, alt = labels[0], labels[1]
+    if ref not in p.columns or alt not in p.columns:
+        return None
+    d = (p[alt] - p[ref]).dropna()
+    base = d.xs("baseline", level="scenario")
+    shift = 0.0
+    for sc in d.index.get_level_values("scenario").unique():
+        if sc != "baseline":
+            ds = d.xs(sc, level="scenario") - base
+            shift = max(shift, float(np.abs(ds.mean())))
+    alt_col = None
+    if rheo_column_csv and os.path.exists(rheo_column_csv):
+        cc = pd.read_csv(rheo_column_csv)
+        r = cc[cc.config == "zonal"] if "zonal" in set(cc.config) else cc.iloc[[0]]
+        alt_col = {"r2_oof": float(r.r2_outoffold.iloc[0]),
+                   "rings": float(r.rings_independent_r2.iloc[0])}
+    tau = None
+    if rheo_column_csv:
+        import glob
+
+        for q in sorted(glob.glob(os.path.join(os.path.dirname(rheo_column_csv),
+                                               "vep_*.json"))):
+            with contextlib.suppress(OSError, ValueError), open(q, encoding="utf-8") as fh:
+                v = json.load(fh).get("tau_max_years")
+                tau = float(v) if v is not None else tau
+    out = {"ref": ref, "alt": alt, "n": int(len(base)),
+           "dBase": round(float(base.mean()), 3), "dBaseP": _q(base),
+           "policyShift": round(shift, 4), "tauYears": tau,
+           "levOof": None if column is None else round(column["r2_oof"], 3),
+           "levOofAlt": None if alt_col is None else round(alt_col["r2_oof"], 3),
+           "artefacts": not _artefacts_fixed_upstream(z),
+           "source": os.path.basename(rheo_npz)}
+    log(f"rheology {alt} vs {ref} ({out['source']}): baseline forward "
+        f"{out['dBase']:+.2f} cm (p10/p90 {out['dBaseP'][0]:+.2f}/{out['dBaseP'][2]:+.2f}), "
+        f"largest change to a policy response {shift:.3f} cm; leveling out of fold "
+        f"{out['levOofAlt']} vs {out['levOof']}; run "
+        + ("still carried the start-up/restart steps" if out["artefacts"] else "fixed"))
+    return out
+
+
+def _spread_km(theta_json: str | None, gate_all: dict) -> float | None:
+    if gate_all.get("pump_spread_km") is not None:
+        return float(gate_all["pump_spread_km"])
+    with contextlib.suppress(Exception):
+        with open(theta_json, encoding="utf-8") as fh:
+            th = json.load(fh).get("theta", {})
+        if "spread_km" in th:
+            return float(th["spread_km"])
+        if "log_spread_km" in th:
+            return float(np.exp(th["log_spread_km"]))
+    return None
+
+
+def _alt_block(alt_npz: str | None, alt_theta: str | None, members: dict | None,
+               solved: list[dict], log) -> dict | None:
+    """The structural alternative: another calibration that passes the same head gate.
+
+    Reads the alternative forward run's gate (head k-fold R²) and its paired members
+    (``<stem>.members.csv``), and for every solved scenario the two runs share, its
+    ensemble-mean response. ``ratio`` per class is the alternative's response over the
+    deliverable's for the single-class solved runs (None where there is none), which the
+    page uses to say what the alternative model would answer for a slider policy.
+    """
+    if not (alt_npz and os.path.exists(alt_npz)):
+        return None
+    csv = os.path.splitext(alt_npz)[0] + ".members.csv"
+    if not os.path.exists(csv):
+        log(f"structural alternative skipped: no {csv}")
+        return None
+    z = np.load(alt_npz, allow_pickle=False)
+    gate_all = {}
+    with contextlib.suppress(KeyError, ValueError):
+        gate_all = json.loads(str(z["gate"]))
+    am = prep.paired_deltas(pd.read_csv(csv))
+    resp = {k: {"subs_mean": v["subs_mean"], "head_mean": v["head_mean"],
+                "subs_p": v["subs_p"], "n_sets": v["n_sets"], "agree_sets": v["agree_sets"]}
+            for k, v in am.items() if k != "base"}
+    ratio = [None] * len(prep.CLASSES)
+    for x in solved:
+        k = prep.single_lever(x["factors"])
+        m = (members or {}).get(x["name"])
+        if k is None or not m or x["name"] not in resp or abs(m["subs_mean"]) < 1e-9:
+            continue
+        ratio[k] = resp[x["name"]]["subs_mean"] / m["subs_mean"]
+    return {"source": os.path.basename(alt_npz),
+            "r2_kfold": (gate_all.get("gate") or {}).get("r2_kfold"),
+            "spread_km": _spread_km(alt_theta, gate_all), "resp": resp, "ratio": ratio}
+
+
+def _tau_note(column_csv: str | None, record_years: int) -> str | None:
+    """"11 vs 30 yr": the deliverable column's creep ceiling against the longest ceiling
+    any other leveling-calibrated column was fitted with (``TAU_ALT_GLOB``). A column
+    without ``tau_max_years`` used the default ceiling, the record length."""
+    import glob
+
+    own = None
+    if column_csv:
+        for p in sorted(glob.glob(os.path.join(os.path.dirname(column_csv), "vep_*.json"))):
+            with contextlib.suppress(OSError, ValueError), open(p, encoding="utf-8") as fh:
+                v = json.load(fh).get("tau_max_years")
+                own = float(v) if v is not None else own
+    own = own if own is not None else float(record_years)
+    alts = set()
+    for p in glob.glob(TAU_ALT_GLOB):
+        with contextlib.suppress(OSError, ValueError), open(p, encoding="utf-8") as fh:
+            v = json.load(fh).get("tau_max_years")
+            if v is not None and abs(float(v) - own) > 0.5:
+                alts.add(float(v))
+    return f"{own:g} vs {max(alts):g} yr" if alts else None
+
+
+def _modelcard(fw, g, f, forward_npz, chain, column, temporal, spread_km, public) -> dict:
+    gate = g.gate_all.get("gate") or {}
+    bh = g.gate_all.get("bounds_hit") or {}
+    n_at = sum(v.get("lo", 0) + v.get("hi", 0) for z in bh.values() for v in z.values())
+    n_tr = sum(v.get("n", 0) for z in bh.values() for v in z.values())
+    ga = g.gate_all
+    return {
+        "verdict": gate.get("verdict"), "r2_kfold": gate.get("r2_kfold"),
+        "r2_idw": gate.get("r2_idw"), "n_folds": gate.get("n_folds"),
+        "fix_eta": ga.get("fix_eta"), "fix_head_extra": ga.get("fix_head_extra"),
+        "return_flow": ga.get("return_flow"), "learn_spread": ga.get("learn_spread"),
+        "pump_spread_km": ga.get("pump_spread_km"), "spread_km": spread_km,
+        "n_wells": ga.get("n_wells"),
+        "git_commit": ga.get("git_commit"), "temporal_gate": ga.get("temporal_gate"),
+        "zone_boundaries": g.zb, "bounds_at": n_at, "bounds_tracked": n_tr,
+        "spread_at_bound": bool(bh.get("global", {}).get("log_spread_km", {}).get("hi", 0)),
+        "n_members": int(fw["n_members"]) if "n_members" in fw.files else None,
+        "hindcast_r2": [round(float(v), 4) for v in fw["hindcast_r2"]]
+        if "hindcast_r2" in fw.files else [],
+        "member_labels": [str(v) for v in fw["member_labels"]]
+        if "member_labels" in fw.files else [],
+        "chain": chain, "column": column, "temporal": temporal,
+        "record": [g.dates[0][:7], g.dates[g.origin][:7]], "horizon": g.dates[-1][:7],
+        "record_years": g.years[g.y_obs] - g.years[0] + 1,
+        "free_from": g.dates[g.origin][:7],
+        "artefacts": f.artefacts, "public": public,
+        "source": os.path.basename(forward_npz),
+    }
 
 
 def build(forward_npz: str, basis_npz: str | None, out_html: str,
-          townships_csv: str | None = None, quarter: int = 3, delta_step: int = 12,
-          basemap_npz: str | None = None, log=print) -> dict:
+          townships_csv: str | None = None,
+          basemap_npz: str | None = None, log=print, *, hsr_csv: str | None = geo.HSR_CSV,
+          hsr_stations_csv: str | None = geo.HSR_STATIONS_CSV,
+          rivers_csv: str | None = geo.RIVERS_CSV, members_csv: str | None = "auto",
+          members_npz: str | None = "auto",
+          leveling: str | None = "auto", wells: str | None = "auto",
+          temporal_npz: str | None = DEFAULT_TEMPORAL, temporal_key: str = "auto",
+          column_csv: str | None = DEFAULT_COLUMN, theta_json: str | None = DEFAULT_THETA,
+          alt_npz: str | None = DEFAULT_ALT, alt_theta: str | None = DEFAULT_ALT_THETA,
+          rheo_npz: str | None = DEFAULT_RHEO,
+          rheo_column_csv: str | None = DEFAULT_RHEO_COLUMN,
+          three: str = "cdn", public: bool = True, max_bytes: int | None = None) -> dict:
+    """Build the page. Returns the payload (a dict of plain values and packed arrays).
+
+    ``public`` (the default) ships observations only as aggregates: township and chain
+    skill from the leveling, the fan-average of the layer-2 wells. ``public=False`` adds
+    every benchmark and well with its location and observed series, for a local page that
+    must never be committed. ``alt_npz`` is the structural alternative (another model
+    that passes the same head gate); the page quotes its response next to the ensemble's
+    agreement, because the ensemble varies parameters only.
+    """
     fw = np.load(forward_npz, allow_pickle=False)
-    mask = fw["mask"].astype(bool)
-    nx, ny, dx = int(fw["nx"]), int(fw["ny"]), float(fw["dx"])
-    x0, y0 = float(fw["x0"]), float(fw["y0"])
-    dates = [str(d)[:7] for d in fw["dates"]]
-    origin = int(fw["origin"])
-    T = len(dates)
-    A = int(mask.sum())
-    rows, cols = np.nonzero(mask)
+    g = _geometry(fw)
+    A, ye, y_obs, y_ref = g.A, g.ye, g.y_obs, g.y_ref
+    sizes = {}
 
-
-    cent = np.column_stack([x0 + (cols + 0.5) * dx, y0 + (rows + 0.5) * dx])
-    zone = fan_zones(cent)
-
-    # ground elevation: the same IDW field the solver used, recomputed here so the page
-    # stands the block on the real surface rather than a flat plane
-    from .calibrate_flow import DEFAULT_PATHS, _idw_field
-    from .heads import _station_xy
-    stn = pd.read_parquet(DEFAULT_PATHS["stations"])
-    stn = stn[stn.GroundwaterZoneIdentifier == 50]
-    gxy, gval = [], []
-    for _, r in stn.iterrows():
-        p = _station_xy(r)
-        g = pd.to_numeric(r.get("GroundHeight"), errors="coerce")
-        if p is not None and np.isfinite(g):
-            gxy.append(p)
-            gval.append(float(g))
-
-    class _G:  # _idw_field only needs centroids()
-        def centroids(self):
-            return cent
-
-    ground = _idw_field(_G(), np.array(gxy), np.array(gval))
-    # Real terrain and imagery replace the interpolated collar heights where available
-    # (twin/basemap.py). The interpolation put the fan a median 5 m too low and missed
-    # the terraces entirely, so this is a correction, not decoration.
-    imagery, attrib = {}, []
+    # ---- ground and imagery -------------------------------------------------------------
+    ground, imagery, attrib = None, {}, []
     if basemap_npz and os.path.exists(basemap_npz):
         bm = np.load(basemap_npz, allow_pickle=False)
-        if "dem" in bm:
-            srtm = bm["dem"].astype("float64")
-            log(f"terrain: SRTM {srtm.min():.1f} to {srtm.max():.1f} m replaces the IDW "
-                f"collar field ({ground.min():.1f} to {ground.max():.1f} m)")
-            ground = srtm
-        for k in bm.files:
-            if k in ("dem", "attrib"):
-                continue
-            imagery[k] = base64.b64encode(bm[k].tobytes()).decode("ascii")
-            log(f"imagery: {k}, {len(imagery[k]) / 1e6:.2f} MB base64")
+        if "dem" in bm.files and len(bm["dem"]) == A:
+            ground = bm["dem"].astype("float64")
+        for key, name in (("PHOTO2", "photo"), ("EMAP", "emap")):
+            if key in bm.files:
+                imagery[name] = _encode_image(bm[key])
+                sizes[f"img:{name}"] = len(imagery[name])
         attrib = [str(a) for a in bm["attrib"]] if "attrib" in bm.files else []
+    if ground is None:
+        ground = _ground_idw(g.cent, log)
+    ground_ok = ground is not None
+    if ground is None:
+        ground = np.zeros(A)
 
-    town_idx = np.zeros(A, dtype="uint8")
-    town_names = ["unlabelled"]
+    # ---- townships, forward run, basis --------------------------------------------------
+    cell_town = pd.Series(dtype=object)
     if townships_csv and os.path.exists(townships_csv):
-        tw = pd.read_csv(townships_csv).set_index("cell")["town"].dropna()
-        names = sorted(tw.unique())
-        town_names = ["unlabelled"] + list(names)
-        lookup = {n: i + 1 for i, n in enumerate(names)}
-        for c, n in tw.items():
-            if 0 <= int(c) < A:
-                town_idx[int(c)] = lookup[n]
+        cell_town = pd.read_csv(townships_csv).set_index("cell")["town"]
+    town_idx, towns = prep.township_index(cell_town, A)
+    f = _forward_fields(fw, g, log)
+    base_ye, solved = f.base_ye, f.solved
+    basis, berr, calib = _response_basis(basis_npz, g, solved, log)
 
-    subs = fw["subs_mean"]          # (S, A, T) metres
-    heads = fw["heads_mean"]        # (S, L, A, T) metres
-    sd = fw["subs_std"]
-    base_s = subs[0] * 100.0        # cm
-    base_h = heads[0]               # m
-    qsel = np.arange(0, T, quarter)
-    if qsel[-1] != T - 1:
-        qsel = np.r_[qsel, T - 1]
-    # Policy deltas are smooth ramps once the policy starts, so they are sampled far more
-    # coarsely than the seasonal baseline and interpolated in the page. That is most of
-    # the difference between a 19 MB file and an 8 MB one.
-    dsel = np.arange(0, T, delta_step)
-    if dsel[-1] != T - 1:
-        dsel = np.r_[dsel, T - 1]
+    # fixed difference scales, chosen once (spec §3.2)
+    if basis is not None:
+        sc_s = prep.delta_scale(basis["dsub"], y_ref, prep.DELTA_SNAPS_CM)
+        sc_h = prep.delta_scale(basis["dheadL2"], y_ref, prep.DELTA_SNAPS_M)
+    else:
+        ref = solved[0]["_dsub"] if solved else np.zeros((A, len(ye)))
+        v = float(np.percentile(np.abs(ref[:, -1] - ref[:, y_ref]), 98))
+        sc_s = {"limit": prep.snap(v, prep.DELTA_SNAPS_CM), "p98": v, "lever": None}
+        sc_h = {"limit": 1.0, "p98": None, "lever": None}
+    # year-on-year rates from Dec to Dec; the first year-end is left out, its "rate" is the
+    # whole first year including the column's start-up
+    rates = np.diff(base_ye, axis=1) if base_ye.shape[1] > 1 else base_ye
+    scales = {"dsubs": sc_s, "dhead": sc_h,
+              "absSubs": prep.abs_limits(base_ye[:, -1]),
+              "absHead": prep.abs_limits(f.head_ye[1]),
+              "rate": [0.0, float(np.ceil(np.percentile(rates, 98) * 2) / 2)],
+              "fwd": prep.abs_limits(base_ye[:, -1] - base_ye[:, y_ref])}
 
-    # ---- response basis -------------------------------------------------------------
-    classes, dsub, dhead, start_month, lin_err, shift_err = [], [], [], None, None, None
-    if basis_npz and os.path.exists(basis_npz):
-        bs = np.load(basis_npz, allow_pickle=False)
-        names = [str(n) for n in bs["scenario_names"]]
-        bsub, bhead = bs["subs_mean"] * 100.0, bs["heads_mean"]
-        base_i = names.index("baseline")
-        starts = {}
-        for i, n in enumerate(names):
-            if "_" not in n or n.startswith("check"):
-                continue
-            key, yr = n.rsplit("_", 1)
-            starts.setdefault(yr, {})[key.replace("0", "")] = i
-        year = sorted(starts)[0]
-        start_month = dates.index(f"{year}-01")
-        for key, i in starts[year].items():
-            cname = {"irr": "irrigation", "aqua": "aquaculture", "live": "livestock",
-                     "dom": "domestic", "ind": "industry", "oth": "other"}.get(key, key)
-            classes.append(cname)
-            dsub.append(bsub[i] - bsub[base_i])
-            dhead.append(bhead[i] - bhead[base_i])
-        # linearity: a half cut should be half the response
-        if "check_irr50_2026" in names and "irrigation" in classes:
-            j = classes.index("irrigation")
-            pred = bsub[base_i] + 0.5 * dsub[j]
-            act = bsub[names.index("check_irr50_2026")]
-            lin_err = float(np.abs(pred[:, -1] - act[:, -1]).mean())
-            log(f"linearity check: a 50% irrigation cut predicted by superposition differs "
-                f"from the solved run by {lin_err:.3f} cm at the horizon "
-                f"(response itself {abs(dsub[j][:, -1].mean()) * 0.5:.2f} cm)")
-        # time shift: a later start should be the same response, moved
-        if len(starts) > 1 and "irrigation" in classes:
-            y2 = sorted(starts)[1]
-            m2 = dates.index(f"{y2}-01")
-            j = classes.index("irrigation")
-            real = bsub[starts[y2]["irr"]] - bsub[base_i]
-            lag = m2 - start_month
-            shifted = np.zeros_like(real)
-            shifted[:, lag:] = dsub[j][:, : T - lag]
-            shift_err = float(np.abs(shifted[:, -1] - real[:, -1]).mean())
-            log(f"time-shift check: delaying to {y2} by shifting the response differs from "
-                f"the solved run by {shift_err:.3f} cm at the horizon")
-        dsub = np.stack(dsub) if dsub else np.zeros((0, A, T))
-        dhead = np.stack(dhead) if dhead else np.zeros((0, 4, A, T))
-        log(f"response basis: {len(classes)} classes from {year}-01 -> "
-            f"{[f'{c} {dsub[i][:, -1].mean():+.2f} cm' for i, c in enumerate(classes)]}")
+    # ---- members ------------------------------------------------------------------------
+    if members_csv == "auto":
+        members_csv = os.path.splitext(forward_npz)[0] + ".members.csv"
+    members = None
+    if members_csv and os.path.exists(members_csv):
+        members = prep.paired_deltas(pd.read_csv(members_csv))
+    for x in solved:
+        x["members"] = (members or {}).get(x["name"])
+    hsr_out = _hsr_block(hsr_csv, hsr_stations_csv, g)
+    member_arrays, member_info = _member_fields_block(forward_npz, members_npz, g, f, solved,
+                                                      town_idx, len(towns), hsr_out, log)
+    alt = _alt_block(alt_npz, alt_theta, members, solved, log)
 
-    # energy share per class, for the slider subtitles
-    share = {}
-    try:
-        from .inputs import load_twin_inputs
-        inp = load_twin_inputs(verbose=False)
-        tot = sum(v.sum() for v in inp.E_by_class.values())
-        share = {k: float(v.sum() / tot) for k, v in inp.E_by_class.items()}
-    except Exception as e:  # the page still works without it
-        log(f"energy shares unavailable ({type(e).__name__}); sliders omit them")
+    # ---- observations -------------------------------------------------------------------
+    inp = None
+    if wells == "auto":
+        try:
+            inp = _load_inputs()
+        except Exception as e:
+            log(f"wells and class energies unavailable ({type(e).__name__}: {e})")
+    class_gwh, wells_fan, wells_out = _wells_block(inp, g, f.head_ye, public)
+    if wells_out is not None:
+        sizes["wells"] = len(wells_out["obs"]["z"])
+    chain, town_skill, lev_pair = _leveling_block(_leveling_dir(leveling), g, f.subs[0],
+                                                  town_idx, len(towns), public, log)
+    lev_out, lev = lev_pair if lev_pair else (None, None)
+    if lev_out is not None:
+        sizes["leveling"] = len(json.dumps(lev_out))
+    if hsr_out is not None:
+        sizes["hsr"] = len(json.dumps(hsr_out))
+    rivers_out = _rivers_block(rivers_csv, g)
 
-    gate = {}
-    try:
-        gate = json.loads(str(fw["gate"])).get("gate") or {}
-    except Exception:
-        gate = {}
+    # ---- model card ---------------------------------------------------------------------
+    temporal = _temporal_block(temporal_npz, temporal_key)
+    column = None
+    if column_csv and os.path.exists(column_csv):
+        cc = pd.read_csv(column_csv)
+        r = cc[cc.config == "zonal"] if "zonal" in set(cc.config) else cc.iloc[[0]]
+        column = {"config": str(r.config.iloc[0]), "r2_oof": float(r.r2_outoffold.iloc[0]),
+                  "rings": float(r.rings_independent_r2.iloc[0])}
+    modelcard = _modelcard(fw, g, f, forward_npz, chain, column, temporal,
+                           _spread_km(theta_json, g.gate_all), public)
+    rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
+    # the held-out-years test ran the model free for ``months``: that is the tested horizon
+    y_tested = min(y_obs + (int(np.ceil(temporal["months"] / 12)) if temporal else 0),
+                   len(g.years) - 1)
 
-    data = {
-        "nx": nx, "ny": ny, "dx": dx, "nA": A, "months": dates, "origin": origin,
-        "quarters": [int(q) for q in qsel], "dQuarters": [int(q) for q in dsel],
-        "cols": _b64(cols.astype("int16")), "rows": _b64(rows.astype("int16")),
-        "zone": _b64(zone.astype("uint8")), "town": _b64(town_idx),
-        "townNames": town_names,
-        "ground": _b64(_q(ground, 0.01)),                       # m, 1 cm counts
-        "subsBase": _b64(_q(base_s, 0.01)),                     # cm, 0.01 cm counts
-        "subsStd": _b64(_q(sd[0][:, qsel] * 100.0, 0.01)),
-        "headBase": _b64(_q(base_h[:, :, qsel], 0.01)),         # m, 1 cm counts
-        "classes": classes,
-        "classLabels": [CLASS_LABELS.get(c, c.title()) for c in classes],
-        "classShare": [round(share.get(c, 0.0), 4) for c in classes],
-        "dSub": _b64(_q(dsub[:, :, dsel] if len(classes) else np.zeros((0,)), 0.01)),
-        "dHead": _b64(_q(dhead[:, :, :, dsel] if len(classes) else np.zeros((0,)), 0.01)),
-        "startMonth": start_month if start_month is not None else origin,
-        "layerDepths": LAYER_DEPTHS, "layerThick": AQUIFER_THICK, "zoneNames": list(ZONE_NAMES),
-        "imagery": imagery, "attrib": attrib,
-        "gate": gate, "linErr": lin_err, "shiftErr": shift_err,
-        "scenarios": [str(s) for s in fw["scenarios"]],
-        "nMembers": int(fw["n_members"]),
+    # ---- payload ------------------------------------------------------------------------
+    arrays = {
+        "cols": prep.pack(g.cols, None, "int16"), "rows": prep.pack(g.rows, None, "int16"),
+        "zone": prep.pack(g.zone, None, "uint8"), "town": prep.pack(town_idx, None, "uint8"),
+        "ground": prep.pack(ground, 0.1),
+        "subsBase": prep.pack(base_ye, 0.01),
+        # the final-year rate at full precision, so the area tile counts what Python counts
+        "rateBase": prep.pack(base_ye[:, -1] - base_ye[:, -2], 0.001),
+        "subsBand": prep.pack(f.band, 0.01),
+        "headBase": prep.pack(f.head_ye, 0.01),
+    }
+    if basis is not None:
+        for key, arr in (("dSubs", basis["dsub"]), ("dHeadL2", basis["dheadL2"]),
+                         ("dHeadEnd", basis["dhead_end"])):
+            arrays[key] = prep.pack(arr, max(0.001, float(np.abs(arr).max()) / 30000.0))
+    for i, x in enumerate(solved):
+        for key, arr in ((f"solvedSubs{i}", x["_dsub"]), (f"solvedHead{i}", x["_dh2"])):
+            arrays[key] = prep.pack(arr, max(0.001, max(float(np.abs(arr).max()), 1e-6)
+                                             / 30000.0))
+    arrays.update(member_arrays)
+    for k, v in arrays.items():
+        sizes[k] = len(v["z"])
+
+    payload = {
+        "meta": {"nx": g.nx, "ny": g.ny, "dx": g.dx, "x0": g.x0, "y0": g.y0, "nA": A,
+                 "L": int(f.L), "years": g.years, "yObs": y_obs, "yRef": y_ref,
+                 "yTested": y_tested, "starts": list(prep.STARTS),
+                 "t0": g.dates[0][:7], "rawFwdFan": round(f.raw_fwd_fan, 3),
+                 "vintage": g.dates[g.origin][:7], "groundOk": ground_ok},
+        "arrays": arrays,
+        "img": imagery, "attrib": attrib,
+        "towns": towns, "townSkill": town_skill,
+        "classes": [{"key": c, "en": CLASS_LABELS[c][0], "zh": CLASS_LABELS[c][1],
+                     "gwh": None if class_gwh is None else round(class_gwh[k], 3)}
+                    for k, c in enumerate(prep.CLASSES)],
+        "basis": None if basis is None else {"labels": basis["labels"],
+                                             "missing": basis["missing"]},
+        "basisError": berr, "calib": calib,
+        "solved": [{k: v for k, v in x.items() if not k.startswith("_")} for x in solved],
+        "members": None if members is None else {"base": members["base"]},
+        "memberFields": member_info,
+        "scales": scales,
+        "hsr": hsr_out, "rivers": rivers_out, "leveling": lev_out, "wells": wells_out,
+        "wellsFan": wells_fan,
+        "modelcard": modelcard,
+        "palettes": prep.PALETTES, "vScale": prep.VERT_SCALE,
+        "layerDepths": LAYER_DEPTHS, "layerThick": AQUIFER_THICK,
+        "zoneNames": list(ZONE_NAMES),
+        "alt": alt,
+        "caveatWords": {"tau": _tau_note(column_csv, modelcard["record_years"])},
+        "rheology": rheology,
     }
 
-    html = _PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":")))
+    _summary(payload, solved, members, basis, base_ye, g, towns, town_idx, town_skill,
+             lev, hsr_out, log)
+
+    html = _render(payload, three, log)
+    size = len(html.encode("utf-8"))
+    limit = MAX_BYTES if max_bytes is None else max_bytes
+    log("payload (base64 bytes): " + ", ".join(
+        f"{k} {v / 1e3:.0f} KB" for k, v in sorted(sizes.items(), key=lambda kv: -kv[1])))
+    if size > limit:
+        raise SystemExit(f"page would be {size / 1e6:.2f} MB, above the {limit / 1e6:.1f} MB "
+                         "guard; refusing to write it")
     os.makedirs(os.path.dirname(out_html) or ".", exist_ok=True)
-    with open(out_html, "w") as fh:
+    with open(out_html, "w", encoding="utf-8") as fh:
         fh.write(html)
-    log(f"wrote {out_html} ({os.path.getsize(out_html) / 1e6:.1f} MB, {A} cells, "
-        f"{T} months, {len(classes)} policy classes)")
-    return data
+    note = "" if size <= TARGET_BYTES else f" (above the {TARGET_BYTES / 1e6:.0f} MB target)"
+    log(f"wrote {out_html} ({size / 1e6:.2f} MB{note}, {A} cells, {len(g.years)} year-ends, "
+        f"{0 if basis is None else len(basis['labels'])} basis rows, {len(solved)} solved; "
+        + ("public: observations as aggregates only)" if public
+           else "PRIVATE: carries observed points, never commit it)"))
+    return payload
 
 
-_PAGE = r"""<title>Choushui Fan Twin</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-<style>
-:root{
-  --paper:#f4f2ed; --surface:#fbfaf7; --surface-2:#eceae4; --line:#d8d5cc;
-  --ink:#171c1f; --ink-2:#4b5560; --ink-3:#7d8791;
-  --accent:#1f6f8b; --accent-soft:#d7e6ec;
-  --good:#3f7d5a; --warn:#b4741f; --bad:#a53d2c;
-  --stage:#e8e6e0; --stage-2:#d5d2ca;
-  --rail:360px;
-}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --paper:#101416; --surface:#161b1e; --surface-2:#1d2428; --line:#2c3439;
-  --ink:#eef1f2; --ink-2:#aab4ba; --ink-3:#78848b;
-  --accent:#57b6d4; --accent-soft:#1b3b47;
-  --good:#6fb98c; --warn:#d9a34a; --bad:#e2735e;
-  --stage:#0b0e10; --stage-2:#141a1d;
-}}
-:root[data-theme="dark"]{
-  --paper:#101416; --surface:#161b1e; --surface-2:#1d2428; --line:#2c3439;
-  --ink:#eef1f2; --ink-2:#aab4ba; --ink-3:#78848b;
-  --accent:#57b6d4; --accent-soft:#1b3b47;
-  --good:#6fb98c; --warn:#d9a34a; --bad:#e2735e;
-  --stage:#0b0e10; --stage-2:#141a1d;
-}
-html,body{height:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:13px;overflow:hidden}
-#app{display:grid;grid-template-columns:var(--rail) 1fr;grid-template-rows:auto 1fr auto;height:100%}
-header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top,0px));background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap}
-h1{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em}
-.sub{color:var(--ink-3);font-size:11.5px}
-.spacer{flex:1}
-.verdict{font-family:"IBM Plex Mono",monospace;font-size:11px;padding:3px 8px;border-radius:3px;background:var(--accent-soft);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
-.modes{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
-.modes button{border:0;background:var(--surface);color:var(--ink-2);padding:5px 11px;font:inherit;font-size:11.5px;cursor:pointer}
-.modes button[aria-pressed="true"]{background:var(--accent);color:#fff}
-#rail{grid-column:1;grid-row:2/4;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:18px}
-#stage{grid-column:2;grid-row:2;position:relative;background:linear-gradient(180deg,var(--stage) 0%,var(--stage-2) 100%);overflow:hidden}
-canvas{display:block;width:100%;height:100%;touch-action:none}
-section h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin:0 0 9px;font-weight:600}
-.slider{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:baseline;margin-bottom:11px}
-.slider label{font-size:12.5px}
-.slider .val{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums}
-.slider .note{grid-column:1/-1;font-size:10.5px;color:var(--ink-3)}
-.slider input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:3px 0 0}
-.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-.presets button{border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);border-radius:3px;padding:4px 9px;font:inherit;font-size:11.5px;cursor:pointer}
-.presets button:hover{border-color:var(--accent);color:var(--accent)}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
-.tile{background:var(--surface);padding:9px 11px}
-.tile .k{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
-.tile .v{font-family:"IBM Plex Mono",monospace;font-size:19px;font-variant-numeric:tabular-nums;margin-top:2px}
-.tile .d{font-size:11px;color:var(--ink-2)}
-.layers{display:flex;flex-direction:column;gap:2px}
-.lrow{display:grid;grid-template-columns:auto 12px 1fr auto;gap:9px;align-items:center;padding:4px 6px;border-radius:3px;cursor:pointer}
-.lrow:hover{background:var(--surface-2)}
-.lrow .sw{width:12px;height:12px;border-radius:2px;border:1px solid rgba(0,0,0,.18)}
-.lrow .dep{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3)}
-.lrow input{accent-color:var(--accent)}
-#timeline{grid-column:2;grid-row:3;display:flex;align-items:center;gap:12px;padding:9px 16px;padding-bottom:calc(9px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}
-#timeline input[type=range]{flex:1;accent-color:var(--accent)}
-#play{border:1px solid var(--line);background:var(--surface-2);color:var(--ink);border-radius:3px;width:34px;height:28px;font-size:13px;cursor:pointer}
-.stamp{font-family:"IBM Plex Mono",monospace;font-size:13px;min-width:112px;font-variant-numeric:tabular-nums}
-.stamp small{color:var(--ink-3)}
-#legend{position:absolute;left:14px;bottom:14px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--line);border-radius:4px;padding:9px 11px;backdrop-filter:blur(6px);max-width:215px}
-#legend .bar{height:9px;border-radius:2px;margin:5px 0 3px}
-#legend .ends{display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-2)}
-#legend .cap{font-size:10.5px;color:var(--ink-3);margin-top:5px;line-height:1.35}
-#probe{position:absolute;right:14px;top:14px;width:250px;background:color-mix(in srgb,var(--surface) 95%,transparent);border:1px solid var(--line);border-radius:4px;padding:11px 12px;backdrop-filter:blur(6px)}
-#probe h3{margin:0 0 2px;font-size:13px}
-#probe .loc{font-size:11px;color:var(--ink-3);margin-bottom:8px}
-#probe .row{display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0}
-#probe .row b{font-family:"IBM Plex Mono",monospace;font-weight:500;font-variant-numeric:tabular-nums}
-#probe svg{width:100%;height:74px;margin-top:7px}
-#probe .hint{font-size:10.5px;color:var(--ink-3);line-height:1.4}
-.tabs{display:flex;gap:2px;margin:-3px -3px 9px;border-bottom:1px solid var(--line)}
-.tabs button{flex:1;border:0;border-bottom:2px solid transparent;background:none;color:var(--ink-3);
-  font:inherit;font-size:11px;padding:5px 2px;cursor:pointer}
-.tabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent)}
-.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#probe.wide{width:390px}
-#secWrap svg,#cmpWrap svg{width:100%;display:block}
-.tbl{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
-.tbl th{text-align:left;font-weight:500;color:var(--ink-3);font-size:10px;text-transform:uppercase;
-  letter-spacing:.06em;padding:3px 4px;cursor:pointer;white-space:nowrap}
-.tbl th[aria-sort]{color:var(--accent)}
-.tbl td{padding:3px 4px;border-top:1px solid var(--line)}
-.tbl tr:hover td{background:var(--surface-2)}
-.tbl .num{font-family:"IBM Plex Mono",monospace;text-align:right}
-.tbl .bar{height:5px;border-radius:2px;background:var(--accent);opacity:.75}
-.tblwrap{max-height:230px;overflow-y:auto}
-.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.mini figure{margin:0}
-.mini figcaption{font-size:10px;color:var(--ink-3);margin-bottom:3px}
-.mini canvas{width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:3px;background:var(--surface-2)}
-.btnrow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.btnrow button{flex:1;min-width:92px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);
-  border-radius:3px;padding:5px 7px;font:inherit;font-size:11px;cursor:pointer}
-.btnrow button:hover{border-color:var(--accent);color:var(--accent)}
-.btnrow button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.said{font-size:10.5px;color:var(--good);min-height:13px;margin-top:5px}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-.view-btns{display:flex;gap:6px;flex-wrap:wrap}
-.view-btns button{flex:1;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);border-radius:3px;padding:5px;font:inherit;font-size:11.5px;cursor:pointer}
-.view-btns button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-.caveat{font-size:11px;color:var(--ink-2);line-height:1.45;border-left:2px solid var(--warn);padding-left:9px}
-.rng{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:baseline;margin-bottom:9px}
-.rng input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
-.rng label{font-size:12px}
-.rng .val{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3)}
-@media (max-width:860px){
-  #app{grid-template-columns:1fr;grid-template-rows:auto 44vh auto 1fr}
-  #stage{grid-column:1;grid-row:2}
-  #timeline{grid-column:1;grid-row:3}
-  #rail{grid-column:1;grid-row:4;border-right:0;border-top:1px solid var(--line)}
-  #probe{position:static;width:auto;margin:0 0 4px}
-  :root{--rail:auto}
-}
-</style>
+def _render(payload: dict, three: str, log=print) -> str:
+    with open(TEMPLATE, encoding="utf-8") as fh:
+        page = fh.read()
+    blob = json.dumps(payload, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False, default=_json_default)
+    blob = blob.replace("</", "<\\/")
+    inline = ""
+    if three == "inline":
+        src = os.environ.get("TWIN_THREE_JS", THREE_LOCAL)
+        if os.path.exists(src):
+            with open(src, encoding="utf-8") as fh:
+                inline = "<script>" + fh.read() + "</script>"
+        else:
+            log(f"--three inline: no pinned three.min.js at {src}; falling back to cdn")
+            three = "cdn"
+    page = page.replace("__THREE_MODE__", three)
+    page = page.replace("__THREE_CDN__", THREE_CDN if three == "cdn" else "")
+    page = page.replace("<!--__THREE_INLINE__-->", inline)
+    return page.replace("__PAYLOAD__", blob)
 
-<div id="app">
-  <header>
-    <div>
-      <h1>Choushui Fan Twin</h1>
-      <div class="sub">Pumping policy to groundwater heads to land subsidence, Yunlin and Changhua, Taiwan</div>
-    </div>
-    <div class="spacer"></div>
-    <div class="verdict" id="verdict"></div>
-    <div class="modes">
-      <button id="mDecide" aria-pressed="true">Decision</button>
-      <button id="mAnalyst" aria-pressed="false">Analyst</button>
-    </div>
-  </header>
 
-  <aside id="rail">
-    <section>
-      <h2>Pumping policy</h2>
-      <div id="sliders"></div>
-      <div class="rng">
-        <label for="startYear">Policy starts</label><span class="val" id="startVal"></span>
-        <input type="range" id="startYear" min="0" max="1" step="1" value="0">
-      </div>
-      <div class="presets" id="presets"></div>
-    </section>
+def _json_default(o):
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return None if not np.isfinite(o) else float(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    raise TypeError(type(o))
 
-    <section>
-      <h2>Outcome by <span id="horizonYear"></span></h2>
-      <div class="tiles">
-        <div class="tile"><div class="k">Fan mean</div><div class="v" id="tMean">—</div><div class="d" id="tMeanD">&nbsp;</div></div>
-        <div class="tile"><div class="k">Worst township</div><div class="v" id="tWorst" style="font-size:14px">—</div><div class="d" id="tWorstD">&nbsp;</div></div>
-        <div class="tile"><div class="k">Area past 5 cm</div><div class="v" id="tArea">—</div><div class="d">km² of 2,144</div></div>
-        <div class="tile"><div class="k">Peak cell</div><div class="v" id="tPeak">—</div><div class="d" id="tPeakD">&nbsp;</div></div>
-      </div>
-    </section>
 
-    <section class="analyst">
-      <h2>Aquifers</h2>
-      <div class="layers" id="layers"></div>
-      <div class="view-btns" style="margin-top:9px">
-        <button id="vHead" aria-pressed="true">Head</button>
-        <button id="vDraw" aria-pressed="false">Drawdown</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>Ground</h2>
-      <div class="rng"><label for="blend">Imagery to subsidence</label><span class="val" id="blendVal">45%</span>
-        <input type="range" id="blend" min="0" max="100" value="45"></div>
-      <div class="view-btns">
-        <button id="bPhoto" aria-pressed="true">Aerial</button>
-        <button id="bMap" aria-pressed="false">Topographic</button>
-      </div>
-      <p class="loc" id="attrib" style="margin:8px 0 0;font-size:10px;line-height:1.4"></p>
-    </section>
-
-    <section class="analyst">
-      <h2>View</h2>
-      <div class="rng"><label for="explode">Separate layers</label><span class="val" id="explodeVal">0</span>
-        <input type="range" id="explode" min="0" max="100" value="0"></div>
-      <div class="rng"><label for="clip">Cut away, west to east</label><span class="val" id="clipVal">off</span>
-        <input type="range" id="clip" min="0" max="100" value="100"></div>
-      <div class="rng"><label for="exag">Vertical exaggeration</label><span class="val" id="exagVal">40×</span>
-        <input type="range" id="exag" min="10" max="120" value="40"></div>
-      <div class="view-btns"><button id="vReset">Reset camera</button><button id="vTop">Map view</button></div>
-    </section>
-
-    <section>
-      <h2>What this is</h2>
-      <p class="caveat" id="caveat"></p>
-    </section>
-  </aside>
-
-  <div id="stage">
-    <canvas id="c"></canvas>
-    <div id="legend">
-      <div style="font-size:11px;font-weight:500" id="legTitle">Cumulative subsidence</div>
-      <div class="bar" id="legBar"></div>
-      <div class="ends"><span id="legLo">0</span><span id="legHi"></span></div>
-      <div class="cap" id="legCap"></div>
-    </div>
-    <div id="probe">
-      <div class="tabs" role="tablist">
-        <button id="tabCell" aria-pressed="true">Cell</button>
-        <button id="tabSec" aria-pressed="false">Section</button>
-        <button id="tabCmp" aria-pressed="false">Compare</button>
-        <button id="tabTown" aria-pressed="false">Townships</button>
-      </div>
-
-      <div id="paneCell">
-        <h3 id="pTitle">Click the ground</h3>
-        <div class="loc" id="pLoc"></div>
-        <div id="pRows"></div>
-        <svg id="pChart" viewBox="0 0 250 74" aria-label="subsidence over time at the selected cell"></svg>
-        <div class="hint" id="pHint">Pick a cell to read its heads, its sinking, and the ensemble spread.</div>
-      </div>
-
-      <div id="paneSec" hidden>
-        <h3>Cross-section</h3>
-        <div class="loc" id="secHint">Click two points on the ground to cut a line through the fan.</div>
-        <div id="secWrap"><svg id="secSvg" viewBox="0 0 380 210" aria-label="vertical section through the aquifers"></svg></div>
-        <div class="btnrow">
-          <button id="secDraw">Draw section</button>
-          <button id="secWE">West to east</button>
-          <button id="secCopy">Copy CSV</button>
-        </div>
-        <div class="said" id="secSaid"></div>
-      </div>
-
-      <div id="paneCmp" hidden>
-        <h3>Compare policies</h3>
-        <div class="loc">Your policy against a reference, at <span id="cmpYear"></span>.</div>
-        <div class="mini">
-          <figure><figcaption id="cmpAName">Your policy</figcaption><canvas id="cmpA" width="59" height="77"></canvas></figure>
-          <figure><figcaption id="cmpBName">Reference</figcaption><canvas id="cmpB" width="59" height="77"></canvas></figure>
-        </div>
-        <label class="loc" for="cmpRef">Reference</label>
-        <select id="cmpRef" style="width:100%;font:inherit;font-size:11.5px;padding:4px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)">
-          <option value="base">Baseline, no change</option>
-          <option value="irr30">Irrigation −30%</option>
-          <option value="aqua0">Retire aquaculture</option>
-          <option value="all20">All users −20%</option>
-        </select>
-        <div id="cmpRows" style="margin-top:8px"></div>
-        <div class="btnrow"><button id="cmpOn" aria-pressed="false">Colour the block by difference</button></div>
-      </div>
-
-      <div id="paneTown" hidden>
-        <h3>Township report</h3>
-        <div class="loc">Mean subsidence at <span id="townYear"></span> and the change your policy makes.</div>
-        <div class="tblwrap"><table class="tbl" id="townTbl"></table></div>
-        <div class="btnrow">
-          <button id="townCopy">Copy CSV</button>
-          <button id="townDl">Download CSV</button>
-          <button id="shotPng">Save image</button>
-        </div>
-        <div class="said" id="townSaid"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="timeline">
-    <button id="play" aria-label="play">▶</button>
-    <input type="range" id="time" min="0" max="1" value="0">
-    <div class="stamp" id="stamp"></div>
-  </div>
-</div>
-
-<script>
-const D = __DATA__;
-const dec = (s, T) => { const b = atob(s), u = new Uint8Array(b.length);
-  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
-  return new T(u.buffer); };
-const cols = dec(D.cols, Int16Array), rows = dec(D.rows, Int16Array);
-const zone = dec(D.zone, Uint8Array), town = dec(D.town, Uint8Array);
-const ground = dec(D.ground, Int16Array);          // 1 cm counts
-const subsBase = dec(D.subsBase, Int16Array);      // cm, 0.01 counts, (A,T)
-const subsStd = dec(D.subsStd, Int16Array);        // (A,Q)
-const headBase = dec(D.headBase, Int16Array);      // (L,A,Q), 1 cm counts
-const dSub = dec(D.dSub, Int16Array);              // (C,A,Q)
-const dHead = dec(D.dHead, Int16Array);            // (C,L,A,Q)
-const A = D.nA, T = D.months.length, Q = D.quarters.length, C = D.classes.length, L = 4;
-const P = D.dQuarters.length;
-const qIndex = new Int32Array(T);                  // month -> nearest stored head sample
-{ let j = 0; for (let t = 0; t < T; t++) { while (j + 1 < Q && D.quarters[j + 1] <= t) j++; qIndex[t] = j; } }
-// deltas are stored sparsely and interpolated: slot + weight toward the next slot
-const dSlot = new Int32Array(T), dFrac = new Float32Array(T);
-{ let j = 0;
-  for (let t = 0; t < T; t++) {
-    while (j + 1 < P && D.dQuarters[j + 1] <= t) j++;
-    dSlot[t] = j;
-    const a = D.dQuarters[j], b = j + 1 < P ? D.dQuarters[j + 1] : a;
-    dFrac[t] = b > a ? (t - a) / (b - a) : 0;
-  } }
-function dLerp(arr, stride, base, t) {          // arr[(base)*P + slot], interpolated
-  const j = dSlot[t], f = dFrac[t];
-  const v0 = arr[base * P + j];
-  const v1 = j + 1 < P ? arr[base * P + j + 1] : v0;
-  return v0 + (v1 - v0) * f;
-}
-
-const state = {
-  t: T - 1, playing: false, mode: "decide", field: "subs", headMode: "head",
-  factors: D.classes.map(() => 1), start: 0, layers: [true, true, true, true],
-  aquitards: true, explode: 0, clip: 1, exag: 40, sel: -1,
-  tab: "cell", secMode: false, secA: null, secB: null, cmpRef: "base", cmpOn: false
-};
-// (col,row) -> active cell index, so a section can walk the grid
-const cellAt = new Int32Array(D.nx * D.ny).fill(-1);
-for (let i = 0; i < A; i++) cellAt[rows[i] * D.nx + cols[i]] = i;
-const presetFactors = p => D.classes.map(c =>
-  p === "base" ? 1 : p === "irr30" ? (c === "irrigation" ? 0.7 : 1)
-  : p === "aqua0" ? (c === "aquaculture" ? 0 : 1) : 0.8);
-function subsWith(factors, cell, t) {
-  let v = subsBase[cell * T + t] * 0.01;
-  if (!C) return v;
-  const lag = startMonths[state.start] - startMonths[0], ts = t - lag;
-  if (ts < 0) return v;
-  const tc = Math.min(T - 1, ts);
-  for (let c = 0; c < C; c++) {
-    const f = factors[c]; if (f === 1) continue;
-    v += (1 - f) * dLerp(dSub, 1, c * A + cell, tc) * 0.01;
-  }
-  return v;
-}
-const startMonths = [D.startMonth, Math.min(T - 1, D.startMonth + 48)];
-const startLabels = [D.months[startMonths[0]].slice(0, 4), D.months[startMonths[1]].slice(0, 4)];
-
-// ---- policy response ---------------------------------------------------------------
-function subsAt(cell, t) {
-  let v = subsBase[cell * T + t] * 0.01;
-  if (!C) return v;
-  const lag = startMonths[state.start] - startMonths[0];
-  const ts = t - lag; if (ts < 0) return v;
-  const tc = Math.min(T - 1, ts);
-  for (let c = 0; c < C; c++) {
-    const f = state.factors[c]; if (f === 1) continue;
-    v += (1 - f) * dLerp(dSub, 1, c * A + cell, tc) * 0.01;
-  }
-  return v;
-}
-function headAt(layer, cell, t) {
-  const q = qIndex[t];
-  let v = headBase[((layer * A) + cell) * Q + q] * 0.01;
-  if (!C) return v;
-  const lag = startMonths[state.start] - startMonths[0];
-  const ts = t - lag; if (ts < 0) return v;
-  const tc = Math.min(T - 1, ts);
-  for (let c = 0; c < C; c++) {
-    const f = state.factors[c]; if (f === 1) continue;
-    v += (1 - f) * dLerp(dHead, 1, (c * L + layer) * A + cell, tc) * 0.01;
-  }
-  return v;
-}
-
-// ---- colour ramps ------------------------------------------------------------------
-const subsRamp = [[0.00,[0.96,0.94,0.87]],[0.25,[0.91,0.78,0.52]],[0.50,[0.85,0.55,0.26]],
-                  [0.75,[0.68,0.27,0.18]],[1.00,[0.36,0.10,0.10]]];
-const headRamp = [[0.00,[0.13,0.20,0.29]],[0.35,[0.16,0.42,0.56]],[0.65,[0.42,0.68,0.78]],
-                  [1.00,[0.83,0.92,0.94]]];
-function ramp(r, u) {
-  u = Math.max(0, Math.min(1, u));
-  for (let i = 1; i < r.length; i++) if (u <= r[i][0]) {
-    const a = r[i-1], b = r[i], k = (u - a[0]) / (b[0] - a[0]);
-    return [a[1][0]+(b[1][0]-a[1][0])*k, a[1][1]+(b[1][1]-a[1][1])*k, a[1][2]+(b[1][2]-a[1][2])*k];
-  }
-  return r[r.length-1][1];
-}
-const CLAY = [0.55,0.50,0.42], ROCK = {0:[0.72,0.66,0.55],1:[0.78,0.71,0.57],2:[0.64,0.63,0.57]};
-// difference: one cool pole, a neutral midpoint, one warm pole
-const diffRamp = [[0.0,[0.10,0.42,0.42]],[0.35,[0.55,0.74,0.72]],[0.5,[0.88,0.87,0.83]],
-                  [0.65,[0.88,0.66,0.44]],[1.0,[0.60,0.20,0.14]]];
-const rgb = c => "rgb(" + c.map(v => Math.round(v*255)).join(",") + ")";
-
-// ---- scene -------------------------------------------------------------------------
-const canvas = document.getElementById("c");
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-renderer.localClippingEnabled = true;
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 1, 1, 8000);
-const KM = 1000 / D.dx;                       // one cell = 1 unit
-const W = D.nx, H = D.ny;
-const target = new THREE.Vector3(0, 0, 0);
-let camR = 105, camTheta = -0.9, camPhi = 0.92;
-function place() {
-  camera.position.set(target.x + camR*Math.sin(camPhi)*Math.cos(camTheta),
-                      target.y + camR*Math.cos(camPhi),
-                      target.z + camR*Math.sin(camPhi)*Math.sin(camTheta));
-  camera.lookAt(target);
-}
-scene.add(new THREE.HemisphereLight(0xffffff, 0x5a5348, 0.95));
-const key = new THREE.DirectionalLight(0xfff4e2, 0.85); key.position.set(-60, 90, 40); scene.add(key);
-const fill = new THREE.DirectionalLight(0xbcd6e4, 0.35); fill.position.set(50, 30, -50); scene.add(fill);
-
-const clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6);
-const boxGeom = new THREE.BoxGeometry(1, 1, 1);
-const meshes = [];      // {mesh, kind:'aquifer'|'aquitard'|'ground', layer}
-const DEPTH = {}, THICK = {};
-D.zoneNames.forEach((z, i) => { DEPTH[i] = D.layerDepths[z]; THICK[i] = D.layerThick[z]; });
-
-function makeLayer(kind, layer) {
-  const m = new THREE.MeshLambertMaterial({vertexColors:true, clippingPlanes:[clipPlane],
-    transparent: kind === "aquitard", opacity: kind === "aquitard" ? 0.93 : 1});
-  const inst = new THREE.InstancedMesh(boxGeom, m, A);
-  inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const c0 = new THREE.Color(0.6, 0.6, 0.6);
-  for (let i = 0; i < A; i++) inst.setColorAt(i, c0);   // creates instanceColor properly
-  scene.add(inst);
-  meshes.push({mesh:inst, kind, layer});
-  return inst;
-}
-for (let l = 0; l < L; l++) { makeLayer("aquifer", l); if (l < L-1) makeLayer("aquitard", l); }
-
-// ---- terrain: one displaced, textured surface, not a field of boxes ------------------
-// The ground is what a viewer recognises, so it gets the orthophoto and the real
-// elevation. A shader blends the photo against the subsidence ramp, so the same surface
-// serves "where am I" and "how fast is it sinking" without swapping meshes.
-const terrainGeo = new THREE.PlaneGeometry(W - 1, H - 1, W - 1, H - 1);
-terrainGeo.rotateX(-Math.PI / 2);
-const terrainVal = new Float32Array(W * H);      // subsidence, cm
-const terrainIn = new Float32Array(W * H);       // 1 inside the fan, 0 outside
-terrainGeo.setAttribute("aVal", new THREE.BufferAttribute(terrainVal, 1));
-terrainGeo.setAttribute("aIn", new THREE.BufferAttribute(terrainIn, 1));
-const rampTex = (() => {                          // the subsidence ramp as a 1-D texture
-  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 1;
-  const g2 = cv.getContext("2d").createLinearGradient(0, 0, 128, 0);
-  for (const st of subsRamp) g2.addColorStop(st[0], rgb(st[1]));
-  const ctx = cv.getContext("2d"); ctx.fillStyle = g2; ctx.fillRect(0, 0, 128, 1);
-  const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
-})();
-function imageTexture(key) {
-  const b = D.imagery && D.imagery[key];
-  if (!b) return null;
-  const img = new Image();
-  img.src = "data:image/jpeg;base64," + b;
-  const t = new THREE.Texture(img);
-  img.onload = () => { t.needsUpdate = true; };
-  t.flipY = true;
-  return t;
-}
-const texPhoto = imageTexture("PHOTO2"), texMap = imageTexture("EMAP");
-const blank = new THREE.DataTexture(new Uint8Array([200, 200, 195, 255]), 1, 1, THREE.RGBAFormat);
-blank.needsUpdate = true;
-const terrainMat = new THREE.ShaderMaterial({
-  uniforms: {
-    uPhoto: {value: texPhoto || blank}, uRamp: {value: rampTex},
-    uBlend: {value: 0.45},              // 0 imagery only, 1 subsidence only
-    uMax: {value: 40.0}, uLight: {value: new THREE.Vector3(-0.5, 0.78, 0.35)},
-    uDiff: {value: 0.0}, uScale: {value: 2.0}
-  },
-  vertexShader: `
-    #include <clipping_planes_pars_vertex>
-    attribute float aVal; attribute float aIn;
-    varying float vVal; varying float vIn; varying vec2 vUv; varying vec3 vN;
-    void main(){
-      vVal = aVal; vIn = aIn; vUv = uv; vN = normalize(normalMatrix * normal);
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_Position = projectionMatrix * mvPosition;
-      #include <clipping_planes_vertex>
-    }`,
-  fragmentShader: `
-    #include <clipping_planes_pars_fragment>
-    uniform sampler2D uPhoto; uniform sampler2D uRamp;
-    uniform float uBlend; uniform float uMax; uniform float uDiff; uniform float uScale;
-    uniform vec3 uLight;
-    varying float vVal; varying float vIn; varying vec2 vUv; varying vec3 vN;
-    void main(){
-      #include <clipping_planes_fragment>
-      vec3 photo = texture2D(uPhoto, vUv).rgb;
-      float u = uDiff > 0.5 ? clamp(0.5 + vVal / (2.0 * uScale), 0.0, 1.0)
-                            : clamp(vVal / uMax, 0.0, 1.0);
-      vec3 heat = texture2D(uRamp, vec2(u, 0.5)).rgb;
-      float b = vIn > 0.5 ? uBlend : 0.0;
-      vec3 c = mix(photo, heat, b);
-      float lam = 0.45 + 0.55 * max(dot(normalize(vN), normalize(uLight)), 0.0);
-      gl_FragColor = vec4(c * lam, 1.0);
-    }`,
-  clippingPlanes: [clipPlane], clipping: true
-});
-const terrain = new THREE.Mesh(terrainGeo, terrainMat);
-scene.add(terrain);
-const cellOfVertex = new Int32Array(W * H).fill(-1);
-for (let i = 0; i < A; i++) cellOfVertex[rows[i] * W + cols[i]] = i;
-function updateTerrain() {
-  const pos = terrainGeo.attributes.position.array;
-  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
-    const v = r * W + c;                       // plane rows run north to south
-    const gi = (H - 1 - r) * W + c;
-    const cell = cellOfVertex[gi];
-    const g = cell >= 0 ? ground[cell] * 0.01 : NaN;
-    const sub = cell >= 0 ? subsAt(cell, state.t) : 0;
-    const near = cell >= 0 ? g : nearestGround(c, H - 1 - r);
-    pos[v * 3 + 1] = (near - sub) * state.exag / 40;
-    terrainVal[v] = cell >= 0 ? (state.cmpOn
-      ? sub - subsWith(presetFactors(state.cmpRef), cell, state.t) : sub) : 0;
-    terrainIn[v] = cell >= 0 ? 1 : 0;
-  }
-  terrainGeo.attributes.position.needsUpdate = true;
-  terrainGeo.attributes.aVal.needsUpdate = true;
-  terrainGeo.attributes.aIn.needsUpdate = true;
-  terrainGeo.computeVertexNormals();
-  terrainMat.uniforms.uMax.value = subsMax;
-  terrainMat.uniforms.uDiff.value = state.cmpOn ? 1 : 0;
-  terrainMat.uniforms.uScale.value = cmpScale;
-}
-let groundFill = null;
-function nearestGround(c, r) {                 // outside the fan, follow the nearest cell
-  if (groundFill === null) {
-    groundFill = new Float32Array(W * H);
-    const q = [];
-    for (let i = 0; i < A; i++) { const k = rows[i] * W + cols[i]; groundFill[k] = ground[i] * 0.01; q.push(k); }
-    const seen = new Uint8Array(W * H);
-    for (let i = 0; i < A; i++) seen[rows[i] * W + cols[i]] = 1;
-    for (let h = 0; h < q.length; h++) {
-      const k = q[h], kc = k % W, kr = (k - kc) / W;
-      for (const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-        const c2 = kc + dc, r2 = kr + dr;
-        if (c2 < 0 || c2 >= W || r2 < 0 || r2 >= H) continue;
-        const k2 = r2 * W + c2;
-        if (seen[k2]) continue;
-        seen[k2] = 1; groundFill[k2] = groundFill[k]; q.push(k2);
-      }
-    }
-  }
-  return groundFill[r * W + c];
-}
-
-const mtx = new THREE.Matrix4(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1,1,1), qt = new THREE.Quaternion();
-function layerY(kind, layer, cell) {
-  const z = zone[cell], g = ground[cell] * 0.01;
-  const d = DEPTH[z][layer], th = THICK[z][layer];
-  if (kind === "aquifer") return {y: g - d, h: th};
-  const d2 = DEPTH[z][layer+1], th2 = THICK[z][layer+1];
-  const top = g - d - th/2, bot = g - d2 + th2/2;
-  return {y: (top + bot) / 2, h: Math.max(4, top - bot)};
-}
-function rebuildGeometry(onlyGround) {
-  updateTerrain();
-  if (onlyGround) return;
-  const ex = state.explode;
-  for (const rec of meshes) {
-    const {mesh, kind, layer} = rec;
-    let n = 0;
-    for (let i = 0; i < A; i++) {
-      const {y, h} = layerY(kind, layer, i);
-      const li = kind === "aquifer" ? layer + 1 : layer + 1.5;
-      const lift = ex * li * 1.1;
-      pos.set(cols[i] - W/2 + 0.5, y * state.exag / 40 + lift, -(rows[i] - H/2 + 0.5));
-      scl.set(0.98, Math.max(0.6, h * state.exag / 40), 0.98);
-      mtx.compose(pos, qt, scl);
-      mesh.setMatrixAt(n++, mtx);
-    }
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-  }
-}
-let subsMax = 1;
-function recolour() {
-  const t = state.t;
-  // fan-wide scale for the subsidence ramp, stable across time so colours mean one thing
-  for (const rec of meshes) {
-    const {mesh, kind, layer} = rec;
-    const col = mesh.instanceColor.array;
-    for (let i = 0; i < A; i++) {
-      let c;
-      if (kind === "aquifer") {
-        if (state.field === "subs") {
-          c = ROCK[zone[i]].slice();
-        } else if (state.headMode === "draw") {
-          const d = headAt(layer, i, 0) - headAt(layer, i, t);
-          c = ramp(headRamp, 1 - Math.max(0, Math.min(1, d / 12)));
-        } else {
-          c = ramp(headRamp, (headAt(layer, i, t) + 20) / 90);
-        }
-      } else {
-        c = CLAY;
-      }
-      col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
-    }
-    mesh.instanceColor.needsUpdate = true;
-  }
-}
-function applyVisibility() {
-  for (const rec of meshes) {
-    if (rec.kind === "aquifer") rec.mesh.visible = state.layers[rec.layer];
-    else rec.mesh.visible = state.aquitards && state.layers[rec.layer] && state.layers[rec.layer+1];
-  }
-  const x = -W/2 + state.clip * W;
-  clipPlane.constant = state.clip >= 1 ? 1e6 : x;
-}
-
-// ---- camera interaction ------------------------------------------------------------
-let drag = null;
-canvas.addEventListener("pointerdown", e => {
-  drag = {x:e.clientX, y:e.clientY, b:e.button, t:Date.now()};
-  canvas.setPointerCapture(e.pointerId);
-});
-canvas.addEventListener("pointermove", e => {
-  if (!drag) return;
-  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  drag.x = e.clientX; drag.y = e.clientY; drag.moved = (drag.moved || 0) + Math.abs(dx) + Math.abs(dy);
-  if (drag.b === 2 || e.shiftKey) {
-    const s = camR * 0.0016;
-    target.x -= dx * s * Math.sin(camTheta + Math.PI/2);
-    target.z -= dx * s * -Math.cos(camTheta + Math.PI/2);
-    target.y += dy * s;
-  } else {
-    camTheta -= dx * 0.006;
-    camPhi = Math.max(0.12, Math.min(1.5, camPhi - dy * 0.005));
-  }
-  place();
-});
-canvas.addEventListener("pointerup", e => {
-  if (drag && (drag.moved || 0) < 5 && Date.now() - drag.t < 400) pick(e);
-  drag = null;
-});
-canvas.addEventListener("contextmenu", e => e.preventDefault());
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-  camR = Math.max(20, Math.min(400, camR * (1 + Math.sign(e.deltaY) * 0.08)));
-  place();
-}, {passive:false});
-
-const ray = new THREE.Raycaster();
-function pick(e) {
-  const r = canvas.getBoundingClientRect();
-  const m = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
-  ray.setFromCamera(m, camera);
-  const targets = meshes.filter(x => x.mesh.visible).map(x => x.mesh);
-  targets.push(terrain);
-  const hits = ray.intersectObjects(targets);
-  if (!hits.length) return;
-  let id;
-  if (hits[0].object === terrain) {            // a face index on the plane -> a grid cell
-    const f = hits[0].face;
-    const v = f.a, c = v % W, r = (v - c) / W;
-    id = cellOfVertex[(H - 1 - r) * W + c];
-    if (id === undefined || id < 0) return;
-  } else id = hits[0].instanceId;
-  if (state.secMode) {
-    if (!state.secA || state.secB) { state.secA = id; state.secB = null; }
-    else state.secB = id;
-    if (state.secA && state.secB) { state.secMode = false; $("secDraw").setAttribute("aria-pressed", false); }
-    drawSectionLine(); drawSection();
-  } else { state.sel = id; drawProbe(); }
-}
-
-// ---- UI ----------------------------------------------------------------------------
-const $ = id => document.getElementById(id);
-const fmt = (v, n=2) => (v >= 0 ? "" : "") + v.toFixed(n);
-
-function buildSliders() {
-  $("sliders").innerHTML = D.classes.map((c, i) => {
-    const pct = D.classShare[i] ? ` · ${(D.classShare[i]*100).toFixed(0)}% of pumped energy` : "";
-    return `<div class="slider">
-      <label for="f${i}">${D.classLabels[i]}</label><span class="val" id="fv${i}">no change</span>
-      <div class="note">${pct.replace(/^ · /,"")}</div>
-      <input type="range" id="f${i}" min="0" max="150" value="100">
-    </div>`;
-  }).join("");
-  D.classes.forEach((c, i) => $("f"+i).addEventListener("input", e => {
-    state.factors[i] = (+e.target.value) / 100; refresh(true);
-  }));
-  $("presets").innerHTML = `
-    <button data-p="base">Baseline</button>
-    <button data-p="irr30">Irrigation −30%</button>
-    <button data-p="aqua0">Retire aquaculture</button>
-    <button data-p="all20">All users −20%</button>`;
-  $("presets").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
-    const p = b.dataset.p;
-    state.factors = D.classes.map(c => {
-      if (p === "base") return 1;
-      if (p === "irr30") return c === "irrigation" ? 0.7 : 1;
-      if (p === "aqua0") return c === "aquaculture" ? 0 : 1;
-      return 0.8;
-    });
-    D.classes.forEach((c, i) => $("f"+i).value = Math.round(state.factors[i]*100));
-    refresh(true);
-  }));
-}
-function buildLayers() {
-  const names = ["Aquifer 1, shallow", "Aquifer 2, main production", "Aquifer 3", "Aquifer 4, deep"];
-  $("layers").innerHTML = names.map((n, i) => {
-    const d = D.layerDepths.mid[i];
-    return `<label class="lrow"><input type="checkbox" id="L${i}" checked>
-      <span class="sw" style="background:rgb(${ramp(headRamp,0.35+i*0.18).map(v=>Math.round(v*255)).join(",")})"></span>
-      <span>${n}</span><span class="dep">${d.toFixed(0)} m</span></label>`;
-  }).join("") + `<label class="lrow"><input type="checkbox" id="Lclay" checked>
-      <span class="sw" style="background:rgb(${CLAY.map(v=>Math.round(v*255)).join(",")})"></span>
-      <span>Aquitards, clay</span><span class="dep">between</span></label>`;
-  for (let i = 0; i < L; i++) $("L"+i).addEventListener("change", e => {
-    state.layers[i] = e.target.checked; applyVisibility(); });
-  $("Lclay").addEventListener("change", e => { state.aquitards = e.target.checked; applyVisibility(); });
-}
-function drawProbe() {
-  const i = state.sel;
-  if (i < 0) return;
-  const t = state.t;
-  $("pTitle").textContent = D.townNames[town[i]] === "unlabelled"
-    ? "Cell " + i : D.townNames[town[i]];
-  $("pLoc").textContent = `${D.zoneNames[zone[i]]} fan · ground ${(ground[i]*0.01).toFixed(1)} m · ${D.months[t]}`;
-  const s = subsAt(i, t), sd = subsStd[i*Q + qIndex[t]] * 0.01;
-  const b = subsBase[i*T + t] * 0.01;
-  let rows = `<div class="row"><span>Subsidence</span><b>${s.toFixed(1)} ± ${sd.toFixed(1)} cm</b></div>`;
-  if (Math.abs(s - b) > 0.005)
-    rows += `<div class="row"><span>Versus baseline</span><b>${(s-b>=0?"+":"")}${(s-b).toFixed(2)} cm</b></div>`;
-  for (let l = 0; l < L; l++)
-    rows += `<div class="row"><span>Head, aquifer ${l+1}</span><b>${headAt(l,i,t).toFixed(1)} m</b></div>`;
-  $("pRows").innerHTML = rows;
-  $("pHint").textContent = "Band is the spread across " + D.nMembers + " ensemble members.";
-  // sparkline of subsidence with spread
-  let up = "", dn = "", ln = "";
-  const X = t2 => 4 + 242 * t2 / (T - 1), Y = v => 70 - 62 * Math.min(1, v / subsMax);
-  for (let t2 = 0; t2 < T; t2 += 2) {
-    const v = subsAt(i, t2), e = subsStd[i*Q + qIndex[t2]] * 0.01;
-    up += `${X(t2).toFixed(1)},${Y(v+e).toFixed(1)} `;
-    dn = `${X(t2).toFixed(1)},${Y(Math.max(0,v-e)).toFixed(1)} ` + dn;
-    ln += `${X(t2).toFixed(1)},${Y(v).toFixed(1)} `;
-  }
-  const ox = X(D.origin);
-  $("pChart").innerHTML =
-    `<polygon points="${up}${dn}" fill="var(--accent)" opacity=".16"></polygon>
-     <polyline points="${ln}" fill="none" stroke="var(--accent)" stroke-width="1.6"></polyline>
-     <line x1="${ox}" y1="4" x2="${ox}" y2="70" stroke="var(--ink-3)" stroke-dasharray="2 2" stroke-width="1"></line>
-     <line x1="${X(t)}" y1="2" x2="${X(t)}" y2="72" stroke="var(--ink)" stroke-width="1"></line>
-     <text x="4" y="10" font-size="8" fill="var(--ink-3)">cm</text>
-     <text x="${ox+3}" y="10" font-size="8" fill="var(--ink-3)">projection</text>`;
-}
-function stats() {
-  const t = state.t;
-  let sum = 0, peak = 0, peakI = 0, area = 0, base = 0;
-  const byTown = new Map();
-  for (let i = 0; i < A; i++) {
-    const v = subsAt(i, t);
-    sum += v; base += subsBase[i*T+t] * 0.01;
-    if (v > peak) { peak = v; peakI = i; }
-    if (v > 5) area++;
-    const k = town[i];
-    if (k) { const e = byTown.get(k) || [0,0]; e[0] += v; e[1]++; byTown.set(k, e); }
-  }
-  let wn = "—", wv = 0;
-  byTown.forEach((e, k) => { const m = e[0]/e[1]; if (m > wv) { wv = m; wn = D.townNames[k]; } });
-  return {mean: sum/A, baseMean: base/A, peak, peakI, area, worst: wn, worstV: wv};
-}
-function refresh(geom) {
-  const s = stats();
-  $("tMean").textContent = s.mean.toFixed(1) + " cm";
-  const d = s.mean - s.baseMean;
-  $("tMeanD").textContent = Math.abs(d) < 0.005 ? "baseline policy"
-    : `${d>=0?"+":""}${d.toFixed(2)} cm vs baseline`;
-  $("tWorst").textContent = s.worst;
-  $("tWorstD").textContent = s.worstV.toFixed(1) + " cm average";
-  $("tArea").textContent = s.area;
-  $("tPeak").textContent = s.peak.toFixed(1) + " cm";
-  $("tPeakD").textContent = D.townNames[town[s.peakI]] === "unlabelled" ? "single cell" : D.townNames[town[s.peakI]];
-  D.classes.forEach((c, i) => {
-    const f = state.factors[i];
-    $("fv"+i).textContent = f === 1 ? "no change" : (f < 1 ? `−${Math.round((1-f)*100)}%` : `+${Math.round((f-1)*100)}%`);
-  });
-  $("stamp").innerHTML = D.months[state.t] + (state.t > D.origin ? " <small>projected</small>" : " <small>observed forcing</small>");
-  $("startVal").textContent = "January " + startLabels[state.start];
-  $("legHi").textContent = subsMax.toFixed(0) + " cm";
-  rebuildGeometry(geom === "ground");
-  recolour();
-  if (state.sel >= 0 && state.tab === "cell") drawProbe();
-  if (state.tab === "sec") { drawSectionLine(); drawSection(); }
-  if (state.tab === "cmp") drawCompare();
-  if (state.tab === "town") drawTownships();
-}
-function setMode(m) {
-  state.mode = m;
-  $("mDecide").setAttribute("aria-pressed", m === "decide");
-  $("mAnalyst").setAttribute("aria-pressed", m === "analyst");
-  document.querySelectorAll(".analyst").forEach(el => el.hidden = (m === "decide"));
-  state.field = m === "analyst" ? "head" : "subs";
-  recolour();
-}
-
-// ---- cross-section -----------------------------------------------------------------
-let secLine = null;
-function drawSectionLine() {
-  if (secLine) { scene.remove(secLine); secLine.geometry.dispose(); secLine = null; }
-  if (!(state.secA >= 0 && state.secB >= 0 && state.secB !== null)) return;
-  const pt = i => new THREE.Vector3(cols[i] - W/2 + 0.5,
-    (ground[i]*0.01 - subsAt(i, state.t)) * state.exag / 40 + 3, -(rows[i] - H/2 + 0.5));
-  const g = new THREE.BufferGeometry().setFromPoints([pt(state.secA), pt(state.secB)]);
-  secLine = new THREE.Line(g, new THREE.LineBasicMaterial({color: 0x1f6f8b, linewidth: 2}));
-  scene.add(secLine);
-}
-function sectionCells(n) {
-  if (!(state.secA >= 0 && state.secB >= 0 && state.secB !== null)) return [];
-  const c0 = [cols[state.secA], rows[state.secA]], c1 = [cols[state.secB], rows[state.secB]];
-  const out = [];
-  for (let k = 0; k < n; k++) {
-    const u = k / (n - 1);
-    const cx = Math.round(c0[0] + (c1[0]-c0[0]) * u), cy = Math.round(c0[1] + (c1[1]-c0[1]) * u);
-    const cell = cellAt[cy * D.nx + cx];
-    out.push({u, cell, km: Math.hypot((c1[0]-c0[0]) * u, (c1[1]-c0[1]) * u) * D.dx / 1000});
-  }
-  return out;
-}
-function drawSection() {
-  const pts = sectionCells(120).filter(p => p.cell >= 0);
-  const svg = $("secSvg");
-  if (pts.length < 3) { svg.innerHTML = ""; $("secHint").textContent =
-    "Click two points on the ground to cut a line through the fan."; return; }
-  const t = state.t, len = pts[pts.length-1].km;
-  const X = u => 34 + 336 * u;
-  const yMin = -320, yMax = 60;                          // metres, depth axis
-  const Y = m => 16 + 168 * (yMax - m) / (yMax - yMin);
-  let out = "";
-  // aquifers and aquitards as filled bands, drawn deep to shallow
-  for (let l = L - 1; l >= 0; l--) {
-    let top = "", bot = "";
-    for (const p of pts) {
-      const z = zone[p.cell], g = ground[p.cell] * 0.01;
-      const d = D.layerDepths[D.zoneNames[z]][l], th = D.layerThick[D.zoneNames[z]][l];
-      top += X(p.u).toFixed(1) + "," + Y(g - d + th/2).toFixed(1) + " ";
-      bot = X(p.u).toFixed(1) + "," + Y(g - d - th/2).toFixed(1) + " " + bot;
-    }
-    const mid = pts[Math.floor(pts.length/2)];
-    const hv = headAt(l, mid.cell, t);
-    out += `<polygon points="${top}${bot}" fill="${rgb(ramp(headRamp,(hv+20)/90))}" stroke="rgba(0,0,0,.18)" stroke-width=".5"></polygon>`;
-    if (l < L - 1) {                                     // the clay between this and the next
-      let a = "", b = "";
-      for (const p of pts) {
-        const z = zone[p.cell], g = ground[p.cell] * 0.01, zn = D.zoneNames[z];
-        const d1 = D.layerDepths[zn][l], t1 = D.layerThick[zn][l];
-        const d2 = D.layerDepths[zn][l+1], t2 = D.layerThick[zn][l+1];
-        a += X(p.u).toFixed(1) + "," + Y(g - d1 - t1/2).toFixed(1) + " ";
-        b = X(p.u).toFixed(1) + "," + Y(g - d2 + t2/2).toFixed(1) + " " + b;
-      }
-      out += `<polygon points="${a}${b}" fill="${rgb(CLAY)}" opacity=".9"></polygon>`;
-    }
-  }
-  // head line per aquifer
-  for (let l = 0; l < L; l++) {
-    let ln = "";
-    for (const p of pts) ln += X(p.u).toFixed(1) + "," + Y(headAt(l, p.cell, t)).toFixed(1) + " ";
-    out += `<polyline points="${ln}" fill="none" stroke="var(--ink)" stroke-width="1" opacity=".55" stroke-dasharray="${l?"3 2":""}"></polyline>`;
-  }
-  // ground and the subsidence profile above it
-  let gl = "", sl = "", smax = 0;
-  for (const p of pts) smax = Math.max(smax, subsAt(p.cell, t));
-  const sScale = Math.max(5, Math.ceil(smax/5)*5);
-  for (const p of pts) {
-    gl += X(p.u).toFixed(1) + "," + Y(ground[p.cell]*0.01).toFixed(1) + " ";
-    sl += X(p.u).toFixed(1) + "," + (14 - 11 * subsAt(p.cell, t) / sScale).toFixed(1) + " ";
-  }
-  out += `<polyline points="${gl}" fill="none" stroke="var(--ink)" stroke-width="1.4"></polyline>`;
-  out += `<polyline points="${sl}" fill="none" stroke="${rgb(subsRamp[3][1])}" stroke-width="1.6"></polyline>`;
-  for (const m of [0, -100, -200, -300])
-    out += `<text x="4" y="${(Y(m)+3).toFixed(1)}" font-size="8" fill="var(--ink-3)">${m}</text>`;
-  out += `<text x="4" y="10" font-size="8" fill="var(--ink-3)">m</text>`;
-  out += `<text x="${X(0)}" y="205" font-size="8" fill="var(--ink-3)">0 km</text>`;
-  out += `<text x="${X(1)-26}" y="205" font-size="8" fill="var(--ink-3)">${len.toFixed(0)} km</text>`;
-  out += `<text x="${X(0.5)-52}" y="205" font-size="8" fill="var(--ink-3)">subsidence to ${sScale} cm, top line</text>`;
-  svg.innerHTML = out;
-  const a = D.townNames[town[state.secA]], b = D.townNames[town[state.secB]];
-  $("secHint").textContent = `${len.toFixed(1)} km, ${a === "unlabelled" ? "cell " + state.secA : a} to ${b === "unlabelled" ? "cell " + state.secB : b}, at ${D.months[t]}.`;
-}
-function sectionCsv() {
-  const pts = sectionCells(120).filter(p => p.cell >= 0), t = state.t;
-  let csv = "km,cell,township,zone,ground_m,subsidence_cm,head_L1_m,head_L2_m,head_L3_m,head_L4_m\n";
-  for (const p of pts) {
-    const h = [0,1,2,3].map(l => headAt(l, p.cell, t).toFixed(2)).join(",");
-    csv += `${p.km.toFixed(3)},${p.cell},${D.townNames[town[p.cell]]},${D.zoneNames[zone[p.cell]]},` +
-           `${(ground[p.cell]*0.01).toFixed(2)},${subsAt(p.cell,t).toFixed(3)},${h}\n`;
-  }
-  return csv;
-}
-
-// ---- compare ------------------------------------------------------------------------
-let cmpScale = 2;
-function miniMap(id, factors) {
-  const cv = $(id), ctx = cv.getContext("2d");
-  const img = ctx.createImageData(D.nx, D.ny);
-  img.data.fill(0);
-  for (let i = 0; i < A; i++) {
-    const c = ramp(subsRamp, subsWith(factors, i, state.t) / subsMax);
-    const o = ((D.ny - 1 - rows[i]) * D.nx + cols[i]) * 4;
-    img.data[o] = c[0]*255; img.data[o+1] = c[1]*255; img.data[o+2] = c[2]*255; img.data[o+3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-}
-function drawCompare() {
-  const ref = presetFactors(state.cmpRef);
-  miniMap("cmpA", state.factors); miniMap("cmpB", ref);
-  let mA = 0, mB = 0, worst = 0, best = 0;
-  for (let i = 0; i < A; i++) {
-    const a = subsAt(i, state.t), b = subsWith(ref, i, state.t);
-    mA += a; mB += b; worst = Math.max(worst, a - b); best = Math.min(best, a - b);
-  }
-  mA /= A; mB /= A;
-  cmpScale = Math.max(0.5, Math.max(Math.abs(worst), Math.abs(best)));
-  const label = {base:"Baseline, no change", irr30:"Irrigation −30%", aqua0:"Retire aquaculture", all20:"All users −20%"}[state.cmpRef];
-  $("cmpBName").textContent = label;
-  $("cmpRows").innerHTML =
-    `<div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0"><span>Your policy</span><b>${mA.toFixed(2)} cm</b></div>
-     <div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0"><span>${label}</span><b>${mB.toFixed(2)} cm</b></div>
-     <div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0;border-top:1px solid var(--line);margin-top:3px;padding-top:5px">
-       <span>Difference</span><b style="color:${mA <= mB ? "var(--good)" : "var(--bad)"}">${mA-mB>=0?"+":""}${(mA-mB).toFixed(2)} cm</b></div>
-     <div class="hint" style="margin-top:6px">Best cell ${best.toFixed(2)} cm, worst ${worst>=0?"+":""}${worst.toFixed(2)} cm.</div>`;
-}
-
-// ---- townships ----------------------------------------------------------------------
-let townSort = {key: "now", dir: -1};
-function townshipRows() {
-  const t = state.t, base = presetFactors("base");
-  const m = new Map();
-  for (let i = 0; i < A; i++) {
-    const k = town[i]; if (!k) continue;
-    const e = m.get(k) || {n:0, now:0, base:0, over:0, peak:0};
-    const v = subsAt(i, t);
-    e.n++; e.now += v; e.base += subsWith(base, i, t); e.over += v > 5 ? 1 : 0;
-    e.peak = Math.max(e.peak, v); m.set(k, e);
-  }
-  const out = [];
-  m.forEach((e, k) => out.push({name: D.townNames[k], n: e.n, now: e.now/e.n,
-    delta: (e.now - e.base)/e.n, over: e.over, peak: e.peak}));
-  out.sort((a, b) => (a[townSort.key] > b[townSort.key] ? 1 : -1) * townSort.dir);
-  return out;
-}
-function drawTownships() {
-  const r = townshipRows();
-  const mx = Math.max(...r.map(x => x.now), 1);
-  const th = (k, l) => `<th data-k="${k}"${townSort.key===k?' aria-sort="descending"':''}>${l}</th>`;
-  $("townTbl").innerHTML = `<thead><tr>${th("name","Township")}${th("now","cm")}${th("delta","Δ policy")}${th("over","km² >5cm")}${th("peak","Peak")}</tr></thead><tbody>` +
-    r.map(x => `<tr><td>${x.name}<div class="bar" style="width:${(x.now/mx*100).toFixed(0)}%"></div></td>
-      <td class="num">${x.now.toFixed(1)}</td>
-      <td class="num" style="color:${x.delta < -0.005 ? "var(--good)" : x.delta > 0.005 ? "var(--bad)" : "var(--ink-3)"}">${x.delta>=0?"+":""}${x.delta.toFixed(2)}</td>
-      <td class="num">${x.over}</td><td class="num">${x.peak.toFixed(1)}</td></tr>`).join("") + "</tbody>";
-  $("townTbl").querySelectorAll("th").forEach(h => h.addEventListener("click", () => {
-    const k = h.dataset.k;
-    townSort = {key: k, dir: townSort.key === k ? -townSort.dir : (k === "name" ? 1 : -1)};
-    drawTownships();
-  }));
-}
-function townCsv() {
-  const r = townshipRows();
-  let csv = `township,cells_km2,subsidence_cm,delta_vs_baseline_cm,cells_over_5cm,peak_cm,month,policy\n`;
-  const pol = D.classes.map((c, i) => `${c}=${state.factors[i].toFixed(2)}`).join(" ");
-  for (const x of r) csv += `${x.name},${x.n},${x.now.toFixed(3)},${x.delta.toFixed(3)},${x.over},${x.peak.toFixed(3)},${D.months[state.t]},${pol}\n`;
-  return csv;
-}
-
-// ---- export -------------------------------------------------------------------------
-function say(id, msg) { const e = $(id); e.textContent = msg; setTimeout(() => { e.textContent = ""; }, 2600); }
-async function copyText(text, sayId) {
-  try { await navigator.clipboard.writeText(text); say(sayId, "Copied to the clipboard."); }
-  catch (e) { say(sayId, "Could not copy here; use Download instead."); }
-}
-// Saving a file: on claude.ai the page has to ask the viewer through the downloads
-// capability, which resolves null where it is not granted; opened as a local file there
-// is no such shell, so fall back to an anchor. Either way the button only ever fires on
-// a deliberate click, and the page says what happened.
-let downloadsApi = null, downloadsReady = false;
-(async () => {
-  try { downloadsApi = await window.claude?.use?.("downloads"); } catch (e) { downloadsApi = null; }
-  downloadsReady = true;
-})();
-async function download(name, text, sayId) {
-  if (downloadsApi) {
-    try { await downloadsApi.save({filename: name, data: text}); say(sayId, "Saved " + name + "."); }
-    catch (e) { say(sayId, e && e.code === "cancelled" ? "Save cancelled." : "Could not save; use Copy CSV."); }
-    return;
-  }
-  try {
-    const url = URL.createObjectURL(new Blob([text], {type:"text/csv"}));
-    const a = document.createElement("a");
-    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    say(sayId, "Saved " + name + ".");
-  } catch (e) { say(sayId, "Download blocked here; use Copy CSV."); }
-}
-async function savePng() {
-  renderer.render(scene, camera);
-  const url = canvas.toDataURL("image/png");
-  const name = "choushui-twin-" + D.months[state.t] + ".png";
-  if (downloadsApi) {
-    try {
-      const blob = await (await fetch(url)).blob();
-      await downloadsApi.save({filename: name, data: blob});
-      say("townSaid", "Saved " + name + "."); return;
-    } catch (e) {
-      say("townSaid", e && e.code === "cancelled" ? "Save cancelled." : "Could not save the image.");
-      return;
-    }
-  }
-  try {
-    const blob = await (await fetch(url)).blob();
-    await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]);
-    say("townSaid", "Image copied to the clipboard.");
-  } catch (e) {
-    try {
-      const a = document.createElement("a");
-      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      say("townSaid", "Saved the image.");
-    } catch (e2) { say("townSaid", "Blocked here; screenshot the window instead."); }
-  }
-}
-
-// ---- tabs ---------------------------------------------------------------------------
-function setTab(name) {
-  state.tab = name;
-  const panes = {cell:"paneCell", sec:"paneSec", cmp:"paneCmp", town:"paneTown"};
-  for (const [k, id] of Object.entries(panes)) {
-    $(id).hidden = k !== name;
-    $("tab" + k[0].toUpperCase() + k.slice(1)).setAttribute("aria-pressed", k === name);
-  }
-  $("probe").classList.toggle("wide", name !== "cell");
-  if (name === "sec") drawSection();
-  if (name === "cmp") drawCompare();
-  if (name === "town") drawTownships();
-}
-
-// wiring
-buildSliders(); buildLayers();
-$("time").max = T - 1; $("time").value = T - 1;
-$("time").addEventListener("input", e => { state.t = +e.target.value; refresh("ground"); });
-$("play").addEventListener("click", () => {
-  state.playing = !state.playing;
-  $("play").textContent = state.playing ? "❚❚" : "▶";
-});
-$("startYear").addEventListener("input", e => { state.start = +e.target.value; refresh(true); });
-$("explode").addEventListener("input", e => { state.explode = +e.target.value * 0.32; $("explodeVal").textContent = e.target.value; rebuildGeometry(); });
-$("clip").addEventListener("input", e => { state.clip = +e.target.value / 100;
-  $("clipVal").textContent = state.clip >= 1 ? "off" : Math.round(state.clip*100) + "%"; applyVisibility(); });
-$("exag").addEventListener("input", e => { state.exag = +e.target.value; $("exagVal").textContent = e.target.value + "×"; rebuildGeometry(); });
-$("vHead").addEventListener("click", () => { state.headMode = "head"; state.field = "head";
-  $("vHead").setAttribute("aria-pressed", true); $("vDraw").setAttribute("aria-pressed", false); recolour(); });
-$("vDraw").addEventListener("click", () => { state.headMode = "draw"; state.field = "head";
-  $("vHead").setAttribute("aria-pressed", false); $("vDraw").setAttribute("aria-pressed", true); recolour(); });
-$("vReset").addEventListener("click", () => { camR = 105; camTheta = -0.9; camPhi = 0.92; target.set(0,0,0); place(); });
-$("vTop").addEventListener("click", () => { camPhi = 0.14; camR = 95; place(); });
-$("blend").addEventListener("input", e => {
-  terrainMat.uniforms.uBlend.value = (+e.target.value) / 100;
-  $("blendVal").textContent = e.target.value + "%";
-});
-$("bPhoto").addEventListener("click", () => {
-  if (texPhoto) terrainMat.uniforms.uPhoto.value = texPhoto;
-  $("bPhoto").setAttribute("aria-pressed", true); $("bMap").setAttribute("aria-pressed", false);
-});
-$("bMap").addEventListener("click", () => {
-  if (texMap) terrainMat.uniforms.uPhoto.value = texMap;
-  $("bPhoto").setAttribute("aria-pressed", false); $("bMap").setAttribute("aria-pressed", true);
-});
-$("mDecide").addEventListener("click", () => setMode("decide"));
-$("mAnalyst").addEventListener("click", () => setMode("analyst"));
-
-$("tabCell").addEventListener("click", () => setTab("cell"));
-$("tabSec").addEventListener("click", () => setTab("sec"));
-$("tabCmp").addEventListener("click", () => setTab("cmp"));
-$("tabTown").addEventListener("click", () => setTab("town"));
-$("secDraw").addEventListener("click", e => {
-  state.secMode = !state.secMode; state.secA = state.secB = null;
-  e.target.setAttribute("aria-pressed", state.secMode);
-  drawSectionLine();
-  $("secHint").textContent = state.secMode
-    ? "Click the start of the line, then its end."
-    : "Click two points on the ground to cut a line through the fan.";
-});
-$("secWE").addEventListener("click", () => {          // the fan's own axis, apex to coast
-  const mid = Math.round(D.ny / 2);
-  let west = -1, east = -1;
-  for (let c = 0; c < D.nx; c++) { const i = cellAt[mid * D.nx + c]; if (i >= 0) { if (west < 0) west = i; east = i; } }
-  state.secA = west; state.secB = east; state.secMode = false;
-  $("secDraw").setAttribute("aria-pressed", false);
-  drawSectionLine(); drawSection();
-});
-$("secCopy").addEventListener("click", () => copyText(sectionCsv(), "secSaid"));
-$("cmpRef").addEventListener("change", e => { state.cmpRef = e.target.value; drawCompare(); if (state.cmpOn) recolour(); });
-$("cmpOn").addEventListener("click", e => {
-  state.cmpOn = !state.cmpOn;
-  e.target.setAttribute("aria-pressed", state.cmpOn);
-  e.target.textContent = state.cmpOn ? "Colour the block by subsidence" : "Colour the block by difference";
-  $("legTitle").textContent = state.cmpOn ? "Difference from the reference" : "Cumulative subsidence";
-  $("legBar").style.background = "linear-gradient(90deg," +
-    (state.cmpOn ? diffRamp : subsRamp).map(s2 => rgb(s2[1]) + " " + s2[0]*100 + "%").join(",") + ")";
-  $("legLo").textContent = state.cmpOn ? "−" + cmpScale.toFixed(1) + " cm" : "0";
-  $("legHi").textContent = state.cmpOn ? "+" + cmpScale.toFixed(1) + " cm" : subsMax.toFixed(0) + " cm";
-  $("legCap").textContent = state.cmpOn
-    ? "Teal is less sinking than the reference, warm is more."
-    : "Ground colour. Aquifer colour is head, dark is low.";
-  recolour();
-});
-$("townCopy").addEventListener("click", () => copyText(townCsv(), "townSaid"));
-$("townDl").addEventListener("click", () => download("choushui-townships-" + D.months[state.t] + ".csv", townCsv(), "townSaid"));
-$("shotPng").addEventListener("click", savePng);
-
-const g = D.gate || {};
-$("verdict").textContent = g.verdict
-  ? `Flow model ${g.verdict} · held-out wells R² ${g.r2_kfold.toFixed(3)} vs ${g.r2_idw.toFixed(3)}`
-  : "Gate verdict not recorded";
-$("horizonYear").textContent = D.months[T-1].slice(0,4);
-$("cmpYear").textContent = D.months[T-1].slice(0,7);
-$("townYear").textContent = D.months[T-1].slice(0,7);
-$("legBar").style.background = "linear-gradient(90deg," +
-  subsRamp.map(s => `rgb(${s[1].map(v=>Math.round(v*255)).join(",")}) ${s[0]*100}%`).join(",") + ")";
-$("legCap").textContent = "Ground colour over the orthophoto. Aquifer colour is head, dark is low.";
-$("attrib").textContent = (D.attrib || []).join(" · ");
-$("caveat").innerHTML = `Heads and subsidence are validated against wells and 798 leveling
-  benchmarks. The response to a policy is a model consequence, not a validated forecast:
-  a free-running continuation drifts within three years, so read the shape and the
-  ranking of policies, not the third decimal.` +
-  (D.linErr != null ? ` Mixing policies is linear to within ${D.linErr.toFixed(2)} cm.` : "");
-
-subsMax = (() => { let m = 0; for (let i = 0; i < A; i++) m = Math.max(m, subsBase[i*T + T-1] * 0.01); return Math.ceil(m/5)*5; })();
-$("startYear").max = 1;
-place(); applyVisibility(); setMode("decide"); setTab("cell"); refresh();
-
-let last = 0;
-function loop(ts) {
-  if (state.playing && ts - last > 55) {
-    last = ts;
-    state.t = state.t >= T - 1 ? 0 : state.t + 1;
-    $("time").value = state.t;
-    refresh("ground");
-  }
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
-}
-function resize() {
-  const r = canvas.getBoundingClientRect();
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
-  renderer.setSize(r.width, r.height, false);
-  camera.aspect = r.width / Math.max(1, r.height);
-  camera.updateProjectionMatrix();
-}
-addEventListener("resize", resize); resize();
-requestAnimationFrame(loop);
-</script>
-"""
+def _summary(payload, solved, members, basis, base_ye, g, towns, town_idx, town_skill,
+             lev, hsr_out, log) -> None:
+    """Print what a reviewer checks before sharing the page (spec §8)."""
+    yrs = payload["meta"]["years"]
+    y0 = g.y_ref
+    fwd = base_ye[:, -1] - base_ye[:, y0]
+    log(f"baseline: fan-mean forward subsidence Dec {yrs[y0]}-Dec {yrs[-1]} {fwd.mean():.2f} "
+        + ("cm (the last fitted year-end; steps fixed upstream)" if g.fixed
+           else "cm (after the restart has settled)")
+        + "; cells above 1/2/3 cm/yr in the final year: "
+        + "/".join(str(prep.rate_area(base_ye, None, t)) for t in (1, 2, 3)))
+    for x in solved:
+        m = x.get("members")
+        fan = (x["_dsub"][:, -1] - x["_dsub"][:, y0]).mean()
+        if m:
+            s, h = m["subs_p"], m["head_p"]
+            log(f"solved {x['name']}: Δ forward subsidence mean {m['subs_mean']:+.2f}, "
+                f"p10/p50/p90 {s[0]:+.2f} / {s[1]:+.2f} / {s[2]:+.2f} cm; Δ layer-2 head mean "
+                f"{m['head_mean']:+.2f}, {h[0]:+.2f} / {h[1]:+.2f} / {h[2]:+.2f} m; "
+                f"{m['agree']}/{m['n']} runs agree (ensemble-mean field {fan:+.2f} cm)")
+        else:
+            log(f"solved {x['name']}: ensemble-mean Δ {fan:+.2f} cm (no members.csv)")
+    if basis is not None:
+        resp = [(basis["labels"][r], (basis["dsub"][r][:, -1] - basis["dsub"][r][:, y0]).mean())
+                for r in range(len(basis["labels"]))]
+        log("basis (rescaled), retiring each class: "
+            + ", ".join(f"{k} {v:+.2f} cm" for k, v in resp))
+    cal = payload.get("calib")
+    if cal:
+        log("basis rescaled to the ensemble, per class (subsidence / head, source): " + ", ".join(
+            f"{c} {s:.3f}/{h:.3f} ({src})" for c, s, h, src in
+            zip(prep.CLASSES, cal["subs"], cal["head"], cal["source"], strict=True)))
+    art = payload["modelcard"]["artefacts"]
+    if art["fixed_upstream"]:
+        log(f"model artefacts: fixed upstream ({art['fixed_upstream']}), nothing removed; a "
+            f"check of the {art['n_cells']} {art['zone']} cells still finds a first-months "
+            f"step of median {art['startup_cell_median']:.1f} (max "
+            f"{art['startup_cell_max']:.1f}) cm and a restart step of median "
+            f"{art['restart_cell_median']:.1f} (max {art['restart_cell_max']:.1f}) cm")
+    else:
+        log(f"model artefacts: fan mean start-up {art['startup_cm']:.2f} cm, restart "
+            f"{art['restart_cm']:.2f} cm; per cell in the {art['n_cells']} {art['zone']} "
+            f"cells start-up median {art['startup_cell_median']:.1f} (max "
+            f"{art['startup_cell_max']:.1f}) cm, restart median "
+            f"{art['restart_cell_median']:.1f} (max {art['restart_cell_max']:.1f}) cm, removed "
+            f"from every field; the start-up elsewhere is seasonal noise (p95 "
+            f"{art['other_startup_p95_cm']:.1f} cm), left in; the restart year elsewhere "
+            f"bridged by median {art['bridge_median_cm']:+.2f} cm (p5 "
+            f"{art['bridge_p05_cm']:+.2f}, max |{art['bridge_max_abs_cm']:.1f}|)")
+    for b in art["boundaries"]:
+        log(f"zone line {b['km']:g} km E: median forward subsidence first column east "
+            f"{b['east']:.1f} cm, west {b['west']:.1f} cm")
+    for k, v in payload["basisError"].items():
+        log(f"superposition ({v['kind']}) vs {k}: fan {v['fan_cm']:.3f} cm "
+            f"({100 * v['rel']:.1f} %), p95 cell {v['p95_cell_cm']:.3f} cm")
+    sc = payload["scales"]
+    log(f"fixed Δ scales: ±{sc['dsubs']['limit']:g} cm (p98 {sc['dsubs']['p98']:.2f} for a 30 % "
+        f"cut of {sc['dsubs']['lever']}), ±{sc['dhead']['limit']:g} m head; absolute "
+        f"subsidence p2-p98 {sc['absSubs'][0]:.1f}-{sc['absSubs'][1]:.1f} cm")
+    top = np.argsort(-fwd)[:5]
+    lev_cells = lev["cell"] if lev else np.zeros(0, dtype=int)
+    log("top 5 cells by baseline forward subsidence (cell, township, cm, benchmarks within "
+        "the cell, their mean bias):")
+    for c in top:
+        t = towns[town_idx[c]]
+        sel = np.nonzero(lev_cells == c)[0]
+        b = np.mean(lev["bias"][sel]) if len(sel) else float("nan")
+        log(f"  cell {c} ({g.cent[c, 0] / 1000:.1f}, {g.cent[c, 1] / 1000:.1f} km) {t['zh']} "
+            f"{t['en']}: {fwd[c]:.1f} cm; leveling n={len(sel)} bias {b:+.1f} cm")
+    tf = [(i, fwd[town_idx == i].mean()) for i in range(len(towns)) if (town_idx == i).any()]
+    log("top 5 townships by baseline forward subsidence (mean cm, leveling n, bias, R², "
+        "confidence):")
+    for i, v in sorted(tf, key=lambda kv: -kv[1])[:5]:
+        s = (town_skill or [{}] * len(towns))[i]
+        log(f"  {towns[i]['zh']} {towns[i]['en']}: {v:.1f} cm; n={s.get('n')} "
+            f"bias {s.get('bias')} R² {s.get('r2')} {'LOW' if s.get('low') else 'ok'}")
+    for x in solved:
+        fs = x.get("fast") or {}
+        if fs.get("dec") is not None:
+            log(f"solved {x['name']}: share of the {yrs[-1]} fan change reached by Dec "
+                f"{x['start']} {100 * fs['dec']:.0f} %, peak in the first year "
+                f"{100 * fs['peak']:.0f} % ({fs['peak_month']})")
+    alt = payload.get("alt")
+    if alt:
+        log(f"structural alternative {alt['source']} (head k-fold {alt['r2_kfold']}, spread "
+            f"{alt['spread_km']} km): " + ", ".join(
+                f"{k} {v['subs_mean']:+.2f} cm ({v['agree_sets']}/{v['n_sets']} sets)"
+                for k, v in alt["resp"].items()))
+    log(f"baseline forward, ledger basis (raw, Dec {yrs[g.y_obs]}-Dec {yrs[-1]}): "
+        f"{payload['meta']['rawFwdFan']:.2f} cm; page basis (Dec {yrs[y0]}-"
+        + (", fixed upstream" if g.fixed else ", steps removed") + f"): {fwd.mean():.2f} cm")
+    if hsr_out:
+        ad = prep.angular_distortion(prep.sample(fwd, np.array(hsr_out["idx"]),
+                                                 np.array(hsr_out["w"])), hsr_out["step"])
+        mx = np.array(hsr_out["mixed"], dtype=bool)
+        clean = ad[~mx].max() if (~mx).any() else float("nan")
+        log(f"HSR: {len(hsr_out['ch'])} points over {hsr_out['ch'][-1]:.1f} km; baseline max "
+            f"angular distortion {yrs[y0]}-{yrs[-1]} 1/{1 / max(ad.max(), 1e-12):,.0f} at km "
+            f"{hsr_out['ch'][int(ad.argmax())]:.2f}; away from the zone lines "
+            f"({mx.sum() * hsr_out['step']:.1f} km of track excluded) "
+            f"1/{1 / max(clean, 1e-12):,.0f}")
 
 
 def main(argv=None) -> None:
-    ap = argparse.ArgumentParser(description="build the twin's decision application")
+    ap = argparse.ArgumentParser(description="build the twin's decision page")
     ap.add_argument("--forward", required=True, help="a twin.forward .npz (the deliverable run)")
     ap.add_argument("--basis", default=None, help="the per-class response basis .npz")
     ap.add_argument("--townships", default="results/twin_runs/cell_townships.csv")
-    ap.add_argument("--quarter", type=int, default=3, help="months per stored head sample")
-    ap.add_argument("--delta-step", type=int, default=12,
-                    help="months per stored policy-response sample (interpolated in the page)")
+    # accepted and ignored so that older command lines still run; the page steps by year
+    ap.add_argument("--quarter", type=int, default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--delta-step", type=int, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--basemap", default="results/twin/basemap.npz",
                     help="orthophoto, base map and terrain from twin/basemap.py")
+    ap.add_argument("--hsr", default=geo.HSR_CSV, help="THSR centreline csv ('none' to omit)")
+    ap.add_argument("--members-csv", default="auto",
+                    help="paired member deltas (default <forward stem>.members.csv)")
+    ap.add_argument("--members-npz", default="auto",
+                    help="per-member yearly fields from twin.forward --save-members yearly "
+                         "(default <forward stem>.members.npz): real per-cell agreement, "
+                         "yearly fan bands and township agreement; 'none' to use the "
+                         "fallback")
+    ap.add_argument("--leveling", default="auto",
+                    help="data dir holding ls_cache/ (default $HYDROMIND_GW_DATA; 'none')")
+    ap.add_argument("--wells", default="auto",
+                    help="'auto' loads the calibration wells and class energies; 'none'")
+    ap.add_argument("--temporal", default=DEFAULT_TEMPORAL,
+                    help="held-out-years predictions npz behind the drift caveat")
+    ap.add_argument("--column-csv", default=DEFAULT_COLUMN, help="column skill table")
+    ap.add_argument("--theta", default=DEFAULT_THETA,
+                    help="the calibration's theta json (for the learned stress radius)")
+    ap.add_argument("--alt-forward", default=DEFAULT_ALT,
+                    help="a forward run of another model that passes the same head gate "
+                         "(its <stem>.members.csv is read); 'none' to omit")
+    ap.add_argument("--alt-theta", default=DEFAULT_ALT_THETA,
+                    help="that model's theta json (for its stress radius)")
+    ap.add_argument("--rheo-forward", default=DEFAULT_RHEO,
+                    help="a forward run with a second column (rheology axis), for the creep "
+                         "note on the baseline; its <stem>.members.csv is read; 'none'")
+    ap.add_argument("--rheo-column-csv", default=DEFAULT_RHEO_COLUMN,
+                    help="that second column's skill table (leveling out of fold)")
+    ap.add_argument("--three", choices=("cdn", "inline", "none"), default="cdn")
+    ap.add_argument("--private", action="store_true",
+                    help="embed every benchmark and well with its location and observed "
+                         "series; for a local page only, never commit the output")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
-    build(args.forward, args.basis, args.out, townships_csv=args.townships,
-          quarter=args.quarter, delta_step=args.delta_step, basemap_npz=args.basemap)
+
+    def opt(v):
+        return None if v in (None, "none") else v
+
+    build(args.forward, args.basis, args.out, townships_csv=opt(args.townships),
+          basemap_npz=opt(args.basemap),
+          hsr_csv=opt(args.hsr), members_csv=opt(args.members_csv),
+          members_npz=opt(args.members_npz), leveling=args.leveling,
+          wells=args.wells, temporal_npz=opt(args.temporal), column_csv=opt(args.column_csv),
+          theta_json=opt(args.theta), alt_npz=opt(args.alt_forward),
+          alt_theta=opt(args.alt_theta), rheo_npz=opt(args.rheo_forward),
+          rheo_column_csv=opt(args.rheo_column_csv), three=args.three, public=not args.private,
+          log=lambda s: print(s, flush=True))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

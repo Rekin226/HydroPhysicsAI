@@ -77,3 +77,6 @@ results/
 #   curl -sSLO --output-dir data_fetch_api https://api.wisenvr.com/LS/static/demo.py
 #   curl -sSLO --output-dir data_fetch_api https://api.wisenvr.com/LS/static/API_workflow.pdf
 data_fetch_api/
+
+# Private app builds embed observed well and leveling series: never commit
+*.local.html
