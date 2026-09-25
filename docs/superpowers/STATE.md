@@ -71,7 +71,30 @@ leveling skill is unchanged.
    merged proximal aquifer cannot hold. Correcting the proximal initial heads improves heads
    but drops leveling to +0.39 with the candidate's own column: part of the deliverable's
    proximal subsidence skill rested on the wrong initial state. Next: a layered proximal
-   aquifer (leakance not pinned), then re-screen.
+   aquifer (leakance not pinned), then re-screen. Built 2026-09-25 (opt-in):
+   `calibrate_flow --proximal-layered` gives each proximal zone 4 log_T + 4 log_S + 3
+   learnable log_L (mid bounds, `--log-t-min-proximal`/`--l-min` respected), starting at
+   the merged values so epoch 0 is the merged model; `--ic-layered-proximal` (with
+   `--ic-merged-proximal`) keeps per-layer initial heads inside the proximal zone(s), the
+   merged value for layers without a well there (proximal L3-L4). Both travel through theta
+   meta and the CSVs to forward/policy_gate/uncertainty/surrogate.
+   **Screened 2026-09-25, each with its own refit column** (`results/twin_runs/temporal_*layered*`):
+
+   | screen | held-out RMSE | fair ratio | leveling | ds at irrigation x0.7 |
+   |---|---|---|---|---|
+   | split208 + T floor 58, merged | 5.39 m | 1.65 | +0.391 | −0.91 cm |
+   | + `--proximal-layered` | 5.26 | 1.65 | +0.418 | −0.13 |
+   | + `--ic-layered-proximal` | 5.20 | 1.67 | +0.389 | −0.51 |
+   | `--proximal-layered`, no split | 5.57 | 1.82 | +0.339 | −0.85 |
+   | deliverable (merged, old IC) | 6.64 | 2.12 | **+0.589** | −1.25 |
+
+   The layering engaged (proximal leakance left its ceiling in every run) and lowered the
+   head error a little, but the fair ratio did not move, leveling stayed near +0.4 and the
+   extra freedom absorbed the policy response. **Verdict: no proximal structure tried so far
+   beats the deliverable on the chain that matters.** The residual per-well offsets are
+   sub-grid (30 m vertical differences within single well nests at 1 km cells); the next
+   honest options are a per-well datum term in the observation operator, or treating the
+   held-out-years gate as scoring anomalies after that datum, not more aquifer structure.
 3. **The 10 km stress radius** remains unexplained (meter vs well location).
 4. **The 2022 head recovery** after the drought is missed by every model; rain minus ET0 says
    2022 was dry, so something outside the forcing (canal deliveries resuming, fallowing
