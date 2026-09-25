@@ -468,6 +468,8 @@ def test_rice_area_ratio_reads_associations_and_holds_past_the_table():
 
 
 def test_forward_rebuilds_du0_aquitard_and_sw_components_from_theta(tmp_path):
+    from test_twin_forward import _inputs, _theta_file
+
     from hydrophysics.twin.forward import (
         build_model,
         delay_state_path,
@@ -475,7 +477,6 @@ def test_forward_rebuilds_du0_aquitard_and_sw_components_from_theta(tmp_path):
         rollout,
         sw_hist,
     )
-    from tests.test_twin_forward import _inputs, _theta_file
 
     inp = _inputs(T=12)
     A = inp.grid.n_active
@@ -557,8 +558,9 @@ def test_rank_key_orders_scorecards():
 
 
 def _du0_member(tmp_path, aquitard=False, delay=True):
+    from test_twin_forward import _theta_file
+
     from hydrophysics.twin.forward import load_members
-    from tests.test_twin_forward import _theta_file
 
     p, _ = _theta_file(tmp_path, boundaries="none")
     with open(p) as fh:
@@ -579,8 +581,9 @@ def _du0_member(tmp_path, aquitard=False, delay=True):
 def test_delay_state_path_refuses_an_aquitard_only_model(tmp_path):
     """Review 2026-09-23 #2: an aquitard-only model has slow state (u_a); answering None
     let the surrogate silently restart it at equilibrium."""
+    from test_twin_forward import _inputs
+
     from hydrophysics.twin.forward import build_model, delay_state_path
-    from tests.test_twin_forward import _inputs
 
     inp = _inputs(T=6)
     model, scalars, _ = build_model(inp.grid, _du0_member(tmp_path, aquitard=True,
@@ -594,13 +597,14 @@ def test_delay_state_path_refuses_an_aquitard_only_model(tmp_path):
 def test_nudged_hindcast_u_path_is_the_solver_state(tmp_path):
     """Review 2026-09-23 #3: with --hindcast-gain > 0 the dumped slow-store path must be
     the solver's own u (replayed from the un-nudged segments), ending exactly at u_end."""
+    from test_twin_forward import _inputs
+
     from hydrophysics.twin.forward import (
         build_model,
         delay_state_path,
         hindcast_with_nudging,
         rollout,
     )
-    from tests.test_twin_forward import _inputs
 
     inp = _inputs(T=12)
     model, scalars, _ = build_model(inp.grid, _du0_member(tmp_path), "cpu")
@@ -627,10 +631,11 @@ def test_nudged_hindcast_u_path_is_the_solver_state(tmp_path):
 def test_policy_gate_projection_starts_in_its_own_calendar_month(tmp_path, monkeypatch):
     """Review 2026-09-23 #4: the policy projections pass month0 = the first projected
     month (river-stage season), as forward.run does, not the February default."""
+    from test_twin_forward import _inputs, _theta_file
+
     import hydrophysics.twin.policy_gate as pg
     from hydrophysics.twin.forward import load_members
     from hydrophysics.twin.forward import rollout as real_rollout
-    from tests.test_twin_forward import _inputs, _theta_file
 
     inp = _inputs(T=24)                  # 2012-01 .. 2013-12: the projection opens in January
     p, _ = _theta_file(tmp_path)

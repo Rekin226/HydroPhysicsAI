@@ -12,13 +12,14 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("matplotlib")
 pytest.importorskip("pyproj")
 
+from test_twin_forward import _inputs, _theta_file  # noqa: E402
+
 from hydrophysics.twin.forward import (  # noqa: E402
     load_columns,
     load_members,
     parse_scenario,
     run,
 )
-from tests.test_twin_forward import _inputs, _theta_file  # noqa: E402
 
 
 def _column(tmp_path, name, tau_days, skv, tau_max_years=None):

@@ -13,6 +13,8 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("matplotlib")
 pytest.importorskip("pyproj")
 
+from test_twin_forward import _inputs, _theta_file  # noqa: E402
+
 from hydrophysics.twin.compaction import VEPColumn  # noqa: E402
 from hydrophysics.twin.forward import (  # noqa: E402
     _members_from_gate_csv,
@@ -32,7 +34,6 @@ from hydrophysics.twin.uncertainty import (  # noqa: E402
     flatten,
     unflatten,
 )
-from tests.test_twin_forward import _inputs, _theta_file  # noqa: E402
 
 
 def _extend(p, **theta_extra):

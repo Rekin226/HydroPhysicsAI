@@ -94,8 +94,9 @@ def test_temporal_verdict_is_strict_at_the_ratio_boundary():
 
 
 def test_policy_response_runs_end_to_end_on_synthetic_inputs(tmp_path):
+    from test_twin_forward import _inputs, _theta_file
+
     from hydrophysics.twin.forward import load_members
-    from tests.test_twin_forward import _inputs, _theta_file
 
     inp = _inputs(T=24)
     p, _ = _theta_file(tmp_path)

@@ -77,8 +77,9 @@ def test_flatten_unflatten_and_clip_round_trip():
 
 
 def test_laplace_posterior_on_a_toy_model(tmp_path):
+    from test_twin_forward import _inputs, _theta_file
+
     from hydrophysics.twin.forward import load_members
-    from tests.test_twin_forward import _inputs, _theta_file
 
     inp = _inputs()
     p, _ = _theta_file(tmp_path)
@@ -250,8 +251,9 @@ def test_cli_redraws_from_a_saved_cov_without_the_model(tmp_path):
 def test_spread_radius_reaches_the_model_in_the_jacobian(tmp_path):
     """Regression: the Jacobian column of log_spread_km was identically zero because
     build_model reads the derived spread_km."""
+    from test_twin_forward import _inputs, _theta_file
+
     from hydrophysics.twin.forward import load_members
-    from tests.test_twin_forward import _inputs, _theta_file
 
     inp = _inputs()
     p, _ = _theta_file(tmp_path)
