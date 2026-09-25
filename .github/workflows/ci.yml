@@ -62,4 +62,13 @@ jobs:
           pip install -e ".[dev,explorer,gpu,viz,data]"
       - name: Test (torch paths exercised)
         # -rs lists which tests skipped, so a silently-skipping model test is visible.
-        run: pytest -q -rs
+        # On failure the tail of the output is also raised as an error annotation, which
+        # is readable without signing in (job logs are not).
+        run: |
+          set +e
+          pytest -q -rs 2>&1 | tee pytest.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=pytest exit $rc::$(tail -60 pytest.log | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')"
+          fi
+          exit "$rc"
