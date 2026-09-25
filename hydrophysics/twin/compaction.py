@@ -36,26 +36,38 @@ class VEPColumn(nn.Module):
         self.h_pc0 = nn.Parameter(z.clone())
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
-        ske = torch.exp(self.log_ske)
-        skv = torch.exp(self.log_skv)
-        tau = torch.exp(self.log_tau)
-        decay = torch.exp(-torch.tensor(self.dt_days, dtype=h.dtype, device=h.device) / tau)
-        n, T = h.shape
-        # h_pc0 is an OFFSET relative to each site's starting head, not an absolute head.
-        # Absolute framing silently disabled the inelastic term wherever a site's heads never
-        # crossed the datum: with h_pc0 init 0.0, `min(0, h[0])` pinned the gate at 0 m, so at
-        # 7 of 14 Choushui sites (all heads above sea level) it never opened and log_skv /
-        # log_tau received no gradient at all. Offsetting from h[:, 0] makes the init mean
-        # "normally consolidated at t=0" and is datum-independent.
-        h_pc = h[:, 0] + self.h_pc0
-        eps_i = torch.zeros(n, dtype=h.dtype, device=h.device)
-        eq = torch.zeros(n, dtype=h.dtype, device=h.device)
-        out = [torch.zeros(n, dtype=h.dtype, device=h.device)]
-        for t in range(1, T):
-            below = torch.clamp(h_pc - h[:, t], min=0.0)
-            eq = eq + skv * below                     # equilibrium inelastic strain
-            h_pc = torch.minimum(h_pc, h[:, t])
-            eps_i = eq + (eps_i - eq) * decay         # exact for piecewise-constant forcing
-            eps_e = ske * (h[:, 0] - h[:, t])
-            out.append(eps_e + eps_i)
-        return torch.stack(out, dim=1)
+        return vep_compaction(h, self.log_ske, self.log_skv, self.log_tau, self.h_pc0,
+                              self.dt_days)
+
+
+def vep_compaction(h: torch.Tensor, log_ske: torch.Tensor, log_skv: torch.Tensor,
+                   log_tau: torch.Tensor, h_pc0: torch.Tensor,
+                   dt_days: float = 30.0) -> torch.Tensor:
+    """The column's recurrence with explicit parameters, each ``(1,)`` or ``(n_sites,)``.
+
+    ``VEPColumn.forward`` is this function on its own parameters. A caller that builds
+    per-cell parameters (the ``--zone-blend-km`` mix of per-zone sets) calls it directly.
+    """
+    ske = torch.exp(log_ske)
+    skv = torch.exp(log_skv)
+    tau = torch.exp(log_tau)
+    decay = torch.exp(-torch.tensor(dt_days, dtype=h.dtype, device=h.device) / tau)
+    n, T = h.shape
+    # h_pc0 is an OFFSET relative to each site's starting head, not an absolute head.
+    # Absolute framing silently disabled the inelastic term wherever a site's heads never
+    # crossed the datum: with h_pc0 init 0.0, `min(0, h[0])` pinned the gate at 0 m, so at
+    # 7 of 14 Choushui sites (all heads above sea level) it never opened and log_skv /
+    # log_tau received no gradient at all. Offsetting from h[:, 0] makes the init mean
+    # "normally consolidated at t=0" and is datum-independent.
+    h_pc = h[:, 0] + h_pc0
+    eps_i = torch.zeros(n, dtype=h.dtype, device=h.device)
+    eq = torch.zeros(n, dtype=h.dtype, device=h.device)
+    out = [torch.zeros(n, dtype=h.dtype, device=h.device)]
+    for t in range(1, T):
+        below = torch.clamp(h_pc - h[:, t], min=0.0)
+        eq = eq + skv * below                     # equilibrium inelastic strain
+        h_pc = torch.minimum(h_pc, h[:, t])
+        eps_i = eq + (eps_i - eq) * decay         # exact for piecewise-constant forcing
+        eps_e = ske * (h[:, 0] - h[:, t])
+        out.append(eps_e + eps_i)
+    return torch.stack(out, dim=1)

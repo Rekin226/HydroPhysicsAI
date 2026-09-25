@@ -56,24 +56,70 @@ from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
 from .calibrate_flow import set_compile_matvec
 from .compaction import VEPColumn
-from .forward import N_LAYERS, build_model, load_members, rollout
-from .inputs import load_twin_inputs
-from .zones import N_ZONES, fan_zones
+from .forward import (
+    N_LAYERS,
+    attach_sw_recharge,
+    blended_column,
+    build_model,
+    load_members,
+    rollout,
+    sw_hist,
+)
+from .inputs import input_options, load_twin_inputs
+from .zones import N_ZONES, fan_zones, zone_blend_weights
 
 TAU_MAX_YEARS: float | None = None      # set by --tau-max-years; None = the record length
+# --hpc0-guard-days (fix A1, 2026-09-23): h_pc0 <= 0 in any column whose tau is below this
+HPC0_GUARD_DAYS: float | None = None
+# Opt-in column constraints (round 3, 2026-09-23); None = Stage-2's bounds unchanged.
+# --tau-min-days: floor on the viscous time constant (default 1 d)
+TAU_MIN_DAYS: float | None = None
+# --ske-min: floor on the elastic skeletal storage Ske (default 1e-6)
+SKE_MIN: float | None = None
+# --ske-skv-max: cap on Ske/Skv. Enforced by lowering Ske, after Skv has been raised to at
+# least SKE_MIN / SKE_SKV_MAX so that both constraints can hold at once
+SKE_SKV_MAX: float | None = None
+SKE_MAX = 1e-1
+
+
+def column_constraints() -> dict:
+    """The constraints ``_clamp_column`` applies, for the column JSON (None = default)."""
+    return {"tau_min_days": TAU_MIN_DAYS, "ske_min": SKE_MIN, "ske_skv_max": SKE_SKV_MAX}
 
 
 def _clamp_column(col: VEPColumn, T: int) -> None:
     """Stage-2's bounds, except that the viscous time constant may be allowed past the
     record (``TAU_MAX_YEARS``): the mid-zone column sits on the record-length ceiling
     when fitted to leveling, and a residual-clay time constant of decades is what the
-    literature reports for this fan (Lees et al. 2022)."""
-    tau_max = (TAU_MAX_YEARS * 365.25 if TAU_MAX_YEARS is not None
-               else float(T) * col.dt_days)
+    literature reports for this fan (Lees et al. 2022).
+
+    Opt-in constraints (all None by default, which is the historical clamp exactly):
+    ``TAU_MIN_DAYS`` raises the tau floor from 1 d, ``SKE_MIN`` raises the Ske floor from
+    1e-6, and ``SKE_SKV_MAX`` caps Ske/Skv. The round-2 proximal column had tau 24 d and
+    Ske at its 1e-6 floor. That is an instant, purely inelastic response, which a
+    monthly model cannot tell apart from elastic storage."""
+    tau_max = tau_ceiling_days(T, col.dt_days)
+    tau_min = 1.0 if TAU_MIN_DAYS is None else max(1.0, float(TAU_MIN_DAYS))
+    if tau_min >= tau_max:
+        raise ValueError(f"--tau-min-days {tau_min:g} is not below the tau ceiling "
+                         f"{tau_max:g} d")
+    ske_lo = math.log(1e-6 if SKE_MIN is None else float(SKE_MIN))
+    if ske_lo >= math.log(SKE_MAX):
+        raise ValueError(f"--ske-min {SKE_MIN:g} is not below the Ske ceiling {SKE_MAX:g}")
+    skv_lo = math.log(1e-5)
+    if SKE_SKV_MAX is not None:
+        if not float(SKE_SKV_MAX) > 0.0:
+            raise ValueError(f"--ske-skv-max must be > 0, got {SKE_SKV_MAX}")
+        skv_lo = max(skv_lo, ske_lo - math.log(float(SKE_SKV_MAX)))
+        if skv_lo > 0.0:
+            raise ValueError("--ske-min / --ske-skv-max needs Skv > 1, above its ceiling")
     with torch.no_grad():
-        col.log_ske.clamp_(min=math.log(1e-6), max=math.log(1e-1))
-        col.log_skv.clamp_(min=math.log(1e-5), max=math.log(1e0))
-        col.log_tau.clamp_(min=math.log(1.0), max=math.log(tau_max))
+        col.log_ske.clamp_(min=ske_lo, max=math.log(SKE_MAX))
+        col.log_skv.clamp_(min=skv_lo, max=math.log(1e0))
+        if SKE_SKV_MAX is not None:
+            col.log_ske.copy_(torch.minimum(col.log_ske,
+                                            col.log_skv + math.log(float(SKE_SKV_MAX))))
+        col.log_tau.clamp_(min=math.log(tau_min), max=math.log(tau_max))
 
 
 class _WeightedColumn(nn.Module):
@@ -115,7 +161,24 @@ def _fit(model: nn.Module, heads: torch.Tensor, obs: torch.Tensor, mask: torch.T
             with torch.no_grad():
                 rng = float(heads.max() - heads.min())
                 c.h_pc0.clamp_(min=-rng, max=rng)
+                _guard_hpc0(c)
     return float(loss.detach())
+
+
+def _guard_hpc0(c: VEPColumn) -> None:
+    """``--hpc0-guard-days D``: no positive ``h_pc0`` in a column with ``tau < D``.
+
+    A positive offset is an instantaneous virgin load at t=1. With a short tau it is
+    released before the first leveling survey, and ``_rezero`` then hides it from the
+    loss. Adam still takes full steps along that flat direction, so the offset wanders
+    until it reaches its clamp. That is how the proximal column reached +4.7 m, about
+    121 cm of unseen start-up per cell (A1). A long-tau column releases its offset as
+    creep that leveling does see, so D should be well below the first-survey gap times
+    a few. 365 d is the recommended value."""
+    if HPC0_GUARD_DAYS is None:
+        return
+    fast = torch.exp(c.log_tau) < float(HPC0_GUARD_DAYS)
+    c.h_pc0.copy_(torch.where(fast, torch.clamp(c.h_pc0, max=0.0), c.h_pc0))
 
 
 def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -> torch.Tensor:
@@ -123,6 +186,9 @@ def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -
     if isinstance(model, _WeightedColumn):
         return model(heads)
     drv = heads.mean(dim=1)
+    if isinstance(model, nn.ModuleList) and zone is not None and zone.is_floating_point():
+        # --zone-blend-km: ``zone`` is (n, N_ZONES) weights; each site mixes the zones
+        return blended_column(model, zone.T, drv)
     if isinstance(model, nn.ModuleList):                      # zonal: one column per zone
         out = torch.zeros_like(drv)
         for z, col in enumerate(model):
@@ -165,7 +231,7 @@ def site_rows(ddir: str, inp, heads: np.ndarray, zone_of_cell: np.ndarray | None
         H.append(heads[:, cell, :])
         OBS.append(np.nan_to_num(c.to_numpy(dtype="float64")))
         M.append(ok)
-        Z.append(int(zone_of_cell[cell]) if zone_of_cell is not None else 0)
+        Z.append(zone_of_cell[cell] if zone_of_cell is not None else 0)
         names.append(str(r["sub_id"]))
     if not H:
         raise SystemExit("no MLCW site fell on the grid with >= 24 samples")
@@ -207,7 +273,7 @@ def leveling_rows(ddir: str, inp, heads: np.ndarray, zone_of_cell: np.ndarray | 
         H.append(heads[:, cell, :])
         OBS.append(o)
         M.append(m)
-        Z.append(int(zone_of_cell[cell]) if zone_of_cell is not None else 0)
+        Z.append(zone_of_cell[cell] if zone_of_cell is not None else 0)
         names.append(str(sid))
     if not H:
         raise SystemExit("no leveling benchmark fell on the grid")
@@ -265,6 +331,21 @@ def column_json(model: nn.Module) -> dict:
     return one(model)
 
 
+def tau_ceiling_days(T: int, dt_days: float = 30.0) -> float:
+    """The viscous time-constant ceiling ``_clamp_column`` applies, in days."""
+    return (TAU_MAX_YEARS * 365.25 if TAU_MAX_YEARS is not None else float(T) * dt_days)
+
+
+def tau_at_ceiling(params: dict, T: int, rtol: float = 1e-3) -> list[bool]:
+    """Per column (one, or one per zone): does ``tau`` sit on its ceiling? A column that
+    does has a creep time constant the record cannot identify (STATE §3.2) -- its
+    decadal creep is a modelling choice, which ``twin.forward`` can carry as a rheology
+    axis by running columns fitted under different ceilings side by side."""
+    ceil = math.log(tau_ceiling_days(T))
+    cols = params.get("zonal", [params])
+    return [bool(abs(float(c["log_tau"]) - ceil) < rtol * max(abs(ceil), 1.0)) for c in cols]
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="refit the VEP column on the flow model's heads")
     ap.add_argument("--theta", required=True, help="stage3_theta.json of the gated model")
@@ -276,6 +357,27 @@ def main(argv=None) -> None:
     ap.add_argument("--tau-max-years", type=float, default=None,
                     help="ceiling on the viscous time constant (default: the record "
                          "length); the mid-zone column sits on that ceiling")
+    ap.add_argument("--zone-blend-km", type=float, default=0.0,
+                    help="zonal config: blend the mid/distal column parameters over a "
+                         "logistic of this width (km) around the mid/distal line, not a "
+                         "step. Fix A3: the sharp line makes a 2.5 cm/yr hindcast step "
+                         "that the leveling rates do not show. The parameter count is "
+                         "unchanged. Recorded as zone_blend_km in the JSON, which "
+                         "twin.forward reads. 0 = sharp (default)")
+    ap.add_argument("--hpc0-guard-days", type=float, default=None,
+                    help="fix A1: keep h_pc0 <= 0 in every column whose tau is below this "
+                         "many days (recommended 365). A positive offset in a fast column "
+                         "is released before the first survey, where the re-zeroed loss "
+                         "cannot see it. Default: unguarded")
+    ap.add_argument("--tau-min-days", type=float, default=None,
+                    help="floor on the column's viscous time constant, days (default 1). "
+                         "A tau of a few weeks is an instant response at a monthly step, "
+                         "which the fit can use in place of elastic storage")
+    ap.add_argument("--ske-min", type=float, default=None,
+                    help="floor on the elastic skeletal storage Ske (default 1e-6)")
+    ap.add_argument("--ske-skv-max", type=float, default=None,
+                    help="cap on Ske/Skv (default: none). Skv is first raised to at least "
+                         "ske_min/ratio so that the floor and the cap can both hold")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -286,14 +388,19 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     set_compile_matvec(args.compile_matvec)
-    global TAU_MAX_YEARS
+    global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
     TAU_MAX_YEARS = args.tau_max_years
+    HPC0_GUARD_DAYS = args.hpc0_guard_days
+    TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX = args.tau_min_days, args.ske_min, args.ske_skv_max
+    # fail on an inconsistent set before the (long) hindcast rather than in the first step
+    _clamp_column(VEPColumn(n_sites=1, dt_days=30.0), 132)
     device = pick_device(args.device)
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir)
     member = load_members([args.theta])[0]
     inp = load_twin_inputs(dx=args.dx, meter_filter=member.meta.get("meter_filter", "none"),
-                           cap_duty=float(member.meta.get("cap_duty", 1.0)))
+                           cap_duty=float(member.meta.get("cap_duty", 1.0)),
+                           **input_options(member.meta))
     model, scalars, zone_of_cell = build_model(inp.grid, member, device)
     eta_classes = member.meta.get("eta_classes")
     if eta_classes:
@@ -302,16 +409,29 @@ def main(argv=None) -> None:
     else:
         E = inp.E_total[:, 1:]
     t0 = time.perf_counter()
+    attach_sw_recharge(inp, member.meta)
     heads = rollout(model, scalars, inp.initial_heads(0), E, inp.recharge_field[:, 1:],
-                    inp.ground_elev).cpu().numpy()                         # (L, A, T)
+                    inp.ground_elev, sw_field=sw_hist(inp)).cpu().numpy()  # (L, A, T)
     print(f"hindcast heads in {time.perf_counter() - t0:.1f}s", flush=True)
     if zone_of_cell is None:
         zone_of_cell = fan_zones(inp.grid.centroids())
+    # per-cell zone rows: the zone id, or with --zone-blend-km the (A, N_ZONES) weights
+    zone_rows = zone_of_cell
+    if args.zone_blend_km and args.zone_blend_km > 0.0:
+        from .calibrate_flow import _parse_zone_boundaries
 
-    Hr, OBSr, Mr, Zr, names_r = site_rows(ddir, inp, heads, zone_of_cell)
+        # the column is three-zone even over a flow model with the proximal split
+        zb = _parse_zone_boundaries(member.meta.get("zone_boundaries", "205,182"),
+                                    allow_split=True)[:2]
+        zone_rows = zone_blend_weights(inp.grid.centroids(), *zb, args.zone_blend_km).T
+        print(f"column zones blended over {args.zone_blend_km:g} km across the "
+              f"{zb[1]:g} km line", flush=True)
+    ztype = torch.float32 if np.asarray(zone_rows).dtype.kind == "f" else torch.long
+
+    Hr, OBSr, Mr, Zr, names_r = site_rows(ddir, inp, heads, zone_rows)
     print(f"MLCW sites on the grid: {len(names_r)}", flush=True)
     if args.target == "leveling":
-        H, OBS, M, Z, names = leveling_rows(ddir, inp, heads, zone_of_cell)
+        H, OBS, M, Z, names = leveling_rows(ddir, inp, heads, zone_rows)
         print(f"leveling benchmarks on the grid: {len(names)}", flush=True)
     else:
         H, OBS, M, Z, names = Hr, OBSr, Mr, Zr, names_r
@@ -319,14 +439,14 @@ def main(argv=None) -> None:
     Ht = torch.tensor(H, dtype=torch.float32, device=device)
     Ot = torch.tensor(OBS, dtype=torch.float32, device=device)
     Mt = torch.tensor(M, dtype=torch.float32, device=device)
-    Zt = torch.tensor(Z, dtype=torch.long, device=device)
+    Zt = torch.tensor(Z, dtype=ztype, device=device)
 
     from .explorer3d import validate_against_leveling
 
     os.makedirs(args.out, exist_ok=True)
     rows = []
     heads_all = torch.tensor(heads, dtype=torch.float32, device=device).permute(1, 0, 2)  # (A, L, T)
-    zone_all = torch.tensor(zone_of_cell, dtype=torch.long, device=device)
+    zone_all = torch.tensor(zone_rows, dtype=ztype, device=device)
     for config in [c.strip() for c in args.configs.split(",") if c.strip()]:
         t0 = time.perf_counter()
         model_c = _make(config, device)
@@ -340,7 +460,7 @@ def main(argv=None) -> None:
                                   n_folds=args.n_folds, rezero=True)
             # the rings become the independent check
             Hrt = torch.tensor(Hr, dtype=torch.float32, device=device)
-            Zrt = torch.tensor(Zr, dtype=torch.long, device=device)
+            Zrt = torch.tensor(Zr, dtype=ztype, device=device)
             with torch.no_grad():
                 rings_r2 = _r2(_predict(model_c, Hrt, Zrt).cpu().numpy(), OBSr, Mr.astype(bool))
         else:
@@ -351,9 +471,21 @@ def main(argv=None) -> None:
                                     .cpu().numpy() for i in range(0, heads_all.shape[0], 512)])
         lev = validate_against_leveling(ddir, inp.grid, field, inp.dates)
         params = column_json(model_c)
+        at_ceil = tau_at_ceiling(params, heads.shape[-1])
+        if any(at_ceil):
+            print(f"{config:>9}: tau on its ceiling ({tau_ceiling_days(heads.shape[-1]):.0f} d) "
+                  f"for column(s) {[i for i, a in enumerate(at_ceil) if a]} -- not "
+                  "identifiable; run twin.forward with columns fitted under two ceilings "
+                  "(--vep-json a.json,b.json) to carry the rheology spread", flush=True)
         with open(os.path.join(args.out, f"vep_{config}_{args.target}.json"), "w") as fh:
             json.dump({**params, "config": config, "driver": "flow-model heads",
                        "target": args.target, "tau_max_years": args.tau_max_years,
+                       **({"zone_blend_km": float(args.zone_blend_km)}
+                          if config == "zonal" and args.zone_blend_km else {}),
+                       "hpc0_guard_days": args.hpc0_guard_days,
+                       **column_constraints(),
+                       "tau_ceiling_days": tau_ceiling_days(heads.shape[-1]),
+                       "tau_at_ceiling": at_ceil,
                        "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)

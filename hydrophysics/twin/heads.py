@@ -74,10 +74,21 @@ def _station_xy(row) -> tuple[float, float] | None:
 def build_head_field(wells_dir: str, stations: pd.DataFrame,
                      t0: str = "2012-01-01", t1: str = "2023-01-01",
                      min_coverage: float = 0.80, max_gap_days: float = 180.0,
-                     layers: tuple[str, ...] = DEFAULT_LAYERS) -> HeadField:
-    """Assemble a QC'd monthly head field from cached per-well parquet files."""
+                     layers: tuple[str, ...] = DEFAULT_LAYERS,
+                     strict_coverage: bool = False) -> HeadField:
+    """Assemble a QC'd monthly head field from cached per-well parquet files.
+
+    Default QC (historical): coverage is ``len(s) / n_hours``, which 10-minute records
+    (since about 2019) inflate up to six-fold, and the longest-gap check runs from the
+    first to the last observation only, so a well that starts in January 2020 passes.
+    ``strict_coverage=True`` (``--strict-coverage``, opt-in, 2026-09-23): coverage is the
+    fraction of calendar months in ``[t0, t1)`` with at least one observation, and the gap
+    check runs over the whole window, so leading and trailing gaps count.
+    """
     T0, T1 = pd.Timestamp(t0), pd.Timestamp(t1)
     n_hours = int((T1 - T0).total_seconds() // 3600)
+    months = pd.period_range(T0, T1 - pd.Timedelta(seconds=1), freq="M")
+    hours = pd.date_range(T0, T1, freq="h", inclusive="left")
     meta = {str(r["sid"]): r for _, r in stations.iterrows()}
 
     keep_h, keep_xy, keep_layer, keep_sid = [], [], [], []
@@ -97,9 +108,15 @@ def build_head_field(wells_dir: str, stations: pd.DataFrame,
         if s.empty:
             continue
         s = _despike(s)
-        if len(s) / max(n_hours, 1) < min_coverage:
-            continue
-        hourly = s.resample("h").mean()
+        if strict_coverage:
+            seen = s.index.to_period("M").unique()
+            if months.isin(seen).mean() < min_coverage:
+                continue
+            hourly = s.resample("h").mean().reindex(hours)
+        else:
+            if len(s) / max(n_hours, 1) < min_coverage:
+                continue
+            hourly = s.resample("h").mean()
         miss = hourly.isna()
         if miss.any():
             runs = (miss != miss.shift()).cumsum()[miss]

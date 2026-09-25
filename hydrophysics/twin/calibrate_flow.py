@@ -89,7 +89,17 @@ from .flow import (
 )
 from .grid import build_grid
 from .spread import SPREAD_KM_BOUNDS, pairwise_d2_km, spread_energy, spread_matrix
-from .zones import N_ZONES, ZONE_NAMES, fan_zones
+from .zones import (
+    N_ZONES,
+    PROXIMAL,
+    PROXIMAL_W,
+    ZONE_NAMES,
+    ZONE_NAMES_SPLIT,
+    collapse_zones,
+    fan_zones,
+    zone_blend_weights,
+    zone_names,
+)
 
 # Physically defensible bounds. log_T is tightened per Ruling 3 above (Task-2 CG
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
@@ -124,7 +134,90 @@ BOUNDS = {
     "log_C_coast": (math.log(1e-2), math.log(1e5)),
     "log_C_apex": (math.log(1e-2), math.log(1e5)),
     "log_spread_km": SPREAD_KM_BOUNDS,             # spread.py: learned stress radius
+    # Opt-in physics of 2026-09-23 (G1/G6), each behind a flag whose default is off:
+    # lumped delay bed (--delay-storage): slow-store storativity and time constant (days;
+    # the ceiling follows --delay-tau-max-years via set_delay_tau_max)
+    "log_Sd": (math.log(1e-5), math.log(0.3)),
+    "log_tau": (math.log(30.0), math.log(365.25 * 30.0)),
+    # river conductance per unit channel weight, m2/day (--rivers)
+    "log_C_riv": (math.log(1e-1), math.log(1e6)),
+    # recharge fraction of surface-water irrigation deliveries (--sw-recharge); above 1
+    # would say the delivery map is under-scaled, which is worth being able to see
+    "log_sw_scale": (math.log(0.01), math.log(2.0)),
+    # --delay-u0 learned: the slow store's head above the aquifer's at the record's start
+    # (m). The record opens after decades of drawdown, so real interbeds still drain.
+    "log_du0": (math.log(0.01), math.log(50.0)),
+    # --aquitard-storage: storativity of the aquitard store between two layers (-) and its
+    # conductance to each of them (1/day, the log_L range)
+    "log_Sa": (math.log(1e-5), math.log(0.3)),
+    "log_G": (math.log(1e-8), math.log(1e-1)),
 }
+DELAY_SD_INIT = 1e-3
+DELAY_TAU_INIT_DAYS = 365.0
+DELAY_DU0_INIT_M = 1.0
+AQT_SA_INIT = 1e-3
+AQT_G_INIT = 1e-4
+C_RIV_INIT = 1e3
+# Liu et al. (2001, 2005): 20-35 % of what Yunlin's canals deliver infiltrates
+SW_SCALE_INIT = 0.25
+# two components (canal leakage, paddy percolation; surface_water.py --components):
+# leakage of delivered water 0.1-0.2 once percolation is separate, k_p ~0.25 (Liu 2001)
+SW_SCALE_INIT_2 = (0.15, 0.25)
+DELAY_TAU_MIN_DAYS = 30.0
+
+
+def set_delay_tau_max(years: float | None) -> None:
+    """Delay-bed time-constant ceiling (``--delay-tau-max-years``, default 30)."""
+    if years is not None:
+        BOUNDS["log_tau"] = (BOUNDS["log_tau"][0], math.log(365.25 * float(years)))
+
+
+def set_delay_tau_min(days: float | None) -> None:
+    """Delay-bed time-constant floor (``--delay-tau-min-days``, default 30). At tau ~ dt
+    the bed is only extra instant storage (``S_d dt/(tau+dt)``), a route around the
+    storage ceiling rather than a slow release; 180 days keeps it slow."""
+    if days is not None:
+        BOUNDS["log_tau"] = (math.log(float(days)), BOUNDS["log_tau"][1])
+
+
+def set_spread_max_km(km: float | None) -> None:
+    """Ceiling of the learned stress radius (``--spread-max-km``, default 25). The
+    deliverable (stage3_spreadL_gate) was fitted at 10 km, where it sits."""
+    if km is not None:
+        BOUNDS["log_spread_km"] = (BOUNDS["log_spread_km"][0], math.log(float(km)))
+
+
+# Per-zone raised floors, ``{(base, zone): log_lo}``, read by ``_zonal_bounds_hit``. Empty
+# by default (every zone uses BOUNDS). Set by ``set_log_t_min_proximal``.
+ZONE_LOWER_BOUNDS: dict[tuple[str, str], float] = {}
+
+
+def set_log_t_min_proximal(m2day: float | None) -> None:
+    """``--log-t-min-proximal`` (m2/day): raise the proximal ``log_T`` floor above the
+    global 10 m2/day of ``BOUNDS["log_T"]``, in both proximal parts when the zone is
+    split. The proximal gravel is the most transmissive part of the fan, and Liu et al.
+    (2002) measured 58 m2/day as the fan-wide minimum. ``None`` clears the override."""
+    for z in ("proximal", "proximal_w"):
+        ZONE_LOWER_BOUNDS.pop(("log_T", z), None)
+    if m2day is None:
+        return
+    if not float(m2day) > 0.0:
+        raise ValueError(f"--log-t-min-proximal must be > 0 m2/day, got {m2day}")
+    lo = max(math.log(float(m2day)), BOUNDS["log_T"][0])
+    if lo >= BOUNDS["log_T"][1]:
+        raise ValueError(f"--log-t-min-proximal {m2day} is not below the log_T ceiling")
+    for z in ("proximal", "proximal_w"):
+        ZONE_LOWER_BOUNDS[("log_T", z)] = lo
+
+
+def parse_delay_layers(text: str | None, n_layers: int = 4) -> tuple[int, ...] | None:
+    """``--delay-layers "1,2,3"`` (0-based layer indices) -> tuple, or ``None`` = all."""
+    if text is None or str(text).strip() in ("", "all"):
+        return None
+    out = tuple(sorted({int(s) for s in str(text).split(",") if s.strip()}))
+    if not out or min(out) < 0 or max(out) >= n_layers:
+        raise ValueError(f"--delay-layers {text!r}: expected indices in 0..{n_layers - 1}")
+    return out
 
 
 def _git_commit() -> str:
@@ -166,9 +259,37 @@ def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
     return hits
 
 
+def prepare_series(s: np.ndarray, backfill: bool = True) -> np.ndarray:
+    """One well's monthly head series as the calibration target.
+
+    ``backfill=True`` (default, every run before 2026-09-23): linear interpolation across
+    interior gaps and constant fill of leading/trailing gaps
+    (``interpolate(limit_direction="both")``). That fill leaks held-out values into a
+    temporal screen: a well that starts in 2020 gets its first held-out head copied over
+    every fitted month, into the fit target, the climatology and the initial condition.
+
+    ``backfill=False`` (``--no-backfill``): the series is returned unchanged -- every
+    never-observed month stays NaN, interior gaps included (an interior gap straddling
+    the fit/held-out split would leak the same way), and ``fit_flow`` masks those months
+    out of the loss."""
+    s = np.asarray(s, dtype="float64")
+    if not backfill or np.isfinite(s).all():
+        return s.copy() if not backfill else s
+    return pd.Series(s).interpolate(limit_direction="both").to_numpy()
+
+
+def _masked_mse(pred: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Mean squared error over the ``mask``-ed entries only (``obs`` must be finite
+    everywhere -- zero-filled where masked -- so no NaN reaches the gradient)."""
+    mf = mask.to(pred.dtype)
+    return (((pred - obs) ** 2) * mf).sum() / mf.sum().clamp_min(1.0)
+
+
 def _r2(pred: np.ndarray, obs: np.ndarray) -> float:
     finite = np.isfinite(pred) & np.isfinite(obs)
     pred, obs = pred[finite], obs[finite]
+    if obs.size == 0:
+        return float("nan")      # e.g. a --no-backfill well never observed in the window
     ss_res = float(((obs - pred) ** 2).sum())
     ss_tot = float(((obs - obs.mean()) ** 2).sum())
     return 1.0 - ss_res / max(ss_tot, 1e-12)
@@ -204,6 +325,64 @@ def _idw_initial_heads(grid, xy: np.ndarray, h0_values: np.ndarray,
     return torch.tensor(out, dtype=torch.float64)
 
 
+def _merged_proximal_heads(grid, h0: torch.Tensor, xy: np.ndarray, h0_values: np.ndarray,
+                           zone_of_cell: np.ndarray, well_zone: np.ndarray
+                           ) -> tuple[torch.Tensor, dict]:
+    """``--ic-merged-proximal`` (opt-in, 2026-09-23): overwrite the proximal part of a
+    per-layer initial head field ``h0`` ``(L, A)`` with one merged-aquifer head.
+
+    The proximal fan has no aquitards (``log_L`` is not even a parameter there), yet the
+    per-layer IDW of ``_idw_initial_heads`` fills its layers 3-4 -- which have one and zero
+    proximal wells -- from mid-fan wells tens of km west, leaving the apex cells 30-40 m
+    below their own layer-1 wells. The layers then equilibrate within the first steps and
+    ``set_apex_heads`` pins each layer's apex boundary at the wrong head for the whole run.
+
+    Here, for each proximal zone present in ``zone_of_cell`` (``PROXIMAL`` and, with the
+    opt-in split, ``PROXIMAL_W``), every layer of its cells gets the same value: the IDW of
+    the finite heads of the wells that sit in that zone, whatever their layer code (they all
+    screen one aquifer), interpolated to that zone's cells only. A zone without such wells
+    falls back to all proximal wells, and without any keeps ``h0``. Other zones are
+    untouched. The apex boundary inherits the merged head through ``set_apex_heads(h0)``.
+    ``well_zone`` is the zone id of each well's cell. Returns ``(h0_new, report)``.
+    """
+    out = h0.clone()
+    xy = np.asarray(xy, dtype="float64").reshape(-1, 2)
+    v = np.asarray(h0_values, dtype="float64").reshape(-1)
+    wz = np.asarray(well_zone).reshape(-1)
+    zc = np.asarray(zone_of_cell).reshape(-1)
+    fin = np.isfinite(v)
+    prox = (PROXIMAL, PROXIMAL_W)
+    any_prox = fin & np.isin(wz, prox)
+    pts = grid.centroids()
+    names = zone_names(len(ZONE_NAMES_SPLIT))
+    report: dict = {}
+    for z in prox:
+        cells = np.flatnonzero(zc == z)
+        if cells.size == 0:
+            continue
+        m, src = fin & (wz == z), "zone"
+        if not m.any():
+            m, src = any_prox, "all proximal"
+        if not m.any():
+            report[names[z]] = {"n_wells": 0, "source": "none (per-layer IDW kept)"}
+            continue
+        f = idw_interp(pts[cells], xy[m], v[m].reshape(-1, 1))[:, 0]
+        before = out[:, cells].median(dim=1).values.tolist()
+        out[:, cells] = torch.as_tensor(f, dtype=out.dtype, device=out.device)[None, :]
+        report[names[z]] = {"n_wells": int(m.sum()), "source": src, "n_cells": int(cells.size),
+                            "median_before_m": [round(float(b), 2) for b in before],
+                            "median_after_m": round(float(np.median(f)), 2)}
+    return out, report
+
+
+def _ic_zone_map(grid, zone_boundaries: str | None) -> np.ndarray:
+    """The zone map ``--ic-merged-proximal`` uses: the calibration's own boundaries (with
+    the optional proximal split), also for a non-zonal parameterisation."""
+    p, d, s = _parse_zone_boundaries(zone_boundaries or _DEFAULT_ZONE_BOUNDARIES,
+                                     allow_split=True)
+    return fan_zones(grid.centroids(), proximal_km=p, distal_km=d, split_km=s)
+
+
 def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              log_L: torch.Tensor | None, h0: torch.Tensor, n_steps: int, *,
              recharge: torch.Tensor | None = None, pumping: torch.Tensor | None = None,
@@ -216,7 +395,18 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              log_C_apex: torch.Tensor | None = None,
              pump_split_logit: torch.Tensor | None = None,
              return_frac_logit: torch.Tensor | None = None,
-             spread_W: torch.Tensor | None = None) -> torch.Tensor:
+             spread_W: torch.Tensor | None = None,
+             delay_Sd: torch.Tensor | None = None,
+             delay_tau: torch.Tensor | None = None,
+             u0: torch.Tensor | None = None,
+             log_C_riv: torch.Tensor | None = None,
+             sw_field: torch.Tensor | None = None,
+             log_sw_scale: torch.Tensor | None = None,
+             sw_layer: int | None = None,
+             aqt_Sa: torch.Tensor | None = None,
+             aqt_G: torch.Tensor | None = None,
+             river_month0: int | None = None,
+             return_state: bool = False):
     """The same backward-Euler rollout as ``FlowModel.forward``, but taking log-parameter
     tensors as arguments instead of reading ``model``'s own registered nn.Parameters, and
     (fix round 1) supporting a *dynamic* forcing mode alongside the original static one.
@@ -251,6 +441,33 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
       and PyTorch backpropagates through the resulting backward-Euler recurrence (via
       ``h[pump_layer]``'s dependence on the *previous* step's ``_ImplicitSolve.apply``
       output) automatically.
+
+    Opt-in terms of 2026-09-23, each absent unless its arguments are given (and then the
+    historical code path runs unchanged, bit for bit):
+
+    - **Delay bed** (``delay_Sd``/``delay_tau``, log, ``(L, A)``): a slow store of head
+      ``u`` per cell and layer exchanging ``A S_d/tau (u - h)`` with the aquifer, the
+      first-mode lumping of SUB-style delay-bed drainage. Backward Euler with ``u``
+      condensed out: ``beta = S_d/(tau + dt)`` enters the operator's diagonal (implicit
+      adjoint) and ``beta A u`` the right-hand side, then ``u' = (tau u + dt h')/(tau +
+      dt)``. ``u0`` defaults to ``h0`` (equilibrium). ``return_state=True`` returns
+      ``(heads, u_final)`` so a projection can continue from the record's slow state.
+    - **Rivers** (``log_C_riv``, one per group, needs ``model.set_rivers``): ``ghb`` or
+      lagged-switch ``riv`` exchange on the river layer; see ``FlowModel.river_terms``.
+    - **Surface-water irrigation recharge** (``sw_field`` (A, T) m/day of delivered water,
+      ``log_sw_scale`` its recharge fraction): added to ``sw_layer`` (default
+      ``recharge_layer``). With several components (``sw_field`` (K, A, T), e.g. canal
+      deliveries and paddy percolation, ``log_sw_scale`` (K,)) each has its own fraction.
+    - **Aquitard store** (``aqt_Sa``/``aqt_G``, log, ``(L-1, A)``; ``--aquitard-storage``):
+      a storage node between layers k and k+1, see ``FlowModel.aqt_terms``. Its state
+      starts at the mean of the two layers' heads (equilibrium).
+    - **Seasonal river connection** (``model.river_season``): ``river_month0`` is the
+      calendar month index (0 = January) of step 0; default 1, the calibration record,
+      whose first step is February 2012.
+
+    With ``return_state=True`` the second element is the delay bed's ``u`` (a tensor),
+    or, when the aquitard store is on, ``{"u": u or None, "ua": ua}``; ``u0`` accepts
+    either form back.
     """
     # Anchor the device on the PARAMETERS, not on h0. Every forcing tensor reaching this
     # function is built by a numpy-backed loader (_idw_initial_heads, _ground_elev,
@@ -304,10 +521,84 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     use_bnd = model.has_boundaries and log_C_coast is not None and log_C_apex is not None
     bdiag, brhs = model.boundary_terms(torch.exp(log_C_coast) if use_bnd else None,
                                        torch.exp(log_C_apex) if use_bnd else None)
-    params = model.operator_params(log_T, log_S, log_L if model.n_layers > 1 else None,
-                                   log_C_coast if use_bnd else None,
-                                   log_C_apex if use_bnd else None)
-    mv, diag = model._matvec_from(T, S, L, bdiag=bdiag if use_bnd else None)
+    use_delay = delay_Sd is not None and delay_tau is not None
+    use_riv = model.has_rivers and log_C_riv is not None
+    use_sw = sw_field is not None and log_sw_scale is not None
+    use_aqt = aqt_Sa is not None and aqt_G is not None and model.n_layers > 1
+    sw_field = _here(sw_field)
+    log_sw_scale = _here(log_sw_scale)
+    swl = recharge_layer if sw_layer is None else int(sw_layer)
+    season = use_riv and model.river_season is not None
+    month0 = 1 if river_month0 is None else int(river_month0)
+    ua0 = None
+    if isinstance(u0, dict):
+        u0, ua0 = u0.get("u"), u0.get("ua")
+    extended = use_delay or use_riv or use_aqt
+    if not extended:
+        params = model.operator_params(log_T, log_S, log_L if model.n_layers > 1 else None,
+                                       log_C_coast if use_bnd else None,
+                                       log_C_apex if use_bnd else None)
+        mv, diag = model._matvec_from(T, S, L, bdiag=bdiag if use_bnd else None)
+        op = model._op
+    else:
+        from .flow import _COMPILE_MATVEC
+
+        rebuilt = use_riv and (model.river_mode == "riv" or season)
+        if rebuilt and _COMPILE_MATVEC:
+            raise ValueError("--compile-matvec cannot be used with --rivers riv or a river "
+                             "season table: the operator is rebuilt whenever the river "
+                             "switch or month changes")
+        delay_Sd, delay_tau = _here(delay_Sd), _here(delay_tau)
+        log_C_riv = _here(log_C_riv)
+        aqt_Sa, aqt_G = _here(aqt_Sa), _here(aqt_G)
+        layout = model.operator_layout(bnd=use_bnd, delay=use_delay, riv=use_riv,
+                                       aqt=use_aqt)
+        params = model.operator_params(
+            log_T, log_S, log_L if model.n_layers > 1 else None,
+            log_C_coast if use_bnd else None, log_C_apex if use_bnd else None,
+            delay=(delay_Sd, delay_tau) if use_delay else None,
+            riv=(log_C_riv,) if use_riv else None,
+            aqt=(aqt_Sa, aqt_G) if use_aqt else None)
+        groups = {}
+        if use_bnd:
+            groups["bnd"] = (log_C_coast, log_C_apex)
+        if use_delay:
+            groups["delay"] = (delay_Sd, delay_tau)
+            tau_d = torch.exp(delay_tau)
+            beta_A = model.delay_beta(delay_Sd, delay_tau) * model.area
+            u = h0 if u0 is None else _here(u0)
+        aqt_mv = None
+        if use_aqt:
+            a_a, g_a, c_a, r_a = model.aqt_terms(aqt_Sa, aqt_G)
+            D_a = a_a + 2.0 * g_a
+            aqt_mv = (g_a, c_a)
+            ua = 0.5 * (h0[:-1] + h0[1:]) if ua0 is None else _here(ua0)
+        static_layout = tuple(g for g in layout if g not in ("riv", "aqt"))
+        base_extra = model.extra_diag(static_layout, groups) if static_layout else None
+        C_riv = torch.exp(log_C_riv) if use_riv else None
+        riv_cache: dict = {}
+
+        def _operator(mask, month):
+            """(mv, diag, op, river rhs), rebuilt only when the RIV switch or (with a
+            season table) the calendar month changes."""
+            key = None if mask is None else mask
+            fac = model.river_month_factor(month) if season else None
+            mkey = (int(month) % 12) if season else None
+            if riv_cache and riv_cache["month"] == mkey and (
+                    (key is None and riv_cache["mask"] is None) or (
+                    key is not None and riv_cache["mask"] is not None
+                    and torch.equal(key, riv_cache["mask"]))):
+                return riv_cache["ops"]
+            extra = base_extra
+            rrhs = None
+            if use_riv:
+                rdiag, rrhs = model.river_terms(C_riv, mask, fac)
+                extra = rdiag if extra is None else extra + rdiag
+            m_v, d_g = model._matvec_from(T, S, L, bdiag=extra, compile_ok=not rebuilt,
+                                          aqt=aqt_mv)
+            ops = (m_v, d_g, model.make_op(layout, riv_mask=mask, riv_factor=fac), rrhs)
+            riv_cache["mask"], riv_cache["month"], riv_cache["ops"] = key, mkey, ops
+            return ops
     h = h0
     out = [h0]
     for t in range(n_steps):
@@ -351,18 +642,213 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
             if return_frac_logit is not None:
                 r_ret = RETURN_FRAC_MAX * torch.sigmoid(return_frac_logit)
                 layer_q[0] = layer_q[0] + r_ret * rate
+        if use_sw:
+            if sw_field.dim() == 3:
+                # several components (canal leakage, paddy percolation), one fraction each
+                sw_t = (torch.exp(log_sw_scale).reshape(-1, 1) * sw_field[:, :, t]).sum(dim=0)
+            else:
+                sw_t = torch.exp(log_sw_scale) * sw_field[:, t]
+            layer_q[swl] = layer_q[swl] + sw_t * model.area
         q = torch.stack(layer_q, dim=0)
         b = S * model.area / model.dt * h + q + brhs
+        if extended:
+            mv, diag, op, rrhs = _operator(model.river_mask(h) if use_riv else None,
+                                           month0 + t)
+            if rrhs is not None:
+                b = b + rrhs
+            if use_delay:
+                b = b + beta_A * u
+            if use_aqt:
+                ra_u = r_a * ua
+                b = b + torch.cat([ra_u, torch.zeros_like(ra_u[:1])], dim=0) \
+                    + torch.cat([torch.zeros_like(ra_u[:1]), ra_u], dim=0)
         solve = _warm_started_solver(mv, diag, h)
-        h = _ImplicitSolve.apply(b, model._op, solve, *params)
+        h = _ImplicitSolve.apply(b, op, solve, *params)
+        if extended and use_delay:
+            u = (tau_d * u + model.dt * h) / (tau_d + model.dt)
+        if extended and use_aqt:
+            ua = (a_a * ua + g_a * (h[:-1] + h[1:])) / D_a
         out.append(h)
-    return torch.stack(out, dim=-1)
+    heads = torch.stack(out, dim=-1)
+    if return_state:
+        u_end = u if extended and use_delay else None
+        if extended and use_aqt:
+            return heads, {"u": u_end, "ua": ua}
+        return heads, u_end
+    return heads
+
+
+DELAY_MODES = ("off", "global", "zonal")
+DELAY_U0_MODES = ("eq", "learned")
+# --sw-components: which fields of surface_water.py's npz enter the rollout, in order
+SW_COMPONENT_KEYS = {"delivered": ("sw_m_per_day",), "percolation": ("perc_m_per_day",),
+                     "both": ("sw_m_per_day", "perc_m_per_day")}
+SW_COMPONENT_CHOICES = tuple(SW_COMPONENT_KEYS)
+
+
+def _add_extension_params(theta: dict, model: FlowModel, delay_storage: str = "off",
+                          n_riv: int = 0, use_sw: bool | int = False,
+                          zonal: bool = False, delay_u0: str = "eq",
+                          aquitard: str = "off",
+                          zones: tuple[str, ...] = ZONE_NAMES) -> dict:
+    """The opt-in parameters of 2026-09-23, appended after the historical ones so a run
+    without them builds exactly the historical dict (same keys, same order):
+
+    - ``delay_storage="global"``: ``log_Sd``/``log_tau``, shape ``(1, 1)``;
+      ``"zonal"``: ``log_Sd_{zone}``/``log_tau_{zone}`` per fan zone (value shared across
+      layers within a zone). The ``_zone`` suffix lets ``_base_param_name`` and
+      ``_zonal_bounds_hit`` treat them like every other zonal parameter.
+    - ``n_riv > 0``: ``log_C_riv``, ``(n_riv,)``, one conductance per river group.
+    - ``use_sw``: ``log_sw_scale``, the recharge fraction of canal deliveries (a scalar),
+      or with ``use_sw = K > 1`` components one fraction each, ``(K,)``.
+    - ``delay_u0="learned"`` (needs a delay bed): ``log_du0[_zone]``, the slow store's
+      initial head above ``h0``.
+    - ``aquitard="global"/"zonal"``: ``log_Sa[_zone]``/``log_G[_zone]`` of the aquitard
+      store (``FlowModel.aqt_terms``), shared by every interface of a zone.
+
+    ``zones`` is the zonation's names (``ZONE_NAMES_SPLIT`` with the proximal split).
+    """
+    if delay_storage not in DELAY_MODES:
+        raise ValueError(f"delay_storage must be one of {DELAY_MODES}, got {delay_storage!r}")
+    if aquitard not in DELAY_MODES:
+        raise ValueError(f"aquitard must be one of {DELAY_MODES}, got {aquitard!r}")
+    if delay_u0 not in DELAY_U0_MODES:
+        raise ValueError(f"delay_u0 must be one of {DELAY_U0_MODES}, got {delay_u0!r}")
+    if delay_u0 == "learned" and delay_storage == "off":
+        raise ValueError("--delay-u0 learned needs --delay-storage global or zonal")
+    dev = model.log_T.device
+
+    def _p(value, shape=(1, 1)):
+        return nn.Parameter(torch.full(shape, float(value), dtype=torch.float64, device=dev))
+
+    if delay_storage == "global":
+        theta["log_Sd"] = _p(math.log(DELAY_SD_INIT))
+        theta["log_tau"] = _p(math.log(DELAY_TAU_INIT_DAYS))
+    elif delay_storage == "zonal":
+        if not zonal:
+            raise ValueError("--delay-storage zonal needs --param-mode zonal; use 'global'")
+        for z in zones:
+            theta[f"log_Sd_{z}"] = _p(math.log(DELAY_SD_INIT))
+        for z in zones:
+            theta[f"log_tau_{z}"] = _p(math.log(DELAY_TAU_INIT_DAYS))
+    if n_riv > 0:
+        theta["log_C_riv"] = _p(math.log(C_RIV_INIT), shape=(int(n_riv),))
+    n_sw = int(use_sw)
+    if n_sw == 1:
+        theta["log_sw_scale"] = nn.Parameter(
+            torch.tensor(math.log(SW_SCALE_INIT), dtype=torch.float64, device=dev))
+    elif n_sw > 1:
+        init = list(SW_SCALE_INIT_2) + [SW_SCALE_INIT] * max(n_sw - 2, 0)
+        theta["log_sw_scale"] = nn.Parameter(torch.tensor(
+            [math.log(v) for v in init[:n_sw]], dtype=torch.float64, device=dev))
+    # appended after every historical key, so a run without them is the historical dict
+    if delay_u0 == "learned":
+        if delay_storage == "global":
+            theta["log_du0"] = _p(math.log(DELAY_DU0_INIT_M))
+        else:
+            for z in zones:
+                theta[f"log_du0_{z}"] = _p(math.log(DELAY_DU0_INIT_M))
+    if aquitard == "global":
+        theta["log_Sa"] = _p(math.log(AQT_SA_INIT))
+        theta["log_G"] = _p(math.log(AQT_G_INIT))
+    elif aquitard == "zonal":
+        if not zonal:
+            raise ValueError("--aquitard-storage zonal needs --param-mode zonal; use 'global'")
+        for z in zones:
+            theta[f"log_Sa_{z}"] = _p(math.log(AQT_SA_INIT))
+        for z in zones:
+            theta[f"log_G_{z}"] = _p(math.log(AQT_G_INIT))
+    return theta
+
+
+def _zone_gather(cols: torch.Tensor, zone_t: torch.Tensor) -> torch.Tensor:
+    """``(k, N_ZONES)`` per-zone columns -> ``(k, A)`` per-cell values.
+
+    ``zone_t`` is either a long ``(A,)`` zone id (the sharp zonation: a gather) or a float
+    ``(N_ZONES, A)`` weight matrix from ``zones.zone_blend_weights`` (``--zone-blend-km``:
+    ``cols @ W``). Both are differentiable onto each zone's small tensor."""
+    if zone_t.is_floating_point():
+        return cols @ zone_t.to(dtype=cols.dtype, device=cols.device)
+    return cols[:, zone_t]
+
+
+def zone_tensor(zone_of_cell: np.ndarray | None, device=None,
+                zone_w: np.ndarray | None = None) -> torch.Tensor | None:
+    """The ``zone_t`` the ``_expand_*`` helpers take: the ``(N_ZONES, A)`` blend weights
+    when given, else the long zone ids, else ``None``."""
+    if zone_w is not None:
+        return torch.as_tensor(np.asarray(zone_w, dtype="float64"), dtype=torch.float64,
+                               device=device)
+    if zone_of_cell is None:
+        return None
+    return torch.as_tensor(np.asarray(zone_of_cell), dtype=torch.long, device=device)
+
+
+def _expand_zonal_group(theta: dict, zone_t: torch.Tensor | None, n_rows: int,
+                        n_active: int, bases: tuple[str, ...]) -> list | None:
+    """Global (``base``) or zonal (``base_{zone}``) scalar parameters -> one ``(n_rows,
+    A)`` field per base, or ``None`` when ``theta`` has none of them. Zonal values gather
+    by ``zone_t`` exactly like ``_expand_zonal`` (advanced-index backward is a scatter-add
+    onto each zone)."""
+    if bases[0] in theta:
+        return [theta[b].reshape(1, 1).expand(n_rows, n_active) for b in bases]
+    if f"{bases[0]}_{ZONE_NAMES[0]}" in theta:
+        if zone_t is None:
+            raise ValueError(f"zonal {bases} parameters need a zone assignment")
+        out = []
+        for base in bases:
+            names = ZONE_NAMES_SPLIT if f"{base}_proximal_w" in theta else ZONE_NAMES
+            cols = torch.cat([theta[f"{base}_{z}"].reshape(1, 1) for z in names], dim=1)
+            out.append(_zone_gather(cols, zone_t).expand(n_rows, -1))
+        return out
+    return None
+
+
+def _expand_zonal_delay(theta: dict, zone_t: torch.Tensor | None, n_layers: int,
+                        n_active: int, layers: tuple[int, ...] | None = None
+                        ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Delay-bed parameters -> ``(log_Sd, log_tau)`` each ``(L, A)``, or ``(None, None)``
+    when the run has no delay bed.
+
+    ``layers`` (``--delay-layers``) restricts the bed to those layers: elsewhere
+    ``log_Sd`` is the CONSTANT lower bound (not zero, which would drop the term's
+    gradient path out of the operator and trip ``_ImplicitSolve``'s check)."""
+    got = _expand_zonal_group(theta, zone_t, n_layers, n_active, ("log_Sd", "log_tau"))
+    if got is None:
+        return None, None
+    Sd, tau = got
+    if layers is not None:
+        keep = torch.zeros(n_layers, 1, dtype=torch.bool, device=Sd.device)
+        keep[list(layers)] = True
+        floor = torch.full_like(Sd, BOUNDS["log_Sd"][0])
+        Sd = torch.where(keep, Sd, floor)
+    return Sd, tau
+
+
+def _expand_delay_du0(theta: dict, zone_t: torch.Tensor | None, n_layers: int,
+                      n_active: int) -> torch.Tensor | None:
+    """``--delay-u0 learned``: the slow store's initial excess head ``exp(log_du0)`` as
+    an ``(L, A)`` field in metres, or ``None`` (equilibrium, ``u0 = h0``)."""
+    got = _expand_zonal_group(theta, zone_t, n_layers, n_active, ("log_du0",))
+    return None if got is None else torch.exp(got[0])
+
+
+def _expand_aqt(theta: dict, zone_t: torch.Tensor | None, n_layers: int,
+                n_active: int) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """``--aquitard-storage``: ``(log_Sa, log_G)`` each ``(L-1, A)``, or ``(None, None)``."""
+    if n_layers < 2:
+        return None, None
+    got = _expand_zonal_group(theta, zone_t, n_layers - 1, n_active, ("log_Sa", "log_G"))
+    return (None, None) if got is None else (got[0], got[1])
 
 
 def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
                              use_recharge: bool = False, n_eta: int = 1,
                              pump_split: bool = False, return_flow: bool = False,
-                             learn_spread: bool = False) -> dict[str, nn.Parameter]:
+                             learn_spread: bool = False, delay_storage: str = "off",
+                             n_riv: int = 0, use_sw: bool | int = False,
+                             delay_u0: str = "eq",
+                             aquitard: str = "off") -> dict[str, nn.Parameter]:
     """One (log_T, log_S) per layer and one log_L per interface, shape ``(k, 1)`` so it
     broadcasts against ``(n_layers, n_active)`` via ``.expand``. Initialised from the
     model's own (uniform, per Task 3/4's constructor) starting values.
@@ -402,7 +888,8 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
-    return theta
+    return _add_extension_params(theta, model, delay_storage, n_riv, use_sw, zonal=False,
+                                 delay_u0=delay_u0, aquitard=aquitard)
 
 
 def _base_param_name(name: str) -> str:
@@ -410,17 +897,26 @@ def _base_param_name(name: str) -> str:
     _clamp_ are keyed on the bare physical name. Only the three known zone suffixes are
     stripped, so ``log_eta`` and ``recharge_frac_logit`` survive untouched.
     """
-    for zone in ZONE_NAMES:
+    for zone in ZONE_NAMES_SPLIT:
         suffix = f"_{zone}"
         if name.endswith(suffix):
             return name[: -len(suffix)]
     return name
 
 
+def _theta_zone_names(theta: dict) -> tuple[str, ...]:
+    """The zonation a zonal theta was built for: three zones, or four when it carries the
+    proximal split's ``log_T_proximal_w``."""
+    return ZONE_NAMES_SPLIT if "log_T_proximal_w" in theta else ZONE_NAMES
+
+
 def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
                        use_recharge: bool = False, n_eta: int = 1,
                        pump_split: bool = False, return_flow: bool = False,
-                       learn_spread: bool = False) -> dict[str, nn.Parameter]:
+                       learn_spread: bool = False, delay_storage: str = "off",
+                       n_riv: int = 0, use_sw: bool | int = False, delay_u0: str = "eq",
+                       aquitard: str = "off",
+                       split: bool = False) -> dict[str, nn.Parameter]:
     """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
     with both drivers, against the homogeneous mode's 13 (spec §5).
 
@@ -437,6 +933,9 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     Shapes are ``(k, 1)`` so ``_expand_zonal`` can column-stack them into ``(k, N_ZONES)``
     and gather to ``(k, n_active)``. Initialised from the model's own uniform starting
     values, so a zonal run and a homogeneous run start from the same physics.
+
+    ``split`` (opt-in, ``--zone-boundaries P,D,S``) adds a fourth zone, ``proximal_w``, the
+    proximal cells west of S. It has the proximal form: one merged aquifer, 2 parameters.
     """
     log_T0 = model.log_T[:, :1].detach().clone()
     log_S0 = model.log_S[:, :1].detach().clone()
@@ -453,6 +952,9 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
         log_L0 = model.log_L[:, :1].detach().clone()
         theta["log_L_mid"] = nn.Parameter(log_L0.clone())
         theta["log_L_distal"] = nn.Parameter(log_L0.clone())
+    if split:
+        theta["log_T_proximal_w"] = nn.Parameter(log_T0.mean(dim=0, keepdim=True))
+        theta["log_S_proximal_w"] = nn.Parameter(log_S0.mean(dim=0, keepdim=True))
     dev = model.log_T.device
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
@@ -476,7 +978,9 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
-    return theta
+    return _add_extension_params(theta, model, delay_storage, n_riv, use_sw, zonal=True,
+                                 delay_u0=delay_u0, aquitard=aquitard,
+                                 zones=ZONE_NAMES_SPLIT if split else ZONE_NAMES)
 
 
 def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
@@ -494,17 +998,21 @@ def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
     dev = theta["log_T_mid"].device
     prox_T = theta["log_T_proximal"].expand(n_layers, 1)
     prox_S = theta["log_S_proximal"].expand(n_layers, 1)
-    cols_T = torch.cat([prox_T, theta["log_T_mid"], theta["log_T_distal"]], dim=1)
-    cols_S = torch.cat([prox_S, theta["log_S_mid"], theta["log_S_distal"]], dim=1)
-    assert cols_T.shape == (n_layers, N_ZONES)
-    log_T = cols_T[:, zone_t]
-    log_S = cols_S[:, zone_t]
+    split = "log_T_proximal_w" in theta
+    extra_T = [theta["log_T_proximal_w"].expand(n_layers, 1)] if split else []
+    extra_S = [theta["log_S_proximal_w"].expand(n_layers, 1)] if split else []
+    cols_T = torch.cat([prox_T, theta["log_T_mid"], theta["log_T_distal"], *extra_T], dim=1)
+    cols_S = torch.cat([prox_S, theta["log_S_mid"], theta["log_S_distal"], *extra_S], dim=1)
+    assert cols_T.shape == (n_layers, N_ZONES + int(split))
+    log_T = _zone_gather(cols_T, zone_t)
+    log_S = _zone_gather(cols_S, zone_t)
     log_L = None
     if n_layers > 1 and "log_L_mid" in theta:
         prox_L = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
                             dtype=torch.float64, device=dev)
-        cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]], dim=1)
-        log_L = cols_L[:, zone_t]
+        cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]]
+                           + ([prox_L] if split else []), dim=1)
+        log_L = _zone_gather(cols_L, zone_t)
     return log_T, log_S, log_L
 
 
@@ -518,15 +1026,118 @@ def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, dic
     operational bar. Ruling P1 further requires lo/hi to stay distinguished per zone:
     a pinned proximal log_T is only the documented failure if it is pinned LOW.
     """
-    report: dict[str, dict[str, dict[str, int]]] = {name: {} for name in ZONE_NAMES}
+    names = _theta_zone_names(theta)
+    report: dict[str, dict[str, dict[str, int]]] = {name: {} for name in names}
     report["global"] = {}
     for name, par in theta.items():
         base = _base_param_name(name)
         if base not in BOUNDS:
             continue                     # recharge_frac_logit: unconstrained by design
-        bucket = next((z for z in ZONE_NAMES if name.endswith(f"_{z}")), "global")
-        report[bucket][base] = _clamp_({base: par})[base]
+        bucket = next((z for z in names if name.endswith(f"_{z}")), "global")
+        lo = ZONE_LOWER_BOUNDS.get((base, bucket))
+        if lo is not None:               # --log-t-min-proximal: a raised per-zone floor
+            with torch.no_grad():
+                par.clamp_(min=lo)
+        hit = _clamp_({base: par})[base]
+        if lo is not None:
+            hit["lo"] = int((par <= lo + 1e-9).sum())
+        report[bucket][base] = hit
     return report
+
+
+def _first(v) -> float:
+    return float(np.ravel(np.asarray(v, dtype="float64"))[0])
+
+
+def _extension_readouts(theta_out: dict) -> dict:
+    """Physical-unit copies of the opt-in parameters for the theta file: ``Sd[_zone]``,
+    ``tau_days[_zone]``, ``C_riv_m2day`` and ``sw_scale``."""
+    out = {}
+    for suffix in [""] + [f"_{z}" for z in ZONE_NAMES_SPLIT]:
+        if f"log_Sd{suffix}" in theta_out:
+            out[f"Sd{suffix}"] = math.exp(_first(theta_out[f"log_Sd{suffix}"]))
+            out[f"tau_days{suffix}"] = math.exp(_first(theta_out[f"log_tau{suffix}"]))
+        if f"log_du0{suffix}" in theta_out:
+            out[f"du0_m{suffix}"] = math.exp(_first(theta_out[f"log_du0{suffix}"]))
+        if f"log_Sa{suffix}" in theta_out:
+            out[f"Sa{suffix}"] = math.exp(_first(theta_out[f"log_Sa{suffix}"]))
+            out[f"G_per_day{suffix}"] = math.exp(_first(theta_out[f"log_G{suffix}"]))
+    if "log_C_riv" in theta_out:
+        out["C_riv_m2day"] = [float(np.exp(v)) for v in np.ravel(theta_out["log_C_riv"])]
+    if "log_sw_scale" in theta_out:
+        v = np.ravel(theta_out["log_sw_scale"])
+        out["sw_scale"] = (math.exp(float(v[0])) if np.ndim(theta_out["log_sw_scale"]) == 0
+                           else [float(np.exp(x)) for x in v])
+    return out
+
+
+def _delay_diagnostics(theta_out: dict, dt: float, n_layers: int,
+                       layers: tuple[int, ...] | None = None) -> dict:
+    """Per zone (or global): ``S_eff = S + S_d dt/(tau + dt)`` per layer, the storage a
+    monthly step actually sees (the bed's instantaneous share adds to S), and
+    ``delay_is_elastic`` when ``tau < 3 dt``: the bed is then extra elastic storage, not
+    a slow release, and the fit has used it to get round the S ceiling."""
+    out: dict = {}
+    zoned = [f"_{z}" for z in ZONE_NAMES_SPLIT if f"log_S_{z}" in theta_out]
+    for suffix in (zoned or [""]):
+        dsuf = suffix if f"log_Sd{suffix}" in theta_out else ""
+        if f"log_Sd{dsuf}" not in theta_out or f"log_S{suffix}" not in theta_out:
+            continue
+        Sd = math.exp(_first(theta_out[f"log_Sd{dsuf}"]))
+        tau = math.exp(_first(theta_out[f"log_tau{dsuf}"]))
+        s = [float(np.exp(v)) for v in np.ravel(theta_out[f"log_S{suffix}"])]
+        if len(s) == 1:
+            s = s * n_layers                       # proximal: one merged aquifer
+        inst = Sd * dt / (tau + dt)
+        out[f"S_eff{suffix}"] = [s[k] + (inst if layers is None or k in layers else 0.0)
+                                 for k in range(n_layers)]
+        out[f"delay_is_elastic{suffix}"] = bool(tau < 3.0 * dt)
+    return out
+
+
+def _scalar_theta(theta: dict, bases: tuple[str, ...], device=None) -> dict:
+    th = {}
+    for k, v in theta.items():
+        if _base_param_name(k) in bases and k.startswith("log_"):
+            th[k] = torch.tensor(_first(v), dtype=torch.float64, device=device).reshape(1, 1)
+    return th
+
+
+def delay_fields_from_theta(theta: dict, zone_of_cell: np.ndarray | None, n_layers: int,
+                            n_active: int, device=None,
+                            layers: tuple[int, ...] | None = None,
+                            zone_w: np.ndarray | None = None
+                            ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """A theta file's delay-bed parameters -> ``(log_Sd, log_tau)`` each ``(L, A)`` on
+    ``device``, or ``(None, None)``. The forward twin and the evaluation paths use it.
+    ``layers`` is the run's ``--delay-layers`` (meta ``delay_layers``)."""
+    th = _scalar_theta(theta, ("log_Sd", "log_tau"), device)
+    if not th:
+        return None, None
+    zt = zone_tensor(zone_of_cell, device, zone_w)
+    return _expand_zonal_delay(th, zt, n_layers, n_active, layers=layers)
+
+
+def delay_du0_from_theta(theta: dict, zone_of_cell: np.ndarray | None, n_layers: int,
+                         n_active: int, device=None,
+                         zone_w: np.ndarray | None = None) -> torch.Tensor | None:
+    """``--delay-u0 learned``: the slow store's initial excess head (m), ``(L, A)``."""
+    th = _scalar_theta(theta, ("log_du0",), device)
+    if not th:
+        return None
+    zt = zone_tensor(zone_of_cell, device, zone_w)
+    return _expand_delay_du0(th, zt, n_layers, n_active)
+
+
+def aqt_fields_from_theta(theta: dict, zone_of_cell: np.ndarray | None, n_layers: int,
+                          n_active: int, device=None, zone_w: np.ndarray | None = None
+                          ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """``--aquitard-storage``: ``(log_Sa, log_G)`` each ``(L-1, A)``, or ``(None, None)``."""
+    th = _scalar_theta(theta, ("log_Sa", "log_G"), device)
+    if not th:
+        return None, None
+    zt = zone_tensor(zone_of_cell, device, zone_w)
+    return _expand_aqt(th, zt, n_layers, n_active)
 
 
 def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
@@ -541,8 +1152,27 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              fix_head_extra: float | None = None, pump_split: bool = False,
              return_flow: bool = False, spread_km: float | None = None,
              learn_spread: bool = False, loss_mode: str = "level",
-             level_weight: float = 0.1) -> dict:
+             level_weight: float = 0.1, delay_storage: str = "off",
+             sw_field: torch.Tensor | None = None, sw_layer: int | None = None,
+             fix_sw_scale: float | None = None, delay_u0: str = "eq",
+             delay_layers: tuple[int, ...] | None = None,
+             aquitard: str = "off", zone_w: np.ndarray | None = None) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    ``zone_w`` (``--zone-blend-km``, 2026-09-23) is an ``(N_ZONES, A)`` blend-weight
+    matrix (``zones.zone_blend_weights``). Zonal parameters are then mixed per cell, not
+    gathered. The parameter count is unchanged. Default ``None``: the sharp zonation.
+
+    Opt-in (2026-09-23, second round): ``delay_u0="learned"`` fits the delay bed's initial
+    disequilibrium (``u0 = h0 + exp(log_du0)``), ``delay_layers`` restricts the bed to
+    those layers, ``aquitard`` ("global"/"zonal") adds a storage node on every layer
+    interface (``FlowModel.aqt_terms``), and ``sw_field`` may be ``(K, A, T)`` with one
+    learnable fraction per component. All default off.
+
+    Opt-in (2026-09-23): ``delay_storage`` ("global"/"zonal") adds the lumped delay bed,
+    a model built with ``set_rivers`` gets one learnable conductance per river group, and
+    ``sw_field`` (A, T, m/day of canal deliveries) adds surface-water irrigation recharge
+    with a learnable fraction (or ``fix_sw_scale``). All default off.
 
     ``fix_eta``/``fix_head_extra`` (2026-09-13) hold the pump energy->volume conversion at
     given physical values instead of learning it. Diagnostic: every free fit so far has
@@ -591,6 +1221,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     else:
         h0 = h0.to(dtype=torch.float64, device=dev)
     obs_h = obs_h.to(dtype=torch.float64, device=dev)
+    # NaN months in the target (only a --no-backfill run has any) are masked out of the
+    # loss; a back-filled target has none, so its loss is bit-for-bit the unmasked one.
+    obs_mask = torch.isfinite(obs_h)
+    masked = not bool(obs_mask.all())
+    obs_z = torch.where(obs_mask, obs_h, torch.zeros_like(obs_h)) if masked else obs_h
     obs_idx = obs_idx.to(device=dev)
     obs_layer = obs_layer.to(device=dev)
     recharge = recharge.to(dtype=torch.float64, device=dev)
@@ -600,6 +1235,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         E = E.to(dtype=torch.float64, device=dev)
     if ground_elev is not None:
         ground_elev = ground_elev.to(dtype=torch.float64, device=dev)
+    if sw_field is not None:
+        sw_field = sw_field.to(dtype=torch.float64, device=dev)
     # The apex boundary holds this run's initial head; a fold's h0 is built from its
     # kept wells only, so this cannot leak a held-out well into the boundary.
     model.set_apex_heads(h0)
@@ -625,7 +1262,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             opt.zero_grad()
             h = model(h0, recharge, pumping, n_steps)
             pred = h[obs_layer, obs_idx, 1:]
-            loss = ((pred - obs_h) ** 2).mean()
+            loss = (_masked_mse(pred, obs_z, obs_mask) if masked
+                    else ((pred - obs_h) ** 2).mean())
             loss.backward()
             torch.nn.utils.clip_grad_norm_(free, 1.0)
             opt.step()
@@ -648,6 +1286,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     use_pumping = E is not None and ground_elev is not None
     use_recharge = recharge_field is not None
     n_eta = int(E.shape[0]) if (use_pumping and E.dim() == 3) else 1
+    n_riv = int(model.n_riv_groups) if model.has_rivers else 0
+    use_sw = sw_field is not None
+    n_sw = (int(sw_field.shape[0]) if use_sw and sw_field.dim() == 3 else int(use_sw))
     zone_t = None
     if param_mode == "zonal":
         zone_arr = np.asarray(zone_of_cell, dtype="int64").reshape(-1)
@@ -657,15 +1298,26 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 "active cells"
             )
         zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
+        # the opt-in proximal split: ids 0-3, one more merged-aquifer zone
+        split = bool((zone_arr == PROXIMAL_W).any())
+        n_z = N_ZONES + int(split)
+        if zone_w is not None:
+            zone_t = zone_tensor(None, dev, zone_w)
+            if tuple(zone_t.shape) != (n_z, A):
+                raise ValueError(f"zone_w must be ({n_z}, {A}), got {tuple(zone_t.shape)}")
         theta = _make_zonal_params(model, use_pumping=use_pumping,
                                    use_recharge=use_recharge, n_eta=n_eta,
                                    pump_split=pump_split, return_flow=return_flow,
-                                   learn_spread=learn_spread)
+                                   learn_spread=learn_spread, delay_storage=delay_storage,
+                                   n_riv=n_riv, use_sw=n_sw, delay_u0=delay_u0,
+                                   aquitard=aquitard, split=split)
     else:
         theta = _make_homogeneous_params(model, use_pumping=use_pumping,
                                          use_recharge=use_recharge, n_eta=n_eta,
                                          pump_split=pump_split, return_flow=return_flow,
-                                         learn_spread=learn_spread)
+                                         learn_spread=learn_spread,
+                                         delay_storage=delay_storage, n_riv=n_riv,
+                                         use_sw=n_sw, delay_u0=delay_u0, aquitard=aquitard)
     # spatial spread of the pumping stress: fixed radius, learned radius, or none
     d2_km = (pairwise_d2_km(model.grid, device=dev)
              if use_pumping and (learn_spread or spread_km is not None) else None)
@@ -685,6 +1337,17 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         ``level_weight`` x the MSE of the means. The level misfit is dominated by
         between-well differences of tens of metres, so a level fit is never asked to get
         a well's variations right -- and the held-out-years gate found exactly that."""
+        if masked:
+            if loss_mode == "level":
+                return _masked_mse(pred, obs_z, obs_mask)
+            mf = obs_mask.to(pred.dtype)
+            n_w = mf.sum(dim=1, keepdim=True)
+            pm = (pred * mf).sum(dim=1, keepdim=True) / n_w.clamp_min(1.0)
+            om = (obs_z * mf).sum(dim=1, keepdim=True) / n_w.clamp_min(1.0)
+            has = (n_w > 0).to(pred.dtype)       # a well never observed carries no level
+            lvl = (((pm - om) ** 2) * has).sum() / has.sum().clamp_min(1.0)
+            return (_masked_mse(pred - pm, obs_z - om, obs_mask)
+                    + level_weight * lvl)
         if loss_mode == "level":
             return ((pred - obs_h) ** 2).mean()
         pm, om = pred.mean(dim=1, keepdim=True), obs_h.mean(dim=1, keepdim=True)
@@ -697,6 +1360,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if use_pumping and fix_head_extra is not None:
         fixed["log_head_extra"] = torch.full_like(theta.pop("log_head_extra").detach(),
                                                   float(math.log(fix_head_extra)))
+    if use_sw and fix_sw_scale is not None:
+        fixed["log_sw_scale"] = torch.full_like(theta.pop("log_sw_scale").detach(),
+                                                float(math.log(fix_sw_scale)))
     free = list(theta.values())
     opt = torch.optim.Adam(free, lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -710,8 +1376,24 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             log_T = theta["log_T"].expand(-1, A)
             log_S = theta["log_S"].expand(-1, A)
             log_L = theta["log_L"].expand(-1, A) if "log_L" in theta else None
+        d_Sd, d_tau = _expand_zonal_delay(theta, zone_t, model.n_layers, A,
+                                          layers=delay_layers)
+        ext = {}
+        if d_Sd is not None:
+            ext.update(delay_Sd=d_Sd, delay_tau=d_tau)
+            du0 = _expand_delay_du0(theta, zone_t, model.n_layers, A)
+            if du0 is not None:
+                ext["u0"] = h0 + du0
+        a_Sa, a_G = _expand_aqt(theta, zone_t, model.n_layers, A)
+        if a_Sa is not None:
+            ext.update(aqt_Sa=a_Sa, aqt_G=a_G)
+        if n_riv:
+            ext["log_C_riv"] = theta["log_C_riv"]
+        if use_sw:
+            ext.update(sw_field=sw_field, sw_layer=sw_layer,
+                       log_sw_scale=theta.get("log_sw_scale", fixed.get("log_sw_scale")))
         return _rollout(
-            model, log_T, log_S, log_L, h0, n_steps,
+            model, log_T, log_S, log_L, h0, n_steps, **ext,
             recharge=None if use_recharge else recharge,
             pumping=None,
             recharge_field=recharge_field if use_recharge else None,
@@ -770,6 +1452,19 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         if model.has_boundaries and "log_C_coast" in theta:
             model.log_C_coast.copy_(theta["log_C_coast"])
             model.log_C_apex.copy_(theta["log_C_apex"])
+        d_Sd, d_tau = _expand_zonal_delay(theta, zone_t, model.n_layers, A,
+                                          layers=delay_layers)
+        if d_Sd is not None:
+            model.delay_log_Sd = d_Sd.detach().clone()
+            model.delay_log_tau = d_tau.detach().clone()
+            du0 = _expand_delay_du0(theta, zone_t, model.n_layers, A)
+            model.delay_log_du0 = None if du0 is None else torch.log(du0).detach().clone()
+        a_Sa, a_G = _expand_aqt(theta, zone_t, model.n_layers, A)
+        if a_Sa is not None:
+            model.aqt_log_Sa = a_Sa.detach().clone()
+            model.aqt_log_G = a_G.detach().clone()
+        if n_riv:
+            model.fit_log_C_riv = theta["log_C_riv"].detach().clone()
     n_params = sum(p.numel() for p in free)
     theta_out = {}
     for k, v in list(theta.items()) + list(fixed.items()):
@@ -795,10 +1490,28 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         theta_out["spread_km"] = float(spread_km)          # fixed, recorded for the forward twin
     if "recharge_frac_logit" in theta_out:
         theta_out["recharge_frac"] = float(1.0 / (1.0 + np.exp(-theta_out["recharge_frac_logit"])))
+    theta_out.update(_extension_readouts(theta_out))
+    diag = _delay_diagnostics(theta_out, model.dt, model.n_layers, delay_layers)
+    theta_out.update(diag)
+    elastic = [k[len("delay_is_elastic"):] or "_global" for k, v in diag.items()
+               if k.startswith("delay_is_elastic") and v]
+    if elastic:
+        print(f"    WARNING delay_is_elastic: tau < 3 dt in {elastic} -- the delay bed is "
+              "acting as extra instant storage, not a slow release (raise "
+              "--delay-tau-min-days)", flush=True)
     return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
             "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
             "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
             "fixed": sorted(fixed), "loss_mode": loss_mode}
+
+
+def sw_scale_tensor(v, device=None) -> torch.Tensor:
+    """``log_sw_scale`` from a theta file: a scalar (one component) stays 0-d, a list
+    (``--sw-components``) becomes ``(K,)``, matching ``_rollout``'s two forms."""
+    if np.ndim(v) == 0:
+        return torch.tensor(float(v), dtype=torch.float64, device=device)
+    arr = np.ravel(np.asarray(v, dtype="float64"))
+    return torch.tensor(arr, dtype=torch.float64, device=device)
 
 
 def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps: int,
@@ -806,7 +1519,9 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          recharge_field: torch.Tensor | None = None,
                          E: torch.Tensor | None = None,
                          ground_elev: torch.Tensor | None = None,
-                         recharge_layer: int = 0, pump_layer: int = 1) -> torch.Tensor:
+                         recharge_layer: int = 0, pump_layer: int = 1,
+                         sw_field: torch.Tensor | None = None,
+                         sw_layer: int | None = None) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
     reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
     ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
@@ -837,7 +1552,21 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
             W = spread_matrix(pairwise_d2_km(model.grid, device=model.log_T.device),
                               torch.tensor(math.log(theta["spread_km"]), dtype=torch.float64,
                                            device=model.log_T.device))
-        return _rollout(model, log_T, log_S, log_L, h0, n_steps,
+        # opt-in extensions: the delay bed and river conductances a fit copied back onto
+        # the model, and the canal-recharge fraction that travels in theta
+        ext = {}
+        if model.delay_log_Sd is not None:
+            ext.update(delay_Sd=model.delay_log_Sd, delay_tau=model.delay_log_tau)
+            if model.delay_log_du0 is not None:
+                ext["u0"] = h0.to(model.delay_log_du0.device) + torch.exp(model.delay_log_du0)
+        if model.aqt_log_Sa is not None:
+            ext.update(aqt_Sa=model.aqt_log_Sa, aqt_G=model.aqt_log_G)
+        if model.has_rivers and "log_C_riv" in theta:
+            ext["log_C_riv"] = torch.tensor(np.ravel(theta["log_C_riv"]), dtype=torch.float64)
+        if sw_field is not None and "log_sw_scale" in theta:
+            ext.update(sw_field=sw_field, sw_layer=sw_layer,
+                       log_sw_scale=sw_scale_tensor(theta["log_sw_scale"]))
+        return _rollout(model, log_T, log_S, log_L, h0, n_steps, **ext,
                         recharge=None if recharge_field is not None else recharge,
                         recharge_field=recharge_field, recharge_scale=rfrac,
                         recharge_layer=recharge_layer,
@@ -848,11 +1577,35 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                         pump_split_logit=split, return_frac_logit=ret, spread_W=W)
 
 
+def _nanmean_rows(x: np.ndarray) -> np.ndarray:
+    """``(W, 1)`` row means over the finite entries; NaN for a row with none (silently)."""
+    x = np.asarray(x, dtype="float64")
+    n = np.isfinite(x).sum(axis=1, keepdims=True)
+    s = np.where(np.isfinite(x), x, 0.0).sum(axis=1, keepdims=True)
+    return np.where(n > 0, s / np.maximum(n, 1), np.nan)
+
+
+def _last_finite(x: np.ndarray) -> np.ndarray:
+    """``(W, 1)``: each row's last finite entry (NaN for a row with none)."""
+    x = np.asarray(x, dtype="float64")
+    fin = np.isfinite(x)
+    last = x.shape[1] - 1 - np.argmax(fin[:, ::-1], axis=1)
+    out = x[np.arange(x.shape[0]), last]
+    return np.where(fin.any(axis=1), out, np.nan)[:, None]
+
+
 def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch.Tensor,
                   obs_idx: torch.Tensor, obs_layer: torch.Tensor, T_fit: int,
                   E_full, recharge_full, ground_elev, recharge_layer: int = 0,
-                  pump_layer: int = 1) -> dict:
+                  pump_layer: int = 1, sw_full: torch.Tensor | None = None,
+                  sw_layer: int | None = None, rmse_k: float = 1.5,
+                  keep_arrays: bool = False) -> dict:
     """Score a free-running continuation over the months the fit never saw.
+
+    Since 2026-09-23 it also returns a first-class verdict (``temporal_verdict``): PASS
+    needs the continuation's shape R2 to beat climatology's AND its RMSE to stay under
+    ``rmse_k`` x climatology's. ``keep_arrays`` adds ``arrays`` (pred, obs, clim) for
+    the ``stage3_temporal_pred.npz`` dump.
 
     The k-fold gate holds out *wells* and asks whether the model interpolates in space
     better than IDW. This one holds out *time*: the model rolls from the record's start
@@ -866,7 +1619,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
     with torch.no_grad():
         h = _predict_homogeneous(model, fit, h0, T_full, recharge_field=recharge_full,
                                  E=E_full, ground_elev=ground_elev,
-                                 recharge_layer=recharge_layer, pump_layer=pump_layer)
+                                 recharge_layer=recharge_layer, pump_layer=pump_layer,
+                                 sw_field=sw_full, sw_layer=sw_layer)
         pred = h[obs_layer.to(h.device), obs_idx.to(h.device), 1:].cpu().numpy()
     obs = obs_full.cpu().numpy()
     held = slice(T_fit, T_full)
@@ -874,22 +1628,25 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
     # the record (month 0 is the initial condition), so calendar month = (t + 1) % 12
     months = (np.arange(T_full) + 1) % 12
     clim = np.zeros_like(obs)
+    # nan-aware throughout: identical on a back-filled record, and a --no-backfill record
+    # (NaN where never observed) gets NaN baselines only for wells unseen in the fit
     for mth in range(12):
         sel_fit = (months[:T_fit] == mth)
-        clim[:, months == mth] = obs[:, :T_fit][:, sel_fit].mean(axis=1, keepdims=True)
+        clim[:, months == mth] = _nanmean_rows(obs[:, :T_fit][:, sel_fit])
     persist = np.zeros_like(obs)
-    persist[:, held] = np.repeat(obs[:, T_fit - 1:T_fit], T_full - T_fit, axis=1)
+    persist[:, held] = np.repeat(_last_finite(obs[:, :T_fit]), T_full - T_fit, axis=1)
     # Pooled R2 over wells is dominated by between-well level differences (tens of
     # metres), which makes climatology trivially strong. The number that tests the
     # response in time is R2 on per-well ANOMALIES from each well's fitted-period mean,
     # plus the median per-well R2, reported alongside the pooled one.
-    mean_fit = obs[:, :T_fit].mean(axis=1, keepdims=True)
+    mean_fit = _nanmean_rows(obs[:, :T_fit])
 
     def _anom(x):
         return _r2((x[:, held] - mean_fit).reshape(-1), (obs[:, held] - mean_fit).reshape(-1))
 
     def _median_per_well(x):
-        return float(np.median([_r2(x[w, held], obs[w, held]) for w in range(obs.shape[0])]))
+        return float(np.nanmedian([_r2(x[w, held], obs[w, held])
+                                   for w in range(obs.shape[0])]))
 
     def _shape(x):
         """R2 of the held-out variation alone: each series minus ITS OWN fitted-period
@@ -900,19 +1657,60 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
                    (obs[:, held] - mean_fit).reshape(-1))
 
     def _level_err(x):
-        return float(np.abs(x[:, :T_fit].mean(axis=1) - mean_fit.ravel()).mean())
+        return float(np.nanmean(np.abs(x[:, :T_fit].mean(axis=1) - mean_fit.ravel())))
 
-    return {"r2_model": _r2(pred[:, held], obs[:, held]),
-            "r2_clim": _r2(clim[:, held], obs[:, held]),
-            "r2_persist": _r2(persist[:, held], obs[:, held]),
-            "r2_anom_model": _anom(pred), "r2_anom_clim": _anom(clim),
-            "r2_anom_persist": _anom(persist),
-            "r2_well_median_model": _median_per_well(pred),
-            "r2_well_median_clim": _median_per_well(clim),
-            "r2_well_median_persist": _median_per_well(persist),
-            "r2_shape_model": _shape(pred), "r2_shape_clim": _shape(clim),
-            "level_err_model_m": _level_err(pred),
-            "n_months": int(T_full - T_fit)}
+    out = {"r2_model": _r2(pred[:, held], obs[:, held]),
+           "r2_clim": _r2(clim[:, held], obs[:, held]),
+           "r2_persist": _r2(persist[:, held], obs[:, held]),
+           "r2_anom_model": _anom(pred), "r2_anom_clim": _anom(clim),
+           "r2_anom_persist": _anom(persist),
+           "r2_well_median_model": _median_per_well(pred),
+           "r2_well_median_clim": _median_per_well(clim),
+           "r2_well_median_persist": _median_per_well(persist),
+           "r2_shape_model": _shape(pred), "r2_shape_clim": _shape(clim),
+           "level_err_model_m": _level_err(pred),
+           "n_months": int(T_full - T_fit)}
+    out.update(temporal_verdict(pred, obs, clim, T_fit, k=rmse_k))
+    out["verdict_anom_legacy"] = ("PASS" if out["r2_anom_model"] > out["r2_anom_clim"]
+                                  else "FAIL")
+    if keep_arrays:
+        out["arrays"] = {"pred": pred, "obs": obs, "clim": clim, "T_fit": int(T_fit)}
+    return out
+
+
+def temporal_verdict(pred: np.ndarray, obs: np.ndarray, clim: np.ndarray, T_fit: int,
+                     k: float = 1.5) -> dict:
+    """The held-out-years verdict (G3), on ``(W, T)`` arrays whose first ``T_fit`` months
+    were fitted. PASS iff the continuation's SHAPE R2 (each series minus its own
+    fitted-period mean, against the observed departures) beats climatology's AND its
+    RMSE over the held-out months is below ``k`` x climatology's. Shape alone lets a
+    drifting level through; RMSE alone rewards a flat line; the pair asks for both.
+    Strict inequalities: a model exactly at ``k`` x climatology fails."""
+    pred, obs, clim = (np.asarray(a, dtype="float64") for a in (pred, obs, clim))
+    held = slice(int(T_fit), obs.shape[1])
+    mean_fit = _nanmean_rows(obs[:, :T_fit])
+
+    def _shape(x):
+        return _r2((x[:, held] - x[:, :T_fit].mean(axis=1, keepdims=True)).reshape(-1),
+                   (obs[:, held] - mean_fit).reshape(-1))
+
+    def _rmse(x):
+        d = (x[:, held] - obs[:, held]).reshape(-1)
+        d = d[np.isfinite(d)]
+        return float(np.sqrt(np.mean(d ** 2))) if d.size else float("nan")
+
+    def _bias(x):
+        d = (x[:, held] - obs[:, held]).reshape(-1)
+        d = d[np.isfinite(d)]
+        return float(d.mean()) if d.size else float("nan")
+
+    s_m, s_c = _shape(pred), _shape(clim)
+    r_m, r_c = _rmse(pred), _rmse(clim)
+    ratio = r_m / r_c if r_c > 0 else float("inf")
+    ok = bool(s_m > s_c and r_m < float(k) * r_c)
+    return {"r2_shape_model": s_m, "r2_shape_clim": s_c, "rmse_model_m": r_m,
+            "rmse_clim_m": r_c, "bias_model_m": _bias(pred), "bias_clim_m": _bias(clim),
+            "rmse_ratio": ratio, "rmse_k": float(k), "verdict": "PASS" if ok else "FAIL"}
 
 
 def _kfold_indices(n: int, n_folds: int, seed: int = 0,
@@ -987,8 +1785,17 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 fix_eta: float | None = None, fix_head_extra: float | None = None,
                 pump_split: bool = False, return_flow: bool = False,
                 spread_km: float | None = None, learn_spread: bool = False,
-                loss_mode: str = "level", level_weight: float = 0.1) -> dict:
+                loss_mode: str = "level", level_weight: float = 0.1,
+                delay_storage: str = "off", rivers: tuple | None = None,
+                sw_field: torch.Tensor | None = None, sw_layer: int | None = None,
+                fix_sw_scale: float | None = None, delay_u0: str = "eq",
+                delay_layers: tuple[int, ...] | None = None,
+                aquitard: str = "off", zone_w: np.ndarray | None = None,
+                ic_zone_of_cell: np.ndarray | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
+
+    ``rivers`` is ``(RiverSet, layer, mode)`` or ``None``; it is attached to every fold's
+    model. ``delay_storage``/``sw_field``/``fix_sw_scale`` pass through to ``fit_flow``.
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
     other 9/10 of the wells and scored on the held-out fold. The IDW baseline
@@ -1046,8 +1853,15 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         if well_xy is not None and obs_h0 is not None:
             h0_fold = _idw_initial_heads(grid, well_xy[keep], np.asarray(obs_h0)[keep],
                                          obs_layer_np[keep], n_layers)
+            if ic_zone_of_cell is not None:
+                # --ic-merged-proximal, from the fold's kept wells only (no leakage)
+                h0_fold, _ = _merged_proximal_heads(
+                    grid, h0_fold, well_xy[keep], np.asarray(obs_h0)[keep],
+                    ic_zone_of_cell, ic_zone_of_cell[obs_idx.cpu().numpy()[keep]])
         m = FlowModel(grid, n_layers=n_layers, dt_days=30.0, device=device,
                       boundaries=boundaries)
+        if rivers is not None:
+            m.set_rivers(rivers[0], layer=rivers[1], mode=rivers[2])
         fit = fit_flow(m, obs_h[keep], obs_idx[keep], obs_layer[keep], recharge,
                        E=E, ground_elev=ground_elev, epochs=epochs, lr=lr,
                        param_mode=param_mode, h0=h0_fold, recharge_field=recharge_field,
@@ -1055,7 +1869,10 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        zone_of_cell=zone_of_cell, fix_eta=fix_eta,
                        fix_head_extra=fix_head_extra, pump_split=pump_split,
                        return_flow=return_flow, spread_km=spread_km, learn_spread=learn_spread,
-                       loss_mode=loss_mode, level_weight=level_weight)
+                       loss_mode=loss_mode, level_weight=level_weight,
+                       delay_storage=delay_storage, sw_field=sw_field, sw_layer=sw_layer,
+                       fix_sw_scale=fix_sw_scale, delay_u0=delay_u0,
+                       delay_layers=delay_layers, aquitard=aquitard, zone_w=zone_w)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -1070,7 +1887,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 h = _predict_homogeneous(m, fit, h0_eval, n_steps, recharge=recharge,
                                          recharge_field=recharge_field, E=E,
                                          ground_elev=ground_elev,
-                                         recharge_layer=recharge_layer, pump_layer=pump_layer)
+                                         recharge_layer=recharge_layer, pump_layer=pump_layer,
+                                         sw_field=sw_field, sw_layer=sw_layer)
             else:
                 h = m(h0_eval, recharge,
                      torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
@@ -1118,10 +1936,50 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             "colocation_rate": coloc}
 
 
-def _load_ground_elev(grid, stn: pd.DataFrame) -> torch.Tensor:
-    """IDW the fan stations' ``GroundHeight`` (surface elevation, m) to every active cell."""
+GROUND_ELEV_MODES = ("wells", "dem")
+
+
+def _dem_on_grid(grid, dem_npz: str, polygon: str | None = None) -> np.ndarray:
+    """The basemap's SRTM elevation (``basemap.npz["dem"]``) on ``grid``'s active cells.
+
+    ``basemap.py`` samples SRTM bilinearly at the active-cell centroids of the dx=1000 m
+    grid, in ``grid.centroids()`` order, so on that grid it is used as is (``rivers.
+    load_dem`` checks the cell count). On any other dx it is resampled by nearest
+    dx=1000 m centroid, which needs the polygon the grid was built from (``polygon``,
+    default ``DEFAULT_PATHS["polygon"]``)."""
+    from .rivers import load_dem
+
+    with np.load(dem_npz) as z:
+        if "dem" not in z:
+            raise ValueError(f"{dem_npz} has no 'dem' (it was fetched with --no-dem)")
+        n = int(z["dem"].shape[0])
+    if n == grid.n_active:
+        return load_dem(dem_npz, grid)[0]
+    g1 = build_grid(polygon or DEFAULT_PATHS["polygon"], dx=1000.0)
+    dem, _ = load_dem(dem_npz, g1)
+    c1, c = g1.centroids(), grid.centroids()
+    nn_idx = np.array([int(np.argmin(((c1 - p) ** 2).sum(1))) for p in c])
+    return dem[nn_idx]
+
+
+def _load_ground_elev(grid, stn: pd.DataFrame, mode: str = "wells",
+                      dem_npz: str = "results/twin/basemap.npz",
+                      log=print, polygon: str | None = None) -> torch.Tensor:
+    """Ground-elevation field (m) for the pump lift, on every active cell.
+
+    ``mode="wells"`` (default, the historical field): IDW of the fan stations'
+    ``GroundHeight``. NaN is skipped but 0.0 is taken as a real elevation, although the
+    audit of 2026-09-23 found 60 of 158 wells carry exactly 0.0 (a missing-value code: the
+    SRTM surface is 30 m at some of them); the count is printed on every call so a run's
+    log shows it. ``mode="dem"`` (``--ground-elev dem``, opt-in) takes the basemap's SRTM
+    field instead (``_dem_on_grid``), which agrees with ``WellElevation`` to a median of
+    about 2 m.
+    """
     from .heads import _station_xy
 
+    if mode not in GROUND_ELEV_MODES:
+        raise ValueError(f"ground-elevation mode must be one of {GROUND_ELEV_MODES}, "
+                         f"got {mode!r}")
     xy, ge = [], []
     for _, row in stn.iterrows():
         gh = row.get("GroundHeight")
@@ -1132,9 +1990,21 @@ def _load_ground_elev(grid, stn: pd.DataFrame) -> torch.Tensor:
             continue
         xy.append(p)
         ge.append(float(gh))
+    n_zero = int(sum(g == 0.0 for g in ge))
+    if mode == "dem":
+        dem = _dem_on_grid(grid, dem_npz, polygon=polygon)
+        if log:
+            log(f"ground elevation: SRTM from {dem_npz} (--ground-elev dem), "
+                f"{np.min(dem):.1f}..{np.max(dem):.1f} m, median {np.median(dem):.1f} m; "
+                f"station GroundHeight not used ({n_zero} of {len(ge)} finite values are 0.0)")
+        return torch.tensor(np.asarray(dem, dtype="float64"), dtype=torch.float64)
     if not xy:
         raise ValueError("no station carried a finite GroundHeight -- cannot build a "
                          "ground-elevation field for the pumping driver")
+    if log:
+        log(f"ground elevation: IDW of {len(ge)} station GroundHeight values, {n_zero} of "
+            "them exactly 0.0 and used as real elevations (--ground-elev dem replaces "
+            "this field with SRTM)")
     return torch.tensor(_idw_field(grid, np.array(xy), np.array(ge)), dtype=torch.float64)
 
 
@@ -1249,8 +2119,13 @@ _PARAM_MODES = ("homogeneous", "percell", "zonal")
 _DEFAULT_ZONE_BOUNDARIES = "205,182"
 
 
-def _parse_zone_boundaries(text: str) -> tuple[float, float]:
+def _parse_zone_boundaries(text: str, allow_split: bool = False) -> tuple:
     """``"205,182"`` -> ``(205.0, 182.0)``: the proximal/mid and mid/distal eastings in km.
+
+    ``allow_split`` (round 3): also accept ``"205,182,S"`` with ``S > 205``, the opt-in
+    split of the proximal zone at easting S, and return ``(proximal, distal, split)`` with
+    ``split`` None for two values. Callers that only know three zones leave it False, so a
+    four-zone model given to them fails here instead of being rebuilt as three zones.
 
     Spec §4.2 requires re-running the gate varying only the SECOND (mid/distal) value,
     at 178 and 186 km, because that boundary is an equal-width default with no
@@ -1259,9 +2134,18 @@ def _parse_zone_boundaries(text: str) -> tuple[float, float]:
     zone, so both are rejected rather than tolerated.
     """
     parts = [p.strip() for p in str(text).split(",")]
+    split_km = None
+    if allow_split and len(parts) == 3:
+        try:
+            split_km = float(parts[2])
+        except ValueError as exc:
+            raise ValueError(f"--zone-boundaries values must be numbers, got {text!r}") from exc
+        parts = parts[:2]
     if len(parts) != 2:
         raise ValueError(
             f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM (e.g. '205,182'), got {text!r}"
+            + ("" if allow_split else "; a third value (the proximal split) is not "
+               "supported by this caller")
         )
     try:
         proximal_km, distal_km = float(parts[0]), float(parts[1])
@@ -1272,7 +2156,12 @@ def _parse_zone_boundaries(text: str) -> tuple[float, float]:
             f"--zone-boundaries wants PROXIMAL_KM,DISTAL_KM with the proximal boundary "
             f"east of the distal one; got proximal={proximal_km}, distal={distal_km}"
         )
-    return proximal_km, distal_km
+    if not allow_split:
+        return proximal_km, distal_km
+    if split_km is not None and not split_km > proximal_km:
+        raise ValueError(f"--zone-boundaries third value (proximal split, {split_km}) must "
+                         f"sit east of the proximal boundary ({proximal_km})")
+    return proximal_km, distal_km, split_km
 
 
 def _is_hit_entry(v) -> bool:
@@ -1326,7 +2215,21 @@ def main(argv=None) -> None:
                          "re-run at '205,178' and '205,186' -- to report whether the "
                          "verdict moves. Do NOT vary the first (proximal) value: e.g. "
                          "'186,178' moves the PROXIMAL boundary instead and is not the "
-                         "sensitivity check spec 4.2 asks for.")
+                         "sensitivity check spec 4.2 asks for. Opt-in third value "
+                         "'205,182,S' (S > 205): split the proximal zone at easting S km "
+                         "into 'proximal' (east) and 'proximal_w' (205..S), each one "
+                         "merged aquifer (+2 parameters)")
+    ap.add_argument("--log-t-min-proximal", type=float, default=None,
+                    help="--param-mode zonal: raise the proximal log_T floor to this many "
+                         "m2/day (both proximal parts when split). Default: the global "
+                         "BOUNDS floor, 10 m2/day, for every zone")
+    ap.add_argument("--zone-blend-km", type=float, default=0.0,
+                    help="--param-mode zonal: blend the mid/distal parameters over a "
+                         "logistic of this width (km) around the second boundary instead "
+                         "of a step. The distal weight is sigmoid((distal_km - x)/w), and "
+                         "log-parameters are mixed per cell. The proximal line stays "
+                         "sharp. 0 (default) = the sharp zonation. Recorded in meta "
+                         "(zone_blend_km), so twin.forward rebuilds the same field")
     ap.add_argument("--wells-dir", default=DEFAULT_PATHS["wells_dir"])
     ap.add_argument("--stations", default=DEFAULT_PATHS["stations"])
     ap.add_argument("--polygon", default=DEFAULT_PATHS["polygon"])
@@ -1377,12 +2280,105 @@ def main(argv=None) -> None:
                          "per-well month-of-year climatology built from the fitted months. "
                          "This scores the response to the forcing in time, which the "
                          "held-out-well gate cannot.")
+    ap.add_argument("--no-backfill", action="store_true",
+                    help="keep never-observed months as NaN (masked in the loss) instead "
+                         "of interpolating across every gap with limit_direction='both', "
+                         "which copies held-out heads of late-starting wells into the fit "
+                         "target, climatology and initial condition; the initial "
+                         "condition uses only the wells observed in month 0")
+    ap.add_argument("--strict-coverage", action="store_true",
+                    help="QC coverage as the fraction of calendar months observed in the "
+                         "window, with leading/trailing gaps counted by the gap check "
+                         "(default: len(samples)/n_hours, inflated by 10-minute data, and "
+                         "gaps only between the first and last sample)")
+    ap.add_argument("--ic-merged-proximal", action="store_true",
+                    help="initial heads of EVERY layer in the proximal zone(s) (proximal, "
+                         "and proximal_w with a split) from the IDW of that zone's own wells "
+                         "regardless of layer code (one merged aquifer), instead of "
+                         "per-layer IDW from distant mid-fan wells; the apex boundary head "
+                         "inherits it through set_apex_heads")
+    ap.add_argument("--ground-elev", choices=GROUND_ELEV_MODES, default="wells",
+                    help="ground-elevation field for the pump lift: 'wells' = IDW of "
+                         "station GroundHeight (historical; 0.0 codes used as real), "
+                         "'dem' = SRTM per cell from --dem-npz")
     ap.add_argument("--loss", choices=("level", "anomaly"), default="level",
                     help="'anomaly' fits each well's departures from its own mean plus "
                          "--level-weight x the means (2026-09-18); 'level' is plain MSE")
     ap.add_argument("--level-weight", type=float, default=0.1)
     ap.add_argument("--l-min", type=float, default=None,
                     help="leakance floor in 1/day (default 1e-8): raises BOUNDS['log_L']")
+    # --- opt-in physics of 2026-09-23 (G1 drift, G6 rivers); defaults reproduce the past
+    ap.add_argument("--delay-storage", choices=DELAY_MODES, default="off",
+                    help="lumped delay bed (slow-release interbed storage exchanging with "
+                         "each layer through a time constant): 'global' adds one S_d and "
+                         "one tau, 'zonal' one pair per fan zone")
+    ap.add_argument("--delay-tau-max-years", type=float, default=30.0,
+                    help="ceiling of the delay-bed time constant")
+    ap.add_argument("--delay-tau-min-days", type=float, default=DELAY_TAU_MIN_DAYS,
+                    help="floor of the delay-bed time constant (default 30 = historical); "
+                         "180 keeps the bed a slow release rather than extra instant "
+                         "storage (S_eff and delay_is_elastic are reported)")
+    ap.add_argument("--delay-u0", choices=DELAY_U0_MODES, default="eq",
+                    help="initial state of the delay bed: 'eq' u0 = h0 (historical), "
+                         "'learned' u0 = h0 + exp(log_du0[_zone]), the pre-2012 "
+                         "disequilibrium of interbeds still draining after decades of "
+                         "drawdown (0.01-50 m, init 1 m)")
+    ap.add_argument("--delay-layers", default=None,
+                    help="0-based layers that carry the delay bed, e.g. '1,2,3' (default "
+                         "all); elsewhere S_d sits at its floor as a constant")
+    ap.add_argument("--aquitard-storage", choices=DELAY_MODES, default="off",
+                    help="a storage node on every layer interface (aquitard delayed "
+                         "drainage; FlowModel.aqt_terms), in parallel with log_L: "
+                         "'global' or per 'zonal' (S_a, G) pair")
+    ap.add_argument("--spread-max-km", type=float, default=None,
+                    help="ceiling of the learned stress radius (default 25 km; the "
+                         "deliverable stage3_spreadL_gate was fitted at 10)")
+    ap.add_argument("--rivers", choices=("none", "ghb", "riv"), default="none",
+                    help="river cells from the channel polygons (rivers.py): 'ghb' linear "
+                         "exchange, 'riv' MODFLOW RIV with a lagged connection switch "
+                         "(refuses --compile-matvec). 'none' keeps rivers no-flow")
+    ap.add_argument("--river-set", default="choushui,wu,beigang")
+    ap.add_argument("--river-shp", default=None,
+                    help="default $HYDROMIND_GW_DATA/water/river_TWD97.shp")
+    ap.add_argument("--dem-npz", default="results/twin/basemap.npz",
+                    help="SRTM per active cell from hydrophysics.twin.basemap (river stage)")
+    ap.add_argument("--river-stage-depth", type=float, default=1.0,
+                    help="river stage below the cell's ground elevation, m")
+    ap.add_argument("--river-rbot-depth", type=float, default=3.0,
+                    help="river-bed bottom below ground, m")
+    ap.add_argument("--river-layer", type=int, default=0)
+    ap.add_argument("--river-c-split", choices=("group", "zone"), default="group",
+                    help="'zone': one conductance per fan zone for the Choushui (losing "
+                         "proximal reach vs gaining distal reach); needs --param-mode zonal")
+    ap.add_argument("--river-skip-apex", action=argparse.BooleanOptionalAction, default=True,
+                    help="drop river cells that are also apex boundary cells, so the "
+                         "Choushui's entry is not counted twice (default on)")
+    ap.add_argument("--river-stage-season", default=None,
+                    help="CSV of monthly connection factors per river group (month, "
+                         "choushui, wu, beigang); default: always connected")
+    ap.add_argument("--river-edge-buffer-m", type=float, default=None,
+                    help="how far outside a cell the Wu/Beigang channel may lie and still "
+                         "count as its boundary (default: dx)")
+    ap.add_argument("--sw-recharge", default=None,
+                    help="npz of canal irrigation deliveries per cell and month "
+                         "(hydrophysics.twin.surface_water); adds a learnable recharge "
+                         "fraction of it")
+    ap.add_argument("--sw-layer", type=int, default=None,
+                    help="layer that receives it (default --recharge-layer)")
+    ap.add_argument("--sw-components", choices=SW_COMPONENT_CHOICES, default="delivered",
+                    help="which surface-water fields of the --sw-recharge npz to use, each "
+                         "with its own learned fraction: 'delivered' (canal deliveries, "
+                         "historical), 'percolation' (paddy flood percolation, "
+                         "surface_water.py v2) or 'both'")
+    ap.add_argument("--fix-sw-scale", type=float, default=None,
+                    help="hold the canal-recharge fraction at this value (diagnostic)")
+    ap.add_argument("--policy-response", action="store_true",
+                    help="after the run, score the policy response (policy_gate.py: "
+                         "irrigation x1/0.85/0.7 for 120 months, reference column as a "
+                         "proxy) and write scorecard.json into --out")
+    ap.add_argument("--temporal-rmse-k", type=float, default=1.5,
+                    help="temporal verdict: PASS needs shape R2 above climatology's and "
+                         "RMSE below k x climatology's over the held-out months")
     ap.add_argument("--wells-from", default=None,
                     help="CSV with a 'sid' column: use only these wells. Every run "
                          "writes its own well list as stage3_wells.csv, so a --dx 500 "
@@ -1426,6 +2422,21 @@ def main(argv=None) -> None:
                                 time.strftime("stage3_%Y%m%d-%H%M%S", time.gmtime()))
     set_compile_matvec(args.compile_matvec)
     set_l_min(args.l_min)
+    set_delay_tau_max(args.delay_tau_max_years)
+    set_delay_tau_min(args.delay_tau_min_days)
+    set_spread_max_km(args.spread_max_km)
+    if args.log_t_min_proximal is not None and args.param_mode != "zonal":
+        raise SystemExit("--log-t-min-proximal needs --param-mode zonal")
+    set_log_t_min_proximal(args.log_t_min_proximal)
+    delay_layers = parse_delay_layers(args.delay_layers)
+    if args.delay_u0 != "eq" and args.delay_storage == "off":
+        raise SystemExit("--delay-u0 learned needs --delay-storage global or zonal")
+    if args.river_stage_season and args.compile_matvec and args.rivers != "none":
+        raise SystemExit("--river-stage-season rebuilds the operator every month; drop "
+                         "--compile-matvec")
+    if args.rivers == "riv" and args.compile_matvec:
+        raise SystemExit("--rivers riv rebuilds the operator whenever the river switch "
+                         "changes; drop --compile-matvec (or use --rivers ghb)")
     device = pick_device(args.device)
     print(f"device: {device}", flush=True)
 
@@ -1433,31 +2444,49 @@ def main(argv=None) -> None:
 
     grid = build_grid(args.polygon, dx=args.dx)
 
-    zone_of_cell = zone_counts = proximal_km = distal_km = None
+    zone_of_cell = zone_counts = proximal_km = distal_km = split_km = None
     if args.param_mode == "zonal":
-        proximal_km, distal_km = _parse_zone_boundaries(args.zone_boundaries)
+        proximal_km, distal_km, split_km = _parse_zone_boundaries(args.zone_boundaries,
+                                                                  allow_split=True)
         zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km,
-                                 distal_km=distal_km)
+                                 distal_km=distal_km, split_km=split_km)
         zone_counts = {name: int((zone_of_cell == i).sum())
-                       for i, name in enumerate(ZONE_NAMES)}
+                       for i, name in enumerate(zone_names(3 if split_km is None else 4))}
         print(f"zones: proximal/mid at {proximal_km:.0f} km, mid/distal at "
-              f"{distal_km:.0f} km -> cells {zone_counts}", flush=True)
+              f"{distal_km:.0f} km"
+              + (f", proximal split at {split_km:g} km" if split_km is not None else "")
+              + f" -> cells {zone_counts}", flush=True)
         empty = [n for n, c in zone_counts.items() if c == 0]
         if empty:
             raise SystemExit(
                 f"zone(s) {empty} contain no active cells at these boundaries; "
                 "the gate would score a model with fewer zones than it reports"
             )
+    zone_w = None
+    if args.zone_blend_km and args.zone_blend_km > 0.0:
+        if args.param_mode != "zonal":
+            raise SystemExit("--zone-blend-km needs --param-mode zonal")
+        zone_w = zone_blend_weights(grid.centroids(), proximal_km, distal_km,
+                                    args.zone_blend_km, split_km=split_km)
+        print(f"zone blend: mid/distal mixed over {args.zone_blend_km:g} km; cells with "
+              f"both weights > 5%: {int(((zone_w[1] > 0.05) & (zone_w[2] > 0.05)).sum())}",
+              flush=True)
 
     stn = pd.read_parquet(args.stations)
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
-    hf = build_head_field(args.wells_dir, stn)
+    hf = build_head_field(args.wells_dir, stn, strict_coverage=args.strict_coverage)
+    if args.strict_coverage:
+        hf_legacy = build_head_field(args.wells_dir, stn)
+        dropped = sorted(set(hf_legacy.sids) - set(hf.sids))
+        added = sorted(set(hf.sids) - set(hf_legacy.sids))
+        print(f"--strict-coverage: {len(hf.sids)} wells pass QC (legacy {len(hf_legacy.sids)}); "
+              f"dropped {len(dropped)} {dropped}; added {len(added)} {added}", flush=True)
 
     allowed = None
     if args.wells_from:
-        allowed = set(pd.read_csv(args.wells_from)["sid"].astype(str))
-    idx, lay, series, xy_used, sids_used = [], [], [], [], []
+        allowed = set(pd.read_csv(args.wells_from, dtype={"sid": str})["sid"])
+    idx, lay, series, xy_used, sids_used, raw_series = [], [], [], [], [], []
     for w in range(len(hf)):
         if allowed is not None and str(hf.sids[w]) not in allowed:
             continue
@@ -1465,14 +2494,19 @@ def main(argv=None) -> None:
         if i is None:
             continue
         sids_used.append(str(hf.sids[w]))
-        s = hf.heads[w]
-        if not np.isfinite(s).all():
-            s = pd.Series(s).interpolate(limit_direction="both").to_numpy()
+        raw_series.append(np.asarray(hf.heads[w], dtype="float64"))
+        s = prepare_series(hf.heads[w], backfill=not args.no_backfill)
         idx.append(i)
         lay.append(max(int(hf.layers[w]) - 1, 0))
         series.append(s)
         xy_used.append(hf.xy[w])
     obs_h_full = np.stack(series)                                  # (W, 132), raw heads
+    obs_raw_full = np.stack(raw_series)          # (W, 132), NaN where never observed
+    if args.no_backfill:
+        print(f"--no-backfill: {int((~np.isfinite(obs_h_full)).sum())} never-observed "
+              "month-cells masked from the loss and scoring; initial condition from the "
+              f"{int(np.isfinite(obs_h_full[:, 0]).sum())} wells observed in month 0",
+              flush=True)
     well_xy = np.array(xy_used, dtype="float64")
     obs_layer_np = np.array(lay, dtype="int64")
     obs_h0 = obs_h_full[:, 0]                       # each well's first-observed head
@@ -1488,7 +2522,16 @@ def main(argv=None) -> None:
     ground_elev = E = recharge_field = None
     eta_class_names = None
     if not args.no_forcing:
-        ground_elev = _load_ground_elev(grid, stn)
+        ground_elev = _load_ground_elev(grid, stn, mode=args.ground_elev,
+                                        dem_npz=args.dem_npz, polygon=args.polygon,
+                                        log=lambda m: print(m, flush=True))
+        if args.ground_elev != "wells":
+            ge_old = _load_ground_elev(grid, stn, log=None)
+            d = (ground_elev - ge_old).numpy()
+            print(f"--ground-elev {args.ground_elev}: change vs the station IDW field "
+                  f"mean {d.mean():+.1f} m, median {np.median(d):+.1f} m, "
+                  f"5-95% {np.percentile(d, 5):+.1f}..{np.percentile(d, 95):+.1f} m",
+                  flush=True)
         E = _load_pumping_kwh(grid, args.pump_census, args.pump_kwh,
                               "2012-01-01", "2023-01-01", meter_filter=args.meter_filter,
                               cap_duty=args.cap_duty, eta_classes=args.eta_classes)
@@ -1499,6 +2542,21 @@ def main(argv=None) -> None:
         recharge_field = _load_recharge_field(grid, args.rf_timeseries, args.rf_stations,
                                               args.et_npz, args.gw_stations,
                                               "2012-01-01", "2023-01-01")[:, 1:]
+    sw_field = None
+    if args.sw_recharge:
+        from .inputs import load_sw_recharge
+
+        sw_field = load_sw_recharge(
+            args.sw_recharge, grid,
+            pd.date_range("2012-01-01", "2023-01-01", freq="MS", inclusive="left"),
+            components=args.sw_components)[..., 1:]
+        comp_mm = " + ".join(
+            f"{k} {float(f.mean()) * 365.25 * 1000:.0f}"
+            for k, f in zip(SW_COMPONENT_KEYS[args.sw_components],
+                            sw_field if sw_field.dim() == 3 else [sw_field], strict=True))
+        print(f"surface-water forcing: {args.sw_recharge}, fan mean {comp_mm} mm/yr "
+              f"(recharge fraction {'fixed ' + str(args.fix_sw_scale) if args.fix_sw_scale else 'learned'})",
+              flush=True)
 
     # temporal gate: the fit sees the record minus its last --holdout-months
     T_full = obs_h.shape[1]
@@ -1509,6 +2567,13 @@ def main(argv=None) -> None:
     n_steps = T_fit
     recharge_dummy = torch.zeros(4, grid.n_active, n_steps, dtype=torch.float64)
     h0_all = _idw_initial_heads(grid, well_xy, obs_h0, obs_layer_np, n_layers=4)
+    ic_zone_of_cell = None
+    if args.ic_merged_proximal:
+        ic_zone_of_cell = _ic_zone_map(grid, args.zone_boundaries)
+        h0_all, ic_rep = _merged_proximal_heads(grid, h0_all, well_xy, obs_h0,
+                                                ic_zone_of_cell,
+                                                ic_zone_of_cell[np.asarray(idx)])
+        print(f"--ic-merged-proximal: {ic_rep}", flush=True)
     nan_frac = float(np.isnan(np.stack([hf.heads[w] for w in range(len(hf))])).mean())
     print(f"head field: {len(hf)} wells passed QC, {len(sids_used)} inside the grid, "
           f"{100 * nan_frac:.2f}% NaN month-cells before interpolation", flush=True)
@@ -1526,14 +2591,62 @@ def main(argv=None) -> None:
         print("boundaries: none (closed basin)", flush=True)
 
     m = FlowModel(grid, n_layers=4, dt_days=30.0, device=device, boundaries=boundaries)
+    river_meta: dict = {"rivers": args.rivers}
+    rivers_arg = None
+    if args.rivers != "none":
+        from .rivers import build_river_set, default_river_shp
+
+        shp = args.river_shp or default_river_shp()
+        from .rivers import apex_overlap
+
+        if args.river_c_split == "zone" and zone_of_cell is None:
+            raise SystemExit("--river-c-split zone needs --param-mode zonal")
+        skip = (boundaries.apex_idx if (args.river_skip_apex and boundaries is not None)
+                else None)
+        rs, dem_sha1 = build_river_set(grid, shp=shp, groups=args.river_set,
+                                       dem_npz=args.dem_npz,
+                                       stage_depth=args.river_stage_depth,
+                                       rbot_depth=args.river_rbot_depth,
+                                       edge_buffer_m=args.river_edge_buffer_m,
+                                       zone_of_cell=(None if zone_of_cell is None
+                                                     else collapse_zones(zone_of_cell)),
+                                       c_split=args.river_c_split, exclude_idx=skip,
+                                       season_csv=args.river_stage_season)
+        n_overlap = 0
+        if boundaries is not None:
+            rs_all, _ = build_river_set(grid, shp=shp, groups=args.river_set,
+                                        dem_npz=args.dem_npz,
+                                        stage_depth=args.river_stage_depth,
+                                        rbot_depth=args.river_rbot_depth,
+                                        edge_buffer_m=args.river_edge_buffer_m)
+            n_overlap = apex_overlap(rs_all, boundaries.apex_idx)
+            print(f"rivers: {n_overlap} river cells coincide with apex boundary cells, "
+                  f"{apex_overlap(rs, boundaries.apex_idx)} after skip-apex "
+                  f"({'on' if args.river_skip_apex else 'off'})", flush=True)
+        m.set_rivers(rs, layer=args.river_layer, mode=args.rivers)
+        rivers_arg = (rs, args.river_layer, args.rivers)
+        river_meta.update({"river_set": args.river_set, "river_shp": shp,
+                           "dem_npz": args.dem_npz, "dem_sha1": dem_sha1,
+                           "river_stage_depth": args.river_stage_depth,
+                           "river_rbot_depth": args.river_rbot_depth,
+                           "river_layer": args.river_layer,
+                           "river_edge_buffer_m": args.river_edge_buffer_m,
+                           "river_groups": list(rs.names), "river_n_cells": rs.n_cells,
+                           "river_c_split": args.river_c_split,
+                           "river_skip_apex": bool(args.river_skip_apex),
+                           "river_stage_season": args.river_stage_season,
+                           "river_apex_overlap": int(n_overlap)})
+        print(f"rivers ({args.rivers}, layer {args.river_layer}): {rs.describe()}", flush=True)
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
-    E_full, recharge_full = E, recharge_field
+    E_full, recharge_full, sw_full = E, recharge_field, sw_field
     if E is not None:
         E = E[..., :T_fit]
     if recharge_field is not None:
         recharge_field = recharge_field[:, :T_fit]
+    if sw_field is not None:
+        sw_field = sw_field[..., :T_fit]
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
@@ -1542,13 +2655,59 @@ def main(argv=None) -> None:
                    fix_head_extra=args.fix_head_extra, pump_split=args.pump_split,
                    return_flow=args.return_flow, spread_km=args.pump_spread_km,
                    learn_spread=args.learn_spread, loss_mode=args.loss,
-                   level_weight=args.level_weight)
+                   level_weight=args.level_weight, delay_storage=args.delay_storage,
+                   sw_field=sw_field, sw_layer=args.sw_layer, fix_sw_scale=args.fix_sw_scale,
+                   delay_u0=args.delay_u0, delay_layers=delay_layers,
+                   aquitard=args.aquitard_storage, zone_w=zone_w)
     t_fit = time.perf_counter() - t0
     temporal = None
     if args.holdout_months > 0:
         temporal = temporal_gate(m, ins, h0_all, obs_h_full_t, obs_idx, obs_layer, T_fit,
                                  E_full, recharge_full, ground_elev,
-                                 recharge_layer=args.recharge_layer, pump_layer=args.pump_layer)
+                                 recharge_layer=args.recharge_layer, pump_layer=args.pump_layer,
+                                 sw_full=sw_full, sw_layer=args.sw_layer,
+                                 rmse_k=args.temporal_rmse_k, keep_arrays=True)
+        arrs = temporal.pop("arrays")
+        # fair verdict (drift_diag.fair_temporal_verdict): a pure scoring addition beside
+        # the legacy one -- per-well datum from the fitted months, raw (never back-filled)
+        # observations, short-fit wells excluded, climatology + trend baseline
+        from .drift_diag import fair_temporal_verdict
+
+        fair = fair_temporal_verdict(arrs["pred"], obs_raw_full[:, 1:], T_fit)
+        temporal.update({f"fair_{k}": v for k, v in fair.items()})
+        temporal["verdict_fair"] = fair["verdict_fair"]
+        os.makedirs(args.out, exist_ok=True)
+        np.savez_compressed(os.path.join(args.out, "stage3_temporal_pred.npz"),
+                            pred=arrs["pred"], obs=arrs["obs"], clim=arrs["clim"],
+                            T_fit=arrs["T_fit"], sids=np.array(sids_used),
+                            obs_raw=obs_raw_full[:, 1:])
+        pd.DataFrame([{**temporal, "holdout_months": args.holdout_months,
+                       "no_backfill": bool(args.no_backfill),
+                       **_input_opts_record(args),
+                       "delay_storage": args.delay_storage, "delay_u0": args.delay_u0,
+                       "aquitard_storage": args.aquitard_storage, "rivers": args.rivers,
+                       "river_c_split": args.river_c_split,
+                       "sw_recharge": args.sw_recharge or "",
+                       "sw_components": args.sw_components,
+                       "spread_km": ins.get("theta", {}).get("spread_km"),
+                       "epochs": args.epochs,
+                       "git_commit": _git_commit()}]).to_csv(
+            os.path.join(args.out, "stage3_temporal.csv"), index=False)
+        print(f"  TEMPORAL VERDICT: {temporal['verdict']} -- shape R2 "
+              f"{temporal['r2_shape_model']:+.3f} vs climatology "
+              f"{temporal['r2_shape_clim']:+.3f}; RMSE {temporal['rmse_model_m']:.2f} m vs "
+              f"climatology {temporal['rmse_clim_m']:.2f} m (ratio "
+              f"{temporal['rmse_ratio']:.2f}, must be < {args.temporal_rmse_k:g}); bias "
+              f"{temporal['bias_model_m']:+.2f} m", flush=True)
+        if fair.get("n_cells"):
+            print(f"  FAIR TEMPORAL VERDICT: {fair['verdict_fair']} -- datum RMSE "
+                  f"{fair['rmse_datum_model_m']:.2f} m vs best baseline "
+                  f"{fair['best_baseline']} {fair['rmse_best_baseline_m']:.2f} m (ratio "
+                  f"{fair['rmse_ratio_fair']:.2f}, must be <= {fair['fair_k']:g}); shape R2 "
+                  f"{fair['r2_shape_datum_model']:+.3f} vs climatology "
+                  f"{fair['r2_shape_clim']:+.3f} (tol {fair['fair_shape_tol']:g}); level "
+                  f"error {fair['level_err_mean_abs_m']:.2f} m on "
+                  f"{fair['n_wells_scored']} wells", flush=True)
         print(f"  TEMPORAL GATE ({args.holdout_months} held-out months, free-running "
               f"continuation): pooled R2 flow {temporal['r2_model']:+.3f} / climatology "
               f"{temporal['r2_clim']:+.3f} / persistence {temporal['r2_persist']:+.3f}; "
@@ -1590,6 +2749,10 @@ def main(argv=None) -> None:
     _write_theta(os.path.join(args.out, "stage3_theta.json"), ins.get("theta", {}),
                  {"param_mode": args.param_mode, "boundaries": args.boundaries,
                   "zone_boundaries": args.zone_boundaries, "dx": args.dx,
+                  **({"zone_blend_km": float(args.zone_blend_km)} if zone_w is not None
+                     else {}),
+                  **({"log_t_min_proximal": float(args.log_t_min_proximal)}
+                     if args.log_t_min_proximal is not None else {}),
                   "pump_layer": args.pump_layer, "recharge_layer": args.recharge_layer,
                   "epochs": args.epochs, "git_commit": git_commit, "r2_insample": ins["r2"],
                   "bounds_hit": ins["bounds_hit"], "n_wells": int(obs_h.shape[0]),
@@ -1599,7 +2762,26 @@ def main(argv=None) -> None:
                   "return_flow": args.return_flow, "l_min": args.l_min,
                   "pump_spread_km": args.pump_spread_km, "learn_spread": args.learn_spread,
                   "holdout_months": args.holdout_months, "temporal_gate": temporal,
-                  "loss": args.loss, "level_weight": args.level_weight})
+                  "loss": args.loss, "level_weight": args.level_weight,
+                  "delay_storage": args.delay_storage,
+                  "delay_tau_max_years": args.delay_tau_max_years,
+                  "delay_tau_min_days": args.delay_tau_min_days,
+                  "delay_u0": args.delay_u0,
+                  "delay_layers": list(delay_layers) if delay_layers is not None else None,
+                  "delay_initial_state": ("u0 = h0 + exp(log_du0) (learned pre-2012 "
+                                          "disequilibrium)" if args.delay_u0 == "learned"
+                                          else "u0 = h0 (equilibrium; pre-2012 "
+                                               "disequilibrium not represented)"),
+                  "aquitard_storage": args.aquitard_storage,
+                  "spread_max_km": (args.spread_max_km if args.spread_max_km is not None
+                                    else math.exp(BOUNDS["log_spread_km"][1])),
+                  "sw_components": args.sw_components,
+                  **river_meta,
+                  "sw_recharge": args.sw_recharge, "sw_layer": args.sw_layer,
+                  "fix_sw_scale": args.fix_sw_scale,
+                  "temporal_rmse_k": args.temporal_rmse_k,
+                  "no_backfill": bool(args.no_backfill),
+                  **_input_opts_record(args)})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -1620,6 +2802,8 @@ def main(argv=None) -> None:
         trace_df["git_commit"] = git_commit
         trace_df.to_csv(os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
         print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
+        if args.policy_response:
+            _run_policy_gate(args)
         return
 
     t0 = time.perf_counter()
@@ -1636,7 +2820,12 @@ def main(argv=None) -> None:
                        fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
                        pump_split=args.pump_split, return_flow=args.return_flow,
                        spread_km=args.pump_spread_km, learn_spread=args.learn_spread,
-                       loss_mode=args.loss, level_weight=args.level_weight)
+                       loss_mode=args.loss, level_weight=args.level_weight,
+                       delay_storage=args.delay_storage, rivers=rivers_arg,
+                       sw_field=sw_field, sw_layer=args.sw_layer,
+                       fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
+                       delay_layers=delay_layers, aquitard=args.aquitard_storage,
+                       zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell)
     t_gate = time.perf_counter() - t0
     with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
         json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
@@ -1676,6 +2865,10 @@ def main(argv=None) -> None:
                    "zone_proximal_km": (proximal_km if args.param_mode == "zonal"
                                         else ""),
                    "zone_distal_km": (distal_km if args.param_mode == "zonal" else ""),
+                   "zone_split_km": split_km if split_km is not None else "",
+                   "log_t_min_proximal": (args.log_t_min_proximal
+                                          if args.log_t_min_proximal is not None else ""),
+                   "zone_blend_km": float(args.zone_blend_km or 0.0),
                    "zone_cell_counts": (str(zone_counts) if args.param_mode == "zonal"
                                         else ""),
                    "n_params": ins["n_params"],
@@ -1688,6 +2881,16 @@ def main(argv=None) -> None:
                    "holdout_months": args.holdout_months, "loss_mode": args.loss,
                    "r2_temporal": temporal["r2_model"] if temporal else "",
                    "r2_temporal_clim": temporal["r2_clim"] if temporal else "",
+                   "temporal_verdict": temporal["verdict"] if temporal else "",
+                   "temporal_rmse_ratio": temporal["rmse_ratio"] if temporal else "",
+                   "delay_storage": args.delay_storage, "rivers": args.rivers,
+                   "river_set": args.river_set if args.rivers != "none" else "",
+                   "sw_recharge": args.sw_recharge or "",
+                   "delay_u0": args.delay_u0, "aquitard_storage": args.aquitard_storage,
+                   "sw_components": args.sw_components,
+                   "river_c_split": args.river_c_split,
+                   "no_backfill": bool(args.no_backfill),
+                   **_input_opts_record(args),
                    "epochs": args.epochs,
                    "n_folds": gate["n_folds"], "seed": args.seed,
                    "n_sites": gate["n_sites"],
@@ -1716,6 +2919,30 @@ def main(argv=None) -> None:
             json.dump(obj, fh, indent=1)
     except OSError as e:
         print(f"could not stamp the verdict into {theta_path}: {e}")
+    if args.policy_response:
+        _run_policy_gate(args)
+
+
+def _input_opts_record(args) -> dict:
+    """The opt-in input constructions of 2026-09-23, as recorded in the theta meta and the
+    CSVs (``inputs.input_options`` reads them back for the forward path)."""
+    return {"ic_merged_proximal": bool(args.ic_merged_proximal),
+            "ground_elev": args.ground_elev,
+            "strict_coverage": bool(args.strict_coverage),
+            **({"ground_elev_dem_npz": args.dem_npz} if args.ground_elev == "dem" else {})}
+
+
+def _run_policy_gate(args) -> None:
+    """``--policy-response``: the scorecard for this run, with the reference column."""
+    from .policy_gate import main as policy_main
+
+    theta = os.path.join(args.out, "stage3_theta.json")
+    pg = ["--theta", theta, "--out", os.path.join(args.out, "scorecard.json")]
+    if args.device:
+        pg += ["--device", args.device]
+    if args.holdout_months > 0:
+        pg += ["--temporal", os.path.join(args.out, "stage3_temporal.csv")]
+    policy_main(pg)
 
 
 if __name__ == "__main__":

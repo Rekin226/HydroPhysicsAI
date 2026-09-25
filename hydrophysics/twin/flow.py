@@ -349,10 +349,197 @@ class FlowModel(nn.Module):
         else:
             self.register_parameter("log_C_coast", None)
             self.register_parameter("log_C_apex", None)
+        # Opt-in extensions (2026-09-23), all absent by default so every recorded result
+        # replays bit for bit: river cells (``set_rivers``) and the calibrated delay-bed
+        # fields a fit copies back here the way it copies log_T/log_S/log_L back.
+        self.rivers = None
+        self.river_layer = 0
+        self.river_mode = "none"
+        self.delay_log_Sd: torch.Tensor | None = None       # (L, A) after a delay fit
+        self.delay_log_tau: torch.Tensor | None = None      # (L, A), days
+        # --delay-u0 learned: log of the slow store's initial excess head over h0, (L, A)
+        self.delay_log_du0: torch.Tensor | None = None
+        # --delay-storage aquitard: log storativity / log conductance of the aquitard
+        # store between layers k and k+1, each (L-1, A)
+        self.aqt_log_Sa: torch.Tensor | None = None
+        self.aqt_log_G: torch.Tensor | None = None
+        self.fit_log_C_riv: torch.Tensor | None = None      # (n_groups,)
+        # --river-stage-season: (n_groups, 12) monthly connection factor, or None
+        self.river_season: torch.Tensor | None = None
 
     @property
     def has_boundaries(self) -> bool:
         return self.boundaries is not None
+
+    # -----------------------------------------------------------------------------------
+    # rivers (rivers.py) and the delay bed: extra positive diagonals on the operator
+    # -----------------------------------------------------------------------------------
+    @property
+    def has_rivers(self) -> bool:
+        return self.rivers is not None and self.river_mode in ("ghb", "riv")
+
+    def set_rivers(self, rivers, layer: int = 0, mode: str = "ghb") -> FlowModel:
+        """Attach a ``rivers.RiverSet``. ``mode`` is ``"ghb"`` (linear head-dependent
+        exchange) or ``"riv"`` (MODFLOW RIV: once the aquifer head falls below the river
+        bottom the leakage stops depending on it). ``None`` or mode ``"none"`` detaches."""
+        if rivers is None or mode == "none":
+            self.rivers, self.river_mode = None, "none"
+            return self
+        if mode not in ("ghb", "riv"):
+            raise ValueError(f"river mode must be 'ghb' or 'riv', got {mode!r}")
+        if not 0 <= int(layer) < self.n_layers:
+            raise ValueError(f"river layer {layer} outside 0..{self.n_layers - 1}")
+        dev = self.log_T.device
+        self.rivers = rivers
+        self.river_layer = int(layer)
+        self.river_mode = mode
+        self.n_riv_groups = len(rivers.names)
+        self.riv_idx = torch.as_tensor(rivers.idx, dtype=torch.long, device=dev)
+        self.riv_w = torch.as_tensor(rivers.weight, dtype=_MODEL_DTYPE, device=dev)
+        self.riv_group = torch.as_tensor(rivers.group, dtype=torch.long, device=dev)
+        self.riv_h = torch.as_tensor(rivers.h_riv, dtype=_MODEL_DTYPE, device=dev)
+        self.riv_rbot = torch.as_tensor(rivers.rbot, dtype=_MODEL_DTYPE, device=dev)
+        season = getattr(rivers, "season", None)
+        self.river_season = (None if season is None else
+                             torch.as_tensor(np.asarray(season), dtype=_MODEL_DTYPE, device=dev))
+        return self
+
+    def river_month_factor(self, month: int | None) -> torch.Tensor | None:
+        """Per-group connection factor for calendar month index ``month`` (0 = January)
+        from ``--river-stage-season``, or ``None`` (factor 1) without a season table."""
+        if self.river_season is None or month is None:
+            return None
+        return self.river_season[:, int(month) % 12]
+
+    def river_mask(self, h: torch.Tensor) -> torch.Tensor | None:
+        """The lagged RIV switch: ``True`` where the river cell's aquifer head (layer
+        ``river_layer`` of ``h``, the PREVIOUS step's head) is above the river bottom, i.e.
+        the river is hydraulically connected. ``None`` in ``ghb`` mode (always connected).
+        Detached: the switch is a regime choice, not a differentiable quantity."""
+        if self.river_mode != "riv":
+            return None
+        return (h[self.river_layer, self.riv_idx] > self.riv_rbot).detach()
+
+    def river_terms(self, C_riv: torch.Tensor, mask: torch.Tensor | None = None,
+                    factor: torch.Tensor | None = None):
+        """``(diag_term, rhs_term)`` of the river cells, each ``(L, A)``.
+
+        ``factor`` (per group, from ``river_month_factor``) multiplies the conductance:
+        the seasonal connection of a bed the Jiji weir leaves dry in the dry season.
+
+        Per river cell with conductance ``c = C[group] * weight`` (m2/day):
+        connected (``mask`` True, or ``ghb``): flux ``c (h_riv - h)``, so ``+c`` on the
+        diagonal and ``c h_riv`` on the right-hand side; disconnected: the constant
+        ``c (h_riv - rbot)`` on the right-hand side and nothing on the diagonal. The
+        diagonal addition is non-negative, so the operator stays SPD.
+        """
+        L, A = self.n_layers, self.grid.n_active
+        dev = self.log_T.device
+        zero = torch.zeros(A, dtype=_MODEL_DTYPE, device=dev)
+        c = C_riv.to(dtype=_MODEL_DTYPE)[self.riv_group] * self.riv_w
+        if factor is not None:
+            c = c * factor.to(dtype=_MODEL_DTYPE)[self.riv_group]
+        conn = torch.ones_like(c) if mask is None else mask.to(dtype=_MODEL_DTYPE)
+        d_row = zero.index_add(0, self.riv_idx, c * conn)
+        r_row = zero.index_add(0, self.riv_idx,
+                               c * conn * self.riv_h + c * (1.0 - conn) * (self.riv_h
+                                                                          - self.riv_rbot))
+        rows_d = [d_row if k == self.river_layer else zero for k in range(L)]
+        rows_r = [r_row if k == self.river_layer else zero for k in range(L)]
+        return torch.stack(rows_d, dim=0), torch.stack(rows_r, dim=0)
+
+    def delay_beta(self, log_Sd: torch.Tensor, log_tau: torch.Tensor) -> torch.Tensor:
+        """Backward-Euler exchange coefficient of the lumped delay bed, ``(L, A)``, 1/day:
+        ``beta = S_d / (tau + dt)``. With the slow store's head ``u`` condensed out of the
+        step, the aquifer row gains ``beta*area`` on its diagonal and ``beta*area*u`` on
+        its right-hand side, and ``u' = (tau u + dt h') / (tau + dt)`` afterwards."""
+        return torch.exp(log_Sd) / (torch.exp(log_tau) + self.dt)
+
+    def aqt_terms(self, log_Sa: torch.Tensor, log_G: torch.Tensor):
+        """Backward-Euler coefficients of the aquitard store between layers k and k+1
+        (``--aquitard-storage``), each ``(L-1, A)``: ``(a, g, c, r)`` with ``a = S_a
+        area/dt``, ``g = G area``, ``D = a + 2g``, ``c = g^2/D`` and ``r = g a/D``.
+
+        The store's head ``u`` exchanges ``g (h_k - u)`` with the layer above and ``g
+        (h_{k+1} - u)`` with the one below. Condensing ``u' = (a u + g h_k' + g
+        h_{k+1}')/D`` out of the step gives the 2x2 block ``[[g-c, -c], [-c, g-c]]`` on
+        ``(h_k, h_{k+1})`` and ``r u`` on both right-hand sides. The block's eigenvalues
+        are ``g`` and ``g a/D >= 0``, so the operator stays SPD; as ``a -> 0`` it is the
+        plain leakance ``g/2``, and as ``a`` grows the interface stores water instead of
+        passing it. It acts in parallel with ``log_L`` (which the fit can take to its
+        floor), so no historical parameter drops out of the operator.
+        """
+        a = torch.exp(log_Sa) * self.area / self.dt
+        g = torch.exp(log_G) * self.area
+        D = a + 2.0 * g
+        return a, g, g * g / D, g * a / D
+
+    _LAYOUT_ORDER = ("bnd", "delay", "riv", "aqt")
+
+    def operator_layout(self, bnd: bool = False, delay: bool = False,
+                        riv: bool = False, aqt: bool = False) -> tuple[str, ...]:
+        """Which optional parameter groups follow ``(log_T, log_S[, log_L])`` in the
+        tuple ``make_op``'s operator unpacks, in their one fixed order."""
+        flags = {"bnd": bnd, "delay": delay, "riv": riv, "aqt": aqt}
+        return tuple(g for g in self._LAYOUT_ORDER if flags[g])
+
+    def extra_diag(self, layout: tuple[str, ...], groups: dict,
+                   riv_mask: torch.Tensor | None = None,
+                   riv_factor: torch.Tensor | None = None) -> torch.Tensor | None:
+        """Sum of the optional diagonal terms for ``layout``; ``groups`` maps each group
+        name to its tuple of LOG parameters. ``None`` when ``layout`` is empty."""
+        extra = None
+        for g in layout:
+            if g == "bnd":
+                lc, la = groups["bnd"]
+                d, _ = self.boundary_terms(torch.exp(lc), torch.exp(la))
+            elif g == "delay":
+                ls, lt = groups["delay"]
+                d = self.delay_beta(ls, lt) * self.area
+            elif g == "riv":
+                (lr,) = groups["riv"]
+                d, _ = self.river_terms(torch.exp(lr), riv_mask, riv_factor)
+            elif g == "aqt":
+                continue          # not diagonal-only: _matvec_from takes it as ``aqt``
+            else:
+                raise ValueError(f"unknown operator group {g!r}")
+            extra = d if extra is None else extra + d
+        return extra
+
+    def make_op(self, layout: tuple[str, ...], riv_mask: torch.Tensor | None = None,
+                riv_factor: torch.Tensor | None = None):
+        """A differentiable ``op(h, *params) = M(params) @ h`` for ``_ImplicitSolve``'s
+        backward, for any combination of the optional groups. ``params`` unpacks as
+        ``log_T, log_S, [log_L]`` then, for each group in ``layout`` (always in
+        ``_LAYOUT_ORDER``): ``bnd`` -> ``(log_C_coast, log_C_apex)``, ``delay`` ->
+        ``(log_Sd, log_tau)`` each ``(L, A)``, ``riv`` -> ``(log_C_riv,)``, ``aqt`` ->
+        ``(log_Sa, log_G)`` each ``(L-1, A)``. Every group but ``aqt`` adds only to the
+        positive diagonal; ``aqt`` adds SPD 2x2 interface blocks (``aqt_terms``), so M
+        stays SPD. ``riv_mask``/``riv_factor`` are the RIV connection switch and the
+        seasonal factor the forward solve used; the op must be rebuilt when they change.
+        """
+        layout = tuple(layout)
+        if list(layout) != [g for g in self._LAYOUT_ORDER if g in layout]:
+            raise ValueError(f"layout {layout} is not in the fixed order {self._LAYOUT_ORDER}")
+        sizes = {"bnd": 2, "delay": 2, "riv": 1, "aqt": 2}
+
+        def op(h, *params):
+            it = iter(params)
+            log_T = next(it)
+            log_S = next(it)
+            log_L = next(it) if self.n_layers > 1 else None
+            groups = {g: tuple(next(it) for _ in range(sizes[g])) for g in layout}
+            extra = self.extra_diag(layout, groups, riv_mask, riv_factor)
+            aqt = None
+            if "aqt" in groups:
+                _, g_, c_, _ = self.aqt_terms(*groups["aqt"])
+                aqt = (g_, c_)
+            mv, _ = self._matvec_from(torch.exp(log_T), torch.exp(log_S),
+                                      torch.exp(log_L) if log_L is not None else None,
+                                      bdiag=extra, compile_ok=False, aqt=aqt)
+            return mv(h)
+
+        return op
 
     def set_apex_heads(self, h0: torch.Tensor) -> FlowModel:
         """Prescribe the apex boundary head from an initial head field ``(n_layers, A)``.
@@ -397,7 +584,7 @@ class FlowModel(nn.Module):
             return None, None
         return torch.exp(self.log_C_coast), torch.exp(self.log_C_apex)
 
-    def _matvec_from(self, T, S, L=None, bdiag=None):
+    def _matvec_from(self, T, S, L=None, bdiag=None, compile_ok: bool = True, aqt=None):
         """Return ``(mv, diag)``: ``mv`` applies (S*area/dt + K + leakage) to a head
         vector of shape (L, A); ``diag`` is that operator's diagonal (S*area/dt, plus
         the sum of face conductances touching each cell, plus the leakances touching
@@ -417,6 +604,9 @@ class FlowModel(nn.Module):
         the dense operator on a small grid. Written as an explicit +/- accumulation
         into a zeros_like buffer (rather than in place on ``out``/``diag`` directly)
         so it reads the same for any n_layers and stays out-of-place for autograd.
+
+        ``aqt`` (``(g, c)`` from ``aqt_terms``, each ``(L-1, A)``, or ``None``) adds the
+        aquitard-store blocks ``[[g-c, -c], [-c, g-c]]`` on every interface.
         """
         ia, ib = self.ia, self.ib
         Tf = 2.0 * T[:, ia] * T[:, ib] / (T[:, ia] + T[:, ib]).clamp(min=1e-30)  # harmonic
@@ -443,6 +633,13 @@ class FlowModel(nn.Module):
                 lay[:-1] = lay[:-1] + inter
                 lay[1:] = lay[1:] - inter
                 out = out + lay
+            if aqt is not None:
+                g_a, c_a = aqt
+                s_a = c_a * (h[:-1] + h[1:])
+                lay = torch.zeros_like(out)
+                lay[:-1] = lay[:-1] + g_a * h[:-1] - s_a
+                lay[1:] = lay[1:] + g_a * h[1:] - s_a
+                out = out + lay
             return out
 
         diag = stor
@@ -454,7 +651,13 @@ class FlowModel(nn.Module):
             diagL[:-1] = diagL[:-1] + Lk
             diagL[1:] = diagL[1:] + Lk
             diag = diag + diagL
-        if _COMPILE_MATVEC:
+        if aqt is not None:
+            g_a, c_a = aqt
+            diagA = torch.zeros_like(diag)
+            diagA[:-1] = diagA[:-1] + (g_a - c_a)
+            diagA[1:] = diagA[1:] + (g_a - c_a)
+            diag = diag + diagA
+        if _COMPILE_MATVEC and compile_ok:
             mv = torch.compile(mv, dynamic=False)
         return mv, diag
 
@@ -483,13 +686,22 @@ class FlowModel(nn.Module):
         return mv(h)
 
     def operator_params(self, log_T, log_S, log_L=None, log_C_coast=None,
-                        log_C_apex=None) -> tuple:
-        """The tuple ``_ImplicitSolve.apply`` gets, in ``_op``'s unpacking order."""
+                        log_C_apex=None, delay=None, riv=None, aqt=None) -> tuple:
+        """The tuple ``_ImplicitSolve.apply`` gets, in ``_op``'s (and ``make_op``'s)
+        unpacking order. ``delay`` is ``(log_Sd, log_tau)``, ``riv`` is ``(log_C_riv,)``
+        and ``aqt`` is ``(log_Sa, log_G)``; all default to absent, which is the
+        historical tuple."""
         params = [log_T, log_S]
         if self.n_layers > 1:
             params.append(log_L)
         if log_C_coast is not None and log_C_apex is not None:
             params += [log_C_coast, log_C_apex]
+        if delay is not None:
+            params += list(delay)
+        if riv is not None:
+            params += list(riv)
+        if aqt is not None:
+            params += list(aqt)
         return tuple(params)
 
     def forward(self, h0: torch.Tensor, recharge: torch.Tensor,

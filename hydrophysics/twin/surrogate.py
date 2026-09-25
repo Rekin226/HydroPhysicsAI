@@ -40,13 +40,17 @@ import torch
 from ..train import pick_device
 from .forward import (
     N_LAYERS,
+    attach_sw_recharge,
     build_model,
+    delay_state_path,
     future_forcing,
+    future_sw,
     load_members,
     parse_scenario,
     rollout,
+    sw_hist,
 )
-from .inputs import TwinInputs, load_twin_inputs
+from .inputs import TwinInputs, input_options, load_twin_inputs
 from .scenario import BASELINE, CLASSES, PumpingScenario
 
 IN_CHANNELS = N_LAYERS + 4          # heads x4, log1p(E), recharge, ground elevation, mask
@@ -91,7 +95,19 @@ def build_dataset(inp: TwinInputs, member, n_samples: int, horizon: int, seed: i
         E_hist = inp.E_total[:, 1:]
     h0 = inp.initial_heads(0, n_layers=N_LAYERS)
     t0 = time.perf_counter()
-    h_hist = rollout(model, scalars, h0, E_hist, inp.recharge_field[:, 1:], inp.ground_elev)
+    attach_sw_recharge(inp, member.meta, log=log)
+    h_hist = rollout(model, scalars, h0, E_hist, inp.recharge_field[:, 1:], inp.ground_elev,
+                     sw_field=sw_hist(inp))
+    # a delay-bed model's projection must start from the record's slow-store state, as
+    # forward.run and policy_gate do; resetting it to equilibrium is different dynamics
+    u_hist = delay_state_path(model, scalars, h_hist)
+    if u_hist is not None:
+        log("WARNING: delay-bed model -- the solver targets carry the slow store, but the "
+            "FNO does not see it as an input; check the one-step error before trusting it")
+    if sw_hist(inp) is not None:
+        log("WARNING: canal-water model -- the solver targets carry the canal deliveries, "
+            "but the FNO has no canal-water input channel; a sw policy lever is invisible "
+            "to it")
     log(f"hindcast for start states: {time.perf_counter() - t0:.1f}s")
     ge = rasterize(inp.grid, inp.ground_elev.numpy())
     mask = inp.grid.mask.astype("float32")
@@ -103,7 +119,9 @@ def build_dataset(inp: TwinInputs, member, n_samples: int, horizon: int, seed: i
         E_fut, r_fut, _ = future_forcing(inp, scen, horizon, rain_scale=rain,
                                          zone_of_cell=zone_of_cell, eta_classes=eta_classes)
         h_start = h_hist[..., start]
-        h = rollout(model, scalars, h_start, E_fut, r_fut, inp.ground_elev)   # (L, A, H+1)
+        h = rollout(model, scalars, h_start, E_fut, r_fut, inp.ground_elev,   # (L, A, H+1)
+                    sw_field=future_sw(inp, scen, horizon, zone_of_cell),
+                    u0=None if u_hist is None else u_hist[..., start])
         hn = h.cpu().numpy()
         E_tot = E_fut.sum(dim=0).numpy() if E_fut.dim() == 3 else E_fut.numpy()
         for t in range(horizon):
@@ -276,7 +294,8 @@ def _inputs_from(args, meta) -> TwinInputs:
                                            "pump_kwh", "rf_timeseries", "rf_stations",
                                            "gw_stations", "et_npz")}
     return load_twin_inputs(paths, dx=args.dx, meter_filter=meta.get("meter_filter", "none"),
-                            cap_duty=float(meta.get("cap_duty", 1.0)))
+                            cap_duty=float(meta.get("cap_duty", 1.0)),
+                            **input_options(meta))
 
 
 def main(argv=None) -> None:
@@ -340,16 +359,21 @@ def main(argv=None) -> None:
                                   dtype=torch.float64)[..., 1:]
         else:
             E_hist = inp.E_total[:, 1:]
+        attach_sw_recharge(inp, member.meta)
         h_hist = rollout(model, scalars, inp.initial_heads(0), E_hist,
-                         inp.recharge_field[:, 1:], inp.ground_elev)
+                         inp.recharge_field[:, 1:], inp.ground_elev, sw_field=sw_hist(inp))
         h_start = h_hist[..., -1]
+        u_hist = delay_state_path(model, scalars, h_hist)
+        u_start = None if u_hist is None else u_hist[..., -1]
         scenarios = [(BASELINE, 1.0)] + [parse_scenario(s) for s in args.scenario]
         rows = []
         for scen, rain in scenarios:
             E_fut, r_fut, _ = future_forcing(inp, scen, args.horizon, rain_scale=rain,
                                              zone_of_cell=zone_of_cell, eta_classes=eta_classes)
             t0 = time.perf_counter()
-            ref = rollout(model, scalars, h_start, E_fut, r_fut, inp.ground_elev).cpu().numpy()
+            ref = rollout(model, scalars, h_start, E_fut, r_fut, inp.ground_elev,
+                          sw_field=future_sw(inp, scen, args.horizon, zone_of_cell),
+                          u0=u_start).cpu().numpy()
             t_solver = time.perf_counter() - t0
             E_tot = E_fut.sum(dim=0).numpy() if E_fut.dim() == 3 else E_fut.numpy()
             t0 = time.perf_counter()

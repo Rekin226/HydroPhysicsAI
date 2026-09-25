@@ -97,6 +97,15 @@ class PumpingScenario:
     factors: dict[str, float] = field(default_factory=dict)
     zones: tuple[str, ...] | None = None
     start: str | None = None
+    # Canal (surface-water) irrigation deliveries x this factor (2026-09-23; ``sw=`` in a
+    # scenario string). Only models calibrated with --sw-recharge respond to it.
+    sw_factor: float = 1.0
+    # Share of the canal water a cut removes that is replaced by irrigation pumping, cell
+    # by cell (``sw_sub=`` in a scenario string; forward.sw_substitution_energy converts
+    # the volume to electricity with each member's own conversion). 0 = no substitution
+    # (the historical behaviour, and optimistic: in the 2021 drought Changhua and Yunlin
+    # met the canal rotation with wells).
+    sw_sub: float = 0.0
 
     def __post_init__(self) -> None:
         bad = set(self.factors) - set(CLASSES)
@@ -105,6 +114,36 @@ class PumpingScenario:
         neg = {k: v for k, v in self.factors.items() if v < 0}
         if neg:
             raise ValueError(f"negative pumping factor(s) {neg}")
+        if self.sw_factor < 0:
+            raise ValueError(f"negative surface-water factor {self.sw_factor}")
+        if not 0.0 <= self.sw_sub <= 1.0:
+            raise ValueError(f"sw_sub must be in [0, 1], got {self.sw_sub}")
+
+    def _scope(self, n_cells: int, dates: pd.DatetimeIndex,
+               zone_of_cell: np.ndarray | None) -> np.ndarray:
+        """(A, T) in {0, 1}: where and when the policy is in force."""
+        from .zones import ZONE_NAMES
+
+        active = np.ones(len(dates), dtype="float64")
+        if self.start is not None:
+            active = (dates >= pd.Timestamp(self.start)).astype("float64")
+        cell_sel = np.ones(n_cells, dtype="float64")
+        if self.zones is not None:
+            if zone_of_cell is None:
+                raise ValueError("zones= requires zone_of_cell")
+            idx = [ZONE_NAMES.index(z) for z in self.zones]
+            cell_sel = np.isin(zone_of_cell, idx).astype("float64")
+        return cell_sel[:, None] * active[None, :]
+
+    def apply_sw(self, sw: np.ndarray, dates: pd.DatetimeIndex,
+                 zone_of_cell: np.ndarray | None = None) -> np.ndarray:
+        """Canal deliveries ``(A, T)`` (or ``(K, A, T)``, every component scaled alike:
+        paddies that get less canal water also flood less) under this policy (same
+        zone/start scoping)."""
+        if self.sw_factor == 1.0:
+            return sw
+        return sw * (1.0 + (self.sw_factor - 1.0) * self._scope(sw.shape[-2], dates,
+                                                                 zone_of_cell))
 
     def apply(self, e_by_class: dict[str, np.ndarray], dates: pd.DatetimeIndex,
               zone_of_cell: np.ndarray | None = None) -> np.ndarray:
@@ -137,9 +176,12 @@ class PumpingScenario:
         return total
 
     def describe(self) -> str:
-        if not self.factors:
+        if not self.factors and self.sw_factor == 1.0:
             return f"{self.name}: baseline (no change)"
         parts = [f"{k} x{v:g}" for k, v in sorted(self.factors.items())]
+        if self.sw_factor != 1.0:
+            parts.append(f"canal water x{self.sw_factor:g}"
+                         + (f" ({self.sw_sub:.0%} replaced by pumping)" if self.sw_sub else ""))
         s = f"{self.name}: " + ", ".join(parts)
         if self.zones:
             s += f" in {'/'.join(self.zones)}"
