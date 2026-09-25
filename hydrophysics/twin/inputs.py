@@ -56,6 +56,8 @@ class TwinInputs:
     # (A,) zone map when the calibration used --ic-merged-proximal: initial_heads then
     # replaces the proximal zone(s) with the merged-aquifer head, as calibrate_flow did
     ic_zone_of_cell: np.ndarray | None = field(repr=False, default=None)
+    # --ic-layered-proximal (2026-09-25): keep the layers inside the proximal zone(s)
+    ic_layered: bool = field(repr=False, default=False)
     # True only for an --ic-merged-proximal calibration WITHOUT --no-backfill: its month-0
     # field (and so its apex boundary head) was built from the back-filled heads of every
     # well; initial_heads(0) then does the same (review 2026-09-23: from the raw month-0
@@ -88,7 +90,9 @@ class TwinInputs:
         if self.ic_zone_of_cell is not None:
             h0, _ = _merged_proximal_heads(self.grid, h0, self.well_xy[sel], h[sel],
                                            self.ic_zone_of_cell,
-                                           self.ic_zone_of_cell[self.obs_idx[sel]])
+                                           self.ic_zone_of_cell[self.obs_idx[sel]],
+                                           layer_of=(self.obs_layer[sel] if self.ic_layered
+                                                     else None))
         return h0
 
 
@@ -105,6 +109,8 @@ def input_options(meta: dict | None) -> dict:
         # --no-backfill; the forward path must start (and pin the apex) from the same field
         if not meta.get("no_backfill"):
             opts["ic_month0_filled"] = True
+        if meta.get("ic_layered_proximal"):
+            opts["ic_layered_proximal"] = True
     ge = meta.get("ground_elev") or "wells"
     if ge != "wells":
         opts["ground_elev"] = ge
@@ -121,7 +127,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                      ic_merged_proximal: bool = False, zone_boundaries: str = "205,182",
                      ground_elev: str = "wells", dem_npz: str = "results/twin/basemap.npz",
                      strict_coverage: bool = False,
-                     ic_month0_filled: bool = False) -> TwinInputs:
+                     ic_month0_filled: bool = False,
+                     ic_layered_proximal: bool = False) -> TwinInputs:
     """Assemble the twin's inputs from the data cache. ``paths`` overrides DEFAULT_PATHS.
     ``meter_filter``/``cap_duty`` are ``calibrate_flow``'s census-cleaning options and must
     match the calibration the parameters came from. ``backfill=False`` leaves
@@ -130,6 +137,7 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     ``strict_coverage`` are ``calibrate_flow``'s ``--ic-merged-proximal``,
     ``--ground-elev`` and ``--strict-coverage``; ``ic_month0_filled`` makes
     ``initial_heads(0)`` use the back-filled month-0 heads, as such a calibration did.
+    ``ic_layered_proximal`` is ``--ic-layered-proximal`` (with ``ic_merged_proximal``).
     Pass ``**input_options(meta)``."""
     P = dict(DEFAULT_PATHS)
     if paths:
@@ -196,7 +204,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                       recharge_field=recharge, stations=stn,
                       ic_zone_of_cell=(_ic_zone_map(grid, zone_boundaries)
                                        if ic_merged_proximal else None),
-                      ic_month0_filled=bool(ic_month0_filled))
+                      ic_month0_filled=bool(ic_month0_filled),
+                      ic_layered=bool(ic_layered_proximal and ic_merged_proximal))
 
 
 SW_KEYS = ("sw_m_per_day", "dates", "dx", "n_active")

@@ -153,7 +153,8 @@ def _members_from_gate_csv(path: str) -> dict:
     if _cell("zone_blend_km") not in ("", "None") and float(_cell("zone_blend_km")) > 0.0:
         meta["zone_blend_km"] = float(_cell("zone_blend_km"))
     # opt-in input constructions (2026-09-23): they change h0 / ground_elev / the wells
-    for key in ("ic_merged_proximal", "strict_coverage", "no_backfill"):
+    for key in ("ic_merged_proximal", "strict_coverage", "no_backfill",
+                "ic_layered_proximal", "proximal_layered"):
         if _cell(key) in ("True", "true", "1"):
             meta[key] = True
     if _cell("ground_elev") not in ("", "None", "wells"):
@@ -260,7 +261,10 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
             zt = zone_tensor(zone_of_cell, device, zone_w)
             keys = ("log_T_proximal", "log_S_proximal", "log_T_mid", "log_S_mid",
                     "log_T_distal", "log_S_distal", "log_L_mid", "log_L_distal",
-                    "log_T_proximal_w", "log_S_proximal_w")
+                    "log_T_proximal_w", "log_S_proximal_w",
+                    # --proximal-layered (2026-09-25): per-layer proximal T/S come in as
+                    # (L, 1) through t(); these learnable leakances replace the constant
+                    "log_L_proximal", "log_L_proximal_w")
             theta_t = {k: t(th[k]) for k in keys if k in th}
             log_T, log_S, log_L = _expand_zonal(theta_t, zt, N_LAYERS)
             model.log_T.copy_(log_T)

@@ -326,7 +326,8 @@ def _idw_initial_heads(grid, xy: np.ndarray, h0_values: np.ndarray,
 
 
 def _merged_proximal_heads(grid, h0: torch.Tensor, xy: np.ndarray, h0_values: np.ndarray,
-                           zone_of_cell: np.ndarray, well_zone: np.ndarray
+                           zone_of_cell: np.ndarray, well_zone: np.ndarray,
+                           layer_of: np.ndarray | None = None
                            ) -> tuple[torch.Tensor, dict]:
     """``--ic-merged-proximal`` (opt-in, 2026-09-23): overwrite the proximal part of a
     per-layer initial head field ``h0`` ``(L, A)`` with one merged-aquifer head.
@@ -344,6 +345,12 @@ def _merged_proximal_heads(grid, h0: torch.Tensor, xy: np.ndarray, h0_values: np
     falls back to all proximal wells, and without any keeps ``h0``. Other zones are
     untouched. The apex boundary inherits the merged head through ``set_apex_heads(h0)``.
     ``well_zone`` is the zone id of each well's cell. Returns ``(h0_new, report)``.
+
+    ``layer_of`` (``--ic-layered-proximal``, opt-in 2026-09-25; the 0-based layer of each
+    well) keeps the per-layer structure inside the proximal zone(s): layer k of a zone's
+    cells is the IDW of that zone's layer-k wells only (the same well set as above, zone
+    or all-proximal fallback), and a layer without such a well gets the merged value.
+    Nothing outside the proximal zone(s) changes. ``None`` (default) is the merged form.
     """
     out = h0.clone()
     xy = np.asarray(xy, dtype="float64").reshape(-1, 2)
@@ -372,6 +379,18 @@ def _merged_proximal_heads(grid, h0: torch.Tensor, xy: np.ndarray, h0_values: np
         report[names[z]] = {"n_wells": int(m.sum()), "source": src, "n_cells": int(cells.size),
                             "median_before_m": [round(float(b), 2) for b in before],
                             "median_after_m": round(float(np.median(f)), 2)}
+        if layer_of is not None:
+            lay = np.asarray(layer_of).reshape(-1)
+            n_k, med_k = [], []
+            for k in range(out.shape[0]):
+                mk = m & (lay == k)
+                n_k.append(int(mk.sum()))
+                if mk.any():
+                    fk = idw_interp(pts[cells], xy[mk], v[mk].reshape(-1, 1))[:, 0]
+                    out[k, cells] = torch.as_tensor(fk, dtype=out.dtype, device=out.device)
+                med_k.append(round(float(out[k, cells].median()), 2))
+            report[names[z]].update({"layered": True, "n_wells_per_layer": n_k,
+                                     "median_after_per_layer_m": med_k})
     return out, report
 
 
@@ -915,8 +934,8 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
                        pump_split: bool = False, return_flow: bool = False,
                        learn_spread: bool = False, delay_storage: str = "off",
                        n_riv: int = 0, use_sw: bool | int = False, delay_u0: str = "eq",
-                       aquitard: str = "off",
-                       split: bool = False) -> dict[str, nn.Parameter]:
+                       aquitard: str = "off", split: bool = False,
+                       proximal_layered: bool = False) -> dict[str, nn.Parameter]:
     """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
     with both drivers, against the homogeneous mode's 13 (spec §5).
 
@@ -936,6 +955,13 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
 
     ``split`` (opt-in, ``--zone-boundaries P,D,S``) adds a fourth zone, ``proximal_w``, the
     proximal cells west of S. It has the proximal form: one merged aquifer, 2 parameters.
+
+    ``proximal_layered`` (opt-in, ``--proximal-layered``, 2026-09-25) gives each proximal
+    zone the mid/distal form instead: ``log_T``/``log_S`` of shape ``(L, 1)`` and a
+    learnable ``log_L_proximal[_w]`` ``(L-1, 1)``. They start at the merged values (the
+    layer mean repeated, leakance at the BOUNDS ceiling the merged form pins), so epoch 0
+    is the merged model; the keys and their order are otherwise unchanged, with the new
+    leakances appended after ``log_L_distal`` and after the split's own entries.
     """
     log_T0 = model.log_T[:, :1].detach().clone()
     log_S0 = model.log_S[:, :1].detach().clone()
@@ -955,6 +981,16 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     if split:
         theta["log_T_proximal_w"] = nn.Parameter(log_T0.mean(dim=0, keepdim=True))
         theta["log_S_proximal_w"] = nn.Parameter(log_S0.mean(dim=0, keepdim=True))
+    if proximal_layered:
+        L = model.n_layers
+        for z in ("proximal", "proximal_w") if split else ("proximal",):
+            for base in ("log_T", "log_S"):
+                merged = theta[f"{base}_{z}"].detach()
+                theta[f"{base}_{z}"] = nn.Parameter(merged.expand(L, 1).clone())
+            if L > 1:
+                theta[f"log_L_{z}"] = nn.Parameter(torch.full(
+                    (L - 1, 1), BOUNDS["log_L"][1], dtype=torch.float64,
+                    device=model.log_T.device))
     dev = model.log_T.device
     if use_pumping:
         theta["log_eta"] = nn.Parameter(
@@ -993,7 +1029,9 @@ def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
     what lets ``FlowModel``'s frozen constructor and parameter shapes stay untouched.
 
     Proximal ``log_L`` is a CONSTANT at the upper bound, not a parameter: the four
-    proximal layers equilibrate instead of being independently fitted.
+    proximal layers equilibrate instead of being independently fitted -- unless the theta
+    is ``--proximal-layered``: then ``log_T_proximal[_w]``/``log_S_proximal[_w]`` are
+    ``(L, 1)`` (``expand`` is a no-op) and ``log_L_proximal[_w]`` replaces the constant.
     """
     dev = theta["log_T_mid"].device
     prox_T = theta["log_T_proximal"].expand(n_layers, 1)
@@ -1010,8 +1048,10 @@ def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
     if n_layers > 1 and "log_L_mid" in theta:
         prox_L = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
                             dtype=torch.float64, device=dev)
+        prox_Lw = theta.get("log_L_proximal_w", prox_L)
+        prox_L = theta.get("log_L_proximal", prox_L)
         cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]]
-                           + ([prox_L] if split else []), dim=1)
+                           + ([prox_Lw] if split else []), dim=1)
         log_L = _zone_gather(cols_L, zone_t)
     return log_T, log_S, log_L
 
@@ -1156,8 +1196,13 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              sw_field: torch.Tensor | None = None, sw_layer: int | None = None,
              fix_sw_scale: float | None = None, delay_u0: str = "eq",
              delay_layers: tuple[int, ...] | None = None,
-             aquitard: str = "off", zone_w: np.ndarray | None = None) -> dict:
+             aquitard: str = "off", zone_w: np.ndarray | None = None,
+             proximal_layered: bool = False) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    ``proximal_layered`` (``--proximal-layered``, opt-in 2026-09-25; zonal only): the
+    proximal zone(s) get per-layer ``log_T``/``log_S`` and learnable leakances instead of
+    the merged aquifer (``_make_zonal_params``). Default off: the merged form.
 
     ``zone_w`` (``--zone-blend-km``, 2026-09-23) is an ``(N_ZONES, A)`` blend-weight
     matrix (``zones.zone_blend_weights``). Zonal parameters are then mixed per cell, not
@@ -1212,6 +1257,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             "param_mode='zonal' needs zone_of_cell: an (n_active,) zone id per active "
             "cell, from hydrophysics.twin.zones.fan_zones(grid.centroids())"
         )
+    if proximal_layered and param_mode != "zonal":
+        raise ValueError("proximal_layered needs param_mode='zonal'")
 
     n_steps = recharge.shape[-1]
     A = model.grid.n_active
@@ -1310,7 +1357,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                    pump_split=pump_split, return_flow=return_flow,
                                    learn_spread=learn_spread, delay_storage=delay_storage,
                                    n_riv=n_riv, use_sw=n_sw, delay_u0=delay_u0,
-                                   aquitard=aquitard, split=split)
+                                   aquitard=aquitard, split=split,
+                                   proximal_layered=proximal_layered)
     else:
         theta = _make_homogeneous_params(model, use_pumping=use_pumping,
                                          use_recharge=use_recharge, n_eta=n_eta,
@@ -1791,7 +1839,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 fix_sw_scale: float | None = None, delay_u0: str = "eq",
                 delay_layers: tuple[int, ...] | None = None,
                 aquitard: str = "off", zone_w: np.ndarray | None = None,
-                ic_zone_of_cell: np.ndarray | None = None) -> dict:
+                ic_zone_of_cell: np.ndarray | None = None,
+                proximal_layered: bool = False, ic_layered: bool = False) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
 
     ``rivers`` is ``(RiverSet, layer, mode)`` or ``None``; it is attached to every fold's
@@ -1857,7 +1906,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 # --ic-merged-proximal, from the fold's kept wells only (no leakage)
                 h0_fold, _ = _merged_proximal_heads(
                     grid, h0_fold, well_xy[keep], np.asarray(obs_h0)[keep],
-                    ic_zone_of_cell, ic_zone_of_cell[obs_idx.cpu().numpy()[keep]])
+                    ic_zone_of_cell, ic_zone_of_cell[obs_idx.cpu().numpy()[keep]],
+                    layer_of=obs_layer_np[keep] if ic_layered else None)
         m = FlowModel(grid, n_layers=n_layers, dt_days=30.0, device=device,
                       boundaries=boundaries)
         if rivers is not None:
@@ -1872,7 +1922,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        loss_mode=loss_mode, level_weight=level_weight,
                        delay_storage=delay_storage, sw_field=sw_field, sw_layer=sw_layer,
                        fix_sw_scale=fix_sw_scale, delay_u0=delay_u0,
-                       delay_layers=delay_layers, aquitard=aquitard, zone_w=zone_w)
+                       delay_layers=delay_layers, aquitard=aquitard, zone_w=zone_w,
+                       proximal_layered=proximal_layered)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -2297,6 +2348,20 @@ def main(argv=None) -> None:
                          "regardless of layer code (one merged aquifer), instead of "
                          "per-layer IDW from distant mid-fan wells; the apex boundary head "
                          "inherits it through set_apex_heads")
+    ap.add_argument("--ic-layered-proximal", action="store_true",
+                    help="with --ic-merged-proximal: keep the layers inside the proximal "
+                         "zone(s) -- layer k from the IDW of that zone's layer-k wells, the "
+                         "merged value for a layer without one (proximal L3-L4). Pairs "
+                         "with --proximal-layered; outside the proximal zone(s) nothing "
+                         "changes")
+    ap.add_argument("--proximal-layered", action="store_true",
+                    help="--param-mode zonal: the proximal zone(s) get per-layer log_T and "
+                         "log_S and a learnable log_L per interface (the mid/distal form, "
+                         "same bounds incl. --log-t-min-proximal and --l-min) instead of "
+                         "one merged aquifer with log_L pinned at its ceiling. Starts at "
+                         "the merged values, so epoch 0 is the merged model. With "
+                         "--ic-merged-proximal alone the initial heads stay merged per "
+                         "zone and the layered model relaxes them")
     ap.add_argument("--ground-elev", choices=GROUND_ELEV_MODES, default="wells",
                     help="ground-elevation field for the pump lift: 'wells' = IDW of "
                          "station GroundHeight (historical; 0.0 codes used as real), "
@@ -2428,6 +2493,10 @@ def main(argv=None) -> None:
     if args.log_t_min_proximal is not None and args.param_mode != "zonal":
         raise SystemExit("--log-t-min-proximal needs --param-mode zonal")
     set_log_t_min_proximal(args.log_t_min_proximal)
+    if args.proximal_layered and args.param_mode != "zonal":
+        raise SystemExit("--proximal-layered needs --param-mode zonal")
+    if args.ic_layered_proximal and not args.ic_merged_proximal:
+        raise SystemExit("--ic-layered-proximal refines --ic-merged-proximal; pass both")
     delay_layers = parse_delay_layers(args.delay_layers)
     if args.delay_u0 != "eq" and args.delay_storage == "off":
         raise SystemExit("--delay-u0 learned needs --delay-storage global or zonal")
@@ -2572,8 +2641,12 @@ def main(argv=None) -> None:
         ic_zone_of_cell = _ic_zone_map(grid, args.zone_boundaries)
         h0_all, ic_rep = _merged_proximal_heads(grid, h0_all, well_xy, obs_h0,
                                                 ic_zone_of_cell,
-                                                ic_zone_of_cell[np.asarray(idx)])
-        print(f"--ic-merged-proximal: {ic_rep}", flush=True)
+                                                ic_zone_of_cell[np.asarray(idx)],
+                                                layer_of=(obs_layer_np
+                                                          if args.ic_layered_proximal
+                                                          else None))
+        print(f"--ic-merged-proximal{' --ic-layered-proximal' if args.ic_layered_proximal else ''}"
+              f": {ic_rep}", flush=True)
     nan_frac = float(np.isnan(np.stack([hf.heads[w] for w in range(len(hf))])).mean())
     print(f"head field: {len(hf)} wells passed QC, {len(sids_used)} inside the grid, "
           f"{100 * nan_frac:.2f}% NaN month-cells before interpolation", flush=True)
@@ -2658,7 +2731,8 @@ def main(argv=None) -> None:
                    level_weight=args.level_weight, delay_storage=args.delay_storage,
                    sw_field=sw_field, sw_layer=args.sw_layer, fix_sw_scale=args.fix_sw_scale,
                    delay_u0=args.delay_u0, delay_layers=delay_layers,
-                   aquitard=args.aquitard_storage, zone_w=zone_w)
+                   aquitard=args.aquitard_storage, zone_w=zone_w,
+                   proximal_layered=args.proximal_layered)
     t_fit = time.perf_counter() - t0
     temporal = None
     if args.holdout_months > 0:
@@ -2825,7 +2899,9 @@ def main(argv=None) -> None:
                        sw_field=sw_field, sw_layer=args.sw_layer,
                        fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
                        delay_layers=delay_layers, aquitard=args.aquitard_storage,
-                       zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell)
+                       zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
+                       proximal_layered=args.proximal_layered,
+                       ic_layered=args.ic_layered_proximal)
     t_gate = time.perf_counter() - t0
     with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
         json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
@@ -2929,7 +3005,10 @@ def _input_opts_record(args) -> dict:
     return {"ic_merged_proximal": bool(args.ic_merged_proximal),
             "ground_elev": args.ground_elev,
             "strict_coverage": bool(args.strict_coverage),
-            **({"ground_elev_dem_npz": args.dem_npz} if args.ground_elev == "dem" else {})}
+            **({"ground_elev_dem_npz": args.dem_npz} if args.ground_elev == "dem" else {}),
+            # opt-in 2026-09-25, written only when set so default outputs keep their columns
+            **({"ic_layered_proximal": True} if args.ic_layered_proximal else {}),
+            **({"proximal_layered": True} if args.proximal_layered else {})}
 
 
 def _run_policy_gate(args) -> None:
