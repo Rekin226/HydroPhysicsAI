@@ -545,6 +545,7 @@ def _write_member_sidecar(tmp_path, n_sets=3, n_ic=2, split_cell=0):
     """``fwd.members.npz`` as ``twin.forward --save-members yearly`` writes it: every
     member follows the ensemble mean, except that one set shows a harm at ``split_cell``
     under cut30."""
+    pytest.importorskip("torch")  # twin.forward imports torch
     from hydrophysics.twin.forward import write_members_sidecar
 
     fw = np.load(tmp_path / "fwd.npz")

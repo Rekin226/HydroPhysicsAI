@@ -14,8 +14,12 @@ import json
 import numpy as np
 import pytest
 
-from hydrophysics.twin import viewer_app as va
-from hydrophysics.twin.forward import load_or_fit_vep
+pytest.importorskip("torch")
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+
+from hydrophysics.twin import viewer_app as va  # noqa: E402
+from hydrophysics.twin.forward import load_or_fit_vep  # noqa: E402
 
 
 def _guarded_column(tmp_path) -> str:

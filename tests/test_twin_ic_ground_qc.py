@@ -6,18 +6,21 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-import torch
 
-from hydrophysics.twin.calibrate_flow import (
+torch = pytest.importorskip("torch")
+pytest.importorskip("matplotlib")
+pytest.importorskip("pyproj")
+
+from hydrophysics.twin.calibrate_flow import (  # noqa: E402
     _ic_zone_map,
     _idw_field,
     _idw_initial_heads,
     _load_ground_elev,
     _merged_proximal_heads,
 )
-from hydrophysics.twin.grid import FanGrid
-from hydrophysics.twin.inputs import TwinInputs, input_options
-from hydrophysics.twin.zones import MID, PROXIMAL, PROXIMAL_W
+from hydrophysics.twin.grid import FanGrid  # noqa: E402
+from hydrophysics.twin.inputs import TwinInputs, input_options  # noqa: E402
+from hydrophysics.twin.zones import MID, PROXIMAL, PROXIMAL_W  # noqa: E402
 
 X0, Y0 = 200000.0, 2600000.0
 

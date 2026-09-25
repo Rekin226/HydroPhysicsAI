@@ -88,6 +88,7 @@ def test_flat_model_fails_on_shape():
 # --- rescoring CLI -------------------------------------------------------------------
 
 def _dump(tmp_path, obs_raw, pred, with_raw, with_sids=True):
+    pytest.importorskip("torch")  # calibrate_flow imports torch
     from hydrophysics.twin.calibrate_flow import prepare_series
 
     filled = np.stack([prepare_series(r) for r in obs_raw])
@@ -147,6 +148,7 @@ def test_rescore_uses_obs_raw_when_the_dump_has_it(tmp_path):
 # --- --no-backfill -------------------------------------------------------------------
 
 def test_prepare_series_default_backfills_and_opt_out_keeps_nan():
+    pytest.importorskip("torch")  # calibrate_flow imports torch
     from hydrophysics.twin.calibrate_flow import prepare_series
 
     s = np.array([np.nan, np.nan, 1.0, np.nan, 3.0, np.nan])
