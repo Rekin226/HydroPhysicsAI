@@ -61,6 +61,7 @@ from .calibrate_flow import (
     set_delay_tau_min,
     set_l_min,
     sw_scale_tensor,
+    well_datum_vector,
     zone_tensor,
 )
 from .compaction import VEPColumn
@@ -89,7 +90,10 @@ def load_members(paths: list[str]) -> list[Member]:
 
     A fold list carries no metadata of its own; it inherits the metadata of the last
     in-sample file seen before it, which is how ``calibrate_flow`` writes them side by
-    side. Pass the in-sample file first.
+    side. Pass the in-sample file first. The one exception is a fold's own
+    ``well_datum`` (``--well-datum fit``, 2026-09-26): it replaces the in-sample value
+    for the fold's kept wells; every other well (the fold's held-out ones, and every well
+    of a fold or posterior entry without a datum) keeps the in-sample fit's.
     """
     members: list[Member] = []
     meta: dict | None = None
@@ -110,7 +114,14 @@ def load_members(paths: list[str]) -> list[Member]:
                 raise ValueError(f"{p}: a fold list needs an in-sample theta file before "
                                  "it on the command line to supply metadata")
             for f in obj:
-                members.append(Member(label=f"fold{f['fold']}", theta=f["theta"], meta=meta))
+                fmeta = meta
+                if f.get("well_datum"):
+                    # a --well-datum fit fold carries its own datum for its kept wells
+                    # (2026-09-26); its held-out wells keep the in-sample fit's value
+                    fmeta = {**meta, "well_datum": {**(meta.get("well_datum") or {}),
+                                                    **f["well_datum"]},
+                             "well_datum_source": f"fold{f['fold']}"}
+                members.append(Member(label=f"fold{f['fold']}", theta=f["theta"], meta=fmeta))
         else:
             raise ValueError(f"{p}: not a theta file")
     if not members:
@@ -334,7 +345,8 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
             recharge_field: torch.Tensor, ground_elev: torch.Tensor,
             pump_layer: int = 1, recharge_layer: int = 0,
             sw_field: torch.Tensor | None = None, u0: torch.Tensor | dict | None = None,
-            return_state: bool = False, month0: int | None = None):
+            return_state: bool = False, month0: int | None = None,
+            apex_from: torch.Tensor | None = None):
     """Run the calibrated model over a forcing sequence -> heads ``(L, A, T+1)`` (float64,
     on the model's device). ``E`` and ``recharge_field`` are ``(A, T)``.
 
@@ -350,7 +362,12 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
     hindcast's ``u_end``); an aquitard-store model's state is ``{"u", "ua"}`` and is
     returned and accepted in that form; ``month0`` is the calendar month index (0 =
     January) of the first step, needed only by a river season table (default: the
-    record's own start, February 2012)."""
+    record's own start, February 2012).
+
+    ``apex_from`` (2026-09-26, opt-in) prescribes the apex boundary head from that field
+    instead of ``h0``. Without it every call re-pins the mountain front to its own starting
+    field, so a restarted or nudged segment moves the boundary; ``--apex-hold calibrated``
+    passes the member's month-0 field so the boundary stays the one the fit saw."""
     ext = {}
     if "delay_Sd" in scalars:
         if u0 is None and "delay_du0" in scalars:
@@ -373,7 +390,7 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
         ext.update(sw_field=sw_field, log_sw_scale=scalars["log_sw_scale"],
                    sw_layer=scalars.get("sw_layer"))
     with torch.no_grad():
-        model.set_apex_heads(h0)
+        model.set_apex_heads(h0 if apex_from is None else apex_from)
         out = _rollout(
             model, model.log_T, model.log_S, model.log_L, h0, E.shape[-1], **ext,
             return_state=True,
@@ -576,6 +593,14 @@ def add_irrigation_energy(E: torch.Tensor, extra: torch.Tensor | None,
     return E + extra.to(E)
 
 
+def member_datum(member: Member, sids) -> np.ndarray | None:
+    """``(W,)`` per-well datum (m) of a ``--well-datum fit`` member in ``sids`` order, or
+    ``None`` for a member without one (every run before 2026-09-26). Fold members carry
+    their own datum for their kept wells (``load_members``); a well the calibration never
+    fitted gets 0."""
+    return well_datum_vector(member.meta, sids)
+
+
 def restart_taper(inp: TwinInputs, month: int, n_layers: int, taper_km: float) -> np.ndarray:
     """``(L, A)`` weight ``exp(-(d / taper_km)^2)``, where ``d`` is each cell's distance to
     the nearest well of the same layer that has a head in ``month``. A layer with no well
@@ -593,9 +618,15 @@ def restart_taper(inp: TwinInputs, month: int, n_layers: int, taper_km: float) -
 
 def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
                           gain: float, noise: np.ndarray | None = None,
-                          taper_km: float | None = None) -> torch.Tensor:
+                          taper_km: float | None = None,
+                          datum: np.ndarray | None = None) -> torch.Tensor:
     """``h_model + gain * (h_obs - h_model)`` in every layer that has an observation in
     ``month``; other layers keep the model state. ``h_model`` is ``(L, A)``.
+
+    ``datum`` (``(W,)`` m; ``member_datum``, 2026-09-26): a ``--well-datum fit`` member
+    models well ``i``'s observed head as ``h + d_i``, so the state injected is the IDW of
+    ``obs - d_i``. Without it the restart would write each well's sub-grid offset (rms
+    7.3 m, up to 38 m in the D3 fit) into the aquifer state. ``None``: the raw heads.
 
     ``taper_km`` (``--restart-taper-km``, fix A2, 2026-09-23) multiplies the correction by
     :func:`restart_taper`, so cells far from a well of the same layer keep the model's own
@@ -611,7 +642,7 @@ def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
     finite = np.isfinite(h)
     out = h_model.clone()
     field = inp.initial_heads(month, n_layers=h_model.shape[0],
-                              well_mask=finite, noise=noise).to(h_model)
+                              well_mask=finite, noise=noise, datum=datum).to(h_model)
     taper = (torch.as_tensor(restart_taper(inp, month, h_model.shape[0], taper_km)).to(h_model)
              if taper_km and taper_km > 0 else None)
     for k in range(h_model.shape[0]):
@@ -812,10 +843,13 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
                           E: torch.Tensor, R: torch.Tensor, gain: float, every: int,
                           pump_layer: int = 1, recharge_layer: int = 0,
                           sw: torch.Tensor | None = None, return_state: bool = False,
-                          return_u_path: bool = False):
+                          return_u_path: bool = False, datum: np.ndarray | None = None,
+                          apex_from: torch.Tensor | None = None):
     """Hindcast in segments of ``every`` months, nudging the state toward that month's
     observed IDW field by ``gain`` at each segment end (sequential assimilation through
-    the record). ``gain=0`` or ``every<=0`` is the plain hindcast. ``sw`` (A, T) is the
+    the record; ``datum``: see :func:`nudge_to_observations` -- it never touches ``h0``,
+    the calibration's own month-0 field). ``gain=0`` or ``every<=0`` is the plain
+    hindcast. ``sw`` (A, T) is the
     record's canal deliveries for a model calibrated with them; ``return_state`` also
     returns the delay bed's slow state at the end (``None`` without one). Nudging acts on
     the aquifer heads only: the slow store keeps the model's own state.
@@ -846,7 +880,7 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         seg, u = rollout(model, scalars, h, E[..., t:t + n], R[:, t:t + n], inp.ground_elev,
                          pump_layer, recharge_layer,
                          sw_field=None if sw is None else sw[..., t:t + n], u0=u,
-                         return_state=True, month0=(1 + t) % 12)
+                         return_state=True, month0=(1 + t) % 12, apex_from=apex_from)
         if want_path:
             # seg is the solver's own (un-nudged) segment: its replay is the solver's u
             up = delay_state_path(model, scalars, seg, u0=u_in)
@@ -854,7 +888,7 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         out.append(seg[..., 1:])
         t += n
         # month index t in the record (E is the record from month 1 on)
-        h = nudge_to_observations(inp, seg[..., -1], t, gain)
+        h = nudge_to_observations(inp, seg[..., -1], t, gain, datum=datum)
         if t < T:
             out[-1] = torch.cat([seg[..., 1:-1], h[..., None]], dim=-1)
     heads = torch.cat(out, dim=-1)
@@ -868,7 +902,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         col: VEPColumn | list, device, pump_layer: int = 1, recharge_layer: int = 0,
         log=print, hindcast_gain: float = 0.0, hindcast_every: int = 0,
         dump_delay_state: bool = False, restart_taper_km: float | None = None,
-        column_heads: str = "restart", save_members: str | None = None) -> dict:
+        column_heads: str = "restart", save_members: str | None = None,
+        apex_hold: str = "restart") -> dict:
     """Run every member through every scenario. Opt-in fixes (2026-09-23), defaults off:
 
     - ``restart_taper_km`` tapers the origin restart by distance to the wells (A2,
@@ -930,17 +965,31 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         raise ValueError(f"save_members must be None/'none' or 'yearly', got {save_members!r}")
 
     obs_target = inp.obs_h_filled[:, 1:]
+    n_datum = 0
     for mi, mem in enumerate(members):
         t_m = time.perf_counter()
         model, scalars, zone_of_cell = build_model(inp.grid, mem, device)
+        # --well-datum fit: observed heads enter the state as obs - d at every injection
+        # after month 0 (origin restart, hindcast nudging); h0 stays the calibration's own
+        datum = member_datum(mem, inp.sids)
+        # --apex-hold calibrated: every rollout keeps the fit's apex head (month-0 field)
+        apex0 = h0 if apex_hold == "calibrated" else None
+        if datum is not None:
+            n_datum += 1
+            if gain > 0.0 or (hindcast_gain > 0.0 and hindcast_every > 0):
+                log(f"  member {mem.label}: well datum subtracted from the observed heads it "
+                    f"is restarted/nudged to ({int((datum != 0).sum())} wells, rms "
+                    f"{float(np.sqrt((datum ** 2).mean())):.2f} m, from "
+                    f"{mem.meta.get('well_datum_source', 'the in-sample fit')})")
         dump_u = dump_delay_state and "delay_tau" in scalars and "aqt_Sa" not in scalars
         h_hist, u_end, u_hist = hindcast_with_nudging(
             model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
             pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
-            return_u_path=True) if dump_u else (*hindcast_with_nudging(
+            return_u_path=True, datum=datum,
+            apex_from=apex0) if dump_u else (*hindcast_with_nudging(
                 model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
                 pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
-                return_state=True), None)
+                return_state=True, datum=datum, apex_from=apex0), None)
         pred = h_hist[inp.obs_layer, inp.obs_idx, 1:].cpu().numpy()
         r2 = _r2(pred, obs_target)
         hindcast_r2.append(r2)
@@ -949,7 +998,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         h_end = h_hist[..., -1]
         for ni, noise in enumerate(ic_noises):
             h_start = nudge_to_observations(inp, h_end, origin, gain, noise=noise,
-                                            taper_km=restart_taper_km)
+                                            taper_km=restart_taper_km, datum=datum)
             h_col0 = None
             if column_heads == "free":
                 # the model's own end state, plus only the initial-field perturbation this
@@ -957,7 +1006,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                 h_col0 = h_end
                 if noise is not None:
                     h_col0 = h_end + (h_start - nudge_to_observations(
-                        inp, h_end, origin, gain, noise=None, taper_km=restart_taper_km))
+                        inp, h_end, origin, gain, noise=None, taper_km=restart_taper_km,
+                        datum=datum))
             for si, (scen, rain) in enumerate(scenarios):
                 E_fut, r_fut, fut_dates = future_forcing(inp, scen, horizon, rain_scale=rain,
                                                          zone_of_cell=zone_of_cell,
@@ -973,7 +1023,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                        recharge_layer=recharge_layer,
                                        sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                        u0=u_end, return_state=True,
-                                       month0=fut_dates[0].month - 1)
+                                       month0=fut_dates[0].month - 1, apex_from=apex0)
                 if dump_u:
                     # the hindcast path is the solver's own (un-nudged) replay, so it
                     # joins the projection's replay from the real u_end without a jump
@@ -992,7 +1042,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                       pump_layer=pump_layer, recharge_layer=recharge_layer,
                                       sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                       u0=u_end, return_state=True,
-                                      month0=fut_dates[0].month - 1)
+                                      month0=fut_dates[0].month - 1, apex_from=apex0)
                     heads_col = torch.cat([h_hist, h_fc[..., 1:]], dim=-1)
                 k_mem = mi * n_ic + ni
                 if mem_yr is not None:
@@ -1043,7 +1093,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                    "years": [int(all_dates[i].year) for i in ye_idx]}}
                if mem_yr is not None else {}),
             **({"delay_u_mean": (delay_u_sum / n_mem).astype("float32")}
-               if delay_u_sum is not None and delay_u_sum.any() else {})}
+               if delay_u_sum is not None and delay_u_sum.any() else {}),
+            **({"well_datum_members": n_datum} if n_datum else {})}
 
 
 SUBS_Q_M = 0.001        # sidecar quantum for subsidence: 1 mm (int16: +-32 m)
@@ -1143,6 +1194,11 @@ def main(argv=None) -> None:
                          "bed's drainage is clay compaction the column also represents, "
                          "so do not add the two")
     # --- opt-in artefact fixes (2026-09-23); every default reproduces the runs before ---
+    ap.add_argument("--apex-hold", choices=("restart", "calibrated"), default="restart",
+                    help="apex (mountain-front) boundary head in restarted/nudged segments "
+                         "and the projection: 'restart' re-pins it to each segment's "
+                         "starting field (the behaviour before 2026-09-26); "
+                         "'calibrated' keeps the month-0 field the calibration used")
     ap.add_argument("--restart-taper-km", type=float, default=None,
                     help="A2: taper the origin restart by exp(-(d/R)^2), where d is the "
                          "distance to the nearest well of the same layer with a head in "
@@ -1253,6 +1309,7 @@ def main(argv=None) -> None:
               recharge_layer=args.recharge_layer, hindcast_gain=args.hindcast_gain,
               hindcast_every=args.hindcast_every, dump_delay_state=args.dump_delay_state,
               restart_taper_km=args.restart_taper_km, column_heads=args.column_heads,
+              apex_hold=args.apex_hold,
               save_members=args.save_members)
     print(f"ran {res['n_members']} members x {len(scenarios)} scenarios x "
           f"{len(res['dates'])} months in {time.perf_counter() - t0:.1f}s", flush=True)
@@ -1310,13 +1367,17 @@ def main(argv=None) -> None:
         # which artefact fixes (2026-09-23) this run used; the app reads it
         forward_options=json.dumps({
             "restart_taper_km": args.restart_taper_km, "column_heads": args.column_heads,
+            **({"apex_hold": args.apex_hold} if args.apex_hold != "restart" else {}),
             "column_hpc0_fast_days": args.column_hpc0_fast_days,
             "hpc0_released": [c[2].get("hpc0_released") for c in columns],
             "hpc0_guard_days": [c[2].get("hpc0_guard_days") for c in columns],
             "column_zone_blend_km": [
                 (c[2]["zone_blend_km_override"]["used"] if c[2].get("zone_blend_km_override")
                  else float(c[2].get("zone_blend_km") or 0.0)) for c in columns],
-            "save_members": args.save_members}))
+            "save_members": args.save_members,
+            # opt-in 2026-09-26: only a --well-datum fit run records it
+            **({"well_datum_members": res["well_datum_members"]}
+               if "well_datum_members" in res else {})}))
     rows.to_csv(args.out + ".members.csv", index=False)
     summary.to_csv(args.out + ".summary.csv")
     print(f"wrote {args.out}.npz, {args.out}.members.csv, {args.out}.summary.csv")

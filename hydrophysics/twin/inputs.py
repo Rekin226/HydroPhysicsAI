@@ -70,16 +70,25 @@ class TwinInputs:
 
     def initial_heads(self, month: int = 0, n_layers: int = 4,
                       well_mask: np.ndarray | None = None,
-                      noise: np.ndarray | None = None) -> torch.Tensor:
+                      noise: np.ndarray | None = None,
+                      datum: np.ndarray | None = None) -> torch.Tensor:
         """Per-layer IDW field of the wells' heads observed in ``month`` -> (n_layers, A).
 
         ``well_mask`` restricts the wells (a fold's kept set); ``noise`` (W,) is added to
         the observed heads before interpolation, which is how the initial-condition
         ensemble gets spatially coherent perturbations rather than white noise per cell.
         ``ic_month0_filled`` (see the field) takes month 0 from ``obs_h_filled``.
+
+        ``datum`` (``(W,)`` m, a ``--well-datum fit`` member's ``well_datum_vector``) is
+        subtracted from each well's head first: the model head at a well is ``obs - d``.
+        Only later-month injections (``forward.nudge_to_observations``) pass it; the
+        month-0 field is the calibration's own ``h0``, built from the raw heads, and must
+        stay so.
         """
         src = self.obs_h_filled if (month == 0 and self.ic_month0_filled) else self.obs_h
         h = src[:, month].copy()
+        if datum is not None:
+            h = h - np.asarray(datum, dtype="float64")
         if noise is not None:
             h = h + noise
         sel = np.isfinite(h)

@@ -88,6 +88,7 @@ from .flow import (
     set_compile_matvec,
 )
 from .grid import build_grid
+from .kfold_scores import format_verdicts, kfold_anomaly_scores, per_well_metrics
 from .spread import SPREAD_KM_BOUNDS, pairwise_d2_km, spread_energy, spread_matrix
 from .zones import (
     N_ZONES,
@@ -220,9 +221,12 @@ def _profile_well_datum(pred: torch.Tensor, obs_z: torch.Tensor, mask: torch.Ten
 
 def well_datum_vector(meta: dict | None, sids) -> np.ndarray | None:
     """``(W,)`` fitted datum per well of ``sids`` from a theta meta's ``well_datum``
-    (``{sid: m}``), 0 for a well without one; ``None`` when the run fitted none. For
-    nuisance use only (e.g. ``uncertainty``'s residual): the datum never enters a flow
-    solve, a column, a forward projection or subsidence."""
+    (``{sid: m}``), 0 for a well without one; ``None`` when the run fitted none. An
+    observation-operator term only: it never enters a flow solve's parameters, a column or
+    subsidence directly. Its two uses are ``uncertainty``'s residual and ``forward``'s
+    later-month injections (``nudge_to_observations``: the state receives ``obs - d``), which
+    set the restart state -- and so, through ``rollout``'s ``set_apex_heads``, the apex
+    boundary head of the projection."""
     wd = (meta or {}).get("well_datum")
     if not wd:
         return None
@@ -2023,8 +2027,22 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
                 well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
-                datum_mask: torch.Tensor | None = None) -> dict:
+                datum_mask: torch.Tensor | None = None, only_fold: int | None = None,
+                sids: list[str] | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
+
+    ``only_fold`` (``--only-fold K``, 2026-09-26): run fold ``K`` (0-based) of the same
+    seeded partition and skip the others; ``per_fold`` then holds that one fold and the
+    pooled scores are that fold's. ``merge_folds`` pools the fold files into the outputs
+    of a sequential run. Every ``per_fold`` record carries its held-out entries and their
+    ``pred``/``idw``/``obs`` arrays (``summarise_kfold``). ``sids`` (in ``obs_h`` row
+    order) names the wells: with ``well_datum="fit"`` each record then carries its fold
+    fit's datum per KEPT well (``well_datum``, ``{sid: m}``), which ``stage3_fold_thetas``
+    records so a forward run can use the fold member's own datum.
+
+    Besides the legacy pooled R2 the result carries the own-mean ANOMALY verdict
+    (``kfold_scores.kfold_anomaly_scores``: ``r2_anom_kfold``, ``r2_anom_idw``,
+    ``verdict_anom_kfold``, ...), a reporting addition beside the legacy one.
 
     ``well_datum="fit"``: each fold's fit gives its KEPT (in-fold) wells a datum in the
     observation operator (``fit_flow``). A held-out well has no fitted datum, so it is
@@ -2073,8 +2091,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # whether the physics model degrades more or less gracefully than IDW as held-out sites
     # get isolated. That question is most of the argument for building a physics model at
     # all, so keep the raw predictions rather than only their pooled summary.
-    dump = {"fold": [], "entry": [], "nn_dist": [], "x": [], "y": [], "layer": []}
-    dump_arrays = {"pred": [], "idw": [], "obs": []}
+    if only_fold is not None and not 0 <= int(only_fold) < n_folds:
+        raise ValueError(f"only_fold={only_fold} is outside 0..{n_folds - 1}")
     # coordinates used for the nearest-training-entry distance
     dist_xy = (np.asarray(well_xy, dtype="float64") if well_xy is not None
                else grid.centroids()[obs_idx.cpu().numpy()])
@@ -2082,9 +2100,10 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         n_sites = len(np.unique(groups))
         print(f"    folds grouped by site: {W} entries over {n_sites} physical sites, "
               f"held-out/training co-location rate = {coloc:.3f}", flush=True)
-    preds, idws, targets = [], [], []
     per_fold = []
     for f, held in enumerate(folds):
+        if only_fold is not None and f != int(only_fold):
+            continue
         t_fold = time.perf_counter()
         held = np.asarray(held)
         keep = np.setdiff1d(np.arange(W), held)
@@ -2141,43 +2160,64 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         src = xy[obs_idx[keep].numpy()]
         tgt = xy[obs_idx[held].numpy()]
         idw = idw_interp(tgt, src, obs_h[keep].numpy())
-        preds.append(p)
-        idws.append(idw)
-        targets.append(obs_h[held].numpy())
-        if dump_path is not None:
-            dd = np.sqrt(((dist_xy[held][:, None, :] - dist_xy[keep][None, :, :]) ** 2)
-                         .sum(-1)).min(axis=1)
-            dump["fold"].append(np.full(len(held), f, dtype="int64"))
-            dump["entry"].append(np.asarray(held, dtype="int64"))
-            dump["nn_dist"].append(dd)
-            dump["x"].append(dist_xy[held][:, 0])
-            dump["y"].append(dist_xy[held][:, 1])
-            dump["layer"].append(obs_layer_np[held])
-            dump_arrays["pred"].append(p)
-            dump_arrays["idw"].append(idw)
-            dump_arrays["obs"].append(obs_h[held].numpy())
+        dd = np.sqrt(((dist_xy[held][:, None, :] - dist_xy[keep][None, :, :]) ** 2)
+                     .sum(-1)).min(axis=1)
         # The fold's own parameter set is kept (2026-09-11): five fold models are the
         # cheapest honest ensemble the forward twin can draw its parameter spread from.
-        per_fold.append({"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
-                         "r2_kfold": _r2(p, obs_h[held].numpy()),
-                         "r2_idw": _r2(idw, obs_h[held].numpy()),
-                         "bounds_hit": fit["bounds_hit"],
-                         "theta": fit.get("theta", {})})
-    pred = np.concatenate(preds)
-    obs = np.concatenate(targets)
-    idw_all = np.concatenate(idws)
+        # The held-out entries and their arrays travel with it (2026-09-26): the pooled
+        # scores and the per-entry dump are built from these records (summarise_kfold),
+        # so a fold run alone (only_fold) carries everything a merge needs.
+        rec = {"fold": f, "n_held": len(held), "fit_loss": fit["loss"],
+               "r2_kfold": _r2(p, obs_h[held].numpy()),
+               "r2_idw": _r2(idw, obs_h[held].numpy()),
+               "bounds_hit": fit["bounds_hit"],
+               "theta": fit.get("theta", {}),
+               "entry": np.asarray(held, dtype="int64"), "nn_dist": dd,
+               "x": dist_xy[held][:, 0], "y": dist_xy[held][:, 1],
+               "layer": obs_layer_np[held], "pred": p, "idw": idw,
+               "obs": obs_h[held].numpy(), "fold_time_s": time.perf_counter() - t_fold}
+        if "well_datum" in fit and sids is not None:
+            # the fold fit's datum of its KEPT wells (held-out wells were scored with d=0)
+            rec["well_datum"] = {str(sids[i]): float(v) for i, v in
+                                 zip(keep, np.asarray(fit["well_datum"]), strict=True)}
+        per_fold.append(rec)
     if dump_path is not None:
-        os.makedirs(os.path.dirname(dump_path) or ".", exist_ok=True)
-        np.savez_compressed(
-            dump_path,
-            **{k: np.concatenate(v) for k, v in dump.items()},
-            **{k: np.concatenate(v) for k, v in dump_arrays.items()},
-            obs_mean=np.array(float(obs[np.isfinite(obs)].mean())))
+        write_per_entry_npz(dump_path, per_fold)
         print(f"    wrote per-entry predictions -> {dump_path}", flush=True)
-    return {"r2_kfold": _r2(pred, obs), "r2_idw": _r2(idw_all, obs),
-            "n_wells": W, "n_folds": n_folds, "per_fold": per_fold,
-            "n_sites": int(len(np.unique(groups))) if groups is not None else W,
-            "colocation_rate": coloc}
+    return summarise_kfold(per_fold, n_wells=W, n_folds=n_folds,
+                           n_sites=int(len(np.unique(groups))) if groups is not None else W,
+                           colocation_rate=coloc)
+
+
+FOLD_ARRAY_KEYS = ("entry", "nn_dist", "x", "y", "layer", "pred", "idw", "obs")
+
+
+def summarise_kfold(per_fold: list[dict], n_wells: int, n_folds: int, n_sites: int,
+                    colocation_rate: float) -> dict:
+    """``kfold_wells``' result from its fold records, pooled in fold order: the legacy
+    pooled R2 of the model and of IDW over every held-out entry, and the own-mean anomaly
+    verdict beside it (``kfold_scores``). ``merge_folds`` calls it on the records read
+    back from the fold files, so a merged run and a sequential one pool identically."""
+    pred = np.concatenate([r["pred"] for r in per_fold])
+    obs = np.concatenate([r["obs"] for r in per_fold])
+    idw_all = np.concatenate([r["idw"] for r in per_fold])
+    out = {"r2_kfold": _r2(pred, obs), "r2_idw": _r2(idw_all, obs),
+           "n_wells": n_wells, "n_folds": n_folds, "per_fold": per_fold,
+           "n_sites": n_sites, "colocation_rate": colocation_rate}
+    out.update(kfold_anomaly_scores(pred, idw_all, obs))
+    return out
+
+
+def write_per_entry_npz(path: str, per_fold: list[dict]) -> None:
+    """``stage3_per_entry.npz`` (``--dump-predictions``) from the fold records."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    obs = np.concatenate([r["obs"] for r in per_fold])
+    np.savez_compressed(
+        path, fold=np.concatenate([np.full(r["n_held"], r["fold"], dtype="int64")
+                                   for r in per_fold]),
+        **{k: np.concatenate([np.asarray(r[k]) for r in per_fold])
+           for k in FOLD_ARRAY_KEYS},
+        obs_mean=np.array(float(obs[np.isfinite(obs)].mean())))
 
 
 GROUND_ELEV_MODES = ("wells", "dem")
@@ -2675,7 +2715,17 @@ def main(argv=None) -> None:
     ap.add_argument("--dump-predictions", action="store_true",
                     help="write per-held-out-entry predictions (flow, IDW, obs) plus\neach entry's distance to the nearest training entry, for degradation-vs-distance\nanalysis without refitting.")
     ap.add_argument("--fit-only", action="store_true",
-                    help="run the in-sample fit and skip the k-fold gate")
+                    help="run the in-sample fit and skip the k-fold gate (also writes "
+                         "stage3_fit_summary.json, the full fit's half of stage3_flow.csv "
+                         "for merge_folds)")
+    ap.add_argument("--only-fold", type=int, default=None, metavar="K",
+                    help="parallel k-fold (2026-09-26): skip the full-data fit and run only "
+                         "fold K (0-based) of the --n-folds/--seed partition, writing "
+                         "stage3_fold{K}.json (theta, datum, held-out predictions, per-well "
+                         "metrics). Run the full fit with --fit-only into the same --out, "
+                         "every fold, then python -m hydrophysics.twin.merge_folds OUT for "
+                         "the stage3_flow.csv / stage3_fold_thetas.json a sequential run "
+                         "writes")
     ap.add_argument("--device", default=None,
                     help="'cuda', 'cpu', or omit to auto-select CUDA when available. "
                          "Until this flag existed both FlowModel construction sites "
@@ -2709,6 +2759,16 @@ def main(argv=None) -> None:
         raise SystemExit("--well-datum fit needs --param-mode homogeneous or zonal")
     if args.well_datum != "off" and not args.well_datum_sd > 0.0:
         raise SystemExit("--well-datum-sd must be > 0")
+    if args.only_fold is not None:
+        if args.fit_only:
+            raise SystemExit("--only-fold runs one k-fold fold without the full fit; it "
+                             "cannot be combined with --fit-only")
+        if not 0 <= args.only_fold < args.n_folds:
+            raise SystemExit(f"--only-fold must be in 0..{args.n_folds - 1} (--n-folds "
+                             f"{args.n_folds})")
+        if args.policy_response:
+            raise SystemExit("--policy-response scores the full fit; pass it to the "
+                             "--fit-only run, not to --only-fold")
     delay_layers = parse_delay_layers(args.delay_layers)
     if args.delay_u0 != "eq" and args.delay_storage == "off":
         raise SystemExit("--delay-u0 learned needs --delay-storage global or zonal")
@@ -2863,9 +2923,12 @@ def main(argv=None) -> None:
     print(f"head field: {len(hf)} wells passed QC, {len(sids_used)} inside the grid, "
           f"{100 * nan_frac:.2f}% NaN month-cells before interpolation", flush=True)
     os.makedirs(args.out, exist_ok=True)
-    pd.DataFrame({"sid": sids_used, "layer": obs_layer_np + 1,
-                  "x": well_xy[:, 0], "y": well_xy[:, 1]}).to_csv(
-        os.path.join(args.out, "stage3_wells.csv"), index=False)
+    if args.only_fold is None:
+        # a --only-fold job shares --out with the --fit-only job that writes this file;
+        # it records its own sids in stage3_fold{K}.json and merge_folds checks them here
+        pd.DataFrame({"sid": sids_used, "layer": obs_layer_np + 1,
+                      "x": well_xy[:, 0], "y": well_xy[:, 1]}).to_csv(
+            os.path.join(args.out, "stage3_wells.csv"), index=False)
 
     boundaries = None
     if args.boundaries == "coast-apex":
@@ -2937,6 +3000,44 @@ def main(argv=None) -> None:
         recharge_field = recharge_field[:, :T_fit]
     if sw_field is not None:
         sw_field = sw_field[..., :T_fit]
+    cfg = _flow_cfg(args, grid.n_active, proximal_km, distal_km, split_km, zone_counts,
+                    eta_class_names, git_commit)
+    # one argument list for the sequential gate and a --only-fold job, so the two can
+    # never drift apart
+    kfold_kw = dict(n_layers=4, epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
+                    seed=args.seed, param_mode=args.param_mode, well_xy=well_xy,
+                    obs_h0=obs_h0, ground_elev=ground_elev, E=E,
+                    recharge_field=recharge_field, pump_layer=args.pump_layer,
+                    recharge_layer=args.recharge_layer, device=device,
+                    zone_of_cell=zone_of_cell, boundaries=boundaries,
+                    fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
+                    pump_split=args.pump_split, return_flow=args.return_flow,
+                    spread_km=args.pump_spread_km, learn_spread=args.learn_spread,
+                    loss_mode=args.loss, level_weight=args.level_weight,
+                    delay_storage=args.delay_storage, rivers=rivers_arg,
+                    sw_field=sw_field, sw_layer=args.sw_layer,
+                    fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
+                    delay_layers=delay_layers, aquitard=args.aquitard_storage,
+                    zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
+                    proximal_layered=args.proximal_layered,
+                    ic_layered=args.ic_layered_proximal,
+                    well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
+                    datum_mask=datum_mask, sids=sids_used)
+    if args.only_fold is not None:
+        # parallel k-fold: this fold only, no full fit (merge_folds pools the fold files)
+        t0 = time.perf_counter()
+        gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy,
+                           only_fold=args.only_fold, **kfold_kw)
+        fpath = write_fold_file(args.out, gate, cfg, _cg_stats(),
+                                time.perf_counter() - t0, sids_used,
+                                dump=bool(args.dump_predictions))
+        f = gate["per_fold"][0]
+        print(f"  fold {args.only_fold}/{args.n_folds} (seed {args.seed}): n_held={f['n_held']} "
+              f"R2 {f['r2_kfold']:+.3f} vs IDW {f['r2_idw']:+.3f}; anomaly R2 "
+              f"{gate['r2_anom_kfold']:+.3f} vs IDW {gate['r2_anom_idw']:+.3f}")
+        print(_format_bounds_hit(f["bounds_hit"]))
+        print(f"wrote {fpath} (merge: python -m hydrophysics.twin.merge_folds {args.out})")
+        return
     ins = fit_flow(m, obs_h, obs_idx, obs_layer, recharge_dummy, E=E, ground_elev=ground_elev,
                    epochs=args.epochs, lr=args.lr, param_mode=args.param_mode, h0=h0_all,
                    recharge_field=recharge_field, pump_layer=args.pump_layer,
@@ -3126,39 +3227,18 @@ def main(argv=None) -> None:
         trace_df["git_commit"] = git_commit
         trace_df.to_csv(os.path.join(args.out, "stage3_fit_trace.csv"), index=False)
         print(f"wrote {os.path.join(args.out, 'stage3_fit_trace.csv')}")
+        # the full fit's half of stage3_flow.csv, for merge_folds after --only-fold jobs
+        write_fit_summary(args.out, cfg, _flow_fit_cols(ins, temporal, datum_meta),
+                          _cg_stats(), t_fit, sids_used)
         if args.policy_response:
             _run_policy_gate(args)
         return
 
     t0 = time.perf_counter()
-    gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy, n_layers=4,
-                       epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
-                       seed=args.seed,
-                       param_mode=args.param_mode, well_xy=well_xy, obs_h0=obs_h0,
-                       ground_elev=ground_elev, E=E, recharge_field=recharge_field,
-                       pump_layer=args.pump_layer, recharge_layer=args.recharge_layer,
-                       device=device,
+    gate = kfold_wells(grid, obs_h, obs_idx, obs_layer, recharge_dummy,
                        dump_path=(os.path.join(args.out, "stage3_per_entry.npz")
-                                  if args.dump_predictions else None),
-                       zone_of_cell=zone_of_cell, boundaries=boundaries,
-                       fix_eta=args.fix_eta, fix_head_extra=args.fix_head_extra,
-                       pump_split=args.pump_split, return_flow=args.return_flow,
-                       spread_km=args.pump_spread_km, learn_spread=args.learn_spread,
-                       loss_mode=args.loss, level_weight=args.level_weight,
-                       delay_storage=args.delay_storage, rivers=rivers_arg,
-                       sw_field=sw_field, sw_layer=args.sw_layer,
-                       fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
-                       delay_layers=delay_layers, aquitard=args.aquitard_storage,
-                       zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
-                       proximal_layered=args.proximal_layered,
-                       ic_layered=args.ic_layered_proximal,
-                       well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
-                       datum_mask=datum_mask)
+                                  if args.dump_predictions else None), **kfold_kw)
     t_gate = time.perf_counter() - t0
-    with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
-        json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
-                    "r2_idw": f["r2_idw"], "theta": f["theta"]} for f in gate["per_fold"]],
-                  fh, indent=1)
     cg_nonconverged, cg_worst_residual = _cg_stats()
     # The in-sample block (R2, per-zone bounds_hit, theta) was printed before the gate began;
     # it is not repeated here. What follows is what only the gate can tell you.
@@ -3180,74 +3260,17 @@ def main(argv=None) -> None:
         print(_format_bounds_hit(f["bounds_hit"]))
     print(f"GATE ({args.n_folds}-fold): "
           f"{'PASS' if gate['r2_kfold'] > gate['r2_idw'] else 'FAIL'}")
+    print(format_verdicts(gate))
     # Fix wave I1/I2: the CG cap and convergence evidence must travel with the result --
     # the maxiter ruling is "both arms at the same cap", and the previous corruption
     # (median true relative residual 4.955e-02) was caught only by ad-hoc log grepping.
     print(f"  cg_maxiter={_CG_MAXITER}  cg_nonconverged={cg_nonconverged}  "
           f"cg_worst_residual={cg_worst_residual:.3e}  git_commit={git_commit!r}")
 
-    os.makedirs(args.out, exist_ok=True)
-    path = os.path.join(args.out, "stage3_flow.csv")
-    pd.DataFrame([{"n_wells": gate["n_wells"], "n_cells": grid.n_active, "dx": args.dx,
-                   "param_mode": args.param_mode,
-                   "zone_proximal_km": (proximal_km if args.param_mode == "zonal"
-                                        else ""),
-                   "zone_distal_km": (distal_km if args.param_mode == "zonal" else ""),
-                   "zone_split_km": split_km if split_km is not None else "",
-                   "log_t_min_proximal": (args.log_t_min_proximal
-                                          if args.log_t_min_proximal is not None else ""),
-                   "zone_blend_km": float(args.zone_blend_km or 0.0),
-                   "zone_cell_counts": (str(zone_counts) if args.param_mode == "zonal"
-                                        else ""),
-                   "n_params": ins["n_params"],
-                   "forcing": "off" if args.no_forcing else "on",
-                   "boundaries": args.boundaries, "meter_filter": args.meter_filter,
-                   "eta_classes": str(eta_class_names), "fix_eta": args.fix_eta,
-                   "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
-                   "return_flow": args.return_flow, "l_min": args.l_min,
-                   "spread_km": ins.get("theta", {}).get("spread_km"),
-                   "holdout_months": args.holdout_months, "loss_mode": args.loss,
-                   "r2_temporal": temporal["r2_model"] if temporal else "",
-                   "r2_temporal_clim": temporal["r2_clim"] if temporal else "",
-                   "temporal_verdict": temporal["verdict"] if temporal else "",
-                   "temporal_rmse_ratio": temporal["rmse_ratio"] if temporal else "",
-                   "delay_storage": args.delay_storage, "rivers": args.rivers,
-                   "river_set": args.river_set if args.rivers != "none" else "",
-                   "sw_recharge": args.sw_recharge or "",
-                   "delay_u0": args.delay_u0, "aquitard_storage": args.aquitard_storage,
-                   "sw_components": args.sw_components,
-                   "river_c_split": args.river_c_split,
-                   "no_backfill": bool(args.no_backfill),
-                   **_input_opts_record(args),
-                   **_well_datum_record(datum_meta),
-                   "epochs": args.epochs,
-                   "n_folds": gate["n_folds"], "seed": args.seed,
-                   "n_sites": gate["n_sites"],
-                   "colocation_rate": gate["colocation_rate"], "loss": ins["loss"],
-                   "r2_insample": ins["r2"], "r2_kfold": gate["r2_kfold"],
-                   "r2_idw": gate["r2_idw"], "bounds_hit": str(ins["bounds_hit"]),
-                   "fold_bounds_hit": str([f["bounds_hit"] for f in gate["per_fold"]]),
-                   "theta": str(ins.get("theta", {})),
-                   "cg_maxiter": _CG_MAXITER, "cg_check_every": _CG_CHECK_EVERY,
-                   "compile_matvec": bool(args.compile_matvec),
-                   "cg_nonconverged": cg_nonconverged,
-                   "cg_worst_residual": cg_worst_residual, "git_commit": git_commit,
-                   "fit_time_s": t_fit, "gate_time_s": t_gate}]).to_csv(path, index=False)
+    path = write_kfold_outputs(args.out, cfg, _flow_fit_cols(ins, temporal, datum_meta),
+                               gate, (cg_nonconverged, cg_worst_residual), t_fit, t_gate,
+                               sids_used)
     print(f"wrote {path}")
-    # The theta file was written before the folds ran; stamp the verdict into it now so
-    # the forward twin and the viewer inherit it (they print it on every run).
-    theta_path = os.path.join(args.out, "stage3_theta.json")
-    try:
-        with open(theta_path) as fh:
-            obj = json.load(fh)
-        obj["meta"]["gate"] = {"r2_kfold": gate["r2_kfold"], "r2_idw": gate["r2_idw"],
-                               "margin": gate["r2_kfold"] - gate["r2_idw"],
-                               "verdict": "PASS" if gate["r2_kfold"] > gate["r2_idw"] else "FAIL",
-                               "n_folds": gate["n_folds"], "seed": args.seed}
-        with open(theta_path, "w") as fh:
-            json.dump(obj, fh, indent=1)
-    except OSError as e:
-        print(f"could not stamp the verdict into {theta_path}: {e}")
     if args.policy_response:
         _run_policy_gate(args)
 
@@ -3272,6 +3295,219 @@ def _well_datum_record(datum_meta: dict | None) -> dict:
     return {"well_datum": datum_meta["well_datum_mode"],
             "well_datum_sd": datum_meta["well_datum_sd"],
             **{f"well_datum_{k}": v for k, v in datum_meta["well_datum_stats"].items()}}
+
+
+# --- stage3_flow.csv in parts, so a parallel k-fold (--only-fold + merge_folds) writes
+# the same file as a sequential run (2026-09-26) ------------------------------------------
+FIT_SUMMARY = "stage3_fit_summary.json"
+FOLD_FILE = "stage3_fold{k}.json"
+# per-fold scalars, their arrays (FOLD_ARRAY_KEYS) and the optional datum travel in a fold
+# file; nothing else of a record is needed to rebuild the sequential outputs
+# options that may differ between the --fit-only job and the --only-fold jobs of one run
+RECIPE_FREE_ARGS = ("out", "only_fold", "fit_only", "log_every", "device", "policy_response",
+                    "dump_predictions")
+FOLD_SCALAR_KEYS = ("fold", "n_held", "fit_loss", "r2_kfold", "r2_idw", "bounds_hit", "theta",
+                    "fold_time_s")
+
+
+def _flow_cfg(args, n_cells: int, proximal_km, distal_km, split_km, zone_counts,
+              eta_class_names, git_commit: str) -> dict:
+    """The run-configuration columns of ``stage3_flow.csv`` (neither fit nor gate)."""
+    zonal = args.param_mode == "zonal"
+    return {"n_cells": n_cells, "dx": args.dx, "param_mode": args.param_mode,
+            "zone_proximal_km": proximal_km if zonal else "",
+            "zone_distal_km": distal_km if zonal else "",
+            "zone_split_km": split_km if split_km is not None else "",
+            "log_t_min_proximal": (args.log_t_min_proximal
+                                   if args.log_t_min_proximal is not None else ""),
+            "zone_blend_km": float(args.zone_blend_km or 0.0),
+            "zone_cell_counts": str(zone_counts) if zonal else "",
+            "forcing": "off" if args.no_forcing else "on",
+            "boundaries": args.boundaries, "meter_filter": args.meter_filter,
+            "eta_classes": str(eta_class_names), "fix_eta": args.fix_eta,
+            "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
+            "return_flow": args.return_flow, "l_min": args.l_min,
+            "holdout_months": args.holdout_months, "loss_mode": args.loss,
+            "delay_storage": args.delay_storage, "rivers": args.rivers,
+            "river_set": args.river_set if args.rivers != "none" else "",
+            "sw_recharge": args.sw_recharge or "",
+            "delay_u0": args.delay_u0, "aquitard_storage": args.aquitard_storage,
+            "sw_components": args.sw_components,
+            "river_c_split": args.river_c_split,
+            "no_backfill": bool(args.no_backfill),
+            "input_opts": _input_opts_record(args),
+            "epochs": args.epochs, "seed": args.seed,
+            "cg_maxiter": _CG_MAXITER, "cg_check_every": _CG_CHECK_EVERY,
+            "compile_matvec": bool(args.compile_matvec), "git_commit": git_commit,
+            # every CLI option that shapes a fit (merge_folds requires it identical in
+            # the full fit and every fold); not a CSV column
+            "recipe": {k: v for k, v in sorted(vars(args).items())
+                       if k not in RECIPE_FREE_ARGS}}
+
+
+def _flow_fit_cols(ins: dict, temporal: dict | None, datum_meta: dict | None) -> dict:
+    """The full fit's columns of ``stage3_flow.csv``."""
+    return {"n_params": ins["n_params"], "spread_km": ins.get("theta", {}).get("spread_km"),
+            "r2_temporal": temporal["r2_model"] if temporal else "",
+            "r2_temporal_clim": temporal["r2_clim"] if temporal else "",
+            "temporal_verdict": temporal["verdict"] if temporal else "",
+            "temporal_rmse_ratio": temporal["rmse_ratio"] if temporal else "",
+            "well_datum_record": _well_datum_record(datum_meta),
+            "loss": ins["loss"], "r2_insample": ins["r2"],
+            "bounds_hit": str(ins["bounds_hit"]), "theta": str(ins.get("theta", {}))}
+
+
+def flow_csv_row(cfg: dict, fit: dict, gate: dict, cg: tuple, t_fit: float,
+                 t_gate: float) -> dict:
+    """One ``stage3_flow.csv`` row, in its historical column order; the own-mean anomaly
+    verdict (``kfold_scores``) and the legacy verdict follow ``r2_idw``."""
+    return {"n_wells": gate["n_wells"], "n_cells": cfg["n_cells"], "dx": cfg["dx"],
+            **{k: cfg[k] for k in ("param_mode", "zone_proximal_km", "zone_distal_km",
+                                   "zone_split_km", "log_t_min_proximal", "zone_blend_km",
+                                   "zone_cell_counts")},
+            "n_params": fit["n_params"],
+            **{k: cfg[k] for k in ("forcing", "boundaries", "meter_filter", "eta_classes",
+                                   "fix_eta", "fix_head_extra", "pump_split", "return_flow",
+                                   "l_min")},
+            "spread_km": fit["spread_km"],
+            "holdout_months": cfg["holdout_months"], "loss_mode": cfg["loss_mode"],
+            **{k: fit[k] for k in ("r2_temporal", "r2_temporal_clim", "temporal_verdict",
+                                   "temporal_rmse_ratio")},
+            **{k: cfg[k] for k in ("delay_storage", "rivers", "river_set", "sw_recharge",
+                                   "delay_u0", "aquitard_storage", "sw_components",
+                                   "river_c_split", "no_backfill")},
+            **cfg["input_opts"], **fit["well_datum_record"],
+            "epochs": cfg["epochs"], "n_folds": gate["n_folds"], "seed": cfg["seed"],
+            "n_sites": gate["n_sites"], "colocation_rate": gate["colocation_rate"],
+            "loss": fit["loss"], "r2_insample": fit["r2_insample"],
+            "r2_kfold": gate["r2_kfold"], "r2_idw": gate["r2_idw"],
+            "verdict_kfold": "PASS" if gate["r2_kfold"] > gate["r2_idw"] else "FAIL",
+            **{k: gate[k] for k in ("r2_anom_kfold", "r2_anom_idw", "margin_anom_kfold",
+                                    "r2_anom_well_median_kfold", "r2_anom_well_median_idw",
+                                    "n_wells_anom", "verdict_anom_kfold")},
+            "bounds_hit": fit["bounds_hit"],
+            "fold_bounds_hit": str([f["bounds_hit"] for f in gate["per_fold"]]),
+            "theta": fit["theta"],
+            **{k: cfg[k] for k in ("cg_maxiter", "cg_check_every", "compile_matvec")},
+            "cg_nonconverged": cg[0], "cg_worst_residual": cg[1],
+            "git_commit": cfg["git_commit"], "fit_time_s": t_fit, "gate_time_s": t_gate}
+
+
+def fold_thetas_record(f: dict) -> dict:
+    """One ``stage3_fold_thetas.json`` entry; ``well_datum`` only for a datum fit."""
+    return {"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
+            "r2_idw": f["r2_idw"], "theta": f["theta"],
+            **({"well_datum": f["well_datum"]} if "well_datum" in f else {})}
+
+
+def kfold_wells_frame(gate: dict, sids: list[str] | None) -> pd.DataFrame:
+    """``stage3_kfold_wells.csv``: one row per held-out entry, fold order, with its
+    absolute and own-mean anomaly scores for the model and IDW."""
+    rows = []
+    for f in gate["per_fold"]:
+        m = per_well_metrics(f["pred"], f["idw"], f["obs"])
+        for j, e in enumerate(np.asarray(f["entry"])):
+            rows.append({"entry": int(e), "sid": str(sids[int(e)]) if sids else "",
+                         "fold": int(f["fold"]), "layer": int(f["layer"][j]) + 1,
+                         "x": float(f["x"][j]), "y": float(f["y"][j]),
+                         "nn_dist_m": float(f["nn_dist"][j]),
+                         **{k: v[j].item() for k, v in m.items()}})
+    return pd.DataFrame(rows)
+
+
+def write_kfold_outputs(out: str, cfg: dict, fit: dict, gate: dict, cg: tuple,
+                        t_fit: float, t_gate: float, sids: list[str] | None) -> str:
+    """The k-fold outputs of a run (sequential or merged): ``stage3_fold_thetas.json``,
+    ``stage3_flow.csv``, ``stage3_kfold_wells.csv``, and the verdicts stamped into
+    ``stage3_theta.json``. Returns the CSV path."""
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "stage3_fold_thetas.json"), "w") as fh:
+        json.dump([fold_thetas_record(f) for f in gate["per_fold"]], fh, indent=1)
+    path = os.path.join(out, "stage3_flow.csv")
+    pd.DataFrame([flow_csv_row(cfg, fit, gate, cg, t_fit, t_gate)]).to_csv(path, index=False)
+    kfold_wells_frame(gate, sids).to_csv(os.path.join(out, "stage3_kfold_wells.csv"),
+                                         index=False)
+    # The theta file was written before the folds ran; stamp the verdict into it now so
+    # the forward twin and the viewer inherit it (they print it on every run).
+    theta_path = os.path.join(out, "stage3_theta.json")
+    try:
+        with open(theta_path) as fh:
+            obj = json.load(fh)
+        obj["meta"]["gate"] = {"r2_kfold": gate["r2_kfold"], "r2_idw": gate["r2_idw"],
+                               "margin": gate["r2_kfold"] - gate["r2_idw"],
+                               "verdict": ("PASS" if gate["r2_kfold"] > gate["r2_idw"]
+                                           else "FAIL"),
+                               "n_folds": gate["n_folds"], "seed": cfg["seed"],
+                               # own-mean anomaly verdict (kfold_scores), beside the legacy
+                               "r2_anom_kfold": gate["r2_anom_kfold"],
+                               "r2_anom_idw": gate["r2_anom_idw"],
+                               "margin_anom": gate["margin_anom_kfold"],
+                               "verdict_anom": gate["verdict_anom_kfold"]}
+        with open(theta_path, "w") as fh:
+            json.dump(obj, fh, indent=1)
+    except OSError as e:
+        print(f"could not stamp the verdict into {theta_path}: {e}")
+    return path
+
+
+def _jsonable(v):
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    if isinstance(v, np.generic):
+        return v.item()
+    return v
+
+
+def fold_record_to_json(rec: dict) -> dict:
+    """A ``kfold_wells`` fold record as JSON (floats round-trip exactly; NaN as NaN)."""
+    keys = FOLD_SCALAR_KEYS + FOLD_ARRAY_KEYS + (("well_datum",) if "well_datum" in rec
+                                                 else ())
+    return {k: _jsonable(rec[k]) for k in keys}
+
+
+def fold_record_from_json(obj: dict) -> dict:
+    rec = {k: obj[k] for k in FOLD_SCALAR_KEYS}
+    for k in FOLD_ARRAY_KEYS:
+        rec[k] = np.asarray(obj[k], dtype="int64" if k in ("entry", "layer") else "float64")
+    for k in ("pred", "idw", "obs"):
+        rec[k] = rec[k].reshape(int(obj["n_held"]), -1)
+    if "well_datum" in obj:
+        rec["well_datum"] = obj["well_datum"]
+    return rec
+
+
+def write_fold_file(out: str, gate: dict, cfg: dict, cg: tuple, t_gate: float,
+                    sids: list[str], dump: bool = False) -> str:
+    """``stage3_fold{K}.json`` of a ``--only-fold K`` job: the fold record (theta, datum,
+    held-out predictions), its per-well metrics, the partition it belongs to and the run
+    configuration ``merge_folds`` checks against the full fit and the other folds."""
+    (rec,) = gate["per_fold"]
+    path = os.path.join(out, FOLD_FILE.format(k=rec["fold"]))
+    os.makedirs(out, exist_ok=True)
+    obj = {"fold": int(rec["fold"]), "n_folds": gate["n_folds"], "seed": cfg["seed"],
+           "n_wells": gate["n_wells"], "n_sites": gate["n_sites"],
+           "colocation_rate": gate["colocation_rate"], "sids": list(map(str, sids)),
+           "cfg": cfg, "cg_nonconverged": int(cg[0]), "cg_worst_residual": float(cg[1]),
+           "gate_time_s": float(t_gate), "dump_predictions": bool(dump),
+           "record": fold_record_to_json(rec),
+           "per_well": kfold_wells_frame(gate, sids).to_dict(orient="list")}
+    with open(path + ".tmp", "w") as fh:
+        json.dump(obj, fh)
+    os.replace(path + ".tmp", path)          # a merge never reads a half-written fold
+    return path
+
+
+def write_fit_summary(out: str, cfg: dict, fit: dict, cg: tuple, t_fit: float,
+                      sids: list[str]) -> str:
+    """``stage3_fit_summary.json`` of a ``--fit-only`` run: its ``stage3_flow.csv``
+    columns, CG evidence and wells, for ``merge_folds``."""
+    path = os.path.join(out, FIT_SUMMARY)
+    os.makedirs(out, exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump({"cfg": cfg, "fit": fit, "cg_nonconverged": int(cg[0]),
+                   "cg_worst_residual": float(cg[1]), "fit_time_s": float(t_fit),
+                   "sids": list(map(str, sids))}, fh, indent=1)
+    return path
 
 
 def _run_policy_gate(args) -> None:
