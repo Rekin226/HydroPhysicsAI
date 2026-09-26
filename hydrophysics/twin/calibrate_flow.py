@@ -165,6 +165,89 @@ SW_SCALE_INIT = 0.25
 SW_SCALE_INIT_2 = (0.15, 0.25)
 DELAY_TAU_MIN_DAYS = 30.0
 
+# --- per-well datum in the observation operator (--well-datum fit, opt-in 2026-09-26) ---
+WELL_DATUM_MODES = ("off", "fit")
+WELL_DATUM_SD_DEFAULT = 5.0
+# Monthly residuals of one well are strongly autocorrelated, so a well's n observed months
+# carry about n / 12 independent looks at its level. The prior's weight is expressed in
+# months with this factor, so it is not swamped by counting 132 correlated months as 132
+# independent observations. A documented modelling constant, not a tuned one.
+WELL_DATUM_MONTHS_PER_OBS = 12.0
+
+
+def _profile_well_datum(pred: torch.Tensor, obs_z: torch.Tensor, mask: torch.Tensor | None,
+                        sd: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor,
+                                            torch.Tensor]:
+    """The MAP per-well datum ``d`` (``(W, 1)``, detached) for the current prediction.
+
+    The observation operator is ``pred_i(t) = h(cell_i, layer_i, t) + d_i`` with the prior
+    ``d_i ~ N(0, sd^2)``. The loss is quadratic in ``d``, so its minimum is exact and
+    closed-form (variable projection); the physical parameters are then optimised against
+    the profiled loss, and by the envelope theorem their gradient is the joint one.
+
+    Scaling. With per-month residual variance ``s^2`` (the within-well residual variance,
+    ``r - mean_i(r)``, which does not depend on ``d``) and ``WELL_DATUM_MONTHS_PER_OBS``
+    (``m``) correlated months per independent observation, well ``i``'s ``n_i`` observed
+    months carry ``n_eff_i = n_i / m`` independent looks at its level, but never fewer
+    than one: ``n_eff_i = max(n_i / m, 1)`` (a few months of a strongly autocorrelated
+    series are one look, not a fraction of one). The negative log posterior, multiplied
+    by the data term's own normalisation, is
+
+        MSE(pred + d, obs) + sum_i kappa_i d_i^2 / N,
+        kappa_i = n_i / n_eff_i * s^2 / sd^2 = min(n_i, m) s^2 / sd^2,
+
+    with ``N`` the number of observed cells, so
+
+        d_i = n_i rbar_i / (n_i + kappa_i) = rbar_i n_eff_i / (n_eff_i + s^2 / sd^2),
+
+    with ``rbar_i = mean_t(obs - pred)_i``.
+
+    A well observed for years (``n_i >> m``) keeps nearly its full mean residual; a well
+    with at most ``m`` observed months counts as one observation and keeps
+    ``1 / (1 + s^2 / sd^2)`` of it. Returns ``(d, kappa, s2, n)``: ``kappa`` the ``(W, 1)``
+    per-well ``kappa_i`` (months) and ``n`` the ``(W, 1)`` observed-month counts."""
+    with torch.no_grad():
+        r = obs_z - pred
+        mf = (torch.ones_like(pred) if mask is None else mask.to(pred.dtype))
+        n = mf.sum(dim=1, keepdim=True)
+        rbar = (r * mf).sum(dim=1, keepdim=True) / n.clamp_min(1.0)
+        s2 = (((r - rbar) ** 2) * mf).sum() / mf.sum().clamp_min(1.0)
+        kappa = n.clamp_max(WELL_DATUM_MONTHS_PER_OBS) * s2 / float(sd) ** 2
+        d = torch.where(n > 0, n * rbar / (n + kappa).clamp_min(1e-12),
+                        torch.zeros_like(rbar))
+    return d, kappa, s2, n
+
+
+def well_datum_vector(meta: dict | None, sids) -> np.ndarray | None:
+    """``(W,)`` fitted datum per well of ``sids`` from a theta meta's ``well_datum``
+    (``{sid: m}``), 0 for a well without one; ``None`` when the run fitted none. For
+    nuisance use only (e.g. ``uncertainty``'s residual): the datum never enters a flow
+    solve, a column, a forward projection or subsidence."""
+    wd = (meta or {}).get("well_datum")
+    if not wd:
+        return None
+    return np.array([float(wd.get(str(s), 0.0)) for s in sids], dtype="float64")
+
+
+def well_datum_stats(d: np.ndarray, n: np.ndarray | None = None,
+                     kappa: float | None = None) -> dict:
+    """Summary of a fitted datum vector for the meta and the CSVs."""
+    d = np.asarray(d, dtype="float64").ravel()
+    out = {"n": int(d.size), "mean_m": float(d.mean()) if d.size else float("nan"),
+           "mean_abs_m": float(np.abs(d).mean()) if d.size else float("nan"),
+           "rms_m": float(np.sqrt((d ** 2).mean())) if d.size else float("nan"),
+           "max_abs_m": float(np.abs(d).max()) if d.size else float("nan")}
+    if kappa is not None:
+        # kappa: the long-record prior weight m s^2 / sd^2; well i's is min(n_i, m) / m x it
+        out["kappa_months"] = float(kappa)
+        if n is not None and np.size(n):
+            nn = np.asarray(n, dtype="float64").ravel()
+            k_i = np.minimum(nn, WELL_DATUM_MONTHS_PER_OBS) / WELL_DATUM_MONTHS_PER_OBS * kappa
+            shrink = np.where(nn > 0, nn / np.maximum(nn + k_i, 1e-12), 0.0)
+            out["shrink_min"] = float(shrink.min())
+            out["shrink_median"] = float(np.median(shrink))
+    return out
+
 
 def set_delay_tau_max(years: float | None) -> None:
     """Delay-bed time-constant ceiling (``--delay-tau-max-years``, default 30)."""
@@ -1197,8 +1280,26 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              fix_sw_scale: float | None = None, delay_u0: str = "eq",
              delay_layers: tuple[int, ...] | None = None,
              aquitard: str = "off", zone_w: np.ndarray | None = None,
-             proximal_layered: bool = False) -> dict:
+             proximal_layered: bool = False, well_datum: str = "off",
+             well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
+             datum_mask: torch.Tensor | None = None) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    ``well_datum="fit"`` (``--well-datum fit``, opt-in 2026-09-26; homogeneous/zonal):
+    each well of ``obs_h`` carries a datum ``d_i`` in the observation operator,
+    ``pred_i(t) = h(cell_i, layer_i, t) + d_i``, with a Gaussian prior of sd
+    ``well_datum_sd`` m, in both loss variants (``_profile_well_datum`` gives the exact
+    MAP and the prior's scaling). The datum is an observation-operator parameter, not a
+    physical one: it never enters the flow solve, is not in ``theta`` (so not in
+    ``bounds_hit``, fold thetas or any downstream model) and comes back as
+    ``well_datum`` (``(W,)``, in ``obs_h`` row order) with ``well_datum_kappa`` (the
+    long-record prior weight ``m s^2 / sd^2``) and
+    ``well_datum_n``. ``r2`` stays the physical heads' in-sample R2 (comparable to
+    every earlier run); ``r2_with_datum`` adds the datum. ``datum_mask`` (``(W, T)``
+    bool, default: the loss mask) restricts the months that inform the datum and count
+    as its ``n_i`` -- ``main`` passes the months actually observed, so a back-filled
+    month (a copy of a neighbouring, possibly held-out, value) never sets a datum and a
+    well with no observed month gets ``d = 0``. Default off: bit-identical.
 
     ``proximal_layered`` (``--proximal-layered``, opt-in 2026-09-25; zonal only): the
     proximal zone(s) get per-layer ``log_T``/``log_S`` and learnable leakances instead of
@@ -1259,6 +1360,13 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         )
     if proximal_layered and param_mode != "zonal":
         raise ValueError("proximal_layered needs param_mode='zonal'")
+    if well_datum not in WELL_DATUM_MODES:
+        raise ValueError(f"well_datum must be one of {WELL_DATUM_MODES}, got {well_datum!r}")
+    use_datum = well_datum == "fit"
+    if use_datum and param_mode == "percell":
+        raise ValueError("well_datum='fit' is wired for param_mode homogeneous/zonal only")
+    if use_datum and not float(well_datum_sd) > 0.0:
+        raise ValueError(f"well_datum_sd must be > 0, got {well_datum_sd!r}")
 
     n_steps = recharge.shape[-1]
     A = model.grid.n_active
@@ -1273,6 +1381,14 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     obs_mask = torch.isfinite(obs_h)
     masked = not bool(obs_mask.all())
     obs_z = torch.where(obs_mask, obs_h, torch.zeros_like(obs_h)) if masked else obs_h
+    d_mask = None
+    if use_datum:
+        d_mask = obs_mask if masked else None
+        if datum_mask is not None:
+            if tuple(datum_mask.shape) != tuple(obs_h.shape):
+                raise ValueError(f"datum_mask {tuple(datum_mask.shape)} != obs_h "
+                                 f"{tuple(obs_h.shape)}")
+            d_mask = datum_mask.to(device=dev, dtype=torch.bool) & obs_mask
     obs_idx = obs_idx.to(device=dev)
     obs_layer = obs_layer.to(device=dev)
     recharge = recharge.to(dtype=torch.float64, device=dev)
@@ -1401,6 +1517,40 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         pm, om = pred.mean(dim=1, keepdim=True), obs_h.mean(dim=1, keepdim=True)
         return (((pred - pm) - (obs_h - om)) ** 2).mean() + level_weight * ((pm - om) ** 2).mean()
 
+    def _loss_datum(pred: torch.Tensor) -> torch.Tensor:
+        """``_loss`` with the per-well datum profiled out (``--well-datum fit``).
+
+        ``"level"``: ``MSE(pred + d, obs) + sum kappa_i d_i^2 / N`` (``_profile_well_datum``;
+        ``N`` = the loss's observed cells). ``"anomaly"``: the anomaly part is unchanged
+        (a constant cancels in it); the level term becomes ``level_weight x
+        mean_i[(pm_i + d_i - om_i)^2 + (kappa_i / n_i) d_i^2]`` -- the prior scaled by the
+        weight that loss puts on well ``i``'s level, so the MAP datum (shrinkage
+        ``n_i / (n_i + kappa_i)``) is the same under both losses. With a ``datum_mask``
+        narrower than the loss mask the datum is the MAP of the masked months and the
+        loss evaluates it (the physics still sees every loss month, as by default)."""
+        d, kappa, _, n_d = _profile_well_datum(pred, obs_z, d_mask, well_datum_sd)
+        if loss_mode == "level":
+            if masked:
+                mse = _masked_mse(pred + d, obs_z, obs_mask)
+                n_cells = obs_mask.sum().to(pred.dtype).clamp_min(1.0)
+            else:
+                mse = ((pred + d - obs_h) ** 2).mean()
+                n_cells = float(pred.numel())
+            return mse + (kappa * d ** 2).sum() / n_cells
+        if masked:
+            mf = obs_mask.to(pred.dtype)
+            n_w = mf.sum(dim=1, keepdim=True)
+            pm = (pred * mf).sum(dim=1, keepdim=True) / n_w.clamp_min(1.0)
+            om = (obs_z * mf).sum(dim=1, keepdim=True) / n_w.clamp_min(1.0)
+            has = (n_w > 0).to(pred.dtype)
+            anom = _masked_mse(pred - pm, obs_z - om, obs_mask)
+        else:
+            pm, om = pred.mean(dim=1, keepdim=True), obs_h.mean(dim=1, keepdim=True)
+            has = torch.ones_like(pm)
+            anom = (((pred - pm) - (obs_h - om)) ** 2).mean()
+        per_well = ((pm + d - om) ** 2 + kappa / n_d.clamp_min(1.0) * d ** 2) * has
+        return anom + level_weight * per_well.sum() / has.sum().clamp_min(1.0)
+
     fixed: dict[str, torch.Tensor] = {}
     if use_pumping and fix_eta is not None:
         fixed["log_eta"] = torch.full_like(theta.pop("log_eta").detach(),
@@ -1465,7 +1615,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         opt.zero_grad()
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
-        loss = _loss(pred)
+        loss = _loss_datum(pred) if use_datum else _loss(pred)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(free, 1.0)
         opt.step()
@@ -1547,10 +1697,25 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         print(f"    WARNING delay_is_elastic: tau < 3 dt in {elastic} -- the delay bed is "
               "acting as extra instant storage, not a slow release (raise "
               "--delay-tau-min-days)", flush=True)
-    return {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
-            "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
-            "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
-            "fixed": sorted(fixed), "loss_mode": loss_mode}
+    out = {"loss": float(loss.detach()), "epochs": epochs, "bounds_hit": hits,
+           "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
+           "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
+           "fixed": sorted(fixed), "loss_mode": loss_mode}
+    if use_datum:
+        # the MAP datum at the FINAL parameters (the loop's last one lags a step)
+        d, kappa, s2, n = _profile_well_datum(pred, obs_z, d_mask, well_datum_sd)
+        d_np = d.squeeze(-1).cpu().numpy()
+        # well_datum_kappa: the long-record prior weight m s^2 / sd^2 (months); a well with
+        # n_i observed months has kappa_i = min(n_i, m) / m x this (_profile_well_datum)
+        out.update({"well_datum": d_np,
+                    "well_datum_kappa": float(WELL_DATUM_MONTHS_PER_OBS * s2
+                                              / float(well_datum_sd) ** 2),
+                    "well_datum_sigma_m": float(torch.sqrt(s2)),
+                    "well_datum_n": n.squeeze(-1).cpu().numpy(),
+                    "well_datum_sd": float(well_datum_sd),
+                    "r2_with_datum": _r2(pred.cpu().numpy() + d_np[:, None],
+                                         obs_h.cpu().numpy())})
+    return out
 
 
 def sw_scale_tensor(v, device=None) -> torch.Tensor:
@@ -1647,8 +1812,17 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
                   E_full, recharge_full, ground_elev, recharge_layer: int = 0,
                   pump_layer: int = 1, sw_full: torch.Tensor | None = None,
                   sw_layer: int | None = None, rmse_k: float = 1.5,
-                  keep_arrays: bool = False) -> dict:
+                  keep_arrays: bool = False, datum: np.ndarray | None = None) -> dict:
     """Score a free-running continuation over the months the fit never saw.
+
+    ``datum`` (``(W,)`` m, ``--well-datum fit``): the per-well datum fitted on the fitted
+    months only (no held-out value enters it). Every legacy metric, the ``verdict`` and
+    ``arrays["pred"]`` stay the PHYSICAL heads, so they remain comparable with every
+    other run -- ``policy_gate.rank_key`` ranks on ``verdict``/``rmse_ratio``, and a
+    datum there would hand a datum run most of its held-out level error for free
+    (review 2026-09-26). The same verdict WITH the datum added unchanged to every month
+    comes back beside them as ``datum_*`` keys. ``drift_diag.fair_temporal_verdict``
+    removes its own fitted-period datum, so the fair verdict is invariant to ours.
 
     Since 2026-09-23 it also returns a first-class verdict (``temporal_verdict``): PASS
     needs the continuation's shape R2 to beat climatology's AND its RMSE to stay under
@@ -1721,6 +1895,12 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
     out.update(temporal_verdict(pred, obs, clim, T_fit, k=rmse_k))
     out["verdict_anom_legacy"] = ("PASS" if out["r2_anom_model"] > out["r2_anom_clim"]
                                   else "FAIL")
+    if datum is not None:
+        pred_d = pred + np.asarray(datum, dtype="float64").reshape(-1, 1)
+        out.update({f"datum_{k}": v for k, v in
+                    temporal_verdict(pred_d, obs, clim, T_fit, k=rmse_k).items()
+                    if k not in ("r2_shape_clim", "rmse_clim_m", "bias_clim_m", "rmse_k")})
+        out["datum_r2_anom_model"] = _anom(pred_d)
     if keep_arrays:
         out["arrays"] = {"pred": pred, "obs": obs, "clim": clim, "T_fit": int(T_fit)}
     return out
@@ -1840,8 +2020,18 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 delay_layers: tuple[int, ...] | None = None,
                 aquitard: str = "off", zone_w: np.ndarray | None = None,
                 ic_zone_of_cell: np.ndarray | None = None,
-                proximal_layered: bool = False, ic_layered: bool = False) -> dict:
+                proximal_layered: bool = False, ic_layered: bool = False,
+                well_datum: str = "off",
+                well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
+                datum_mask: torch.Tensor | None = None) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
+
+    ``well_datum="fit"``: each fold's fit gives its KEPT (in-fold) wells a datum in the
+    observation operator (``fit_flow``). A held-out well has no fitted datum, so it is
+    predicted with ``d = 0``: the physical head at its cell. The k-fold gate therefore
+    still tests absolute levels at unseen wells, which is what spatial interpolation
+    needs -- a datum cannot be known where no well was ever observed. ``datum_mask``
+    (``(W, T)``, the months that inform a datum; ``fit_flow``) is sliced to the fold.
 
     ``rivers`` is ``(RiverSet, layer, mode)`` or ``None``; it is attached to every fold's
     model. ``delay_storage``/``sw_field``/``fix_sw_scale`` pass through to ``fit_flow``.
@@ -1923,7 +2113,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        delay_storage=delay_storage, sw_field=sw_field, sw_layer=sw_layer,
                        fix_sw_scale=fix_sw_scale, delay_u0=delay_u0,
                        delay_layers=delay_layers, aquitard=aquitard, zone_w=zone_w,
-                       proximal_layered=proximal_layered)
+                       proximal_layered=proximal_layered, well_datum=well_datum,
+                       well_datum_sd=well_datum_sd,
+                       datum_mask=None if datum_mask is None else datum_mask[keep])
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -1944,6 +2136,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 h = m(h0_eval, recharge,
                      torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
                                  device=fdev), n_steps)
+            # held-out wells: d = 0 under --well-datum fit (no datum without a well)
             p = h[obs_layer[held].to(fdev), obs_idx[held].to(fdev), 1:].cpu().numpy()
         src = xy[obs_idx[keep].numpy()]
         tgt = xy[obs_idx[held].numpy()]
@@ -2370,6 +2563,21 @@ def main(argv=None) -> None:
                     help="'anomaly' fits each well's departures from its own mean plus "
                          "--level-weight x the means (2026-09-18); 'level' is plain MSE")
     ap.add_argument("--level-weight", type=float, default=0.1)
+    ap.add_argument("--well-datum", choices=WELL_DATUM_MODES, default="off",
+                    help="'fit': each calibration well carries a datum d_i in the "
+                         "observation operator (pred = model head + d_i), fitted with the "
+                         "physical parameters under a N(0, --well-datum-sd^2) prior, in both "
+                         "--loss variants. Not physical: never enters the flow solve, the "
+                         "column, forward runs or subsidence; recorded per sid in theta meta "
+                         "(well_datum). Temporal gate: fitted on the fitted months, applied "
+                         "unchanged to the held-out ones. k-fold: held-out wells use d=0. "
+                         "Homogeneous/zonal only. 'off' (default): no datum")
+    ap.add_argument("--well-datum-sd", type=float, default=WELL_DATUM_SD_DEFAULT,
+                    metavar="METRES",
+                    help="prior sd of the per-well datum (default 5 m). The prior weight is "
+                         "kappa = min(n, 12) s^2 / sd^2 months (s = within-well residual sd, "
+                         "n = the well's observed fitted months), so a well keeps "
+                         "n / (n + kappa) of its mean residual")
     ap.add_argument("--l-min", type=float, default=None,
                     help="leakance floor in 1/day (default 1e-8): raises BOUNDS['log_L']")
     # --- opt-in physics of 2026-09-23 (G1 drift, G6 rivers); defaults reproduce the past
@@ -2497,6 +2705,10 @@ def main(argv=None) -> None:
         raise SystemExit("--proximal-layered needs --param-mode zonal")
     if args.ic_layered_proximal and not args.ic_merged_proximal:
         raise SystemExit("--ic-layered-proximal refines --ic-merged-proximal; pass both")
+    if args.well_datum != "off" and args.param_mode == "percell":
+        raise SystemExit("--well-datum fit needs --param-mode homogeneous or zonal")
+    if args.well_datum != "off" and not args.well_datum_sd > 0.0:
+        raise SystemExit("--well-datum-sd must be > 0")
     delay_layers = parse_delay_layers(args.delay_layers)
     if args.delay_u0 != "eq" and args.delay_storage == "off":
         raise SystemExit("--delay-u0 learned needs --delay-storage global or zonal")
@@ -2714,6 +2926,11 @@ def main(argv=None) -> None:
     _reset_cg_stats()
     t0 = time.perf_counter()
     E_full, recharge_full, sw_full = E, recharge_field, sw_field
+    # --well-datum fit: only months actually observed within the fitted period inform a
+    # datum -- a back-filled month copies a neighbouring value, for a late-starting well a
+    # held-out one, which would leak held-out levels into d_i
+    datum_mask = (torch.from_numpy(np.isfinite(obs_raw_full[:, 1:][:, :T_fit]))
+                  if args.well_datum == "fit" else None)
     if E is not None:
         E = E[..., :T_fit]
     if recharge_field is not None:
@@ -2732,15 +2949,37 @@ def main(argv=None) -> None:
                    sw_field=sw_field, sw_layer=args.sw_layer, fix_sw_scale=args.fix_sw_scale,
                    delay_u0=args.delay_u0, delay_layers=delay_layers,
                    aquitard=args.aquitard_storage, zone_w=zone_w,
-                   proximal_layered=args.proximal_layered)
+                   proximal_layered=args.proximal_layered, well_datum=args.well_datum,
+                   well_datum_sd=args.well_datum_sd, datum_mask=datum_mask)
     t_fit = time.perf_counter() - t0
+    datum_np = datum_meta = None
+    if args.well_datum == "fit":
+        # fitted on obs_h, i.e. the fitted months only (T_fit); held-out months never enter
+        datum_np = np.asarray(ins["well_datum"], dtype="float64")
+        dstats = well_datum_stats(datum_np, ins["well_datum_n"], ins["well_datum_kappa"])
+        dstats["sigma_within_m"] = ins["well_datum_sigma_m"]
+        dstats["n_wells_no_obs"] = int((np.asarray(ins["well_datum_n"]) == 0).sum())
+        dstats["r2_insample_with_datum"] = ins["r2_with_datum"]
+        datum_meta = {"well_datum": {sid: float(v) for sid, v in zip(sids_used, datum_np,
+                                                                     strict=True)},
+                      "well_datum_mode": "fit", "well_datum_sd": float(args.well_datum_sd),
+                      "well_datum_months_per_obs": WELL_DATUM_MONTHS_PER_OBS,
+                      "well_datum_fit_months": int(T_fit), "well_datum_stats": dstats}
+        print(f"--well-datum fit (sd {args.well_datum_sd:g} m): {dstats['n']} wells, mean "
+              f"{dstats['mean_m']:+.2f} m, mean |d| {dstats['mean_abs_m']:.2f} m, rms "
+              f"{dstats['rms_m']:.2f} m, max |d| {dstats['max_abs_m']:.2f} m; long-record kappa "
+              f"{dstats['kappa_months']:.2f} months (within-well sd "
+              f"{dstats['sigma_within_m']:.2f} m, min shrink {dstats['shrink_min']:.3f}); "
+              f"in-sample R2 {ins['r2']:+.3f} physical, {ins['r2_with_datum']:+.3f} with "
+              "datum", flush=True)
     temporal = None
     if args.holdout_months > 0:
         temporal = temporal_gate(m, ins, h0_all, obs_h_full_t, obs_idx, obs_layer, T_fit,
                                  E_full, recharge_full, ground_elev,
                                  recharge_layer=args.recharge_layer, pump_layer=args.pump_layer,
                                  sw_full=sw_full, sw_layer=args.sw_layer,
-                                 rmse_k=args.temporal_rmse_k, keep_arrays=True)
+                                 rmse_k=args.temporal_rmse_k, keep_arrays=True,
+                                 datum=datum_np)
         arrs = temporal.pop("arrays")
         # fair verdict (drift_diag.fair_temporal_verdict): a pure scoring addition beside
         # the legacy one -- per-well datum from the fitted months, raw (never back-filled)
@@ -2754,7 +2993,10 @@ def main(argv=None) -> None:
         np.savez_compressed(os.path.join(args.out, "stage3_temporal_pred.npz"),
                             pred=arrs["pred"], obs=arrs["obs"], clim=arrs["clim"],
                             T_fit=arrs["T_fit"], sids=np.array(sids_used),
-                            obs_raw=obs_raw_full[:, 1:])
+                            obs_raw=obs_raw_full[:, 1:],
+                            # pred is the PHYSICAL head; pred + well_datum[:, None] is the
+                            # datum-shifted prediction the datum_* metrics score
+                            **({"well_datum": datum_np} if datum_np is not None else {}))
         pd.DataFrame([{**temporal, "holdout_months": args.holdout_months,
                        "no_backfill": bool(args.no_backfill),
                        **_input_opts_record(args),
@@ -2765,6 +3007,7 @@ def main(argv=None) -> None:
                        "sw_components": args.sw_components,
                        "spread_km": ins.get("theta", {}).get("spread_km"),
                        "epochs": args.epochs,
+                       **_well_datum_record(datum_meta),
                        "git_commit": _git_commit()}]).to_csv(
             os.path.join(args.out, "stage3_temporal.csv"), index=False)
         print(f"  TEMPORAL VERDICT: {temporal['verdict']} -- shape R2 "
@@ -2773,6 +3016,11 @@ def main(argv=None) -> None:
               f"climatology {temporal['rmse_clim_m']:.2f} m (ratio "
               f"{temporal['rmse_ratio']:.2f}, must be < {args.temporal_rmse_k:g}); bias "
               f"{temporal['bias_model_m']:+.2f} m", flush=True)
+        if datum_np is not None:
+            print(f"  with the datum (not comparable with other runs' verdicts): "
+                  f"{temporal['datum_verdict']} -- RMSE {temporal['datum_rmse_model_m']:.2f} m "
+                  f"(ratio {temporal['datum_rmse_ratio']:.2f}), bias "
+                  f"{temporal['datum_bias_model_m']:+.2f} m", flush=True)
         if fair.get("n_cells"):
             print(f"  FAIR TEMPORAL VERDICT: {fair['verdict_fair']} -- datum RMSE "
                   f"{fair['rmse_datum_model_m']:.2f} m vs best baseline "
@@ -2855,7 +3103,9 @@ def main(argv=None) -> None:
                   "fix_sw_scale": args.fix_sw_scale,
                   "temporal_rmse_k": args.temporal_rmse_k,
                   "no_backfill": bool(args.no_backfill),
-                  **_input_opts_record(args)})
+                  **_input_opts_record(args),
+                  # opt-in 2026-09-26: written only when set, so default meta is unchanged
+                  **(datum_meta or {})})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -2901,7 +3151,9 @@ def main(argv=None) -> None:
                        delay_layers=delay_layers, aquitard=args.aquitard_storage,
                        zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
                        proximal_layered=args.proximal_layered,
-                       ic_layered=args.ic_layered_proximal)
+                       ic_layered=args.ic_layered_proximal,
+                       well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
+                       datum_mask=datum_mask)
     t_gate = time.perf_counter() - t0
     with open(os.path.join(args.out, "stage3_fold_thetas.json"), "w") as fh:
         json.dump([{"fold": f["fold"], "n_held": f["n_held"], "r2_kfold": f["r2_kfold"],
@@ -2967,6 +3219,7 @@ def main(argv=None) -> None:
                    "river_c_split": args.river_c_split,
                    "no_backfill": bool(args.no_backfill),
                    **_input_opts_record(args),
+                   **_well_datum_record(datum_meta),
                    "epochs": args.epochs,
                    "n_folds": gate["n_folds"], "seed": args.seed,
                    "n_sites": gate["n_sites"],
@@ -3009,6 +3262,16 @@ def _input_opts_record(args) -> dict:
             # opt-in 2026-09-25, written only when set so default outputs keep their columns
             **({"ic_layered_proximal": True} if args.ic_layered_proximal else {}),
             **({"proximal_layered": True} if args.proximal_layered else {})}
+
+
+def _well_datum_record(datum_meta: dict | None) -> dict:
+    """CSV columns for ``--well-datum fit`` (none when off, so default CSVs keep their
+    columns): the mode, the prior sd and the fitted datum's summary statistics."""
+    if not datum_meta:
+        return {}
+    return {"well_datum": datum_meta["well_datum_mode"],
+            "well_datum_sd": datum_meta["well_datum_sd"],
+            **{f"well_datum_{k}": v for k, v in datum_meta["well_datum_stats"].items()}}
 
 
 def _run_policy_gate(args) -> None:

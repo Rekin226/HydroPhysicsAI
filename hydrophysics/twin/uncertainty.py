@@ -65,6 +65,7 @@ from .calibrate_flow import (
     _extension_readouts,
     _r2,
     set_compile_matvec,
+    well_datum_vector,
 )
 from .forward import Member, attach_sw_recharge, build_model, load_members, rollout, sw_hist
 from .inputs import input_options, load_twin_inputs
@@ -308,13 +309,23 @@ def jacobian(inp, member: Member, index, device, eps: float = 1e-3,
              log=print) -> tuple[np.ndarray, np.ndarray]:
     """``(J, residual)``: J is (n_obs, n_params) by central finite differences in the
     log-parameters (two rollouts per parameter, a few seconds each on the GPU); residual
-    is pred - obs at the fit. Finite differences rather than forward-mode autodiff because
-    the implicit solve defines only a reverse-mode adjoint."""
+    is pred - obs at the fit (with a ``--well-datum fit`` run's datum added, and J then
+    centred per well over time: the datum profiled out). Finite differences rather than
+    forward-mode autodiff because the implicit solve defines only a reverse-mode
+    adjoint."""
     obs = inp.obs_h_filled[:, 1:]
     vec = np.array([np.atleast_1d(np.asarray(member.theta[k], dtype="float64")).reshape(-1)[i]
                     for k, i in index])
     t0 = time.perf_counter()
     base = predict_at_wells(inp, member, device)
+    # --well-datum fit: the per-well datum is an observation-operator nuisance (not in
+    # theta, so never perturbed or sampled). The residual is taken at its fitted value;
+    # the Jacobian is profiled over it below (review 2026-09-26)
+    datum = well_datum_vector(member.meta, inp.sids)
+    if datum is not None:
+        base = base + datum[:, None]
+        log(f"  well datum held at its fit ({int((datum != 0).sum())} wells, rms "
+            f"{float(np.sqrt((datum ** 2).mean())):.2f} m)")
     resid = (base - obs).reshape(-1)
     log(f"  base prediction R2 {_r2(base, obs):+.4f} ({time.perf_counter() - t0:.1f}s)")
     cols = []
@@ -330,7 +341,18 @@ def jacobian(inp, member: Member, index, device, eps: float = 1e-3,
         cols.append(((p_plus - p_minus) / (2 * eps)).reshape(-1))
         if (j + 1) % 8 == 0 or j == len(index) - 1:
             log(f"  jacobian column {j + 1}/{len(index)} ({time.perf_counter() - t0:.0f}s)")
-    return np.stack(cols, axis=1), resid
+    J = np.stack(cols, axis=1)
+    if datum is not None:
+        # A run with a per-well datum explains any per-well constant head shift with d_i,
+        # not with the physics: holding d fixed would credit the physics with level
+        # information the datum absorbs (an over-confident posterior). Profile d out: each
+        # well's rows minus their mean over time (the datum treated as free, which is
+        # exact for the long-record wells that keep ~97 % of their mean residual and
+        # conservative -- a wider posterior -- for the few the prior shrinks).
+        W = datum.shape[0]
+        Jw = J.reshape(W, -1, J.shape[1])
+        J = (Jw - Jw.mean(axis=1, keepdims=True)).reshape(J.shape)
+    return J, resid
 
 
 def laplace(J: np.ndarray, resid: np.ndarray, prior_sd: float = 2.0) -> tuple[np.ndarray, float]:

@@ -28,7 +28,7 @@ import pandas as pd
 
 from .drift_diag import fair_temporal_verdict
 
-NON_PRED_KEYS = ("obs", "clim", "persist", "T_fit", "sids", "obs_raw")
+NON_PRED_KEYS = ("obs", "clim", "persist", "T_fit", "sids", "obs_raw", "well_datum")
 LEGACY_COLS = ("verdict", "rmse_ratio", "r2_shape_model", "r2_shape_clim", "rmse_model_m",
                "rmse_clim_m")
 
