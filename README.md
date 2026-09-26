@@ -32,32 +32,37 @@ pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction 
 
 ## Results
 
-| | gate | result |
+| | test | result |
 |---|---|---|
-| **Flow model** | held-out wells, 5 site-grouped folds, must beat inverse-distance interpolation | **PASS**, R² +0.804 vs +0.702, with a physical pump conversion and a 10 km stress radius |
-| **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.589** out of fold, bias +0.1 cm |
-| **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.579**, RMSE 6.2 cm |
-| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 4.5 ± 0.8 cm baseline · 3.6 with irrigation cut 30 % · 2.7 with aquaculture retired (all 18 parameter sets agree on both effects) |
-| **Creep uncertainty** | same, with a 30-year creep ceiling (equal leveling skill) | baseline 8.2 cm; the policy effects move by under 0.1 cm |
-| **Re-run cost** | 18 members × 3 policies × 21 years | 609 s on one GPU; FNO surrogate 13–34× faster again |
+| **Held-out years** | fit 2012–2019, free-run 2020–2022, 147 wells, after each well's fitted-period datum; must come within 1.25x of climatology plus trend and match its shape | **PASS**, ratio 1.11, shape R² +0.45 vs +0.36 |
+| **Unseen wells, head changes** | 5 site-grouped folds, each series de-meaned, against inverse-distance interpolation | FAIL, R² +0.34 vs +0.61 (the previous model: −1.43) |
+| **Unseen wells, absolute level** | same folds, raw heads | FAIL, R² +0.64 vs +0.70 (the previous model passed, +0.80) |
+| **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.652** out of fold |
+| **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.639**, RMSE 5.7 cm |
+| **Projection 2023–2032** | fan-mean subsidence ± ensemble | 2.9 ± 0.6 cm baseline · 1.9 with irrigation cut 30 % · 1.6 with aquaculture retired |
+| **Creep uncertainty** | same, with a 30-year creep ceiling | baseline 3.2 cm; policy effects move by under 0.05 cm |
+| **Policy timing** | when the avoided subsidence arrives | within months, then flat: the policy gives a one-time rebound and does not slow the ongoing 0.3 cm/yr sinking (the previous model slowed it; untested which is right) |
+| **Re-run cost** | 36 members × 3 policies × 21 years | about 50 min on one GPU; FNO surrogate 13–34× faster |
 
-Every verdict, including the two failed configurations that preceded the pass, is
-recorded in [`docs/superpowers/STATE.md`](docs/superpowers/STATE.md).
+Every verdict, including the failed configurations on the way, is recorded in
+[`docs/superpowers/STATE.md`](docs/superpowers/STATE.md) §0.
 
-An earlier projection of 10.7 cm was about half artefact: a column start-up release in
-the proximal zone and a restart step at the forecast origin. Both are fixed; hindcast skill
-is unchanged (state doc §0).
+**What the model is.** Each monitoring well carries a learned constant offset (its
+*datum*): a 1 km cell cannot hold the 30 m vertical head differences measured inside
+single well nests on the upper fan, and asking the physics to fit those levels spoiled
+its dynamics. The datum sits in the comparison with observations only; it never enters
+the solver, the compaction column or the projections. With it, the model is the first
+to pass the held-out-years test, and its subsidence skill rose.
 
-**Two caveats govern the policy numbers.** First, the flow gate holds out *wells*: it
-validates spatial interpolation under the recorded forcing. A gate that holds out
-*years* (fit to 2019, free-run 2020–2022) fails for every model tried. Most of that error
-is a per-well level offset already present in the fitted years, concentrated in the
-proximal fan; after removing a per-well datum the model is still 1.5–2x worse than
-climatology plus trend. The decade-scale trend is the model's, not yet validated. Second, the gated model's pumping stress is
-physical (efficiency 0.5, 40 m extra head, irrigation return flow) only because each
-cell's electricity is spread over a learned radius that sits at its 10 km bound; the
-earlier free fit passed by switching the stress off. Both are stated with numbers in
-the state doc.
+**What it is not.** At wells it never saw, it predicts both head changes and absolute
+levels worse than simple interpolation, so it is a policy-response tool, not a head
+interpolator. The 14 multi-layer compaction wells, an independent check, lost the skill
+they had under the previous model (+0.01 against +0.30). The pumping stress is physical
+(efficiency 0.5, 40 m extra head, irrigation return flow), with each cell's electricity
+spread over a learned radius. The previous model needed 10 km, at its bound; with the datum
+the radius is no longer identified (2.7 km in the full fit, 0.5-10 km across folds), which
+says the wide radius was compensating for the level misfit. An earlier
+projection of 10.7 cm was about half artefact; that is fixed (state doc §0b).
 
 ## Data
 
@@ -107,8 +112,8 @@ python -m hydrophysics.twin.explorer3d --forward-npz results/twin_forward/cut30.
 ### The application
 
 ```bash
-python -m hydrophysics.twin.viewer_app --forward results/twin_forward/physical_spread_fixed.npz \
-    --basis results/twin_forward/response_basis.npz --out results/twin/twin_app.html
+python -m hydrophysics.twin.viewer_app --forward results/twin_forward/datum_gate.npz \
+    --basis results/twin_forward/response_basis_datum.npz --out results/twin/twin_app.html
 ```
 
 `results/twin/twin_app.html` is the twin as a decision page: one self-contained file of
@@ -175,19 +180,18 @@ in `docs/GPU_SERVER.md`.
 
 ## Limits
 
-- The held-out-years gate fails (RMSE 6.6 m at the wells against 2.0 m for climatology;
-  1.5–2x the climatology-plus-trend baseline after a per-well datum). The error lives in the
-  proximal fan, whose deep layers have one well between them; its merged-aquifer
-  representation is the next structural change. Slow storage, canal deliveries and river
-  boundaries were each screened and none closes the gap.
-- The pumping stress has to be spread over about 10 km for the model to generalise,
-  which is wider than a well's drawdown cone. It is standing in for something not yet
-  modelled, probably that the census locates meters rather than wells. Widening it to
-  21 km scores marginally better on the head gate and erases the policy response, so the
-  head gate alone is not a sufficient selection criterion. Policy sensitivities are
-  consequences of a gated model, not validated forecasts.
+- At wells it never saw, the model is worse than interpolation on head changes (+0.34 vs
+  +0.61) and on absolute level (+0.64 vs +0.70), worst on the upper fan, whose deep layers
+  have one well between them. It passes the held-out-years test only after each well's
+  datum; its absolute heads at a well carry that offset. Slow storage, canal deliveries,
+  river boundaries and a layered upper-fan aquifer were each screened and rejected.
+- The 2022 head recovery after the drought is missed by every model tried.
+- The pumping-stress spread radius is not identified (0.5-10 km across folds); the
+  ensemble carries that spread. Policy sensitivities are consequences of a tested model,
+  not validated forecasts.
 - The mid-zone viscous time constant reaches the length of the record; a 30-year ceiling
-  fits leveling equally well and adds 3.6 cm to the baseline projection (shown as a range).
+  fits leveling equally well and adds 0.3 cm to the baseline projection (shown as a range).
+- The 14 multi-layer compaction wells lost the skill they had under the previous model.
 - The per-zone column produces a subsidence step at the 182 km mid/distal line that the
   leveling data do not show; the app marks it.
 - The posterior is a local Laplace approximation (`--bounded truncnorm` samples parameters

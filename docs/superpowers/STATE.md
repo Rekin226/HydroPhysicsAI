@@ -11,7 +11,86 @@ The goal, stated once so the gates below have a point:
 
 ---
 
-## 0. State on 2026-09-24
+## 0. State on 2026-09-27: the per-well datum model is the deliverable
+
+**The deliverable.** Flow model `results/twin_runs/stage3_datum_gate/`: the physical pump
+conversion of the previous model with a learned stress-spread radius, plus merged proximal initial heads
+(`--ic-merged-proximal`), SRTM ground elevation (`--ground-elev dem`), the proximal split
+at 208 km with a 58 m²/d transmissivity floor, and a **per-well datum** in the observation
+operator (`--well-datum fit --well-datum-sd 5`, rms 7.3 m, max 38 m). The datum carries each
+well's sub-grid level (single well nests hold 30 m vertical head differences a 1 km cell
+cannot); it never enters the solver, the column or the projections. Column
+`coupled_leveling/`, projection `results/twin_forward/datum_gate` (36 members, `--apex-hold
+calibrated`, restart with the datum subtracted, rheology axis 11 / 30-yr creep ceiling).
+
+| test | previous (10 km, `stage3_spreadL_gate`) | **datum model** | reference |
+|---|---|---|---|
+| held-out years, fair ratio (≤ 1.25 passes) | 2.12 FAIL | **1.11 PASS** | climatology + trend |
+| held-out years, shape R² | −1.03 | **+0.45** | climatology +0.36 |
+| unseen wells, head-change (anomaly) R² | −1.43 FAIL | **+0.34** FAIL | IDW +0.61 |
+| unseen wells, absolute R² | **+0.80 PASS** | +0.64 FAIL | IDW +0.70 |
+| leveling, column out of fold | +0.589 | **+0.652** | |
+| leveling, full-chain hindcast | +0.580 | **+0.639** | |
+| compaction rings (14, independent) | **+0.295** | +0.009 | |
+| policy response | PASS | PASS | |
+
+**Why it was adopted.** The twin turns head *changes* into subsidence under a policy. The
+datum model is better on every test of that (held-out years, head changes at unseen wells,
+leveling, and the creep uncertainty below) and is the first model to pass the held-out-years
+test. It gives up absolute head level at unseen wells, which the column does not use. Two
+regressions are stated wherever it is shown: the absolute k-fold now fails, and the 14 rings
+lose their skill. At wells it never saw it is still worse than interpolation on both counts:
+it is a policy-response tool, not a head interpolator.
+
+The anomaly k-fold verdict (`twin/kfold_scores.py`, pre-registered 2026-09-26) is what
+exposed the previous model: it passed the absolute test on levels while its head swings at
+unseen wells were several times too large (proximal sd up to 16 m against 1-3 m observed).
+
+| fan-mean forward subsidence 2023-2032 | 11-yr creep ceiling | 30-yr creep ceiling |
+|---|---|---|
+| baseline | **2.88 ± 0.60 cm** | 3.18 ± 0.66 cm |
+| irrigation −30 % from 2026 | 1.93 (avoids 0.95) | 2.25 (avoids 0.93) |
+| aquaculture retired from 2026 | 1.57 (avoids 1.31) | 1.88 (avoids 1.30) |
+
+The creep ceiling now moves the baseline by 0.3 cm (it moved the previous model's by 3.4).
+
+**The two models agree on the size of the policy effect by 2032 and disagree on its
+mechanism.** In the datum model a pumping cut gives a one-time rebound within months
+(irrigation −30 %: 0.93 cm avoided by end 2026, 0.94 by 2032; aquaculture retired: 1.30 /
+1.31 cm) and the fan-mean sinking rate over 2028-2032 is 0.30 cm/yr with or without the
+policy: the ongoing sinking is creep left over from past drawdown, and a 2030 start gives
+the same 2032 number as 2026. In the previous model the effect grew (0.43 / 0.67 / 0.91 cm
+for irrigation by 2026 / 2029 / 2032) because the policy slowed the sinking from 0.40 to
+0.32 cm/yr. The record has not tested which is right: the leveling network sees the sum,
+not the split between elastic rebound and slowed creep. The app states this beside the
+avoided-subsidence number (`response_basis_datum`, rebuilt 2026-09-27 on this model;
+the fast estimate is within 8.7 % / 3.1 % of the two solved policies).
+The previous model's projection under the same apex handling (`physical_spread_apex`): 4.47 /
+3.56 / 2.68 cm.
+
+**Built 2026-09-26/27:** `--well-datum` (closed-form per-well offset under a prior; fitted
+months only, no leakage), `kfold_scores` (anomaly verdict), `--only-fold` + `merge_folds`
+(k-fold as parallel MPS jobs, identical to sequential), datum-aware forward restart and
+nudging, `--apex-hold calibrated` (the projection used to re-pin the apex boundary to each
+restart field, up to 24 m), `--proximal-layered` and `--ic-layered-proximal` (screened, no
+gain). CI: the torch job, red since at least 2026-09-19, is green (plain `pytest` cannot
+import `tests.*`).
+
+**The 10 km stress radius was a symptom of the level misfit.** With the datum carrying each
+well's level, the full-record fit puts the spread radius at 2.71 km, interior to its bounds,
+and the five folds scatter over the whole range (10, 1.94, 0.5, 0.5, 0.5 km). The radius is
+not identified once levels are out of the physics' way, so the ensemble spans 0.5-10 km and
+the policy effects above already carry that spread. The earlier reading ("the census
+locates meters, not wells") is not needed to explain it.
+
+**Still open.** At unseen wells the model is worse than interpolation on head changes
+(+0.34 vs +0.61), worst in the proximal fan. The stress radius is not identified. The
+2022 recovery is missed by every model. The 182 km column step: see the app's caveat for its
+size under this model.
+
+---
+
+## 0b. State on 2026-09-24 (superseded deliverable)
 
 **The deliverable.** Flow model `results/twin_runs/stage3_spreadL_gate/` (physical pump
 conversion, 10 km stress spread; head k-fold +0.804 vs IDW +0.702), its per-zone column
