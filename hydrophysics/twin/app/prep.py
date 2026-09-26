@@ -381,23 +381,40 @@ def paired_deltas(members: pd.DataFrame) -> dict:
 AGREE_MIN = 0.8             # a cell's change counts as agreed when this share of sets agree
 
 
-def load_member_fields(path: str) -> dict:
+def load_member_fields(path: str, rheology: str | None = None) -> dict:
     """Read the ``--save-members yearly`` sidecar -> subsidence in cm, head in m.
 
     ``subs`` has shape (S, M, A, Y), where M runs over member x ic x rheology. ``headL2``
     has shape (S, Mh, A, Y). ``sets`` gives each subsidence member's parameter-set key
     (flow member, plus rheology when there is more than one). The initial fields of a set
-    are one opinion, as in :func:`paired_deltas`."""
+    are one opinion, as in :func:`paired_deltas`.
+
+    ``rheology`` keeps only the subsidence members of that column (a run with a rheology
+    axis carries every member under each column; the page's numbers are the first
+    column's, the others are a caveat on the baseline). Unknown labels raise."""
     z = np.load(path, allow_pickle=False)
     rheo = [str(v) for v in z["rheology"]]
     mem = [str(v) for v in z["member"]]
+    ic = [int(v) for v in z["ic"]]
+    keep = np.ones(len(rheo), dtype=bool)
+    if rheology is not None:
+        if rheology not in rheo:
+            raise ValueError(f"{path}: no members of rheology {rheology!r} "
+                             f"(has {sorted(set(rheo))})")
+        keep = np.array([r == rheology for r in rheo])
+    rheo = [r for r, k in zip(rheo, keep, strict=True) if k]
+    mem = [m for m, k in zip(mem, keep, strict=True) if k]
+    ic = [i for i, k in zip(ic, keep, strict=True) if k]
     multi = len(set(rheo)) > 1
-    return {"subs": z["subs_members_yr"].astype("float32") * float(z["subs_scale_m"]) * 100.0,
+    subs = z["subs_members_yr"]
+    if not keep.all():
+        subs = subs[:, keep]
+    return {"subs": subs.astype("float32") * float(z["subs_scale_m"]) * 100.0,
             "headL2": z["headL2_members_yr"].astype("float32") * float(z["head_scale_m"]),
             "years": [int(y) for y in z["years"]],
             "scenario_names": [str(v) for v in z["scenario_names"]],
             "sets": [f"{m}|{r}" if multi else m for m, r in zip(mem, rheo, strict=True)],
-            "member": mem, "ic": [int(v) for v in z["ic"]],
+            "member": mem, "ic": ic, "rheology": rheo,
             "head_sets": [str(v) for v in z["head_member"]]}
 
 
@@ -724,6 +741,75 @@ def fast_share(fan_delta: np.ndarray, dates, start_year: int, horizon: int = -1)
     sh = d[first] / end
     j = int(np.argmax(sh))
     return {"dec": float(sh[-1]), "peak": float(sh[j]), "peak_month": str(idx[first[j]])[:7]}
+
+
+TIMING_AFTER = (1, 4, 10)   # years of policy at which the avoided subsidence is read
+RATE_YEARS = 5              # the late sinking rate is measured over the last this many years
+SLOWS_MIN = 0.05            # a policy "slows the sinking" when it cuts that rate by >= 5 %
+GROWS_MIN = 0.10            # ... and its benefit "grows" when the horizon value exceeds the
+                            # first year's by >= 10 %
+
+
+def effect_timing(base_ye: np.ndarray, pol_ye: np.ndarray, years: list[int], start: int,
+                  after=TIMING_AFTER, rate_years: int = RATE_YEARS) -> dict:
+    """When a policy's benefit arrives, and whether it slows the ongoing sinking.
+
+    ``base_ye`` and ``pol_ye`` are fan-mean subsidence (cm, positive = sinking) at the
+    year-ends ``years`` for the baseline and the policy, which starts in January of
+    ``start``. Returns:
+
+    - ``at``: the avoided subsidence (baseline minus policy, positive = benefit, counted
+      from the year-end before the start) at Dec of the ``n``-th policy year for each
+      ``n`` in ``after``, clipped to the horizon and without duplicates -> ``[{n, year,
+      avoid}]``. The last entry is always the horizon.
+    - ``rate_base`` and ``rate_pol``: the fan-mean sinking rate over the last
+      ``rate_years`` years (cm/yr), and ``rate_years_span`` = [first, last] calendar year.
+      The window never reaches back past Dec of the first policy year, so a late start's
+      own rebound is not read as a change of rate (it is shorter then).
+    - ``first_share``: the first year's avoided subsidence over the horizon's.
+    - ``slows``: the policy cuts the late rate by at least ``SLOWS_MIN`` of the baseline's.
+    - ``grows``: the horizon's benefit exceeds the first year's by at least ``GROWS_MIN``.
+
+    A benefit that arrives at once and stops (``slows`` and ``grows`` false) is a one-time
+    rebound of the heads: it leaves the sinking that past drawdown still drives untouched,
+    so a later start reaches the same horizon value.
+    """
+    b = np.asarray(base_ye, dtype="float64")
+    p = np.asarray(pol_ye, dtype="float64")
+    years = [int(y) for y in years]
+    avoid = b - p
+    y0 = years.index(start - 1) if (start - 1) in years else None
+    if y0 is not None:
+        avoid = avoid - avoid[y0]
+    at, seen = [], set()
+    for n in after:
+        y = min(start + n - 1, years[-1])
+        if y < years[0] or y in seen or y not in years:
+            continue
+        seen.add(y)
+        at.append({"n": int(y - start + 1), "year": y, "avoid": float(avoid[years.index(y)])})
+    if not at or at[-1]["year"] != years[-1]:
+        at.append({"n": years[-1] - start + 1, "year": years[-1], "avoid": float(avoid[-1])})
+    first_ye = years.index(start) if start in years else 0
+    k = max(min(rate_years, len(years) - 1 - first_ye), 0)
+    rb = float((b[-1] - b[-1 - k]) / k) if k > 0 else float("nan")
+    rp = float((p[-1] - p[-1 - k]) / k) if k > 0 else float("nan")
+    first, end = at[0]["avoid"], at[-1]["avoid"]
+    share = float(first / end) if abs(end) > 1e-9 else None
+    return {"at": at, "rate_base": rb, "rate_pol": rp,
+            "rate_years_span": [years[-k] if k > 0 else years[-1], years[-1]],
+            "first_share": share,
+            "slows": bool(rb > 1e-9 and (rb - rp) >= SLOWS_MIN * rb),
+            "grows": bool(abs(end) > 1e-9 and (end - first) >= GROWS_MIN * abs(end))}
+
+
+def timing_kind(timings: list[dict]) -> str | None:
+    """One word for a model from its policies' :func:`effect_timing`: ``"slows"`` when any
+    policy slows the late sinking or its benefit grows, ``"rebound"`` when none does, and
+    None without policies."""
+    if not timings:
+        return None
+    return "slows" if any(t["slows"] or t["grows"] for t in timings) else "rebound"
 
 
 # --------------------------------------------------------------------------------------

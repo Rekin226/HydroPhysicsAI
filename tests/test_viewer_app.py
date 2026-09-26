@@ -733,3 +733,231 @@ def test_temporal_block_reads_the_calibration_layout_and_its_scorecard(tmp_path)
     tp = va._temporal_block(str(d / "stage3_temporal_pred.npz"))
     assert tp["rmse_model"] == pytest.approx(3.0) and tp["passed"] is False
     assert tp["r2_shape"] == pytest.approx(-1.5) and tp["verdict"] == "FAIL"
+
+
+# the per-well-datum deliverable (2026-09-27): rheology axis, basis check, fair verdict ------
+def test_rheology_axis_shows_the_first_column_and_its_members(tmp_path, quiet):
+    """A run with two columns: the page's fields and paired members are the first column's;
+    ``subs_mean`` (which pools both) is not used."""
+    fw, bs, _ = _write_inputs(tmp_path)
+    z = dict(np.load(fw))
+    first = z["subs_mean"].copy()
+    z["subs_mean_by_rheology"] = np.stack([first, first + 0.05]).astype("float32")
+    z["subs_mean"] = (first + 0.025).astype("float32")
+    z["rheology_labels"] = np.array(["col", "tau30y"])
+    np.savez(fw, **z)
+    m = pd.read_csv(tmp_path / "fwd.members.csv")
+    m2 = m.copy()
+    m2["subs_forward_cm"] += 3.0
+    m2.loc[m2.scenario != "baseline", "subs_forward_cm"] -= 5.0     # a very different response
+    pd.concat([m.assign(rheology="col"), m2.assign(rheology="tau30y")]).to_csv(
+        tmp_path / "fwd.members.csv", index=False)
+    out = tmp_path / "page.html"
+    pl = va.build(str(fw), str(bs), str(out), townships_csv=None, leveling="none",
+                  wells="none", temporal_npz=None, column_csv=None, hsr_csv=None,
+                  rivers_csv=None, theta_json=None, alt_npz=None, rheo_npz="auto",
+                  log=lambda s: None)
+    base = prep.unpack(_payload(out)["arrays"]["subsBase"])
+    ye, _ = prep.year_ends([str(d) for d in z["dates"]])
+    np.testing.assert_allclose(base, first[0][:, ye] * 100.0, atol=0.02)
+    assert pl["modelcard"]["rheology_ref"] == "col"
+    mine = pl["solved"][0]["members"]
+    assert mine["n"] == 4 and mine["subs_mean"] == pytest.approx(-0.65)   # col runs only
+    r = pl["rheology"]
+    assert r["ref"] == "col" and r["baseAlt"] - r["baseRef"] == pytest.approx(3.0)
+
+
+def test_basis_built_for_another_model_is_switched_off(tmp_path, quiet):
+    fw, bs, _ = _write_inputs(tmp_path)
+    b = dict(np.load(bs))
+    names = [str(n) for n in b["scenario_names"]]
+    s = b["subs_mean"].copy()
+    i = names.index("aqua0_2026")
+    s[i] = s[0] + 2.0 * (s[i] - s[0])                              # twice the solved response
+    b["subs_mean"] = s
+    np.savez(bs, **b)
+    out = tmp_path / "page.html"
+    pl = va.build(str(fw), str(bs), str(out), townships_csv=None, leveling="none",
+                  wells="none", temporal_npz=None, column_csv=None, hsr_csv=None,
+                  rivers_csv=None, theta_json=None, alt_npz=None, rheo_npz=None,
+                  log=lambda s: None)
+    off = pl["basisOff"]
+    assert off["worst"] == "retire_aqua" and off["rel"] > va.BASIS_MAX_REL
+    assert pl["basis"] is None and pl["calib"] is None
+    assert "dSubs" not in pl["arrays"] and "retire_aqua" in pl["basisError"]
+    # without a basis no solved policy saturates the difference scale
+    assert pl["scales"]["dsubs"]["limit"] >= pl["scales"]["dsubs"]["p98"]
+    html = out.read_text(encoding="utf-8")
+    assert "boffWords" in html and "NOPOL" in html
+
+
+def test_basis_that_matches_the_solved_runs_stays_on(tmp_path, quiet):
+    pl, _, _ = _build(tmp_path)
+    assert pl["basisOff"] is None and pl["basis"] is not None
+
+
+def test_temporal_block_takes_the_fair_verdict(tmp_path):
+    obs = np.random.default_rng(3).normal(size=(4, 131))
+    d = tmp_path / "temporal_datum"
+    (d / "coupled_leveling").mkdir(parents=True)
+    np.savez(d / "stage3_temporal_pred.npz", obs=obs, clim=obs + 0.5, pred=obs + 3.0,
+             T_fit=np.int64(95))
+    t = {"rmse_model_m": 7.7, "rmse_clim_m": 2.0, "verdict": "FAIL", "verdict_fair": "PASS",
+         "fair_rmse_ratio_fair": 1.106, "fair_fair_k": 1.25, "fair_rmse_datum_model_m": 1.81,
+         "fair_best_baseline": "clim_trend", "fair_rmse_best_baseline_m": 1.64,
+         "fair_r2_shape_datum_model": 0.449, "fair_r2_shape_clim": 0.356,
+         "fair_n_wells_scored": 147, "fair_datum_share_of_mse": 0.95}
+    (d / "coupled_leveling" / "scorecard.json").write_text(json.dumps({"temporal": t}))
+    (d / "stage3_theta.json").write_text(json.dumps({"theta": {"spread_km": 10.0}}))
+    tp = va._temporal_block(str(d / "stage3_temporal_pred.npz"), rescore_csv=None)
+    assert tp["passed"] is True and tp["verdict"] == "FAIL"        # fair, not the legacy one
+    assert tp["rmse_model"] == pytest.approx(7.7) and tp["n_wells"] == 147
+    f = tp["fair"]
+    assert f["ratio"] == pytest.approx(1.106) and f["best"] == "clim_trend"
+    assert tp["spread_km"] == pytest.approx(10.0)
+    # an old screen without the fair fields takes them from the rescore table
+    csv = tmp_path / "rescore.csv"
+    pd.DataFrame([{"screen": "old", "verdict_fair": "FAIL", "rmse_ratio_fair": 2.12}]).to_csv(
+        csv, index=False)
+    assert va._rescored(str(csv))["old"]["ratio"] == pytest.approx(2.12)
+
+
+def test_flow_scores_read_the_anomaly_kfold_and_the_modelcard_hides_well_offsets(
+        tmp_path, quiet):
+    run = tmp_path / "flow"
+    run.mkdir()
+    pd.DataFrame([{"r2_kfold": 0.643, "r2_idw": 0.702, "verdict_kfold": "FAIL",
+                   "r2_anom_kfold": 0.342, "r2_anom_idw": 0.605, "verdict_anom_kfold": "FAIL",
+                   "n_folds": 5}]).to_csv(run / "stage3_flow.csv", index=False)
+    hs = va._flow_scores(str(run), {"gate": {"r2_kfold": 0.9, "verdict": "PASS"}})
+    assert hs["r2_kfold"] == pytest.approx(0.643) and hs["verdict"] == "FAIL"
+    assert hs["r2_anom"] == pytest.approx(0.342) and hs["verdict_anom"] == "FAIL"
+    # an older run keeps its anomaly score in stage3_kfold_anom.csv
+    old = tmp_path / "old"
+    old.mkdir()
+    pd.DataFrame([{"r2_kfold": 0.804, "verdict_kfold": "PASS"}]).to_csv(
+        old / "stage3_flow.csv", index=False)
+    pd.DataFrame([{"r2_anom_kfold": -1.43, "verdict_anom_kfold": "FAIL"}]).to_csv(
+        old / "stage3_kfold_anom.csv", index=False)
+    ho = va._flow_scores(str(old))
+    assert ho["verdict"] == "PASS" and ho["r2_anom"] == pytest.approx(-1.43)
+    # the forward gate's per-well datum carries station ids: only aggregates reach the page
+    fw, bs, _ = _write_inputs(tmp_path)
+    z = dict(np.load(fw))
+    g = json.loads(str(z["gate"]))
+    g.update({"well_datum": {"07010211": -5.76}, "well_datum_mode": "fit",
+              "well_datum_stats": {"n": 158, "rms_m": 7.6, "max_abs_m": 38.0}})
+    z["gate"] = np.array(json.dumps(g))
+    np.savez(fw, **z)
+    out = tmp_path / "page.html"
+    theta = run / "stage3_theta.json"
+    theta.write_text(json.dumps({"theta": {"spread_km": 2.7}}))
+    pl = va.build(str(fw), str(bs), str(out), townships_csv=None, leveling="none",
+                  wells="none", temporal_npz=None, column_csv=None, hsr_csv=None,
+                  rivers_csv=None, theta_json=str(theta), alt_npz=None, rheo_npz=None,
+                  log=lambda s: None)
+    mc = pl["modelcard"]
+    assert mc["r2_anom"] == pytest.approx(0.342) and mc["well_datum"]["rms_m"] == 7.6
+    assert "07010211" not in out.read_text(encoding="utf-8")
+
+
+def test_member_fields_keep_one_rheology(tmp_path):
+    pytest.importorskip("torch")
+    from hydrophysics.twin.forward import write_members_sidecar
+
+    S, A, Y = 2, 3, 4
+    dates = pd.date_range("2012-01-01", periods=12 * Y, freq="MS")
+    ye = np.arange(11, 12 * Y, 12)
+    my = {"subs": None, "headL2": np.zeros((S, 2, A, Y)), "years": [2012, 2013, 2014, 2015],
+          "ye_idx": ye, "member": ["m0", "m0", "m1", "m1"], "ic": [0, 0, 0, 0],
+          "rheology": ["col", "tau", "col", "tau"], "head_member": ["m0", "m1"],
+          "head_ic": [0, 0]}
+    my["subs"] = np.zeros((S, 4, A, Y))
+    my["subs"][:, [1, 3]] = 0.01                                # the second column's runs
+    p = tmp_path / "x.members.npz"
+    write_members_sidecar(str(p), my, ["baseline", "cut"], 20, dates)
+    allm = prep.load_member_fields(str(p))
+    one = prep.load_member_fields(str(p), "col")
+    assert allm["subs"].shape[1] == 4 and one["subs"].shape[1] == 2
+    assert one["sets"] == ["m0", "m1"] and np.allclose(one["subs"], 0.0)
+    with pytest.raises(ValueError):
+        prep.load_member_fields(str(p), "nope")
+
+
+def test_zone_lines_report_the_rate_step():
+    x = np.array([181.5, 181.5, 182.5, 182.5])
+    b = va._boundaries(np.array([0.0, -2.0, 15.0, 14.0]), np.array([0.0, 0.0, 1.0, 1.1]),
+                       x, [182.0])
+    assert b[0]["east"] == pytest.approx(14.5) and b[0]["rate_east"] == pytest.approx(1.05)
+    assert b[0]["rate_west"] == 0.0
+
+
+def test_effect_timing_tells_a_one_time_rebound_from_a_slowing():
+    """Avoided subsidence at 1, 4 and 10 policy years (clipped to the horizon) and the late
+    rate, by hand: a step response is a rebound, a growing one slows the sinking."""
+    years = list(range(2020, 2033))                      # year-ends 2020 .. 2032
+    y = np.array(years, dtype="float64")
+    base = 0.3 * (y - 2019)                              # 0.3 cm/yr throughout
+    step = base - np.where(y >= 2026, 0.9, 0.0)          # 0.9 cm at once, then parallel
+    t = prep.effect_timing(base, step, years, 2026)
+    assert [(a["n"], a["year"]) for a in t["at"]] == [(1, 2026), (4, 2029), (7, 2032)]
+    assert [a["avoid"] for a in t["at"]] == pytest.approx([0.9, 0.9, 0.9])
+    assert t["rate_base"] == pytest.approx(0.3) and t["rate_pol"] == pytest.approx(0.3)
+    assert t["rate_years_span"] == [2028, 2032]
+    assert t["first_share"] == pytest.approx(1.0)
+    assert not t["slows"] and not t["grows"]
+    # the same step from 2030: the same horizon value, reached later
+    late = base - np.where(y >= 2030, 0.9, 0.0)
+    t30 = prep.effect_timing(base, late, years, 2030)
+    assert [a["year"] for a in t30["at"]] == [2030, 2032]            # 4 and 10 clip
+    assert t30["at"][-1]["avoid"] == pytest.approx(t["at"][-1]["avoid"])
+    assert t30["rate_years_span"] == [2031, 2032] and not t30["slows"]  # after its jump
+    # a policy that slows the sinking: 0.4 at once, then 0.1 cm/yr less
+    slow = base - np.where(y >= 2026, 0.4 + 0.1 * (y - 2026), 0.0)
+    s = prep.effect_timing(base, slow, years, 2026)
+    assert [a["avoid"] for a in s["at"]] == pytest.approx([0.4, 0.7, 1.0])
+    assert s["rate_pol"] == pytest.approx(0.2) and s["slows"] and s["grows"]
+    assert s["first_share"] == pytest.approx(0.4)
+    # counted from the year-end before the start, like the page's forward difference
+    off = step - 0.05
+    assert prep.effect_timing(base, off, years, 2026)["at"][0]["avoid"] == pytest.approx(0.9)
+    assert prep.timing_kind([t, t30]) == "rebound"
+    assert prep.timing_kind([t, s]) == "slows"
+    assert prep.timing_kind([]) is None
+
+
+def test_payload_carries_the_timing_of_this_and_the_previous_model(tmp_path, quiet):
+    """Each solved run carries its timing from the page's own fields; the other model's
+    comes from its first column. The synthetic responses grow (a ramp), the other model's
+    is made a step, so the two kinds differ."""
+    fw, _, _ = _write_inputs(tmp_path)
+    z = dict(np.load(fw, allow_pickle=False))
+    s = z["subs_mean"].astype("float64")
+    t = np.arange(T)
+    step = np.where(t >= 168, 1.0, 0.0)[None, :]                   # from Jan 2026
+    alt_s = np.stack([s[0], s[0] - 0.009 * step * np.ones((s.shape[1], 1)),
+                      s[0] - 0.013 * step * np.ones((s.shape[1], 1))])
+    z["subs_mean"] = alt_s.astype("float32")
+    alt = tmp_path / "alt.npz"
+    np.savez(alt, **z)
+    pd.read_csv(tmp_path / "fwd.members.csv").to_csv(tmp_path / "alt.members.csv", index=False)
+    pl, out, _ = _build(tmp_path, alt_npz=str(alt))
+    d = _payload(out)
+    ye, years = prep.year_ends(pd.date_range("2012-01-01", periods=T, freq="MS").astype(str))
+    fan = s[:, :, ye].mean(axis=1) * 100.0
+    for i, name in enumerate(["cut30", "retire_aqua"]):
+        tim = next(x for x in d["solved"] if x["name"] == name)["timing"]
+        want = prep.effect_timing(fan[0], fan[i + 1], years, 2026)
+        assert [a["year"] for a in tim["at"]] == [2026, 2029, 2032]
+        assert [a["avoid"] for a in tim["at"]] == pytest.approx(
+            [a["avoid"] for a in want["at"]], abs=1e-4)
+        assert tim["rate_base"] == pytest.approx(want["rate_base"], abs=1e-4)
+        assert tim["rate_pol"] < tim["rate_base"] and tim["grows"]
+    assert d["timingKind"] == "slows"
+    a = d["alt"]
+    assert a["timingKind"] == "rebound" and set(a["timing"]) == {"cut30", "retire_aqua"}
+    assert [x["avoid"] for x in a["timing"]["cut30"]["at"]] == pytest.approx([0.9] * 3, abs=1e-4)
+    assert a["timing"]["retire_aqua"]["rate_pol"] == pytest.approx(
+        a["timing"]["retire_aqua"]["rate_base"], abs=1e-6)
+    html = out.read_text(encoding="utf-8")
+    assert "timingCaveat()" in html and 'id="startNote"' in html and "reboundLine(kp)" in html

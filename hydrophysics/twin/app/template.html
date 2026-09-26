@@ -155,6 +155,8 @@ table.t{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeri
 table.t th{text-align:left;font-weight:600;color:var(--ink-3);font-size:11.5px;padding:4px 6px;border-bottom:1px solid var(--line-2)}
 table.t td{padding:4px 6px;border-bottom:1px solid var(--line)}
 table.t td.n{text-align:right;font-family:var(--mono)}
+table.tests td:first-child{min-width:9em}
+.vd{font-family:var(--mono);font-size:11.5px}.vd.ok{color:var(--good)}.vd.no{color:var(--bad)}
 .tblwrap{max-height:340px;overflow:auto}
 .cavlist{margin:0;padding-left:20px}
 .cavlist li{margin-bottom:8px}
@@ -184,7 +186,9 @@ details.drawer[open]>summary::before{content:"▾"}
 dialog{border:1px solid var(--line-2);border-radius:12px;background:var(--surface);color:var(--ink);max-width:720px;width:calc(100% - 32px);padding:18px 20px}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 dialog h3{margin:0 0 10px;font-size:16px}
-dialog .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:13px}
+dialog .kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:3px 14px;font-size:13px}
+dialog .kv div{overflow-wrap:anywhere;min-width:0}
+@media (max-width:560px){dialog .kv{grid-template-columns:minmax(0,1fr)}dialog .kv div:nth-child(odd){margin-top:6px;font-weight:600}}
 dialog .kv div:nth-child(odd){color:var(--ink-3)}
 .story{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;width:min(920px,calc(100% - 24px));background:var(--surface);border:1px solid var(--line-2);border-left:4px solid var(--accent);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 14px;z-index:20;display:grid;grid-template-columns:1fr auto;gap:2px 16px;align-items:center}
 .story>.st,.story>h3,.story>p{grid-column:1}
@@ -346,6 +350,7 @@ body.story-mode .analyst-only{display:none!important}
       </div>
       <button class="btn" id="reset" data-i18n="reset">Reset to baseline</button>
     </div>
+    <div class="note analyst-only" id="startNote" role="status" hidden></div>
     <div class="presets row">
       <span class="lab" data-i18n="suggest">Suggestions:</span>
       <span id="presets" class="row"></span>
@@ -501,6 +506,8 @@ const I18N = {
   bannerS:"After Dec {y} every value is the model's own trend; its {m}-month test failed (drift).",
   banner:"The model runs free from Dec {y}. Every value after that is its own trend, which has not been validated.",
   bannerT:"The model runs free from Dec {y}. Its {m}-month held-out test failed (it drifted: {r} m error at the wells against {c} m for repeating the past average), so every value after Dec {y} is the model's own, untested trend.",
+  bannerP:"The model runs free from Dec {y}. It passes a {m}-month held-out test once each well's constant offset is removed ({r} m error against {c} m for the best simple forecast); every value after Dec {t} is its own, untested trend.",
+  bannerPS:"Passes a {m}-month held-out test after each well's offset; untested after Dec {t}.",
   tAvoid:"Avoided subsidence", tArea:"Area sinking > {t} cm/yr", tHsr:"Rail: max gradient", tHead:"Layer-2 head recovery", tCost:"Pumping cut (the cost)", tConf:"Confidence",
   baseline:"Business as usual", policy:"Policy"},
  zh: {title:"濁水溪沖積扇數位孿生：政策探索", subtitle:"抽水政策如何改變地層下陷（雲林、彰化）",
@@ -523,6 +530,8 @@ const I18N = {
   bannerS:"{y}年12月以後都是模型本身的趨勢；它的{m}個月檢驗未通過（漂移）。",
   banner:"模型自{y}年12月起自行運算，之後的數值都是模型本身的趨勢，尚未經過驗證。",
   bannerT:"模型自{y}年12月起自行運算。它的{m}個月保留年份檢驗未通過（會漂移：井位誤差 {r} 公尺，單純重複過去平均只有 {c} 公尺），因此{y}年12月以後的數值都是模型本身未經驗證的趨勢。",
+  bannerP:"模型自{y}年12月起自行運算。去除各井的固定偏差後，它通過{m}個月的保留年份檢驗（誤差 {r} 公尺，最佳簡單預測 {c} 公尺）；{t}年12月以後的數值都是模型本身未經檢驗的趨勢。",
+  bannerPS:"去除各井固定偏差後通過{m}個月檢驗；{t}年12月以後未經檢驗。",
   tAvoid:"減少的下陷量", tArea:"下陷速率 > {t} 公分/年的面積", tHsr:"高鐵：最大差異沉陷", tHead:"第二含水層水頭回升", tCost:"減抽量（代價）", tConf:"可信度",
   baseline:"維持現狀", policy:"政策"}
 };
@@ -625,14 +634,38 @@ const FIXED = () => !!(D.modelcard.artefacts && D.modelcard.artefacts.fixed_upst
 // per-member results (--save-members yearly): real agreement, yearly bands, the runs
 const MF = () => D.memberFields;
 const solvedOf = pol => pol && pol.src === "solved" ? D.solved[pol.solved] : null;
+// no policy to draw: the baseline, or a policy with neither a full run nor a fast estimate
+const NOPOL = () => P.src === "base" || P.src === "none";
 const AGMIN = () => MF() ? MF().agreeMin * 100 : 80;
+// the model's tests, as the builder read them (nothing here is hard-coded)
+const TP = () => D.modelcard.temporal;
+const FAIR = () => TP() && TP().fair ? TP().fair : null;
+const PREV = () => D.alt && D.alt.prev ? D.alt.prev : null;
+// the held-out-years zone: tested and passed (after each well's offset), or failed
+function testedWord(short) {
+  const zh = LANG === "zh", tp = TP(); if (!tp) return zh ? "已檢驗範圍" : "tested horizon";
+  if (!tp.passed) return zh ? "已檢驗：未通過（漂移）" : "tested: failed (drift)";
+  return FAIR() ? (zh ? (short ? "已檢驗：通過" : "已檢驗：去除各井偏差後通過") : (short ? "tested: passes" : "tested: passes after each well's offset")) : (zh ? "已檢驗：通過" : "tested: passes");
+}
+const BEST = {clim: ["climatology", "氣候平均"], clim_trend: ["climatology + trend", "氣候平均加趨勢"], persist: ["persistence", "持續法"]};
+const bestName = k => (BEST[k] || [k || "–", k || "–"])[LANG === "zh" ? 1 : 0];
+const r3 = v => v == null ? "–" : sg(v, 3);
+// basis off: the response basis was built for another model; only the solved policies show
+const BOFF = () => D.basisOff;
+function boffWords() {
+  const zh = LANG === "zh", b = BOFF(); if (!b) return "";
+  const x = D.solved.find(s => s.name === b.worst), nm = x ? policyPhrase(x.factors) : b.worst;
+  return zh ? `快速估算已關閉：反應基底（${esc(b.source)}）是為前一版模型建立的，與本模型「${nm}」的完整模擬相差 ${Math.round(100 * b.rel)}%（上限 ${Math.round(100 * b.max_rel)}%）。只顯示完整模型模擬過的政策。`
+    : `Fast estimate off: the response basis (${esc(b.source)}) was built for the previous model and misses this model's full run of ${nm.toLowerCase()} by ${Math.round(100 * b.rel)} % (limit ${Math.round(100 * b.max_rel)} %). Only the policies with a full-model run are shown.`;
+}
 // what a longer creep ceiling adds to the baseline: a caveat on the baseline number only
 function rheoWords(short) {
   const r = D.rheology, zh = LANG === "zh"; if (!r || !(Math.abs(r.dBase) >= .05)) return "";
   const tau = r.tauYears != null ? r.tauYears : null, lev = r.levOofAlt != null && r.levOof != null;
-  if (short) return zh ? `${tau ? tau + "年" : "較長"}潛變上限：${sg(r.dBase, 1)} 公分` : `${sg(r.dBase, 1)} cm with a ${tau ? tau + "-yr" : "longer"} creep ceiling`;
-  return zh ? `潛變上限${tau ? `取${tau}年` : "較長"}的壓密柱${lev ? `對水準測量的跨折技巧相同（R² ${sg(r.levOofAlt, 3)}，本模型 ${sg(r.levOof, 3)}）` : ""}，會讓基準情境在${M.years[YO]}–${M.years[Y-1]}年多下陷約 ${f1(r.dBase)} 公分（各次模擬 ${f1(r.dBaseP[0])}–${f1(r.dBaseP[2])}），但幾乎不改變政策差值（${r.policyShift < .01 ? "不到 0.01" : "最多 " + f2(r.policyShift)} 公分）${r.artefacts ? "；此數值來自尚含啟動與重啟陡降的模擬（兩種壓密柱相同）" : ""}`
-    : `a column with a ${tau ? tau + "-year" : "longer"} creep ceiling${lev ? ` fits the leveling as well out of fold (R² ${sg(r.levOofAlt, 3)} against ${sg(r.levOof, 3)} here)` : ""} and adds about ${f1(r.dBase)} cm to the baseline's ${M.years[YO]}–${M.years[Y-1]} sinking (${f1(r.dBaseP[0])}–${f1(r.dBaseP[2])} across the runs), while changing a policy's difference by ${r.policyShift < .01 ? "less than 0.01" : "at most " + f2(r.policyShift)} cm${r.artefacts ? "; measured on a run that still carried the start-up and restart steps, which are common to both columns" : ""}`;
+  const ft = r.baseRef != null && r.baseAlt != null;
+  if (short) return zh ? `${tau ? tau + "年" : "較長"}潛變上限：${ft ? f1(r.baseAlt) + " 公分" : sg(r.dBase, 1) + " 公分"}` : ft ? `${f1(r.baseAlt)} cm with a ${tau ? tau + "-yr" : "longer"} creep ceiling` : `${sg(r.dBase, 1)} cm with a ${tau ? tau + "-yr" : "longer"} creep ceiling`;
+  return zh ? `潛變上限${tau ? `取${tau}年` : "較長"}的壓密柱${lev ? `對水準測量的跨折技巧相同（R² ${sg(r.levOofAlt, 3)}，本模型 ${sg(r.levOof, 3)}）` : ""}，會讓基準情境在${M.years[YO]}–${M.years[Y-1]}年多下陷約 ${f1(r.dBase)} 公分${ft ? `（從 ${f1(r.baseRef)} 變成 ${f1(r.baseAlt)} 公分）` : ""}（各次模擬 ${f1(r.dBaseP[0])}–${f1(r.dBaseP[2])}），但幾乎不改變政策差值（${r.policyShift < .01 ? "不到 0.01" : "最多 " + f2(r.policyShift)} 公分）${r.artefacts ? "；此數值來自尚含啟動與重啟陡降的模擬（兩種壓密柱相同）" : ""}`
+    : `a column with a ${tau ? tau + "-year" : "longer"} creep ceiling${lev ? ` fits the leveling as well out of fold (R² ${sg(r.levOofAlt, 3)} against ${sg(r.levOof, 3)} here)` : ""} and moves the baseline's ${M.years[YO]}–${M.years[Y-1]} sinking ${ft ? `only from ${f1(r.baseRef)} to ${f1(r.baseAlt)} cm (` : "by "}${sg(r.dBase, 1)} cm, ${f1(r.dBaseP[0])}–${f1(r.dBaseP[2])} across the runs${ft ? ")" : ""}, while changing a policy's difference by ${r.policyShift < .01 ? "less than 0.01" : "at most " + f2(r.policyShift)} cm${r.artefacts ? "; measured on a run that still carried the start-up and restart steps, which are common to both columns" : ""}`;
 }
 
 // ---------- derived static data ---------------------------------------------------------
@@ -715,12 +748,16 @@ function kpis(pol) {
       out.agree = Math.max(0, ms.reduce((a, m) => a + agreeOf(m), 0) - (ms.length - 1) * n); out.nRuns = n; out.nAll = Math.min(...ms.map(m => m.n)); out.agreeLB = ms.length > 1; }
   }
   out.share = 100 * out.avoid / baseFwdFan();
-  // the structural alternative: what a model that fits the wells as well answers
+  // another model's answer (the previous deliverable, or a structural alternative)
   out.alt = null; out.altAssumed = false;
   if (D.alt && pol.src === "solved") { const r = D.alt.resp[D.solved[pol.solved].name]; if (r) out.alt = -r.subs_mean; }
   else if (D.alt && pol.src === "basis") { const kn = D.alt.ratio.filter(v => v != null), mr = kn.length ? kn.reduce((a, v) => a + v, 0) / kn.length : null;
     if (mr != null) { let a = 0; for (let k = 0; k < K; k++) { const w = 1 - pol.f[k]; if (!w) continue; let r = D.alt.ratio[k]; if (r == null) { r = mr; out.altAssumed = true; }
         a += -w * classResponse(k, pol.start, y) * r; } out.alt = a; } }
+  // the other model has solved runs for the first start only, and its benefit grows with
+  // time (it slows the sinking), so scaling this model's later-start answer by the
+  // first-start ratio would misstate it: no comparison for a later start
+  if (pol.start) { out.alt = null; out.altAssumed = false; }
   // how much of the avoided subsidence is already there at Dec of the start year: a fast
   // response to recovering heads, in a visco-elastic column largely elastic (reversible)
   const ys = M.years.indexOf(M.starts[pol.start]);
@@ -761,8 +798,8 @@ function kpis(pol) {
   return out;
 }
 const confWord = (a, n) => a == null ? "na" : a/n >= .9 ? "robust" : a/n >= .66 ? "likely" : "uncertain";
-// a model that fits the wells as well but answers less than half as much makes the answer uncertain,
-// however well the parameter sets of this one agree
+// another model shown beside this one that answers less than half as much makes the answer
+// uncertain, however well the parameter sets of this one agree
 const structWeak = kp => kp.alt != null && kp.avoid > 0 && kp.alt / kp.avoid < .5;
 const WORD = {en:{robust:"robust", likely:"likely", uncertain:"uncertain", na:"not measured"}, zh:{robust:"穩健", likely:"可能", uncertain:"不確定", na:"未量測"}};
 const lowConf = i => D.townSkill ? D.townSkill[i].low : true;
@@ -811,15 +848,17 @@ function agreeSentence(kp) {
   return zh ? `模擬一致性未量測：${classList(kp.noRun)}${late ? `沒有自${M.starts[S.start]}年起的` : "沒有"}完整模型模擬`
     : `Run agreement is not measured: there is no full-model run for ${classList(kp.noRun)}${late ? ` starting in ${M.starts[S.start]}` : ""}`;
 }
-function altWords(brief) {              // "a model that fits the wells as well (21 km stress spread, head R² +0.810)"
+function altWords(brief) {              // "the previous model (10 km stress spread)"
   const zh = LANG === "zh", a = D.alt; if (!a) return "";
   const km = a.spread_km != null ? Math.round(a.spread_km) : null, r2 = a.r2_kfold != null && !brief ? sg(a.r2_kfold, 3) : null;
+  if (PREV()) return zh ? `前一版模型（抽水分散${km != null ? `約${km}公里` : "較廣"}）` : `the previous model (${km != null ? `${km} km stress spread` : "wider stress spread"})`;
   return zh ? `同樣擬合觀測井的另一個模型（抽水分散${km != null ? `約${km}公里` : "更廣"}${r2 ? `，水頭 R² ${r2}` : ""}）`
     : `a model that fits the wells as well (${km != null ? `${km} km stress spread` : "wider stress spread"}${r2 ? `, head R² ${r2}` : ""})`;
 }
 function altSentence(kp) {
   const zh = LANG === "zh"; if (kp.alt == null) return "";
-  const x = kp.alt > 1e-3 ? kp.avoid / kp.alt : null, w = altWords(true), but = kp.agree != null;
+  const x = kp.alt > 1e-3 ? kp.avoid / kp.alt : null, w = altWords(true), but = kp.agree != null && !PREV();
+  if (PREV()) return zh ? `；${w}給出 ${f2(kp.alt)} 公分${kp.altAssumed ? "（部分類別按比例假設）" : ""}` : `; ${w} gives ${f2(kp.alt)} cm${kp.altAssumed ? " (some classes scaled by assumption)" : ""}`;
   return zh ? `${but ? "；但" : "。"}${w}只給出 ${f2(kp.alt)} 公分${x && x >= 1.5 ? `（少${x.toFixed(0)}倍）` : ""}${kp.altAssumed ? "（部分類別按比例假設）" : ""}`
     : `${but ? ", but " + w : ". " + w[0].toUpperCase() + w.slice(1)} gives ${f2(kp.alt)} cm${x && x >= 1.5 ? `, ${x.toFixed(0)}× less` : ""}${kp.altAssumed ? " (some classes scaled by assumption)" : ""}`;
 }
@@ -838,10 +877,15 @@ function renderHeadline() {
   if (P.src === "base") {
     const bq = MF() && MF().baseFwd ? MF().baseFwd : null, rw = rheoWords(true);
     const rng = bq ? (zh ? `（各次模擬 ${f1(bq[0])}–${f1(bq[2])}）` : ` (${f1(bq[0])}–${f1(bq[2])} across the runs)`) : "";
-    const rh = rw ? (zh ? `較長的黏土潛變上限同樣擬合水準測量，會再多約 ${f1(D.rheology.dBase)} 公分。` : ` A longer clay-creep ceiling fits the leveling as well and adds about ${f1(D.rheology.dBase)} cm.`) : "";
+    const r = D.rheology, tau = r && r.tauYears ? r.tauYears : null, ft = r && r.baseAlt != null;
+    const rh = rw ? (zh ? `${tau ? tau + "年" : "較長"}的黏土潛變上限同樣擬合水準測量，${ft ? `會使之成為 ${f1(r.baseAlt)} 公分。` : `會再多約 ${f1(r.dBase)} 公分。`}` : ` A ${tau ? tau + "-year" : "longer"} clay-creep ceiling fits the leveling as well and ${ft ? `makes it ${f1(r.baseAlt)} cm.` : `adds about ${f1(r.dBase)} cm.`}`) : "";
     s = zh
       ? `<b>維持現狀</b>（${rec}年用水結構）下，全扇平均在${M.years[YR]}年12月至${H}年12月間再下陷 <b>${f1(baseFwdFan())} 公分</b>${rng}（模型自身的推估趨勢）。${rh}移動下方槓桿，看看政策能減少多少。`
       : `Under <b>business as usual</b> (pumping at the ${rec} mix) the fan sinks a further <b>${f1(baseFwdFan())} cm</b>${rng} on average between Dec ${M.years[YR]} and Dec ${H} (the model's own projected trend).${rh} Move a lever below to see what a policy avoids.`;
+  } else if (P.src === "none") {
+    const opts = D.solved.map(x => `<b>${zh ? policyPhrase(x.factors) : policyPhrase(x.factors).replace(/^[A-Z]/, c => c.toLowerCase())}</b>${zh ? `（自${x.start}年）` : ` from ${x.start}`}`).join(zh ? "、" : " or ");
+    s = zh ? `本模型沒有「${policyPhrase(S.f)}」（自${yr}年起）的完整模擬。${BOFF() ? boffWords() : "未載入反應基底。"}可選：${opts}。`
+      : `This model has no full run of <b>${policyPhrase(S.f).replace(/^[A-Z]/, c => c.toLowerCase())}</b> from ${yr}. ${BOFF() ? boffWords() : "No response basis is loaded."} Try ${opts}.`;
   } else {
     const ids = topTowns(kp), tt = ids.map(i => TNB(i)).join(zh ? "、" : ", ");
     s = zh
@@ -859,6 +903,7 @@ function renderHeadline() {
       + (assumed.length ? (zh ? `；${classList(assumed)}用平均校正係數（假設）` : `; ${classList(assumed)} use the mean factor (assumed)`) : "");
     if (cal) chip.title = (zh ? "校正係數（下陷/水頭）：" : "Rescaling factors (subsidence / head): ") + D.classes.map((c, k) => `${CN(k)} ${cal.subs[k].toFixed(3)}/${cal.head[k].toFixed(3)} (${cal.source[k]})`).join("; ")
       + ". " + Object.entries(D.basisError).map(([n, e]) => `${n}: ${f2(e.fan_cm)} cm (${(100*e.rel).toFixed(1)}%) before rescaling`).join("; "); }
+  else if (P.src === "none") { chip.className = "chip fast"; chip.textContent = zh ? "無完整模擬；快速估算已關閉" : "No full-model run; fast estimate off"; chip.title = boffWords().replace(/<[^>]+>/g, ""); }
   else { chip.className = "chip"; chip.textContent = zh ? "基準情境：完整模型" : `Baseline: full model, ${D.modelcard.n_members} runs`; }
 }
 function tile(id, k, v, r, d, def, cav) {
@@ -868,12 +913,17 @@ function tile(id, k, v, r, d, def, cav) {
 const cavLink = (n, txt) => `<button class="cav" data-cav="${n}">${txt}</button>`;
 function railLine(kp) {                  // which way the rail gradient moved, in words
   const zh = LANG === "zh", d = (kp.hsrPol - kp.hsrBase) / kp.hsrBase;
-  if (P.src === "base" || Math.abs(d) < .002) return zh ? "與基準相同" : "no change from the baseline";
+  if (NOPOL() || Math.abs(d) < .002) return zh ? "與基準相同" : "no change from the baseline";
   return d > 0 ? (zh ? `變陡 ${Math.round(d*1000)/10}%（較差），在里程 ${f1(kp.hsrAtP)} 公里` : `steeper by ${Math.round(d*1000)/10}% (worse), at km ${f1(kp.hsrAtP)}`)
     : (zh ? `變緩 ${Math.round(-d*1000)/10}%（較好）` : `gentler by ${Math.round(-d*1000)/10}% (better)`);
 }
 function renderTiles() {
-  const kp = KP, H = M.years[Y-1], zh = LANG === "zh", isB = P.src === "base", y0 = M.years[YR], yr = M.starts[S.start];
+  const kp = KP, H = M.years[Y-1], zh = LANG === "zh", isB = NOPOL(), y0 = M.years[YR], yr = M.starts[S.start];
+  if (P.src === "none") {                // no full run and no fast estimate: say so, show nothing
+    const msg = zh ? "無完整模型模擬" : "no full-model run", def = boffWords() || (zh ? "未載入反應基底。" : "No response basis is loaded.");
+    $("tiles").innerHTML = [["tA", t("tAvoid")], ["tR", t("tArea", {t: S.thr})], ["tH", t("tHsr")], ["tW", t("tHead")], ["tC", t("tCost")], ["tF", t("tConf")]]
+      .map(([id, k]) => tile(id, k, "–", msg, "", def, "")).join("");
+    return; }
   const rng = (b, u, d=2) => b ? `p10–p90 ${b[0].toFixed(d)}–${b[1].toFixed(d)} ${u}` + (kp.bandNote === "scaled" ? (zh ? `（依${M.starts[0]}年完整模型比例）` : ` (scaled from the ${M.starts[0]} full-model runs)`) : "") : (isB ? "" : (zh ? "範圍不可得" : "range not available"));
   const noRange = MF() ? (zh ? `<span class="note"><span class="lg">系集平均場；各次模擬的範圍只有完整模型模擬才有</span><span class="sh">系集平均；無範圍</span></span>` : `<span class="note"><span class="lg">ensemble-mean field; run ranges exist for the full-model runs only</span><span class="sh">ensemble mean; no run range</span></span>`)
     : zh ? `<span class="note"><span class="lg">系集平均場；各次模擬的範圍需逐次輸出，尚未提供</span><span class="sh">系集平均；無範圍</span></span>` : `<span class="note"><span class="lg">ensemble-mean field; no run range (needs per-run fields)</span><span class="sh">ensemble mean; no run range</span></span>`;
@@ -887,14 +937,14 @@ function renderTiles() {
   const raw = M.rawFwdFan;
   tiles.push(tile("tA", t("tAvoid"), isB ? `0.00 <small>cm</small>` : `${f2(kp.avoid)} <small>cm</small>`,
     isB ? (zh ? `基準情境新增 ${f1(baseFwdFan())} 公分` : `baseline adds ${f1(baseFwdFan())} cm`)
-      + (MF() && MF().baseFwd ? (zh ? `（各次模擬 ${f1(MF().baseFwd[0])}–${f1(MF().baseFwd[2])}）` : ` (runs ${f1(MF().baseFwd[0])}–${f1(MF().baseFwd[2])})`) : "") : rng(kp.band, "cm"),
+      + (MF() && MF().baseFwd ? (zh ? `（各次模擬 ${f1(MF().baseFwd[0])}–${f1(MF().baseFwd[2])}）` : ` (runs ${f1(MF().baseFwd[0])}–${f1(MF().baseFwd[2])})`) : "") : rng(kp.band, "cm") + reboundLine(kp),
     isB ? (zh ? `全扇平均，${y0}–${H}` : `fan average, Dec ${y0}–Dec ${H}`)
       : (zh ? `基準 ${f1(baseFwdFan())} 公分的 ${pctf(kp.share)}（${y0}–${H}）` : `${pctf(kp.share)} of the baseline's ${f1(baseFwdFan())} cm, Dec ${y0}–${H}`)
         + (kp.share > 100 ? (zh ? "：地面上升" : ": the ground rises") : kp.fast != null && kp.fast >= .4 ? (zh ? `；${pctf(100 * kp.fast)} 在${yr}年12月前出現` : `; ${pctf(100 * kp.fast)} of it by Dec ${yr}`) : ""),
     (zh ? `全扇平均：政策情境在${y0}年12月至${H}年12月的下陷，減去基準情境的同一數值，正值代表效益。完整模型模擬時為配對模擬的平均。比例的分母是基準情境${y0}–${H}年${FIXED() ? "" : "、已移除模型啟動與重啟陡降"}的下陷（${f1(baseFwdFan())} 公分）${FIXED() ? "，與專案紀錄相同（陡降已在模擬中修正）" : raw != null ? `；專案紀錄中的${M.years[YO]}–${H}年數值含那些陡降，為 ${f1(raw)} 公分` : ""}。${D.rheology ? "潛變說明只針對基準下陷：" + rheoWords() + "。" : ""}`
       : `Fan average of subs(policy, Dec ${H}) − subs(policy, Dec ${y0}), minus the same for the baseline, sign flipped so a benefit is positive. For a full-model policy it is the mean of the paired runs. The share's base is the baseline's sinking from Dec ${y0} to Dec ${H}${FIXED() ? ` (${f1(baseFwdFan())} cm), the project ledger's figure: the forward run fixed the model's start-up and restart steps at the source` : ` with the model's start-up and restart steps removed (${f1(baseFwdFan())} cm)${raw != null ? `; the project ledger's figure for Dec ${M.years[YO]}–Dec ${H}, steps included, is ${f1(raw)} cm` : ""}`}. Projected.${D.rheology ? " The creep note applies to the baseline's sinking, not to the avoided sinking: " + rheoWords() + "." : ""}`)
       + (zh ? " 大部分效益在政策開始後一年內出現：這是水頭回升後的快速反應，在黏彈性壓密柱中多為彈性、可回復；若恢復抽水會再下陷。只有黏土的非彈性壓密是永久的。" : " Most of it arrives within a year of the start: a fast response to recovering heads that, in a visco-elastic column, is largely elastic and reversible; it would come back if pumping resumed. Only the clay's inelastic compaction is permanent."),
-    cavLink(9, zh ? "多為快速、可回復的反應" : "mostly fast, likely reversible") + "<br>" + cavLink(3, isB && rheoWords(true) ? (zh ? `緩慢壓密不確定：${rheoWords(true)}` : `slow clay creep: ${rheoWords(true)}`) : (zh ? "緩慢壓密不確定" : "slow clay creep uncertain")) + "<br>" + cavLink(7, FIXED() ? (zh ? "啟動與重啟陡降已在模擬中修正" : "start-up and restart fixed upstream") : (zh ? "已移除模型啟動陡降" : "model start-up steps removed")) + (isB ? "" : " · " + cavLink(8, zh ? "扇區分界" : "zone lines"))));
+    (TIMK() ? cavLink(12, TIMK() === "rebound" ? (zh ? "為何效益不再增加" : "why it stops growing") : (zh ? "效益隨時間增加" : "benefit grows over time")) + "<br>" : "") + cavLink(9, zh ? "多為快速、可回復的反應" : "mostly fast, likely reversible") + "<br>" + cavLink(3, isB && rheoWords(true) ? (zh ? `緩慢壓密不確定：${rheoWords(true)}` : `slow clay creep: ${rheoWords(true)}`) : (zh ? "緩慢壓密不確定" : "slow clay creep uncertain")) + "<br>" + cavLink(7, FIXED() ? (zh ? "啟動與重啟陡降已在模擬中修正" : "start-up and restart fixed upstream") : (zh ? "已移除模型啟動陡降" : "model start-up steps removed")) + (isB ? "" : " · " + cavLink(8, zh ? "扇區分界" : "zone lines"))));
   tiles.push(tile("tR", t("tArea", {t: S.thr}), `${kp.areaBase} → ${kp.areaPol} <small>km²</small>`,
     `${sg(kp.areaPol - kp.areaBase, 0)} km²<span class="analyst-only"> · <label><select id="thrSel" aria-label="rate threshold">${[1,2,3].map(v => `<option ${v===S.thr?"selected":""}>${v}</option>`).join("")}</select> cm/yr</label></span><br>${areaRange}`,
     zh ? `${H-1}年12月至${H}年12月，基準 → 政策` : `Dec ${H-1} to Dec ${H}, baseline → policy`,
@@ -928,8 +978,8 @@ function renderTiles() {
   const kmA = D.alt && D.alt.spread_km != null ? Math.round(D.alt.spread_km) : null;
   const altLine = !isB && kp.alt != null ? `<div class="alt"><span class="lg">${zh ? `${altWords()}：${f2(kp.alt)} 公分` : `${altWords()[0].toUpperCase() + altWords().slice(1)}: ${f2(kp.alt)} cm`}${xl}</span><span class="sh">${zh ? `${kmA ?? ""}公里模型：${f2(kp.alt)} 公分` : `${kmA != null ? kmA + " km" : "other"} model: ${f2(kp.alt)} cm`}${xl}</span></div>` : "";
   tiles.push(tile("tF", t("tConf"), isB ? "–" : (kp.agree != null ? `${kp.agreeLB ? "≥" : ""}${kp.agree}/${kp.nRuns}` : "–") + ` <span class="word ${w}">${WORD[LANG][w]}</span>`,
-    confR + ca + altLine, "", zh ? `模擬中政策減少下陷的參數組比例：≥90% 穩健，≥66% 可能，其餘不確定。一組參數的兩個初始場幾乎給出相同答案，所以按參數組計算。這些模擬只改變參數與初始場；另一個同樣擬合觀測井、但抽水分散更廣的模型，效果小得多，因此當它不到本模型的一半時，評語為「不確定」。` : `Share of the parameter sets in which the policy reduces subsidence: robust ≥ 90 %, likely ≥ 66 %, uncertain below. A set's initial fields give almost the same answer, so sets are counted, not runs. The runs vary parameters and initial fields only; a model with a wider stress spread fits the wells as well and answers far less, so when it gives less than half this model's value the word is "uncertain".`,
-    cavLink(2, zh ? "模型結構：抽水分散範圍" : "model structure: stress spread") + "<br>" + cavLink(1, zh ? "保留年份檢驗未通過" : "held-out test failed (drift)") + "<br>" + cavLink(4, zh ? `${D.modelcard.bounds_at}個參數在邊界` : `${D.modelcard.bounds_at} parameters at bounds`)));
+    confR + ca + altLine, "", zh ? `模擬中政策減少下陷的參數組比例：≥90% 穩健，≥66% 可能，其餘不確定。一組參數的兩個初始場幾乎給出相同答案，所以按參數組計算。這些模擬只改變參數與初始場，不改變模型結構；因此旁邊列出${D.alt ? altWords(true) : "另一個模型"}的答案，當它不到本模型的一半時，評語為「不確定」。` : `Share of the parameter sets in which the policy reduces subsidence: robust ≥ 90 %, likely ≥ 66 %, uncertain below. A set's initial fields give almost the same answer, so sets are counted, not runs. The runs vary parameters and initial fields only, not the model's structure, so ${D.alt ? altWords(true) : "another model"}'s answer is shown beside it; when that gives less than half this model's value the word is "uncertain".`,
+    cavLink(2, zh ? "模型結構：抽水分散範圍" : "model structure: stress spread") + "<br>" + cavLink(1, TP() && TP().passed ? (zh ? `保留年份：${testedWord(true)}` : `held-out years: ${testedWord(true).replace("tested: ", "")}, decade untested`) : (zh ? "保留年份檢驗未通過" : "held-out test failed (drift)")) + "<br>" + cavLink(6, zh ? "未見過的井：不如內插" : "unseen wells: worse than interpolation") + "<br>" + cavLink(4, zh ? `${D.modelcard.bounds_at}個參數在邊界` : `${D.modelcard.bounds_at} parameters at bounds`)));
   $("tiles").innerHTML = tiles.join("");
   const ts = $("thrSel"); if (ts) ts.onchange = () => { S.thr = +ts.value; update(true); };
 }
@@ -1107,7 +1157,7 @@ function legend(fd) {
   const hat = fd.hatch && $("oHatch").checked ? `<div class="cap"><span class="hatchkey"></span>${zh ? `斜線：變化小於${fd.unit === "cm" ? "1 公釐" : "5 公分"}${agTxt}` : `hatched: change below ${fd.unit === "cm" ? "1 mm" : "5 cm"}${agTxt}`}</div>` : "";
   const riv = $("oRivers").checked && D.rivers ? `<div class="cap"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="rgb(20,70,140)" stroke-width="2" stroke-dasharray="6 4"/></svg> ${zh ? "河川：模型中為不透水邊界" : "rivers: treated as no-flow in the model"} ${cavLink(5, zh ? "說明" : "why it matters")}</div>` : "";
   const hsr = $("oHsr").checked && D.hsr ? `<div class="cap"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="#111" stroke-width="3"/></svg> ${zh ? "高鐵中心線（OSM）" : "THSR centreline (OSM)"}</div>` : "";
-  const when = S.year <= YO ? "" : S.year <= M.yTested ? (zh ? `模型自行運算（${M.years[S.year]}），此期間的保留年份檢驗未通過。` : `Free run (${M.years[S.year]}); the held-out test of this horizon failed.`)
+  const when = S.year <= YO ? "" : S.year <= M.yTested ? (TP() && TP().passed ? (zh ? `模型自行運算（${M.years[S.year]}）；此期間的保留年份檢驗${FAIR() ? "在去除各井固定偏差後" : ""}通過。` : `Free run (${M.years[S.year]}); the held-out test of this horizon passes${FAIR() ? " once each well's constant offset is removed" : ""}.`) : (zh ? `模型自行運算（${M.years[S.year]}），此期間的保留年份檢驗未通過。` : `Free run (${M.years[S.year]}); the held-out test of this horizon failed.`))
     : (zh ? `推估值（${M.years[S.year]}），未驗證。` : `Projected value (${M.years[S.year]}), not validated.`);
   const zl = fd.kind === "seq" && fd.unit !== "m" ? `<div class="cap">${cavLink(8, zh ? "南北向的直線邊緣是扇區分界（模型邊界）" : "straight north–south edges are the model's zone lines")}</div>` : "";
   $("legend").innerHTML = `<div class="ttl">${fd.title}</div>
@@ -1201,7 +1251,7 @@ function niceTicks(lo, hi, n = 5) { const span = hi - lo, raw = span / n, mag = 
 const cw = (id, min = 320) => Math.max(min, Math.floor($(id).clientWidth || $(id).parentElement.clientWidth || 560));
 const cssv = n => getComputedStyle(document.body).getPropertyValue(n).trim();
 function deltaBand(isHead) {            // p10/p25/p75/p90 of the policy change at the horizon, or null
-  if (S.sel.k !== "fan" || P.src === "base") return null;
+  if (S.sel.k !== "fan" || NOPOL()) return null;
   if (P.src === "solved" && D.solved[P.solved].members) { const m = D.solved[P.solved].members;
     if (isHead) return [m.head_p[0], null, null, m.head_p[2]];
     // subsidence as sinking avoided (benefit-positive): minus the paired change, percentiles reversed
@@ -1236,7 +1286,7 @@ function renderTS() {
   g += zones(m.t, H - m.b);
   const zl = (a, txt, row, anchor = "middle") => `<text x="${anchor === "middle" ? X((a[0] + a[1]) / 2) : X(a[0]) + 3}" y="${m.t - 8 - row * 13}" font-size="${fs - .5}" text-anchor="${anchor}" fill="${ink3}">${txt}</text>`;
   g += zl(zFit, zh ? "擬合觀測資料" : (phone ? "fitted" : `${M.years[0]}–${M.years[YO]} fitted to observations`), 0);
-  if (!fit) g += zl(zTest, failed ? (zh ? "已檢驗：未通過（漂移）" : "tested: failed (drift)") : (zh ? "已檢驗" : "tested"), 1, "start") + `<text x="${W - m.r}" y="${m.t - 8}" font-size="${fs - .5}" text-anchor="end" fill="${ink3}">${zh ? "模型自身趨勢（未驗證）" : (phone ? "not validated" : "model's own trend, not validated")}</text>`;
+  if (!fit) g += zl(zTest, tp ? testedWord(phone) : (zh ? "已檢驗" : "tested"), 1, "start") + `<text x="${W - m.r}" y="${m.t - 8}" font-size="${fs - .5}" text-anchor="end" fill="${ink3}">${zh ? "模型自身趨勢（未驗證）" : (phone ? "not validated" : "model's own trend, not validated")}</text>`;
   const nt = niceTicks(lo, hi); for (const v of nt.ticks) { g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Yp(v)}" y2="${Yp(v)}" stroke="${ink3}" stroke-opacity=".18"/><text x="${m.l - 6}" y="${Yp(v) + 4}" font-size="${fs}" text-anchor="end" fill="${ink3}">${+v.toFixed(nt.step < 1 ? 1 : 0)}</text>`; }
   const every = phone ? 5 : 4;
   for (let yr = M.years[0]; yr <= x1; yr += fit ? 2 : every) g += `<text x="${X(yr)}" y="${H - m.b + 15}" font-size="${fs}" text-anchor="middle" fill="${ink3}">${yr}</text><line x1="${X(yr)}" x2="${X(yr)}" y1="${H - m.b}" y2="${H - m.b + 4}" stroke="${ink3}"/>`;
@@ -1245,18 +1295,18 @@ function renderTS() {
   if (s.band) { g += `<path d="${area(s.band[0], s.band[3])}" fill="${bcol}" fill-opacity=".18"/><path d="${area(s.band[1], s.band[2])}" fill="${bcol}" fill-opacity=".28"/>`; }
   const xsz = [x0].concat(xs), bz = s.zero ? [0].concat(s.base) : s.base;
   g += `<path d="${line(bz, s.zero ? xsz : xs)}" fill="none" stroke="${ink}" stroke-width="2"/>`;
-  if (s.scen && P.src !== "base") g += `<path d="${line(s.zero ? [0].concat(s.scen) : s.scen, s.zero ? xsz : xs)}" fill="none" stroke="${pcol}" stroke-width="2.4" stroke-dasharray="6 3"/>`;
+  if (s.scen && !NOPOL()) g += `<path d="${line(s.zero ? [0].concat(s.scen) : s.scen, s.zero ? xsz : xs)}" fill="none" stroke="${pcol}" stroke-width="2.4" stroke-dasharray="6 3"/>`;
   if (s.aux) g += `<path d="${s.aux.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Yp(p[1]).toFixed(1)}`).join("")}" fill="none" stroke="#b35806" stroke-width="1.2" stroke-dasharray="3 3"/>`;
   if (s.hop) { const hz = a => s.zero ? [0].concat(a) : a, hx = s.zero ? xsz : xs;
     g += `<path d="${line(hz(s.hop.base), hx)}" fill="none" stroke="#6b6f75" stroke-width="1.3" stroke-opacity=".95"/>`;
-    if (s.hop.scen && P.src !== "base") g += `<path d="${line(hz(s.hop.scen), hx)}" fill="none" stroke="${pcol}" stroke-width="1.3" stroke-opacity=".95"/>`;
+    if (s.hop.scen && !NOPOL()) g += `<path d="${line(hz(s.hop.scen), hx)}" fill="none" stroke="${pcol}" stroke-width="1.3" stroke-opacity=".95"/>`;
     g += `<text x="${W - m.r}" y="${m.t + 12}" font-size="${fs}" text-anchor="end" fill="${ink}">${zh ? `第 ${s.hop.i + 1}/${s.hop.n} 次模擬` : `run ${s.hop.i + 1} of ${s.hop.n}`} · ${esc(s.hop.label)}</text>`; }
   if (s.obs) for (const [x, v] of s.obs) g += `<circle cx="${X(x)}" cy="${Yp(v)}" r="3.4" fill="#fff" stroke="#b35806" stroke-width="1.8"/>`;
   const sx = X(M.starts[S.start]);
-  if (P.src !== "base" && !fit) g += `<line x1="${sx}" x2="${sx}" y1="${m.t}" y2="${H - m.b}" stroke="${pcol}" stroke-width="1.5"/>`;
+  if (!NOPOL() && !fit) g += `<line x1="${sx}" x2="${sx}" y1="${m.t}" y2="${H - m.b}" stroke="${pcol}" stroke-width="1.5"/>`;
   const cyx = X(xYear(Math.min(S.year, nY - 1))); g += `<line x1="${cyx}" x2="${cyx}" y1="${m.t}" y2="${H - m.b}" stroke="#e0007a" stroke-width="1" stroke-dasharray="2 2"/>`;
   const lg = [[ink, false, zh ? "基準（模擬平均）" : "baseline (run mean)"]];
-  if (P.src !== "base" && s.scen) lg.push([pcol, true, zh ? "政策" : "policy"]);
+  if (!NOPOL() && s.scen) lg.push([pcol, true, zh ? "政策" : "policy"]);
   if (s.aux) lg.push(["#b35806", true, zh ? "模型（在井位）" : "model at the wells"]);
   if (s.obs) lg.push(["#b35806", "dot", zh ? (S.ts === "subs" ? "水準測量" : "觀測水頭") : (S.ts === "subs" ? "leveling, observed" : "well, observed")]);
   if (s.band) lg.push([bcol, "band", s.bandKind === "runs" ? (zh ? "範圍（各次模擬）" : phone ? "run range" : "range over the runs") : s.bandKind === "constructed" ? (zh ? "範圍（推算）" : phone ? "constr. range" : "range (constructed)") : (zh ? "範圍（常態近似）" : "range (normal approx.)")]);
@@ -1266,7 +1316,7 @@ function renderTS() {
     g += `<text x="${lx + 23}" y="${ly}" font-size="${fs}" fill="${ink}">${txt}</text>`; lx += 32 + txt.length * (zh ? 11 : 6.1); }
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(s.label)}">${g}</svg>`;
   // difference panel: policy minus baseline, the thing the policy changes
-  if (s.scen && P.src !== "base" && !fit) {
+  if (s.scen && !NOPOL() && !fit) {
     const isHead = S.ts === "head", q = deltaBand(isHead);
     // head: policy minus baseline; subsidence: sinking avoided (baseline minus policy), so up is a benefit in both
     let d = s.scen.map((v, y) => isHead ? v - s.base[y] : s.base[y] - v);
@@ -1326,8 +1376,10 @@ function renderLevers() {
     el.addEventListener("change", () => update(true)); });
   const presets = [["irr30", "Irrigation −30%", "灌溉減30%", [0.7,1,1,1,1,1]], ["aqua0", "Retire aquaculture", "停止養殖抽水", [1,0,1,1,1,1]],
     ["both", "Both", "兩者皆是", [0.7,0,1,1,1,1]], ["all20", "All classes −20%", "全部減20%", [0.8,0.8,0.8,0.8,0.8,0.8]]];
-  $("presets").innerHTML = presets.map(p => `<button class="btn" data-p="${p[0]}">${LANG === "zh" ? p[2] : p[1]}</button>`).join("");
-  $("presets").querySelectorAll("button").forEach((b, i) => b.onclick = () => { S.f = presets[i][3].slice(); S.start = 0; syncLevers(); update(true); });
+  // without a fast estimate only the policies with a full-model run can be shown
+  const shown = F.dSubs ? presets : presets.filter(p => solvedMatch(p[3], M.starts[0]) >= 0);
+  $("presets").innerHTML = shown.map(p => `<button class="btn" data-p="${p[0]}">${LANG === "zh" ? p[2] : p[1]}</button>`).join("");
+  $("presets").querySelectorAll("button").forEach((b, i) => b.onclick = () => { S.f = shown[i][3].slice(); S.start = 0; syncLevers(); update(true); });
 }
 function syncLevers() { D.classes.forEach((_, k) => { const v = Math.round((1 - S.f[k]) * 100); $("sl" + k).value = v; $("slv" + k).textContent = v ? "−" + v + "%" : "0%"; });
   $("s2026").setAttribute("aria-pressed", S.start === 0); $("s2030").setAttribute("aria-pressed", S.start === 1);
@@ -1347,16 +1399,17 @@ function renderRank() {
       g += `<text x="${m.l + Math.max(0, w) + 5}" y="${yy + 9.5}" font-size="10.5" fill="${ink3}">${v === v ? v.toFixed(2) : "–"}</text>`; }); });
   const ly = H - 8; M.starts.forEach((s0, si) => { const lx = m.l + 90 * si;
     g += `<rect x="${lx}" y="${ly - 9}" width="11" height="9" fill="${cols[si]}" ${si ? `stroke="${cols[0]}" stroke-width=".8"` : ""}/><text x="${lx + 15}" y="${ly}" font-size="11" fill="${ink3}">${zh ? `自${s0}年` : `from ${s0}`}</text>`; });
-  $("rankWrap").innerHTML = F.dSubs ? `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="lever ranking">${g}</svg>` : `<div class="nl">${zh ? "未載入反應基底" : "Response basis not loaded"}</div>`;
+  $("rankWrap").innerHTML = F.dSubs ? `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="lever ranking">${g}</svg>` : `<div class="nl">${BOFF() ? boffWords() : (zh ? "未載入反應基底" : "Response basis not loaded")}</div>`;
   $("rankUnit").textContent = S.rank === "cm" ? (zh ? `完全停止各類別抽水，${M.years[Y-1]}年全扇平均減少下陷（公分）` : `retiring each class outright: fan-average cm avoided by ${M.years[Y-1]}`)
     : (zh ? "每減少 100 GWh/年 抽水用電可減少的下陷（公分）" : "cm avoided per 100 GWh/yr of pumping energy forgone");
   $("rankTbl").innerHTML = `<table class="t"><thead><tr><th></th>${M.starts.map(s0 => `<th>${s0}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><td>${CN(r.k)}</td>${r.v.map(v => `<td class="n">${v.toFixed(3)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-  $("cav2Short").textContent = zh ? `模型把每個地區的抽水分散到${spreadWords()}的範圍，原因未明；分散更廣的模型同樣擬合水頭，但幾乎沒有政策效果。`
-    : `The model spreads each area's pumping over ${spreadWords()}; why is not yet known. A wider spread fits heads equally well and shows almost no policy effect.`;
+  $("cav2Short").textContent = zh ? `模型把每個地區的抽水分散到${spreadWords()}的範圍，資料並未確定這個半徑，原因也未明。${BOFF() ? "快速估算已關閉：只有完整模擬過的政策有數值。" : ""}`
+    : `The model spreads each area's pumping over ${spreadWords()}; the data do not pin that radius down, and why is not known.${BOFF() ? " Fast estimate off: only policies with a full-model run have numbers." : ""}`;
 }
 function spreadWords() {                // the learned stress radius, from the calibration's theta
   const zh = LANG === "zh", mc = D.modelcard, km = mc.spread_km;
-  const r = km != null ? (zh ? `約${Math.round(km)}公里` : `about ${Math.round(km)} km`) : (zh ? "一個學得的半徑" : "a learned radius");
+  const kmS = km == null ? null : km < 5 ? f1(km) : String(Math.round(km));
+  const r = km != null ? (zh ? `約${kmS}公里` : `about ${kmS} km`) : (zh ? "一個學得的半徑" : "a learned radius");
   return r + (mc.spread_at_bound ? (zh ? "（已達上限）" : " (at its upper bound)") : "");
 }
 
@@ -1366,7 +1419,7 @@ function renderTowns() {
   if (S.sort === "benefit") order.sort((a, b) => (kp.town[b] || 0) - (kp.town[a] || 0));
   else if (S.sort === "base") order.sort((a, b) => kp.townBase[b] - kp.townBase[a]);
   else order.sort((a, b) => D.towns[a].en.localeCompare(D.towns[b].en));
-  const isB = P.src === "base", W = 200, H = 56;
+  const isB = NOPOL(), W = 200, H = 56;
   const series = order.map(i => { const cs = cellsOfTown[i];
     if (!isB) return {i, d: M.years.map((_, y) => -mean(cs.map(c => dFwd(P, c, y) * (y >= YR ? 1 : 0))))};
     const base = M.years.map((_, y) => mean(cs.map(c => F.subsBase[c*Y+y])));
@@ -1406,7 +1459,7 @@ function renderTowns() {
   $("townTbl").innerHTML = `<table class="t"><thead><tr><th>${zh ? "鄉鎮" : "Township"}</th><th>${zh ? `基準 ${M.years[YR]}-${M.years[Y-1]} (公分)` : `Baseline ${M.years[YR]}-${M.years[Y-1]} (cm)`}</th><th>${zh ? "政策減少 (公分)" : "Avoided by policy (cm)"}</th><th>n</th><th>${zh ? "偏差" : "bias"} (cm)</th><th>R²</th><th>${zh ? "可信度" : "confidence"}</th><th>${zh ? "同意的參數組" : "sets agreeing"}</th></tr></thead><tbody>${townRows().map(r => `<tr>${r.map((v, j) => `<td class="${j && j !== 6 ? "n" : ""}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 function townRows() { return D.towns.map((tw, i) => { const sk = D.townSkill ? D.townSkill[i] : {};
-  return [`${tw.zh} ${tw.en}`, f2(KP.townBase[i]), P.src === "base" ? "0.00" : f2(KP.town[i]), sk.n ?? "", sk.bias ?? "", sk.r2 ?? "", tw.pooled ? "pooled" : sk.low ? "low" : "ok", (a => a && a.n ? `${a.agree}/${a.n}` : "")(townAgreeOf(i))]; }).filter((_, i) => cellsOfTown[i].length); }
+  return [`${tw.zh} ${tw.en}`, f2(KP.townBase[i]), NOPOL() ? "0.00" : f2(KP.town[i]), sk.n ?? "", sk.bias ?? "", sk.r2 ?? "", tw.pooled ? "pooled" : sk.low ? "low" : "ok", (a => a && a.n ? `${a.agree}/${a.n}` : "")(townAgreeOf(i))]; }).filter((_, i) => cellsOfTown[i].length); }
 // per township, the parameter sets whose township-average change is a benefit at the horizon
 // (per-member output, full-model runs only)
 function townAgreeOf(i) { const sx = solvedOf(P); return sx && sx.townAgree ? sx.townAgree[i] : null; }
@@ -1434,13 +1487,13 @@ function renderHsr() {
   for (const v of nt1.ticks) g += `<text x="${m.l - 6}" y="${Y1(v) + 4}" font-size="${fs}" text-anchor="end" fill="${ink3}">${v}</text><line x1="${m.l}" x2="${W - m.r}" y1="${Y1(v)}" y2="${Y1(v)}" stroke="${ink3}" stroke-opacity=".15"/>`;
   g += `<path d="${ln(b10, Y1)}${b90.slice().reverse().map((v, j) => `L${X(ch[ch.length-1-j]).toFixed(1)},${Y1(v).toFixed(1)}`).join("")}Z" fill="#8a8f95" fill-opacity=".22"/>`;
   g += `<path d="${ln(pb, Y1)}" fill="none" stroke="${ink}" stroke-width="2"/>`;
-  if (P.src !== "base") g += `<path d="${ln(pp, Y1)}" fill="none" stroke="#1f6fb4" stroke-width="2.2" stroke-dasharray="6 3"/>`;
+  if (!NOPOL()) g += `<path d="${ln(pp, Y1)}" fill="none" stroke="#1f6fb4" stroke-width="2.2" stroke-dasharray="6 3"/>`;
   g += `<text x="${phone ? 4 : m.l}" y="${m.t - 9}" font-size="${fs + .5}" font-weight="600" fill="${ink}">${zh ? `累積下陷（自${T0()}至${M.years[S.year]}年12月），公分，向下＝下陷` : phone ? `Cumulative sinking to Dec ${M.years[S.year]}, cm` : `Cumulative subsidence since ${T0()} at Dec ${M.years[S.year]}, cm (down = sinking)`}</text>`;
   ap.forEach((v, i) => { if (v > thr) g += `<rect x="${X(ch[i]) - 2}" y="${split + 22}" width="4" height="${H - m.b - split - 22}" fill="url(#hh)"/>`; });
   const nt2 = niceTicks(0, hi2, 3);
   for (const v of nt2.ticks) g += `<text x="${m.l - 6}" y="${Y2(v) + 4}" font-size="${fs}" text-anchor="end" fill="${ink3}">${v ? "1/" + Math.round(1/v).toLocaleString("en") : "0"}</text><line x1="${m.l}" x2="${W - m.r}" y1="${Y2(v)}" y2="${Y2(v)}" stroke="${ink3}" stroke-opacity=".15"/>`;
   g += `<path d="${ln(ab, Y2)}" fill="none" stroke="${ink}" stroke-width="1.6"/>`;
-  if (P.src !== "base") g += `<path d="${ln(ap, Y2)}" fill="none" stroke="#1f6fb4" stroke-width="1.8" stroke-dasharray="6 3"/>`;
+  if (!NOPOL()) g += `<path d="${ln(ap, Y2)}" fill="none" stroke="#1f6fb4" stroke-width="1.8" stroke-dasharray="6 3"/>`;
   const thrTxt = zh ? `門檻 1/${S.hsrThr}：示意篩選值，非營運標準` : phone ? `screening value 1/${S.hsrThr} (illustrative)` : `threshold 1/${S.hsrThr}: illustrative screening value, not the operator's criterion`;
   if (thrOn) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y2(thr)}" y2="${Y2(thr)}" stroke="#b35806" stroke-dasharray="5 4"/><text x="${W - m.r}" y="${Y2(thr) - 4}" font-size="${fs}" text-anchor="end" fill="#b35806">${thrTxt}</text>`;
   else g += `<text x="${phone ? m.l + 2 : W - m.r}" y="${split + 36}" font-size="${fs}" text-anchor="${phone ? "start" : "end"}" fill="#b35806">${zh ? `${thrTxt}；比最大值高 ${Math.round(thr / dmax)} 倍，在刻度之外` : phone ? `1/${S.hsrThr} screening value: ${Math.round(thr / dmax)}× above this scale` : `${thrTxt}; it is ${Math.round(thr / dmax)}× the largest value here, above this scale`}</text>`;
@@ -1480,7 +1533,7 @@ function renderSection() {
   const X = d => m.l + d / len * (W - m.l - m.r);
   const zoneName = c => D.zoneNames[F.zone[c]];
   const hb = (l, c) => F.headBase[(l*A + c)*Y + yEnd];
-  const dh = (l, c) => { if (!F.dHeadEnd || P.src === "base") return 0; let s = 0; for (let k = 0; k < K; k++) { const w = 1 - P.f[k]; if (w) s += w * F.dHeadEnd[((P.start*K + k)*M.L + l)*A + c]; } return s; };
+  const dh = (l, c) => { if (!F.dHeadEnd || NOPOL()) return 0; let s = 0; for (let k = 0; k < K; k++) { const w = 1 - P.f[k]; if (w) s += w * F.dHeadEnd[((P.start*K + k)*M.L + l)*A + c]; } return s; };
   const gr = c => F.ground[c];
   // one vertical axis in metres above sea level: ground, aquifers (ground − screen depth) and heads
   const bot = Math.min(...cells.map(s => { const z = zoneName(s.c); return gr(s.c) - D.layerDepths[z][3] - D.layerThick[z][3] / 2; }));
@@ -1500,12 +1553,12 @@ function renderSection() {
   for (let l = 0; l < 4; l++) { const base = cells.map((s, i) => `${i ? "L" : "M"}${X(s.d).toFixed(1)},${Ye(hb(l, s.c)).toFixed(1)}`).join("");
     const scen = cells.map((s, i) => `${i ? "L" : "M"}${X(s.d).toFixed(1)},${Ye(hb(l, s.c) + dh(l, s.c)).toFixed(1)}`).join("");
     g += `<path d="${base}" fill="none" stroke="#fff" stroke-width="3.4" opacity=".9"/><path d="${base}" fill="none" stroke="#111" stroke-width="1.4" ${l % 2 ? 'stroke-dasharray="1 0"' : ""}/>`;
-    if (P.src !== "base") g += `<path d="${scen}" fill="none" stroke="#1f6fb4" stroke-width="1.8" stroke-dasharray="5 3"/>`;
+    if (!NOPOL()) g += `<path d="${scen}" fill="none" stroke="#1f6fb4" stroke-width="1.8" stroke-dasharray="5 3"/>`;
     labs.push([Ye(hb(l, cells[cells.length-1].c)), "h" + (l + 1)]); }
   labs.sort((p, q) => p[0] - q[0]); for (let i = 1; i < labs.length; i++) labs[i][0] = Math.max(labs[i][0], labs[i-1][0] + 12);
   for (const [yv, t2] of labs) g += `<text x="${W - m.r + 4}" y="${yv + 4}" font-size="${fs}" fill="${ink}">${t2}</text>`;
   const lim = D.scales.dsubs.limit;
-  for (const s of cells) { const v = P.src === "base" ? 0 : dFwd(P, s.c, yEnd); g += `<rect x="${(X(s.d) - dw/2).toFixed(1)}" y="${m.t - 30}" width="${(dw + .6).toFixed(1)}" height="14" fill="${css(LUT.diverging, .5 + .5 * Math.max(-1, Math.min(1, v / lim)))}"/>`; }
+  for (const s of cells) { const v = NOPOL() ? 0 : dFwd(P, s.c, yEnd); g += `<rect x="${(X(s.d) - dw/2).toFixed(1)}" y="${m.t - 30}" width="${(dw + .6).toFixed(1)}" height="14" fill="${css(LUT.diverging, .5 + .5 * Math.max(-1, Math.min(1, v / lim)))}"/>`; }
   g += `<text x="${phone ? 4 : m.l}" y="${m.t - 38}" font-size="${fs + .5}" font-weight="600" fill="${ink}">${zh ? `沿線減少的下陷 ${M.years[YR]}–${M.years[Y-1]}（±${lim} 公分，藍＝少下陷）` : phone ? `Avoided ${M.years[YR]}–${M.years[Y-1]}, ±${lim} cm, blue = less` : `Sinking avoided ${M.years[YR]}–${M.years[Y-1]} along the line (±${lim} cm, blue = less sinking)`}</text>`;
   g += `<text x="14" y="${m.t + 130}" font-size="${fs}" fill="${ink3}" transform="rotate(-90 14 ${m.t + 130})">${zh ? "高程（公尺，海拔）" : "elevation, m above sea level"}</text>`;
   for (let d = 0; d <= len; d += phone ? 20 : 10) g += `<text x="${X(d)}" y="${H - m.b + 15}" font-size="${fs}" text-anchor="middle" fill="${ink3}">${d}</text>`;
@@ -1546,7 +1599,7 @@ function renderTrust() {
   h += `<div class="tblwrap"><table class="t"><thead><tr><th>${zh ? "鄉鎮" : "Township"}</th><th>n</th><th>${zh ? "偏差" : "bias"} cm</th><th>R²</th><th></th></tr></thead><tbody>`;
   if (D.townSkill) D.towns.forEach((tw, i) => { const s = D.townSkill[i]; if (!cellsOfTown[i].length) return;
     h += `<tr><td>${esc(tw.pooled ? (zh ? tw.zh : tw.en) : tw.zh + " " + tw.en)}</td><td class="n">${s.n}</td><td class="n">${s.bias ?? "–"}</td><td class="n">${s.r2 ?? "–"}</td><td>${s.low ? (zh ? "低" : "low") : ""}</td></tr>`; });
-  h += `</tbody></table></div><h3 style="font-size:14px;margin:14px 0 6px">${zh ? "已知限制" : "Known limits"}</h3><ol class="cavlist">${caveats().map(c => `<li><b>${c[0]}</b>${c[1]}</li>`).join("")}</ol>
+  h += `</tbody></table></div><h3 style="font-size:14px;margin:14px 0 6px">${zh ? "模型的檢驗" : "How the model is tested"}</h3>${testTable()}${PREV() ? `<p class="note">${prevLine()}</p>` : ""}<h3 style="font-size:14px;margin:14px 0 6px">${zh ? "已知限制" : "Known limits"}</h3><ol class="cavlist">${caveats().map(c => `<li><b>${c[0]}</b>${c[1]}</li>`).join("")}</ol>
     <p><span class="chip ${P.src === "solved" ? "full" : P.src === "basis" ? "fast" : ""}">${$("prov").textContent}</span></p></div></div>`;
   $("trustWrap").innerHTML = h;
   const cv = $("trustMap"), ctx = sizeCanvas(cv, Math.min(320, $("trustWrap").clientWidth - 10)), g = mapGeom(cv);
@@ -1567,12 +1620,64 @@ function trustLim() {                  // colour limit of the trust map, from th
   return D.leveling ? v : [2, 5, 10, 20].find(x => x >= v) || 20;
 }
 // ---------- caveats and model card ------------------------------------------------------
-function altCompare() {                // "−0.18 cm to cut30 and −0.19 cm to retire_aqua, against −0.77 and −1.66 here"
+function altCompare() {                // " The previous model answers −0.91 cm to … and −1.79 cm to …, against −0.94 and −1.31 cm here."
   const zh = LANG === "zh"; if (!D.alt) return "";
   const pairs = D.solved.filter(x => x.members && D.alt.resp[x.name]).map(x => [policyPhrase(x.factors), D.alt.resp[x.name].subs_mean, mMean(x.members)]);
   if (!pairs.length) return "";
-  return zh ? `（${altWords()}對${pairs.map(q => `「${q[0]}」為 ${sg(q[1])} 公分（本模型 ${sg(q[2])}）`).join("、")}）`
-    : ` (${altWords()} answers ${pairs.map(q => `${sg(q[1])} cm to ${q[0].toLowerCase()}`).join(" and ")}, against ${pairs.map(q => sg(q[2])).join(" and ")} cm here)`;
+  const w = altWords();                 // avoided subsidence: minus the paired change, positive = benefit
+  return zh ? `${w}：${pairs.map(q => `「${q[0]}」減少 ${f2(-q[1])} 公分（本模型 ${f2(-q[2])}）`).join("、")}。`
+    : ` By ${w}, ${pairs.map(q => `${q[0].toLowerCase()} avoids ${f2(-q[1])} cm`).join(" and ")}, against ${pairs.map(q => f2(-q[2])).join(" and ")} cm here.`;
+}
+// when a policy's benefit arrives and whether it slows the late sinking (prep.effect_timing):
+// "rebound" = it arrives at once and stops, the late rate unchanged; "slows" = it grows
+const TIMK = () => D.timingKind;
+const TIMS = () => D.solved.filter(x => x.timing);
+function lateRate(tim) { const t0 = tim || (TIMS()[0] || {}).timing; return t0 ? {r: t0.rate_base, y: t0.rate_years_span} : null; }
+function reboundLine(kp) {             // beside the avoided-subsidence tile
+  const zh = LANG === "zh", lr = lateRate(); if (TIMK() !== "rebound" || !lr || kp.fast == null || NOPOL()) return "";
+  const yr = M.starts[S.start], first = kp.fast * kp.fieldAvoid;
+  return `<div class="alt">${zh ? `一次性回彈：${f2(first)} 公分在${yr}年內出現；過去抽降留下的每年 ${f2(lr.r)} 公分下陷未減緩`
+    : `One-time rebound: ${f2(first)} cm of it within ${yr}; the ${f2(lr.r)} cm/yr sinking left from past drawdown is not slowed`}</div>`;
+}
+function timingList(tims, zh) {        // "cutting irrigation pumping 30% from 2026 avoids 0.93, 0.94 and 0.94 cm by Dec 2026, 2029 and 2032"
+  const and = a => a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0];
+  return tims.map(([x, t0]) => { const v = t0.at.map(a => f2(a.avoid)), y = t0.at.map(a => a.year);
+    return zh ? `${policyPhrase(x.factors)}（自${x.start}年）到${y.map(q => q + "年").join("、")}12月分別減少 ${v.join("、")} 公分`
+      : `${policyPhrase(x.factors).toLowerCase()} from ${x.start} avoids ${and(v)} cm by Dec ${and(y.map(String))}`; }).join(zh ? "；" : "; ");
+}
+function rateList(tims, zh) {          // "0.40 → 0.32 cm/yr for cutting …, 0.32 for retiring …"
+  return tims.map(([x, t0]) => zh ? `${policyPhrase(x.factors)} ${f2(t0.rate_base)} → ${f2(t0.rate_pol)}` : `${f2(t0.rate_base)} → ${f2(t0.rate_pol)} cm/yr under ${policyPhrase(x.factors).toLowerCase()}`).join(zh ? "、" : ", ");
+}
+function timingCaveat() {              // caveat 12: a one-time rebound here, a slowing in the previous model
+  const zh = LANG === "zh", k = TIMK(), H = M.years[Y-1];
+  const own = TIMS().map(x => [x, x.timing]), lr = lateRate();
+  if (!k || !own.length || !lr) return zh ? ["效益的時間變化未載入。", ""] : ["When the benefit arrives is not loaded.", ""];
+  const span = `${lr.y[0]}–${lr.y[1]}`, late = M.starts.length > 1 ? M.starts[1] : null;
+  const a = D.alt, altT = a && a.timing ? D.solved.filter(x => a.timing[x.name]).map(x => [x, a.timing[x.name]]) : [];
+  const who = a ? altWords(true) : "";
+  let altTxt = "";
+  if (altT.length && a.timingKind && a.timingKind !== k) altTxt = a.timingKind === "slows"
+    ? (zh ? `${who}的行為不同：政策也減緩了持續的下陷（${span}年全扇速率：${rateList(altT, true)} 公分/年），所以效益逐年增加：${timingList(altT, true)}。`
+      : ` ${who[0].toUpperCase() + who.slice(1)} behaves differently: there a policy also slows the ongoing sinking (fan rate over ${span}: ${rateList(altT, false)}), so the benefit keeps growing: ${timingList(altT, false)}.`)
+    : (zh ? `${who}則是一次性回彈：${timingList(altT, true)}。` : ` In ${who} it is a one-time rebound instead: ${timingList(altT, false)}.`);
+  const test = zh ? "資料尚未檢驗哪一種才對。" : " The data have not tested which is right.";
+  if (k === "rebound") return zh ? ["本模型中，政策的效益是一次性的快速回彈，持續的下陷並未減緩。",
+      `${timingList(own, true)}。幾乎所有效益在第一年內出現（水頭回升時地面回彈），之後就不再增加。無論有沒有政策，${span}年全扇仍以每年約 ${f2(lr.r)} 公分下陷：這是過去抽降留下的（黏土仍在壓密），本模型中政策不會減緩它。所以晚一點開始，到${H}年的差別很小${late ? `：同一政策自${late}年開始，到${H}年幾乎是同一個數字，差別只在${late}年以前的幾年` : ""}。${altTxt}${test}`]
+    : ["In this model a policy's benefit is a quick one-time rebound; the ongoing sinking is not slowed.",
+      ` ${(s0 => s0[0].toUpperCase() + s0.slice(1))(timingList(own, false))}. Almost all of it comes within the first year, a quick rebound as heads rise, and then it stops growing. With or without the policy the fan keeps sinking at about ${f2(lr.r)} cm/yr over ${span}: that rate is left over from past drawdown (the clays are still compacting), and in this model a policy does not slow it. So starting later changes little by ${H}${late ? `: the same policy started in ${late} reaches almost the same number, and the difference is only in the years before ${late}` : ""}.${altTxt}${test}`];
+  return zh ? ["本模型中，政策減緩了持續的下陷，效益逐年增加。", `${timingList(own, true)}；${span}年全扇速率：${rateList(own, true)} 公分/年。${altTxt}${test}`]
+    : ["In this model a policy slows the ongoing sinking, so its benefit grows.", ` ${(s0 => s0[0].toUpperCase() + s0.slice(1))(timingList(own, false))}; fan rate over ${span}: ${rateList(own, false)}.${altTxt}${test}`];
+}
+function renderStartNote() {           // the 2026/2030 toggle: the same horizon number is not "no difference"
+  const el = $("startNote"); if (!el) return; el.hidden = true; el.textContent = "";
+  if (M.starts.length < 2 || NOPOL()) return;
+  const other = policyFields(S.f, otherStart()); if (other.src !== "solved" && other.src !== "basis") return;
+  const fan = pol => { let s = 0; for (let c = 0; c < A; c++) s -= dFwd(pol, c, Y-1); return s / A; };
+  const pols = S.start === 0 ? [P, other] : [other, P], a = pols.map(fan), H = M.years[Y-1], zh = LANG === "zh";
+  if (Math.abs(a[0] - a[1]) > Math.max(.01, .03 * Math.abs(a[0]))) return;
+  el.hidden = false;
+  el.textContent = zh ? `自${M.starts[0]}年或${M.starts[1]}年開始，到${H}年都約減少 ${f2(a[0])} 公分：本模型的效益在第一年出現後就不再增加，所以兩者只差在${M.starts[1]}年以前的幾年（見時間序列）。`
+    : `Starting in ${M.starts[0]} or in ${M.starts[1]} gives about the same ${f2(a[0])} cm by ${H}: in this model the benefit comes in the first year and then stops growing, so the two differ only in the years before ${M.starts[1]} (the time series shows it).`;
 }
 function fastWords() {                 // the numbers behind caveat 9, from the solved runs and the basis
   const zh = LANG === "zh", out = [];
@@ -1585,10 +1690,16 @@ function fastWords() {                 // the numbers behind caveat 9, from the 
       : ` The same 30 % irrigation cut started in ${M.starts[1]} gives ${f2(a[1])} cm by ${M.years[Y-1]} in ${M.years[Y-1] - M.starts[1] + 1} years, against ${f2(a[0])} cm in ${M.years[Y-1] - M.starts[0] + 1} years from ${M.starts[0]}: most of the benefit is the first year's jump.`; }
   return {txt: out.join(zh ? "；" : "; "), late};
 }
-function driftMore() {                 // the held-out test's shape scores and the extensions tried
-  const zh = LANG === "zh", tp = D.modelcard.temporal; if (!tp) return "";
+function driftMore() {                 // the held-out test's shape scores and the other screens tried
+  const zh = LANG === "zh", tp = TP(); if (!tp) return "";
   let t = "";
-  if (tp.r2_shape != null) t += zh ? `井的變化形狀也未重現（形狀 R² ${sg(tp.r2_shape, 2)}，各井 R² 中位數 ${sg(tp.r2_well_median, 1)}）。` : ` Nor does it reproduce the shape of the wells' changes (shape R² ${sg(tp.r2_shape, 2)}, median per-well R² ${sg(tp.r2_well_median, 1)}).`;
+  if (!FAIR() && tp.r2_shape != null) t += zh ? `井的變化形狀也未重現（形狀 R² ${sg(tp.r2_shape, 2)}，各井 R² 中位數 ${sg(tp.r2_well_median, 1)}）。` : ` Nor does it reproduce the shape of the wells' changes (shape R² ${sg(tp.r2_shape, 2)}, median per-well R² ${sg(tp.r2_well_median, 1)}).`;
+  const fo = (tp.others || []).filter(x => x.fair && x.fair.ratio != null);
+  if (FAIR() && fo.length) { const fail = fo.filter(x => x.fair.verdict !== "PASS"), np = fo.length - fail.length;
+    const lo = fail.length ? Math.min(...fail.map(x => x.fair.ratio)) : null, hi = fail.length ? Math.max(...fail.map(x => x.fair.ratio)) : null;
+    t += zh ? `其他以同樣方式評分的${fo.length}個版本中，${fail.length}個未通過${fail.length ? `（比值 ${lo.toFixed(2)}–${hi.toFixed(2)}）` : ""}${np ? `，${np}個通過` : ""}。`
+      : ` Of the ${fo.length} other model variants scored the same way, ${fail.length} fail${fail.length ? ` (ratio ${lo.toFixed(2)}–${hi.toFixed(2)})` : ""}${np ? ` and ${np} pass` : ""}.`;
+    return t; }
   const oth = (tp.others || []).filter(x => x.extensions && x.extensions.length && x.rmse != null);
   if (oth.length) { const names = oth.map(x => x.extensions.length > 2 ? (zh ? "三者皆加" : "all three") : x.extensions.map(e => zh ? ({"delay storage": "延遲儲水", "rivers": "河川交換", "canal water": "渠道水"}[e] || e) : e).join(zh ? "＋" : " + "));
     const lo = Math.min(...oth.map(x => x.rmse)), hi = Math.max(...oth.map(x => x.rmse)), allFail = oth.every(x => x.verdict === "FAIL");
@@ -1596,58 +1707,162 @@ function driftMore() {                 // the held-out test's shape scores and t
       : ` Adding ${names.join(", ")} to the model was tried${allFail ? " and fails the same test" : ""} (error ${lo.toFixed(1)}–${hi.toFixed(1)} m).`; }
   return t;
 }
+function heldOutCaveat() {             // caveat 1: what the held-out-years test says, from the file
+  const zh = LANG === "zh", tp = TP(), fr = FAIR(), o = M.years[YO], yt = M.years[M.yTested];
+  if (!tp) return zh ? ["十年尺度的趨勢未經驗證。", `預報自${o}年12月起由模型自行運算；保留年份檢驗結果未載入。`] : ["The decade-scale trend is not validated.", ` The projection runs free from Dec ${o}. The held-out-years test is not loaded.`];
+  const fy = Math.round(tp.fit_months / 12), ny = Math.round(tp.months / 12);
+  if (tp.passed && fr) {
+    const ex = fr.n_excluded ? (zh ? `，並排除擬合期少於24個月的${fr.n_excluded}口井` : `, and the ${fr.n_excluded} wells with too short a fitted record are left out`) : "";
+    return zh ? [`通過${ny}年的保留年份檢驗；之後的十年未經檢驗。`, `預報自${o}年12月起由模型自行運算（水頭只在起點重新接上觀測值一次）。保留年份檢驗以前${fy}年擬合、再自行運算${tp.months}個月，並依事先登錄的「公平」規則評分：每口井的固定偏差只用擬合期估計${ex}。去除偏差後，模型在${fr.n_wells}口井的誤差為 ${f2(fr.rmse)} 公尺，最佳簡單預測（${bestName(fr.best)}）為 ${f2(fr.rmse_best)} 公尺，比值 ${fr.ratio.toFixed(2)}（≤ ${fr.k} 通過）；井的變化形狀 R² ${sg(fr.shape, 2)}，氣候平均 ${sg(fr.shape_clim, 2)}（加趨勢 ${sg(fr.shape_clim_trend, 2)}）。不去除偏差時誤差為 ${f1(fr.rmse_raw)} 公尺，其中 ${pctf(100 * fr.datum_share)} 就是這些固定偏差：模型不知道每口井的絕對水位，它追蹤的是變化。${driftMore()}${yt}年12月以後的每個數值都是模型本身未經檢驗的趨勢。`]
+      : [`It passes a ${ny}-year held-out test; the decade after is untested.`, ` The projection runs free from Dec ${o}: the heads are restarted from the observed field once, at that origin, and the model is on its own after that. The held-out-years test fits the first ${fy} years and runs free for ${tp.months} months, scored by the fair rule registered beforehand: each well's constant offset is estimated from the fitted years only${ex}. After that offset its error at the ${fr.n_wells} wells is ${f2(fr.rmse)} m, against ${f2(fr.rmse_best)} m for the best simple forecast (${bestName(fr.best)}), a ratio of ${fr.ratio.toFixed(2)} (≤ ${fr.k} passes), and the shape of the wells' changes scores R² ${sg(fr.shape, 2)} against ${sg(fr.shape_clim, 2)} for climatology (${sg(fr.shape_clim_trend, 2)} with its trend). Without removing the offsets the error is ${f1(fr.rmse_raw)} m, ${pctf(100 * fr.datum_share)} of it the offsets themselves: the model does not know each well's absolute level, it tracks changes.${driftMore()} Every value after Dec ${yt} is the model's own, untested trend.`]; }
+  if (tp.passed) return zh ? ["十年尺度的趨勢未經驗證。", `保留年份檢驗（以前${fy}年擬合、再自行運算${tp.months}個月）：模型誤差 ${tp.rmse_model.toFixed(1)} 公尺，重複過去平均 ${tp.rmse_clim.toFixed(1)} 公尺，通過。${yt}年12月以後的數值未經檢驗。`]
+    : ["The decade-scale trend is not validated.", ` In the held-out-years test (fit the first ${fy} years, then run free for ${tp.months} months) the error is ${tp.rmse_model.toFixed(1)} m against ${tp.rmse_clim.toFixed(1)} m for repeating the past average: it passes. Every value after Dec ${yt} is untested.`];
+  const r = [tp.rmse_model.toFixed(1), tp.rmse_clim.toFixed(1), tp.n_wells, tp.months, fy];
+  return zh ? ["十年尺度的趨勢未經驗證，三年的檢驗也未通過。", `預報自${o}年12月起由模型自行運算（只在起點重新接上觀測水頭）。保留年份檢驗：以前${r[4]}年擬合、再自行運算${r[3]}個月，模型在${r[2]}口井的誤差為 ${r[0]} 公尺，而單純重複過去平均只有 ${r[1]} 公尺，所以模型會漂移。${driftMore()}${o}年12月以後的每個數值（包含標示「已檢驗」的前${Math.round(r[3] / 12)}年）都是模型本身的趨勢。`]
+    : ["The decade-scale trend is not validated, and the three-year test failed.", ` The projection runs free from Dec ${o}: the model is restarted from the observed heads once, at that origin, and is on its own after that. In the held-out-years test (fit the first ${r[4]} years, then run free for ${r[3]} months) its error at the ${r[2]} wells is ${r[0]} m, against ${r[1]} m for simply repeating the past average: it drifts.${driftMore()} Every value after Dec ${o}, including the first ${Math.round(r[3] / 12)} years marked "tested", is the model's own trend.`];
+}
+function spreadCaveat() {              // caveat 2: the stress radius, from the calibration and the screen
+  const zh = LANG === "zh", mc = D.modelcard, tp = TP(), a = D.alt, km = mc.spread_km, cap = mc.spread_max_km;
+  const sk = tp && tp.spread_km != null && km != null && Math.abs(tp.spread_km - km) > .5 ? tp.spread_km : null, atCap = sk != null && cap != null && Math.abs(sk - cap) < .05;
+  const fy = tp ? Math.round(tp.fit_months / 12) : null, ak = a && a.spread_km != null ? a.spread_km : null;
+  const kmS = v => v == null ? "–" : v < 5 ? f1(v) : String(Math.round(v));
+  return zh ? [`抽水應力的分散半徑未被資料確定。`, `模型把每個地區的電表抽水分散到一個學得的半徑：全紀錄擬合為 ${kmS(km)} 公里${sk != null ? `，但只用前${fy}年擬合的同一模型（保留年份檢驗）得到 ${kmS(sk)} 公里${atCap ? "（達到上限）" : ""}` : ""}${ak != null && PREV() ? `；前一版模型為 ${kmS(ak)} 公里` : ""}。抽水為何在數公里外起作用仍不清楚（電表位置與井位不同，或灌溉水在地區間移動）。${altCompare()}本頁的範圍只包含本模型的參數，不包含這種模型結構的差異。`]
+    : [`The pumping-stress radius is not pinned down.`, ` The model spreads each area's metered pumping over a learned radius: ${kmS(km)} km in the full-record calibration${sk != null ? `, but ${kmS(sk)} km${atCap ? " (its upper limit)" : ""} when the same model is fitted to the first ${fy} years only (the held-out-years screen)` : ""}${ak != null && PREV() ? `; the previous model sat at ${kmS(ak)} km` : ""}. Why pumping would act kilometres away is not known (meter versus well location, or irrigation water moved between districts).${altCompare()} The ranges on this page cover this model's parameters only, not this difference in model structure.`];
+}
+function unseenCaveat() {              // caveat 6: the k-fold on levels and on head changes
+  const zh = LANG === "zh", mc = D.modelcard, hasA = mc.r2_anom != null;
+  const worse = mc.r2_kfold != null && mc.r2_kfold < mc.r2_idw && (!hasA || mc.r2_anom < mc.r2_anom_idw);
+  const wd = mc.well_datum;
+  if (!worse) return zh ? ["水頭檢驗不檢驗政策反應。", `水頭分數 ${r3(mc.r2_kfold)}（內插 ${r3(mc.r2_idw)}）衡量的是井與井之間的內插，而不是抽水改變的效果是否正確。`]
+    : ["The head test does not test policy response.", ` The head score ${r3(mc.r2_kfold)} (interpolation ${r3(mc.r2_idw)}) measures interpolation between wells, not whether the response to a pumping change is right.`];
+  return zh ? ["在沒見過的井，模型不如簡單內插。", `${mc.n_folds}折交叉檢驗中，模型對未參與擬合的井${hasA ? `預測水頭變化（去除各井平均）的 R² 為 ${r3(mc.r2_anom)}，內插為 ${r3(mc.r2_anom_idw)}（${mc.verdict_anom || "–"}）；` : ""}預測絕對水位的 R² 為 ${r3(mc.r2_kfold)}，內插為 ${r3(mc.r2_idw)}（${mc.verdict || "–"}）。${wd ? `每口井的固定偏差（均方根 ${f1(wd.rms_m)} 公尺，最大 ${f1(wd.max_abs_m)} 公尺，${wd.n}口井）只在擬合過的井上估計，無法帶到新井；它不進入模擬、壓密柱或預報。` : ""}它是推估抽水改變後水頭如何反應的工具，不是水頭分布圖；這些檢驗都不直接檢驗政策反應。`]
+    : ["At wells it never saw, the model is worse than interpolation.", ` In the ${mc.n_folds}-fold test on wells left out of the fit, ${hasA ? `it predicts head changes (each well's mean removed) with R² ${r3(mc.r2_anom)} against ${r3(mc.r2_anom_idw)} for simple interpolation between the other wells (${mc.verdict_anom || "–"}), and ` : ""}absolute levels with R² ${r3(mc.r2_kfold)} against ${r3(mc.r2_idw)} (${mc.verdict || "–"}).${wd ? ` Each well's constant offset (rms ${f1(wd.rms_m)} m, up to ${f1(wd.max_abs_m)} m over ${wd.n} wells) is estimated at the wells it was fitted to and cannot be carried to a new one; it never enters the solver, the column or the projection.` : ""} It is a tool for how heads respond to a pumping change, not a map of heads, and none of these tests checks that response directly.`];
+}
+function zoneCaveat() {                // caveat 8: the zone lines, and the column step at the largest
+  const zh = LANG === "zh", art = D.modelcard.artefacts; if (!art || !art.boundaries || !art.boundaries.length) return zh ? ["扇區分界是模型的邊界。", ""] : ["The zone lines are model boundaries.", ""];
+  const bs = art.boundaries, big = bs.reduce((a, b) => Math.abs(b.east - b.west) > Math.abs(a.east - a.west) ? b : a, bs[0]), rt = big.rate_east != null;
+  return zh ? ["扇區分界是模型的邊界。", `模型參數按扇區（近、中、遠）設定，在${bs.map(b => `東經 ${b.km} 公里`).join("、")}突然改變，下陷在線的兩側跳變。最大的一條在 ${big.km} 公里：壓密柱的參數在此改變，線東側第一排網格${M.years[YR]}–${M.years[Y-1]}下陷中位數 ${f1(big.east)} 公分${rt ? `（最後一年速率 ${f2(big.rate_east)} 公分/年）` : ""}，西側 ${f1(big.west)} 公分${rt ? `（${f2(big.rate_west)} 公分/年）` : ""}。這是分區壓密柱的跳變，不是地面的特徵。${bs.filter(b => b !== big).map(b => `${b.km} 公里線：東 ${f1(b.east)}、西 ${f1(b.west)} 公分`).join("；")}。請把這些直線視為模型的邊界，而非地質界線；最大網格值多落在線上。`]
+    : ["The zone lines are model boundaries.", ` The model's parameters are set per zone (proximal, mid, distal) and change abruptly at ${bs.map(b => b.km + " km E").join(", ")}, so the sinking can step across those lines. The largest step is at ${big.km} km, where the compaction column's parameters change: the first column of cells east of it sinks a median ${f1(big.east)} cm from Dec ${M.years[YR]} to Dec ${M.years[Y-1]}${rt ? ` (${f2(big.rate_east)} cm/yr in the final year)` : ""}, against ${f1(big.west)} cm${rt ? ` (${f2(big.rate_west)} cm/yr)` : ""} just west. That step is the per-zone column's, not a feature of the ground.${bs.length > 1 ? " Elsewhere the step is small: " + bs.filter(b => b !== big).map(b => `${f1(b.east)} against ${f1(b.west)} cm at ${b.km} km`).join(", ") + "." : ""} Read the straight north-south edges as model boundaries, not geology; the peak-cell values often sit on them.`];
+}
+function ringsCaveat() {               // caveat 10: leveling skill against the compaction rings
+  const zh = LANG === "zh", mc = D.modelcard, c = mc.column, pv = PREV(), pc = pv && pv.column;
+  if (!c) return zh ? ["壓密柱技巧未載入。", ""] : ["The column's skill is not loaded.", ""];
+  const n = c.n_rings ?? "–", better = pc && c.r2_oof > pc.r2_oof, lost = pc && c.rings < pc.rings - .05;
+  return zh ? [lost ? "下陷技巧提升，但壓密環的技巧退步。" : "壓密柱對水準測量與壓密環的技巧。", `對水準測量，本模型的跨折 R² 為 ${r3(c.r2_oof)}${pc ? `（前一版 ${r3(pc.r2_oof)}）` : ""}${mc.chain ? `，全鏈回推 ${r3(mc.chain.r2)}${pv && pv.chain ? `（前一版 ${r3(pv.chain.r2)}）` : ""}` : ""}。對${n}個壓密監測井（磁環，獨立檢驗）的 R² 為 ${r3(c.rings)}${pc ? `（前一版 ${r3(pc.rings)}）` : ""}${lost ? "：地表下陷較準，但壓密在各深度的分布未獲證實。" : "。"}`]
+    : [lost ? (better ? "Subsidence skill improved, but the compaction rings regressed." : "The compaction rings regressed.") : "The column's skill against leveling and rings.", ` Against the leveling this model scores out of fold R² ${r3(c.r2_oof)}${pc ? ` (previous model ${r3(pc.r2_oof)})` : ""}${mc.chain ? ` and ${r3(mc.chain.r2)} in the full-chain hindcast${pv && pv.chain ? ` (previous ${r3(pv.chain.r2)})` : ""}` : ""}. Against the ${n} compaction-monitoring wells (rings), an independent check, it scores R² ${r3(c.rings)}${pc ? ` (previous model ${r3(pc.rings)})` : ""}${lost ? ": the ground surface is matched better, but how the compaction is distributed with depth is no longer confirmed." : "."}`];
+}
+function recoveryCaveat() {            // caveat 11: the last fitted year's head recovery
+  const zh = LANG === "zh", wf = D.wellsFan, n = wf ? wf.obs.length : 0;
+  const ok = n > 1 && wf.obs[n-1] != null && wf.obs[n-2] != null && wf.model[n-1] != null && wf.model[n-2] != null;
+  const y1 = ok ? wf.years[n-1] : M.years[YO], o = ok ? wf.obs[n-1] - wf.obs[n-2] : null, m = ok ? wf.model[n-1] - wf.model[n-2] : null;
+  const txt = ok ? (zh ? `${y1}年第二含水層${wf.n[n-1]}口觀測井的年平均水頭比前一年${o >= 0 ? "上升" : "下降"} ${f1(Math.abs(o))} 公尺，模型在同一批井只${m >= 0 ? "上升" : "下降"} ${f2(Math.abs(m))} 公尺。` : ` In ${y1} the annual mean head of the ${wf.n[n-1]} layer-2 wells ${o >= 0 ? "rose" : "fell"} ${f1(Math.abs(o))} m on the year before; the model at the same wells moved ${sg(m, 2)} m.`) : "";
+  // the 2022 finding (STATE.md): rain minus ET0 says the year was dry, so the forcing cannot carry it
+  const dry = y1 === 2022;
+  return zh ? [`${y1}年的水頭回升沒有被重現。`, `${txt}${dry ? "雨量減蒸發量顯示那年偏乾，所以回升來自模型強迫以外的因素（渠道供水恢復、休耕政策）；" : ""}至今試過的模型都沒有重現。預報中沒有這類回升。`]
+    : [`The ${y1} head recovery is missed.`, `${txt}${dry ? " Rain minus evaporation says that year was dry, so something outside the model's forcing drove it (canal deliveries resuming, fallowing)." : ""} No model tried so far reproduces it, and the projection contains no recovery of that kind.`];
+}
 function artFixedWords() {             // caveat 7 when the forward run fixed the steps at the source
   const zh = LANG === "zh", a = D.modelcard.artefacts, o = M.years[YO];
   const days = a.hpc0_fast_days != null ? Math.round(a.hpc0_fast_days) : null, tk = a.restart_taper_km;
   return zh ? `預報模擬已在源頭修正這兩個陡降：近扇頂壓密柱的啟動負荷已釋放（潛變時間常數短於${days ?? "–"}天的壓密柱不帶初始預壓密差），壓密柱由模型自身的水頭驅動通過${o}年12月，不再接上觀測水頭（畫面上的水頭仍在該處重新接上觀測值${tk ? `，依距觀測井${tk}公里漸變` : ""}）。因此本頁不移除任何數值，「未來下陷」與專案紀錄一樣從${M.years[YR]}年12月起算。檢查${a.n_cells}個近扇頂網格：重啟陡降已不存在（中位數 ${f1(a.restart_cell_median)} 公分）；${M.years[0]}年最初幾個月仍有壓密柱的調適（每格中位數 ${f1(a.startup_cell_median)} 公分，最大 ${f1(a.startup_cell_max)} 公分），只影響自${M.years[0]}年起的累積量，不影響未來下陷或政策差值。`
     : ` The forward run fixes both steps at the source: the proximal column's start-up load is released (a column with a creep time under ${days ?? "–"} days starts with no pre-consolidation offset), and the column is driven by the model's own heads through Dec ${o} instead of being restarted from the observed heads (the heads shown still restart there${tk ? `, tapered over ${tk} km from the wells` : ""}). So this page removes nothing, and "further sinking" is counted from Dec ${M.years[YR]}, as in the project ledger. A check of the ${a.n_cells} proximal cells finds no restart step left (median ${f1(a.restart_cell_median)} cm); the column still settles in the first months of ${M.years[0]} (median ${f1(a.startup_cell_median)} cm per cell, up to ${f1(a.startup_cell_max)} cm), which is in the cumulative totals since ${M.years[0]} but in no forward change or policy difference.`;
 }
-function caveats() {
-  const zh = LANG === "zh", mc = D.modelcard, tp = mc.temporal, art = mc.artefacts, o = M.years[YO], nyr = mc.record_years ?? (M.years[YO] - M.years[0] + 1);
-  const r = tp ? [tp.rmse_model.toFixed(1), tp.rmse_clim.toFixed(1), tp.n_wells, tp.months, Math.round(tp.fit_months / 12)] : null;
+function caveats() {                   // numbered: the cav links point at these indices (1-based)
+  const zh = LANG === "zh", mc = D.modelcard, art = mc.artefacts, o = M.years[YO], nyr = mc.record_years ?? (M.years[YO] - M.years[0] + 1);
   const tau = (D.caveatWords || {}).tau;
   return zh ? [
-    ["十年尺度的趨勢未經驗證，三年的檢驗也未通過。", r ? `預報自${o}年12月起由模型自行運算（只在起點重新接上觀測水頭）。保留年份檢驗：以前${r[4]}年擬合、再自行運算${r[3]}個月，模型在${r[2]}口井的誤差為 ${r[0]} 公尺，而單純重複過去平均只有 ${r[1]} 公尺，所以模型會漂移。${driftMore()}${o}年12月以後的每個數值（包含標示「已檢驗」的前${Math.round(r[3] / 12)}年）都是模型本身的趨勢。` : `預報自${o}年12月起由模型自行運算；保留年份檢驗結果未載入。`],
-    [`抽水應力分散在${spreadWords()}。`, `模型把每個地區的抽水分散到${spreadWords()}，這最符合觀測井，但原因未明（電表位置與井位不同，或灌溉水在地區間移動）。分散更廣的模型同樣擬合水頭，卻幾乎沒有政策效果${altCompare()}。本頁的範圍只包含本模型的參數，不包含這種模型結構的差異。`],
+    heldOutCaveat(),
+    spreadCaveat(),
     ["緩慢的黏土潛變不確定。", `${nyr}年資料無法確定黏土的潛變時間常數${tau ? `（上限 ${tau} 會給出不同的十年潛變）` : ""}。較長的常數會讓${M.years[Y-1]}年以後的下陷比本模型多。${rheoWords() ? "具體而言，" + rheoWords() + "。這是對基準總量的說明，不影響政策減少的下陷。" : ""}`],
     ["部分參數在邊界上。", `${mc.bounds_at}個（共${mc.bounds_tracked}個分區參數）位於邊界，因此固定而未抽樣，範圍低估了不確定性。`],
     ["河川視為不透水邊界。", "濁水溪、新虎尾溪、北港溪在模型中不與地下水交換。靠近河川處，實際水頭回升可能更快。"],
-    ["水頭檢驗不檢驗政策反應。", `水頭分數 ${mc.r2_kfold != null ? sg(mc.r2_kfold, 3) : "–"} 衡量的是井與井之間的內插，而不是抽水改變的效果是否正確。`],
+    unseenCaveat(),
     FIXED() ? ["模型啟動與重啟的陡降已在模擬中修正。", artFixedWords()] : ["模型啟動與重啟的陡降已移除。", art ? `近扇頂（東經 ${art.zone_km} 公里以東）${art.n_cells}個網格的壓密柱在${M.years[0]}年初適應初始水頭時跳升（每格中位數 ${f1(art.startup_cell_median)} 公分，最大 ${f1(art.startup_cell_max)} 公分），並在${o}年12月重新接上觀測水頭後再跳升（中位數 ${f1(art.restart_cell_median)} 公分，最大 ${f1(art.restart_cell_max)} 公分）。這不是實際下陷，本頁已從所有數值中移除（以該網格自身趨勢取代）。其他網格在重啟後一年多為回彈（中位數 ${f1(Math.abs(art.bridge_median_cm))} 公分，最多 ${f1(art.bridge_max_abs_cm)} 公分），本頁以前後兩年的平均取代那一年。因此「未來下陷」從${M.years[YR]}年12月起算。政策差值不受影響（這些陡降在所有情境相同）。` : ""],
-    ["扇區分界是模型的邊界。", art && art.boundaries && art.boundaries.length ? `模型參數按扇區（近、中、遠）設定，在${art.boundaries.map(b => `東經 ${b.km} 公里`).join("與")}突然改變，下陷在線的兩側跳變：${art.boundaries.map(b => `${b.km} 公里線東側第一排網格${M.years[YR]}–${M.years[Y-1]}下陷中位數 ${f1(b.east)} 公分，西側 ${f1(b.west)} 公分`).join("；")}。請把這些直線視為模型的邊界，而非地質界線；最大網格值多落在線上。` : ""],
-    ["減少的下陷多為快速、可能可回復的反應。", `${fastWords().txt}。在黏彈性壓密柱中，這麼快跟著水頭變化的部分多為彈性：水頭回升時含水層骨架回彈，若恢復抽水會再壓縮。只有黏土非彈性壓密變慢才是持久的效益，而本頁無法分開兩者（預報未保存彈性與非彈性分量）。減少量超過基準新增量的政策會讓地面上升，那就是彈性回彈。${fastWords().late}`]]
+    zoneCaveat(),
+    ["減少的下陷多為快速、可能可回復的反應。", `${fastWords().txt}。在黏彈性壓密柱中，這麼快跟著水頭變化的部分多為彈性：水頭回升時含水層骨架回彈，若恢復抽水會再壓縮。只有黏土非彈性壓密變慢才是持久的效益，而本頁無法分開兩者（預報未保存彈性與非彈性分量）。減少量超過基準新增量的政策會讓地面上升，那就是彈性回彈。${fastWords().late}`],
+    ringsCaveat(),
+    recoveryCaveat(),
+    timingCaveat()]
   : [
-    ["The decade-scale trend is not validated, and the three-year test failed.", r ? ` The projection runs free from Dec ${o}: the model is restarted from the observed heads once, at that origin, and is on its own after that. In the held-out-years test (fit the first ${r[4]} years, then run free for ${r[3]} months) its error at the ${r[2]} wells is ${r[0]} m, against ${r[1]} m for simply repeating the past average: it drifts.${driftMore()} Every value after Dec ${o}, including the first ${Math.round(r[3] / 12)} years marked "tested", is the model's own trend.` : ` The projection runs free from Dec ${o}. The held-out-years test is not loaded.`],
-    [`Pumping stress is spread over ${spreadWords()}.`, ` The model spreads each area's pumping over ${spreadWords()}. This fits the wells best, but the reason is not yet known (meter versus well location, or irrigation water moved between districts). A wider spread fits heads equally well and shows almost no policy effect${altCompare()}. The ranges on this page cover this model's parameters only, not this difference in model structure.`],
+    heldOutCaveat(),
+    spreadCaveat(),
     ["Slow clay creep is uncertain.", ` The clay's creep time constant cannot be pinned down from ${nyr} years of data${tau ? ` (a ceiling of ${tau} gives different decadal creep)` : ""}. A longer constant gives more subsidence after ${M.years[Y-1]} than this model shows.${rheoWords() ? " Concretely, " + rheoWords() + ". This qualifies the baseline's total, not what a policy avoids." : ""}`],
     ["Some parameters sit at their limits.", ` ${mc.bounds_at} of the ${mc.bounds_tracked} zonal parameters are at a bound, so they are held, not varied. The range therefore understates the uncertainty.`],
     ["Rivers are treated as no-flow.", " The Choushui, Xinhuwei and Beigang rivers exchange no water with the aquifers in the model. Near the rivers, real heads may recover faster."],
-    ["The head test does not test policy response.", ` The head score ${mc.r2_kfold != null ? sg(mc.r2_kfold, 3) : "–"} measures interpolation between wells, not whether the response to a pumping change is right.`],
+    unseenCaveat(),
     FIXED() ? ["The model's start-up and restart steps are fixed upstream.", artFixedWords()] : ["The model's start-up and restart steps are removed.", art ? ` In the ${art.n_cells} proximal cells (east of ${art.zone_km} km E) the compaction column jumps when it settles onto the first heads in early ${M.years[0]} (median ${f1(art.startup_cell_median)} cm per cell, up to ${f1(art.startup_cell_max)} cm) and again after the restart from observed heads at Dec ${o} (median ${f1(art.restart_cell_median)} cm, up to ${f1(art.restart_cell_max)} cm). This is not ground movement, and the page removes both steps from every value, replacing each window with the cell's own trend. Elsewhere the restart mostly makes the ground rebound in the following year (by a median ${f1(Math.abs(art.bridge_median_cm))} cm, up to ${f1(art.bridge_max_abs_cm)} cm); the page replaces that one year with the mean of the years either side. "Further sinking" is counted from Dec ${M.years[YR]}. Policy differences are unaffected: the steps are identical in every scenario.` : ""],
-    ["The zone lines are model boundaries.", art && art.boundaries && art.boundaries.length ? ` The model's parameters are set per zone (proximal, mid, distal) and change abruptly at ${art.boundaries.map(b => b.km + " km E").join(" and ")}, so the sinking steps across those lines: ${art.boundaries.map(b => `in the first column of cells east of ${b.km} km the median ${M.years[YR]}–${M.years[Y-1]} sinking is ${f1(b.east)} cm, against ${f1(b.west)} cm just west`).join("; ")}. Read the straight north-south edges as model boundaries, not geology; the peak-cell values often sit on them.` : ""],
-    ["Much of the avoided subsidence is a fast, likely reversible response.", ` ${fastWords().txt ? fastWords().txt[0].toUpperCase() + fastWords().txt.slice(1) + "." : ""} In a visco-elastic column the part that follows the heads that quickly is mostly elastic: the aquifer skeleton rebounds when heads rise and would compress again if pumping resumed. Only the slowing of inelastic clay compaction is a lasting gain, and this page cannot separate the two (the forward run does not save the elastic and inelastic parts). A policy that avoids more than the baseline adds makes the ground rise; that is the elastic rebound.${fastWords().late}`]];
+    zoneCaveat(),
+    ["Much of the avoided subsidence is a fast, likely reversible response.", ` ${fastWords().txt ? fastWords().txt[0].toUpperCase() + fastWords().txt.slice(1) + "." : ""} In a visco-elastic column the part that follows the heads that quickly is mostly elastic: the aquifer skeleton rebounds when heads rise and would compress again if pumping resumed. Only the slowing of inelastic clay compaction is a lasting gain, and this page cannot separate the two (the forward run does not save the elastic and inelastic parts). A policy that avoids more than the baseline adds makes the ground rise; that is the elastic rebound.${fastWords().late}`],
+    ringsCaveat(),
+    recoveryCaveat(),
+    timingCaveat()];
 }
 function renderCaveats(focus) { $("cavList").innerHTML = caveats().map((c, i) => `<li id="cav${i+1}" ${focus === i+1 ? 'class="hl"' : ""}><b>${c[0]}</b>${c[1]}</li>`).join(""); }
+// ---------- the tests, this model against the previous one -------------------------------
+function testRows() {                  // [test, this model, verdict, reference, previous model]
+  const zh = LANG === "zh", mc = D.modelcard, tp = mc.temporal, fr = tp && tp.fair, pv = PREV(), pt = pv && pv.temporal, pf = pt && pt.fair;
+  const V = v => v ? `<b class="vd ${v === "PASS" ? "ok" : "no"}">${v}</b>` : "–";
+  const rows = [];
+  if (fr) {
+    rows.push([zh ? `保留年份：去除各井偏差後誤差比（≤ ${fr.k} 通過）` : `Held-out years: error ratio after each well's offset (≤ ${fr.k} passes)`, fr.ratio.toFixed(2), V(fr.verdict), `${bestName(fr.best)} ${f2(fr.rmse_best)} m`, pf ? `${pf.ratio.toFixed(2)} ${V(pf.verdict)}` : "–"]);
+    rows.push([zh ? "保留年份：變化形狀 R²" : "Held-out years: shape R²", sg(fr.shape, 2), "", `${zh ? "氣候平均" : "climatology"} ${sg(fr.shape_clim, 2)}`, pf ? sg(pf.shape, 2) : "–"]);
+  } else if (tp) rows.push([zh ? "保留年份（RMSE）" : "Held-out years (RMSE)", `${tp.rmse_model.toFixed(2)} m`, V(tp.passed ? "PASS" : "FAIL"), `${zh ? "氣候平均" : "climatology"} ${tp.rmse_clim.toFixed(2)} m`, pt && pt.rmse != null ? `${pt.rmse.toFixed(2)} m` : "–"]);
+  if (mc.r2_anom != null) rows.push([zh ? "未見過的井：水頭變化 R²" : "Unseen wells: head-change R²", r3(mc.r2_anom), V(mc.verdict_anom), `IDW ${r3(mc.r2_anom_idw)}`, pv && pv.r2_anom != null ? `${r3(pv.r2_anom)} ${V(pv.verdict_anom)}` : "–"]);
+  if (mc.r2_kfold != null) rows.push([zh ? "未見過的井：絕對水位 R²" : "Unseen wells: absolute-level R²", r3(mc.r2_kfold), V(mc.verdict), `IDW ${r3(mc.r2_idw)}`, pv && pv.r2_kfold != null ? `${r3(pv.r2_kfold)} ${V(pv.verdict)}` : "–"]);
+  if (mc.column) rows.push([zh ? "水準測量：壓密柱跨折 R²" : "Leveling: column out of fold R²", r3(mc.column.r2_oof), "", "", pv && pv.column ? r3(pv.column.r2_oof) : "–"]);
+  if (mc.chain) rows.push([zh ? `水準測量：全鏈回推 R²（${mc.chain.n}點）` : `Leveling: full-chain hindcast R² (${mc.chain.n} sites)`, r3(mc.chain.r2), "", "", pv && pv.chain ? r3(pv.chain.r2) : "–"]);
+  if (mc.column) rows.push([zh ? `壓密環（${mc.column.n_rings ?? "–"}個，獨立）R²` : `Compaction rings (${mc.column.n_rings ?? "–"}, independent) R²`, r3(mc.column.rings), "", "", pv && pv.column ? r3(pv.column.rings) : "–"]);
+  if (mc.policy) rows.push([zh ? "政策反應檢驗" : "Policy-response check", "", V(mc.policy), "", pv && pv.policy ? V(pv.policy) : "–"]);
+  return rows;
+}
+function testTable() {
+  const zh = LANG === "zh", rows = testRows(), pv = PREV(); if (!rows.length) return "";
+  const hdr = zh ? ["檢驗", "本模型", "判定", "參考", pv ? "前一版模型" : ""] : ["Test", "This model", "Verdict", "Reference", pv ? `Previous model${D.alt.spread_km != null ? ` (${Math.round(D.alt.spread_km)} km)` : ""}` : ""];
+  return `<div class="tblwrap" style="max-height:none"><table class="t tests"><thead><tr>${hdr.filter((h, i) => i < 4 || pv).map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td>${r[2]}</td><td class="n">${r[3]}</td>${pv ? `<td class="n">${r[4]}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+}
+const andJoin = a => !a.length ? "–" : a.length === 1 ? a[0] : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+function prevLine() {                  // "Compared with the previous model: ..."
+  const zh = LANG === "zh", mc = D.modelcard, pv = PREV(), a = D.alt; if (!pv) return "";
+  const fr = mc.temporal && mc.temporal.fair, pf = pv.temporal && pv.temporal.fair, gain = [], lose = [];
+  const cmp = (mine, theirs, en, zhw, fmt = r3) => { if (mine == null || theirs == null) return; (mine > theirs ? gain : lose).push(zh ? `${zhw}（${fmt(mine)}，前一版 ${fmt(theirs)}）` : `${en} (${fmt(mine)} against ${fmt(theirs)})`); };
+  if (fr && pf) (fr.ratio < pf.ratio ? gain : lose).push(zh ? `保留年份檢驗（誤差比 ${fr.ratio.toFixed(2)}，前一版 ${pf.ratio.toFixed(2)}）` : `the held-out years (error ratio ${fr.ratio.toFixed(2)} against ${pf.ratio.toFixed(2)})`);
+  cmp(mc.r2_anom, pv.r2_anom, "head changes at unseen wells", "未見過的井的水頭變化");
+  cmp(mc.column && mc.column.r2_oof, pv.column && pv.column.r2_oof, "the leveling out of fold", "水準測量跨折");
+  cmp(mc.chain && mc.chain.r2, pv.chain && pv.chain.r2, "the full-chain hindcast", "全鏈回推");
+  cmp(mc.r2_kfold, pv.r2_kfold, "absolute levels at unseen wells", "未見過的井的絕對水位");
+  cmp(mc.column && mc.column.rings, pv.column && pv.column.rings, "the compaction rings", "壓密環");
+  const resp = D.solved.filter(x => x.members && a.resp[x.name]).map(x => [policyPhrase(x.factors), -a.resp[x.name].subs_mean, -mMean(x.members)]);
+  const base = a.baseFwd != null ? (zh ? `基準情境${M.years[YR]}–${M.years[Y-1]}年下陷 ${f2(a.baseFwd)} 公分（本模型 ${f2(baseFwdFan())}）` : `a ${M.years[YR]}–${M.years[Y-1]} baseline of ${f2(a.baseFwd)} cm (${f2(baseFwdFan())} here)`) : "";
+  const rs = resp.map(q => zh ? `「${q[0]}」減少 ${f2(q[1])} 公分（本模型 ${f2(q[2])}）` : `${q[0].toLowerCase()} avoids ${f2(q[1])} cm (${f2(q[2])} here)`);
+  return zh ? `與前一版模型（${esc(pv.name)}）相比，本模型在${gain.join("、") || "–"}較好；在${lose.join("、") || "–"}較差。前一版的預報：${[base].concat(rs).filter(Boolean).join("；")}。`
+    : `Compared with the previous model (${esc(pv.name)}), this one does better on ${andJoin(gain)}, and worse on ${andJoin(lose)}. The previous model projects ${[base].concat(rs).filter(Boolean).join("; ")}.`;
+}
 function renderCard() {
   const mc = D.modelcard, zh = LANG === "zh", kv = [];
   const add = (k, v) => kv.push(`<div>${k}</div><div>${v}</div>`);
-  add(zh ? "水頭檢驗" : "Head gate", `${mc.verdict || "–"} · ${zh ? "保留井" : "held-out wells"} R² ${mc.r2_kfold != null ? sg(mc.r2_kfold, 3) : "–"} vs IDW ${mc.r2_idw != null ? sg(mc.r2_idw, 3) : "–"} (${mc.n_folds} folds, ${mc.n_wells} wells) <br><span class="note">${caveats()[5][0]}${caveats()[5][1]}</span>`);
-  if (mc.column) add(zh ? "壓密柱（跨折）" : "Column, out of fold", `R² ${sg(mc.column.r2_oof, 3)} (${mc.column.config}; ${zh ? "獨立磁環" : "independent rings"} ${sg(mc.column.rings, 3)})`);
+  add(zh ? "未見過的井" : "Unseen wells", `${zh ? "水位" : "levels"} ${mc.verdict || "–"} R² ${r3(mc.r2_kfold)} vs IDW ${r3(mc.r2_idw)}${mc.r2_anom != null ? `; ${zh ? "水頭變化" : "head changes"} ${mc.verdict_anom || "–"} R² ${r3(mc.r2_anom)} vs IDW ${r3(mc.r2_anom_idw)}${mc.anom_well_median != null ? ` (${zh ? "各井中位數" : "median per well"} ${r3(mc.anom_well_median)} vs ${r3(mc.anom_well_median_idw)})` : ""}` : ""} (${mc.n_folds} folds, ${mc.n_wells} wells) <br><span class="note">${caveats()[5][0]}${caveats()[5][1]}</span>`);
+  if (mc.well_datum) { const w = mc.well_datum; add(zh ? "各井固定偏差" : "Per-well datum", `${esc(w.mode || "–")}, prior sd ${w.sd_m ?? "–"} m; ${w.n} wells, rms ${f2(w.rms_m)} m, max ${f1(w.max_abs_m)} m; ${zh ? "含偏差的擬合 R²" : "in-sample R² with the datum"} ${r3(w.r2_insample_with_datum)}. ${zh ? "只在觀測算子中，不進入模擬、壓密柱或預報。" : "In the observation operator only: never in the solver, the column or the projection."}`); }
+  if (mc.column) add(zh ? "壓密柱（跨折）" : "Column, out of fold", `R² ${sg(mc.column.r2_oof, 3)} (${mc.column.config}; ${zh ? "獨立磁環" : "independent rings"} ${sg(mc.column.rings, 3)}${mc.column.n_rings ? `, ${mc.column.n_rings} rings` : ""})`);
   if (mc.chain) add(zh ? "全鏈回推" : "Full-chain hindcast", `R² ${sg(mc.chain.r2, 3)} vs ${mc.chain.n} leveling sites, RMSE ${mc.chain.rmse.toFixed(1)} cm, bias ${sg(mc.chain.bias, 1)} cm`);
-  if (mc.temporal) add(zh ? "保留年份（漂移）" : "Held-out years (drift)", `<b>${mc.temporal.passed ? "PASS" : "FAIL"}</b> · RMSE ${mc.temporal.rmse_model.toFixed(2)} m vs climatology ${mc.temporal.rmse_clim.toFixed(2)} m over ${mc.temporal.months} free-running months at ${mc.temporal.n_wells} wells${mc.temporal.r2_shape != null ? `; shape R² ${sg(mc.temporal.r2_shape, 2)}, median per-well R² ${sg(mc.temporal.r2_well_median, 1)}, level error ${f2(mc.temporal.level_err_m)} m` : ""}${(mc.temporal.others || []).length ? "; other screens: " + mc.temporal.others.map(x => `${esc(x.name)} ${x.rmse != null ? x.rmse.toFixed(2) + " m" : "–"} ${x.verdict || ""}`).join(", ") : ""}`);
+  if (mc.temporal) { const tp = mc.temporal, fr = tp.fair;
+    add(zh ? "保留年份" : "Held-out years", fr ? `<b>${fr.verdict}</b> (${zh ? "公平規則" : "fair rule"}) · ${zh ? "去除各井偏差後" : "after each well's offset"} RMSE ${f2(fr.rmse)} m vs ${bestName(fr.best)} ${f2(fr.rmse_best)} m, ratio ${fr.ratio.toFixed(2)} (≤ ${fr.k}); shape R² ${sg(fr.shape, 2)} vs climatology ${sg(fr.shape_clim, 2)} (≥ −${fr.shape_tol}), with trend ${sg(fr.shape_clim_trend, 2)}; ${fr.n_wells} wells, ${tp.months} free-running months after ${Math.round(tp.fit_months / 12)} fitted years. Raw RMSE ${tp.rmse_model.toFixed(2)} m vs climatology ${tp.rmse_clim.toFixed(2)} m (legacy verdict ${tp.verdict || "–"}; ${pctf(100 * fr.datum_share)} of the raw error is the per-well offset)${tp.spread_km != null ? `; the screen's stress radius ${f1(tp.spread_km)} km` : ""}${(tp.others || []).length ? "; other screens (fair ratio): " + tp.others.map(x => `${esc(x.name)} ${x.fair && x.fair.ratio != null ? x.fair.ratio.toFixed(2) + " " + x.fair.verdict : x.rmse != null ? x.rmse.toFixed(2) + " m " + (x.verdict || "") : "–"}`).join(", ") : ""}`
+      : `<b>${tp.passed ? "PASS" : "FAIL"}</b> · RMSE ${tp.rmse_model.toFixed(2)} m vs climatology ${tp.rmse_clim.toFixed(2)} m over ${tp.months} free-running months at ${tp.n_wells} wells${tp.r2_shape != null ? `; shape R² ${sg(tp.r2_shape, 2)}, median per-well R² ${sg(tp.r2_well_median, 1)}, level error ${f2(tp.level_err_m)} m` : ""}${(tp.others || []).length ? "; other screens: " + tp.others.map(x => `${esc(x.name)} ${x.rmse != null ? x.rmse.toFixed(2) + " m" : "–"} ${x.verdict || ""}`).join(", ") : ""}`); }
+  if (mc.policy) add(zh ? "政策反應檢驗" : "Policy-response check", `<b>${mc.policy}</b>`);
   add(zh ? "預報" : "Projection", `${zh ? "自" : "free-running from "}${mc.free_from || M.vintage}${zh ? "起自行運算" : FIXED() ? `, heads restarted once from the observed heads${mc.artefacts.restart_taper_km ? ` (tapered over ${mc.artefacts.restart_taper_km} km)` : ""}, the compaction column on the model's own heads` : ", restarted once from the observed heads"}; ${zh ? "未來下陷自" : "further sinking counted from Dec "}${M.years[YR]}`);
   if (mc.artefacts) add(FIXED() ? (zh ? "模型陡降（已在模擬中修正）" : "Model steps (fixed upstream)") : (zh ? "已移除的模型陡降" : "Model steps removed"), (FIXED() ? `${esc(mc.artefacts.fixed_upstream)}; nothing removed. Check of the ` : "") + `${mc.artefacts.n_cells} ${mc.artefacts.zone} cells: start-up median ${f1(mc.artefacts.startup_cell_median)} cm (max ${f1(mc.artefacts.startup_cell_max)}), restart median ${f1(mc.artefacts.restart_cell_median)} cm (max ${f1(mc.artefacts.restart_cell_max)})`);
-  if (D.rheology) { const r = D.rheology; add(zh ? "潛變上限（基準）" : "Creep ceiling (baseline)", `${esc(r.alt)} vs ${esc(r.ref)}: baseline ${sg(r.dBase, 2)} cm (p10–p90 ${sg(r.dBaseP[0], 2)} to ${sg(r.dBaseP[2], 2)}), policy responses change by at most ${r.policyShift.toFixed(3)} cm; leveling out of fold ${r.levOofAlt != null ? sg(r.levOofAlt, 3) : "–"} vs ${r.levOof != null ? sg(r.levOof, 3) : "–"}; ${esc(r.source)}${r.artefacts ? " (run with the start-up/restart steps)" : ""}`); }
-  if (MF()) add(zh ? "逐次輸出" : "Per-run output", `${esc(MF().source)}: ${MF().n} runs, ${MF().n_sets} parameter sets; map hatched where fewer than ${Math.round(AGMIN())}% of sets agree on the sign`);
+  if (D.rheology) { const r = D.rheology; add(zh ? "潛變上限（基準）" : "Creep ceiling (baseline)", `${esc(r.alt)} vs ${esc(r.ref)}: baseline${r.baseRef != null ? ` ${f2(r.baseRef)} → ${f2(r.baseAlt)} cm,` : ""} ${sg(r.dBase, 2)} cm (p10–p90 ${sg(r.dBaseP[0], 2)} to ${sg(r.dBaseP[2], 2)}), policy responses change by at most ${r.policyShift.toFixed(3)} cm; leveling out of fold ${r.levOofAlt != null ? sg(r.levOofAlt, 3) : "–"} vs ${r.levOof != null ? sg(r.levOof, 3) : "–"}; ${esc(r.source)}${r.artefacts ? " (run with the start-up/restart steps)" : ""}`); }
+  if (MF()) add(zh ? "逐次輸出" : "Per-run output", `${esc(MF().source)}: ${MF().n} runs, ${MF().n_sets} parameter sets${MF().rheology ? ` (${esc(MF().rheology)} column)` : ""}; map hatched where fewer than ${Math.round(AGMIN())}% of sets agree on the sign`);
   add(zh ? "抽水轉換" : "Pump conversion", `eta ${mc.fix_eta ?? "free"}, extra head ${mc.fix_head_extra ?? "free"} m, return flow ${mc.return_flow ? "learned" : "off"}, spread ${mc.learn_spread ? "learned" : "fixed"}, ${spreadWords()}`);
   add(zh ? "邊界參數" : "Parameters at a bound", `${mc.bounds_at} of ${mc.bounds_tracked}`);
   add(zh ? "扇區分界" : "Zone boundaries", mc.zone_boundaries.map(v => v + " km E").join(", "));
   add(zh ? "模擬" : "Runs", `${mc.n_members} (${mc.member_labels.length} parameter sets × initial fields); hindcast head R² per set ${Math.min(...mc.hindcast_r2).toFixed(3)}–${Math.max(...mc.hindcast_r2).toFixed(3)}`);
   const be = Object.entries(D.basisError || {}); if (be.length) add(zh ? "疊加誤差（校正前）" : "Superposition error (before rescaling)", be.map(([n, e]) => `${n} (${e.kind === "nonlinear" ? (zh ? "非線性" : "non-linearity") : (zh ? "對系集" : "vs the ensemble")}): ${f2(e.fan_cm)} cm (${(100*e.rel).toFixed(1)}%)`).join("; "));
   if (D.calib) add(zh ? "快速估算校正" : "Fast-estimate rescaling", D.classes.map((c, k) => `${CN(k)} ×${D.calib.subs[k].toFixed(3)} (${D.calib.source[k]})`).join(", "));
+  if (BOFF()) add(zh ? "快速估算" : "Fast estimate", `${boffWords()} (${zh ? "基底提交" : "basis commit"} ${esc(BOFF().basis_commit || "–")})`);
+  if (PREV()) add(zh ? "前一版模型" : "Previous model", prevLine());
   add(zh ? "資料" : "Data vintage", `${mc.record[0]} – ${mc.record[1]} observed; projection to ${mc.horizon}; ${esc(mc.source)}; commit ${mc.git_commit || "–"}; ${zh ? "校正紀錄中的保留年份檢驗" : "held-out-years gate stored with the calibration"}: ${mc.temporal_gate ?? (zh ? "無（上列結果來自 --temporal）" : "none (the row above comes from --temporal)")}; ${mc.public ? (zh ? "公開版：觀測只以彙總呈現" : "public page: observations as aggregates only") : (zh ? "本機版：含個別觀測點，請勿公開" : "local page with individual observations: do not publish")}`);
   add(zh ? "來源" : "Attribution", (D.attrib || []).concat(D.hsr ? [D.hsr.attrib] : []).map(esc).join("<br>"));
-  $("cardBody").innerHTML = `<div class="kv">${kv.join("")}</div>`;
+  $("cardBody").innerHTML = testTable() + `<div class="kv">${kv.join("")}</div>`;
 }
 
 // ---------- selection and update --------------------------------------------------------
@@ -1657,7 +1872,7 @@ function selCells() {                   // the cells the current selection cover
 let pending = null;
 function update(committed) {
   P = policyFields(S.f, S.start); KP = kpis(P);
-  drawAllMaps(); renderTiles(); renderTS();
+  drawAllMaps(); renderTiles(); renderTS(); renderStartNote();
   // the story sets policies to show them; only the reader's own choices go into the link
   if (committed) { renderHeadline(); renderTowns(); renderHsr(); if (S.tab === "sec") renderSection(); if (S.tab === "cmp") renderCompare(); if (S.tab === "trust") renderTrust(); if (S.mode !== "story") hashWrite(); }
   else { clearTimeout(pending); pending = setTimeout(() => { renderTowns(); renderHsr(); }, 120); }
@@ -1665,7 +1880,7 @@ function update(committed) {
 }
 function setYear(y) { S.year = y; $("year").value = y; const zh = LANG === "zh";
   const failed = D.modelcard.temporal && !D.modelcard.temporal.passed;
-  $("yearLab").innerHTML = `${zh ? "" : "Dec "}${M.years[y]}${zh ? "年12月" : ""}<small>${y <= YO ? (zh ? "擬合期" : "fitted period") : y <= M.yTested ? (failed ? (zh ? "已檢驗：未通過（漂移）" : "tested: failed (drift)") : (zh ? "已檢驗範圍" : "tested horizon")) : (zh ? "推估，未驗證" : "projected, not validated")}</small>`;
+  $("yearLab").innerHTML = `${zh ? "" : "Dec "}${M.years[y]}${zh ? "年12月" : ""}<small>${y <= YO ? (zh ? "擬合期" : "fitted period") : y <= M.yTested ? (D.modelcard.temporal ? testedWord(true) : (zh ? "已檢驗範圍" : "tested horizon")) : (zh ? "推估，未驗證" : "projected, not validated")}</small>`;
   drawAllMaps(); renderTS(); if (S.tab === "hsr") renderHsr(); if (d3) d3.recolor(); }
 function setTab(tab) { S.tab = tab; const map = {towns:"tTowns", hsr:"tHsr", sec:"tSec", cmp:"tCmp", trust:"tTrust"};
   for (const [k, id] of Object.entries(map)) { $(id).setAttribute("aria-selected", k === tab); $("p" + id.slice(1)).hidden = k !== tab; }
@@ -1683,8 +1898,14 @@ function setLang(l) { LANG = l; document.documentElement.lang = l === "zh" ? "zh
   $("layerSel").innerHTML = LAYERS.map(L => `<option value="${L.id}" ${L.id === S.layer ? "selected" : ""}>${layerName(L.id)}</option>`).join("");
   $("baseSel").innerHTML = [["photo", l === "zh" ? "正射影像" : "Orthophoto"], ["emap", l === "zh" ? "電子地圖" : "e-Map"], ["none", l === "zh" ? "無" : "None"]].filter(o => o[0] === "none" || D.img[o[0]]).map(o => `<option value="${o[0]}" ${o[0] === S.base ? "selected" : ""}>${o[1]}</option>`).join("");
   const tp = D.modelcard.temporal;
-  $("bannerText").innerHTML = tp && !tp.passed ? `<span class="lg">${esc(t("bannerT", {y: M.years[YO], m: tp.months, r: tp.rmse_model.toFixed(1), c: tp.rmse_clim.toFixed(1)}))}</span><span class="sh">${esc(t("bannerS", {y: M.years[YO], m: tp.months}))}</span>` : esc(t("banner", {y: M.years[YO]}));
-  const mc = D.modelcard; $("gateBadge").innerHTML = mc.r2_kfold != null ? (l === "zh" ? `水頭檢驗 R² <b>${sg(mc.r2_kfold, 3)}</b>（IDW ${sg(mc.r2_idw, 3)}）· 不檢驗政策 ` : `Head test R² <b>${sg(mc.r2_kfold, 3)}</b> (IDW ${sg(mc.r2_idw, 3)}) · not a policy test `) + cavLink(6, "(i)") : "";
+  const fr = FAIR();
+  $("bannerText").innerHTML = tp && !tp.passed ? `<span class="lg">${esc(t("bannerT", {y: M.years[YO], m: tp.months, r: tp.rmse_model.toFixed(1), c: tp.rmse_clim.toFixed(1)}))}</span><span class="sh">${esc(t("bannerS", {y: M.years[YO], m: tp.months}))}</span>`
+    : tp && fr ? `<span class="lg">${esc(t("bannerP", {y: M.years[YO], m: tp.months, r: fr.rmse.toFixed(1), c: fr.rmse_best.toFixed(1), t: M.years[M.yTested]}))}</span><span class="sh">${esc(t("bannerPS", {m: tp.months, t: M.years[M.yTested]}))}</span>` : esc(t("banner", {y: M.years[YO]}));
+  const mc = D.modelcard, hasA = mc.r2_anom != null && mc.r2_anom_idw != null;
+  const worse = mc.r2_kfold != null && mc.r2_kfold < mc.r2_idw && (!hasA || mc.r2_anom < mc.r2_anom_idw);
+  const bz = l === "zh" ? `未見過的井${worse ? "不如內插" : ""}：${hasA ? `變化 R² <b>${sg(mc.r2_anom, 2)}</b>、` : ""}水位 <b>${sg(mc.r2_kfold ?? NaN, 2)}</b>（IDW ${hasA ? sg(mc.r2_anom_idw, 2) + "、" : ""}${sg(mc.r2_idw ?? NaN, 2)}）`
+    : `<span class="lg" title="k-fold on wells left out of the fit: R² of head changes (each well's mean removed) and of absolute levels, against inverse-distance interpolation">Unseen wells: ${hasA ? `change R² <b>${sg(mc.r2_anom, 2)}</b>, ` : "R² "}level <b>${sg(mc.r2_kfold ?? NaN, 2)}</b> · IDW ${hasA ? sg(mc.r2_anom_idw, 2) + ", " : ""}${sg(mc.r2_idw ?? NaN, 2)} </span><span class="sh">${worse ? "Unseen wells: worse than IDW" : `Unseen wells R² ${sg(mc.r2_kfold ?? NaN, 2)}`} </span>`;
+  $("gateBadge").innerHTML = mc.r2_kfold != null ? bz + cavLink(6, "(i)") : "";
   $("foot").innerHTML = esc((D.attrib || []).concat(D.hsr ? [D.hsr.attrib] : []).join(" · ")) + ` · ${l === "zh" ? "資料" : "data"} ${mc.record[0]}–${mc.record[1]} · ${esc(mc.source)}`;
   // hidden tab panels hold the old language until reopened: empty them, setTab re-renders
   for (const [k, id] of [["sec", "secWrap"], ["cmp", "cmpWrap"], ["trust", "trustWrap"]]) if (S.tab !== k) $(id).innerHTML = "";
@@ -1753,7 +1974,7 @@ function build3D() {
     mesh.userData = {topv, zTop, baseOpacity: opts.opacity || 1}; return mesh; }
   const setTop = (mesh, colOf) => { const a = mesh.geometry.attributes.color; for (let c = 0; c < A; c++) { const k = colOf(c); a.setXYZ(c, k[0]/255, k[1]/255, k[2]/255); } a.needsUpdate = true; dirty = true; };
   const headLo = D.scales.absHead[0], headHi = D.scales.absHead[1];
-  const headAt = (l, c, y) => F.headBase[(l*A + c)*Y + y] + (P.src !== "base" && l === 1 ? P.dH[c*Y + y] : 0);
+  const headAt = (l, c, y) => F.headBase[(l*A + c)*Y + y] + (!NOPOL() && l === 1 ? P.dH[c*Y + y] : 0);
   const headCol = (l, y) => c => rgbAt(LUT.viridis, (headAt(l, c, y) - headLo) / (headHi - headLo));
   const clay = [196, 176, 142];
   function rebuild() {
@@ -1906,8 +2127,8 @@ const story = (() => {
       const ids = hv.map((v, i) => [i, v]).filter(([i, v]) => v === v && !D.towns[i].pooled).sort((a, b) => a[1] - b[1]); lowT = ids.length ? ids[0][0] : null; }
     const wf = D.wellsFan; let gap = null, dObs = null;
     if (wf) { const ok = wf.obs.map((o, j) => o != null ? j : -1).filter(j => j >= 0); if (ok.length > 1) { gap = mean(ok.map(j => wf.model[j] - wf.obs[j])); dObs = wf.obs[ok[ok.length-1]] - wf.obs[ok[0]]; } }
-    const wellTxt = wf && gap != null ? (zh ? `點＝${wf.n_wells}口第二含水層觀測井的年平均（${M.years[0]}至${M.years[YO]}年${dObs >= 0 ? "上升" : "下降"} ${f1(Math.abs(dObs))} 公尺），虛線＝模型在同一批井的值，平均${gap >= 0 ? "高" : "低"} ${f1(Math.abs(gap))} 公尺。`
-      : ` Dots: the annual mean of the ${wf.n_wells} layer-2 wells (${dObs >= 0 ? "up" : "down"} ${f1(Math.abs(dObs))} m from ${M.years[0]} to ${M.years[YO]}); dashed: the model at the same wells, ${f1(Math.abs(gap))} m ${gap >= 0 ? "above" : "below"} them on average.`) : "";
+    const wellTxt = wf && gap != null ? (zh ? `點＝${wf.n_wells}口第二含水層觀測井的年平均（${M.years[0]}至${M.years[YO]}年${dObs >= 0 ? "上升" : "下降"} ${f1(Math.abs(dObs))} 公尺），虛線＝模型在同一批井的值，平均${gap >= 0 ? "高" : "低"} ${f1(Math.abs(gap))} 公尺${mc.well_datum ? "（未加上各井擬合的固定偏差）" : ""}。`
+      : ` Dots: the annual mean of the ${wf.n_wells} layer-2 wells (${dObs >= 0 ? "up" : "down"} ${f1(Math.abs(dObs))} m from ${M.years[0]} to ${M.years[YO]}); dashed: the model at the same wells, ${f1(Math.abs(gap))} m ${gap >= 0 ? "above" : "below"} them on average${mc.well_datum ? ", before each well's fitted offset" : ""}.`) : "";
     const irr30 = () => { S.f = D.classes.map((_, k) => k === 0 ? .7 : 1); S.start = 0; syncLevers(); };
     return [
     {t: zh ? "先看答案" : "The answer first",
@@ -1928,8 +2149,8 @@ const story = (() => {
      x: zh ? "對高鐵而言重要的是沿線下陷的不均勻程度（下方的角變形），而不是總量（上方）。灰色路段讀到扇區分界兩側，是模型的邊界，不列入。" : "What matters to the high-speed rail is how uneven the sinking is along the track (the angular distortion, lower panel), not the total (upper panel). Grey stretches read both sides of a zone line, a model boundary, and are left out.",
      el: () => $("hsrWrap"), go() { S.tsFit = false; renderTS(); setTab("hsr"); setYear(Y-1); }},
     {t: zh ? "試試一個政策" : "Try a policy",
-     x: zh ? `地圖顯示灌溉減少30%與維持現狀的差異（藍＝少下陷）。移動槓桿或選一個建議試試。注意：${M.years[YO]}年12月以後都是模型自身的趨勢，它的三年檢驗未通過。`
-       : `The map shows irrigation cut by 30 % against business as usual (blue = less sinking). Move a lever or pick a suggestion. One caveat: everything after Dec ${M.years[YO]} is the model's own trend, and its three-year test failed.`,
+     x: zh ? `地圖顯示灌溉減少30%與維持現狀的差異（藍＝少下陷）。移動槓桿或選一個建議試試。注意：${M.years[YO]}年12月以後都是模型自身的趨勢，${TP() && TP().passed ? `只有前${Math.round(TP().months / 12)}年經過檢驗（去除各井固定偏差後通過）` : "它的三年檢驗未通過"}；在沒見過的井，它不如簡單內插。${BOFF() ? "快速估算已關閉，只有完整模擬過的政策有數值。" : ""}`
+       : `The map shows irrigation cut by 30 % against business as usual (blue = less sinking). ${BOFF() ? "Pick a suggestion: only policies with a full-model run have numbers (the fast estimate is off)." : "Move a lever or pick a suggestion."} One caveat: everything after Dec ${M.years[YO]} is the model's own trend, ${TP() && TP().passed ? `tested for its first ${Math.round(TP().months / 12)} years only (it passes once each well's constant offset is removed)` : "and its three-year test failed"}; at wells it never saw it is worse than simple interpolation.`,
      el: () => phone() ? $("mapCard") : $("app"), go() { S.tsFit = false; irr30(); S.layer = "dsubs"; setView("diff"); setYear(Y-1); update(true);
         $("lv0").classList.add("pulse"); setTimeout(() => $("lv0").classList.remove("pulse"), 4000); }}]; };
   function render() { if (S.mode !== "story") { $("story").hidden = true; return; } const st = steps()[step];
