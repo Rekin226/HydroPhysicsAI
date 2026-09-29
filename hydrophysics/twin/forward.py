@@ -64,11 +64,11 @@ from .calibrate_flow import (
     well_datum_vector,
     zone_tensor,
 )
-from .compaction import VEPColumn
+from .compaction import VEPColumn, column_param_sets
 from .flow import FlowModel
 from .inputs import TwinInputs, input_options, load_twin_inputs
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
-from .zones import collapse_zones, fan_zones, zone_blend_weights
+from .zones import collapse_zones, column_band_weights, fan_zones, zone_blend_weights
 
 N_LAYERS = 4
 
@@ -726,7 +726,7 @@ def release_fast_startup(p: dict, tau_days: float | None) -> tuple[dict, list[in
     if not tau_days or tau_days <= 0:
         return p, []
     out = json.loads(json.dumps(p))
-    cols = out.get("zonal", [out])
+    cols = column_param_sets(out)
     changed = []
     for i, c in enumerate(cols):
         if math.exp(float(c["log_tau"])) < float(tau_days) and float(c["h_pc0"]) > 0.0:
@@ -738,7 +738,8 @@ def release_fast_startup(p: dict, tau_days: float | None) -> tuple[dict, list[in
 def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                     epochs: int = 2000, zone_of_cell: np.ndarray | None = None,
                     zone_weights=None, hpc0_fast_days: float | None = None,
-                    blend_km: float | None = None) -> tuple[torch.nn.Module, dict]:
+                    blend_km: float | None = None,
+                    band_xy: np.ndarray | None = None) -> tuple[torch.nn.Module, dict]:
     """The compaction column: read it from ``vep_json`` if that exists (a shared
     Stage-2 set, or a per-zone set from ``calibrate_coupled``), else fit the shared
     Stage-2 column on the MLCW sites (``explorer3d.fit_shared_vep``) and write it there.
@@ -748,7 +749,10 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
     - A per-zone column fitted with ``--zone-blend-km`` (``zone_blend_km`` in its JSON) is
       rebuilt blended. That needs ``zone_weights``, a function ``km -> (N_ZONES, A)``.
     - ``blend_km`` overrides the file's blend width. This is an unrefitted illustration,
-      and the returned params record it."""
+      and the returned params record it.
+    - A banded column (``calibrate_coupled --configs banded``, 2026-09-29; ``banded`` in
+      its JSON) is rebuilt from the band centres and kind it records on the cell
+      centroids ``band_xy`` (metres)."""
     if vep_json and os.path.exists(vep_json):
         with open(vep_json) as fh:
             p = json.load(fh)
@@ -765,9 +769,19 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 p.get("hpc0_guard_days")
             if thr and float(thr) > 0 and not any(
                     math.exp(float(c["log_tau"])) < float(thr) and float(c["h_pc0"]) > 0.0
-                    for c in p.get("zonal", [p])):
+                    for c in column_param_sets(p)):
                 p["hpc0_released"] = {"tau_days_below": float(thr), "columns": [],
                                       "already_clean": True}
+        if p.get("banded"):
+            if band_xy is None:
+                raise ValueError(f"{vep_json}: a banded column needs band_xy (the cell "
+                                 "centroids) to rebuild its per-cell parameters")
+            if blend_km is not None:
+                raise ValueError("--column-zone-blend-km applies to a per-zone column, "
+                                 "not a banded one")
+            bw = column_band_weights(p, band_xy)
+            return ZonalColumn(p["banded"], np.zeros(bw.shape[1], dtype="int64"),
+                               device=device, zone_w=bw).to(device), p
         if "zonal" in p:
             if zone_of_cell is None:
                 raise ValueError("a zonal column needs zone_of_cell")
@@ -807,7 +821,8 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
 
 def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 2000,
                  zone_of_cell: np.ndarray | None = None, zone_weights=None,
-                 hpc0_fast_days: float | None = None, blend_km: float | None = None
+                 hpc0_fast_days: float | None = None, blend_km: float | None = None,
+                 band_xy: np.ndarray | None = None
                  ) -> list[tuple[str, torch.nn.Module, dict]]:
     """A comma-separated ``--vep-json`` -> ``[(label, column, params)]``, the rheology
     axis of the ensemble (2026-09-23). The creep time constant is not identifiable from
@@ -819,7 +834,8 @@ def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 200
     for path in [p.strip() for p in vep_jsons.split(",") if p.strip()]:
         col, p = load_or_fit_vep(path, ddir, hf, device, epochs=epochs,
                                  zone_of_cell=zone_of_cell, zone_weights=zone_weights,
-                                 hpc0_fast_days=hpc0_fast_days, blend_km=blend_km)
+                                 hpc0_fast_days=hpc0_fast_days, blend_km=blend_km,
+                                 band_xy=band_xy)
         tmax = p.get("tau_max_years")
         label = (f"tau{float(tmax):g}y" if tmax is not None
                  else os.path.basename(os.path.dirname(path)) or os.path.basename(path))
@@ -1274,7 +1290,7 @@ def main(argv=None) -> None:
                            zone_of_cell=zoc,
                            zone_weights=lambda km: zone_blend_weights(cent, *zb, km),
                            hpc0_fast_days=args.column_hpc0_fast_days,
-                           blend_km=args.column_zone_blend_km)
+                           blend_km=args.column_zone_blend_km, band_xy=cent)
     for rlabel, _, vep in columns:
         if vep.get("hpc0_released", {}).get("already_clean"):
             print(f"A1 fix [{rlabel}]: no column with tau < "
@@ -1291,7 +1307,13 @@ def main(argv=None) -> None:
         elif float(vep.get("zone_blend_km") or 0.0) > 0.0:
             print(f"VEP column [{rlabel}]: blended over {float(vep['zone_blend_km']):g} km "
                   "(as fitted)", flush=True)
-        if "zonal" in vep:
+        if vep.get("banded"):
+            print(f"VEP column [{rlabel}]: banded, {len(vep['banded'])} bands "
+                  f"({vep.get('band_kind', 'hat')}, lambda {vep.get('band_lambda')}) at "
+                  f"{[round(c, 1) for c in vep['band_centres_km']]} km; tau "
+                  + ", ".join(f"{math.exp(q['log_tau']):.0f}" for q in vep["banded"])
+                  + " d", flush=True)
+        elif "zonal" in vep:
             print(f"VEP column [{rlabel}]: per-zone (" + "; ".join(
                 f"{z}: Ske={math.exp(q['log_ske']):.2e} Skv={math.exp(q['log_skv']):.2e} "
                 f"tau={math.exp(q['log_tau']):.0f} d"
@@ -1375,6 +1397,9 @@ def main(argv=None) -> None:
                 (c[2]["zone_blend_km_override"]["used"] if c[2].get("zone_blend_km_override")
                  else float(c[2].get("zone_blend_km") or 0.0)) for c in columns],
             "save_members": args.save_members,
+            # opt-in 2026-09-29: only a run with a banded column records its band count
+            **({"column_bands": [len(c[2].get("banded") or []) for c in columns]}
+               if any(c[2].get("banded") for c in columns) else {}),
             # opt-in 2026-09-26: only a --well-datum fit run records it
             **({"well_datum_members": res["well_datum_members"]}
                if "well_datum_members" in res else {})}))

@@ -61,13 +61,16 @@ class CoupledTwin(nn.Module):
 
     def __init__(self, grid: FanGrid, n_layers: int = 4, dt_days: float = 30.0,
                  driver: str = "mean", driver_layer: int = 1, device=None,
-                 boundaries=None):
+                 boundaries=None, creep: str = "vep"):
         super().__init__()
         if driver not in DRIVERS:
             raise ValueError(f"driver must be one of {DRIVERS}, got {driver!r}")
         self.flow = FlowModel(grid, n_layers=n_layers, dt_days=dt_days, device=device,
                               boundaries=boundaries)
-        self.column = VEPColumn(n_sites=1, dt_days=dt_days, device=device).to(_MODEL_DTYPE)
+        # creep="aquitard" (opt-in, 2026-09-29): the column also carries the delayed-
+        # drainage term (``compaction.aquitard_compaction``); "vep" is the historical column
+        self.column = VEPColumn(n_sites=1, dt_days=dt_days, device=device,
+                                creep=creep).to(_MODEL_DTYPE)
         self.driver = driver
         self.driver_layer = int(driver_layer)
         self.n_layers = int(n_layers)
@@ -115,7 +118,9 @@ class CoupledTwin(nn.Module):
         only thing worth carrying over is that vector, which is exactly ``n_sites=1``.
         """
         with torch.no_grad():
-            for name in ("log_ske", "log_skv", "log_tau", "h_pc0"):
+            # the aquitard keys too when both columns carry them (creep="aquitard")
+            keys = [k for k in self.column.param_keys() if hasattr(fitted, k)]
+            for name in keys:
                 src = getattr(fitted, name).detach()
                 dst = getattr(self.column, name)
                 if src.numel() != 1:

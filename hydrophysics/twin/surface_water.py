@@ -76,9 +76,26 @@ is untouched unless ``--drought-duty`` is given):
   ``sw_deficit_m3``; it is NOT added to the pumping forcing, because the forcing is
   metered electricity, which already contains the wells that replaced it.
 
-Not represented, and recorded in the npz: the Jiji weir diversion history (only current
-values are public), per-canal duty beyond the 2021 proxy, the HSR-corridor well sealing
-(no public map), and township-level fallow changes (the district rice area stands in).
+Version 3 (2026-09-29, ``--jiji-supply``; the v1/v2 builds are untouched without it): the
+year-to-year change comes from the Jiji weir's own supply to each district
+(``JIJI_SUPPLY``, WRA Central Region branch, 10^8 m3/yr, 2006-2025), not from the MOA
+table. v2 barely saw the drought: its MOA volumes put Changhua 2020/2021/2022 at
+10.3/9.3/10.9 and Yunlin flat at 10.2, and its rotation touched March-May 2021 only. The
+weir record has both districts at ~65 % of their 2012-2019 mean in 2020 (inflow 17.5, the
+lowest on the table) and ~71 % in 2021, back to 95 % (Changhua) and 83 % (Yunlin) in
+2022. v3 volume per district, year and crop = the MOA 2012-2019 mean for that crop x the
+factor from ``jiji_crop_factors``: the weir's annual ratio to its 2012-2019 mean, with the
+2020 shortfall on crop 2 (no typhoon, early dry season) and the 2021 one on crop 1
+(rotation from March to 22 June), both conserving the annual ratio. Changhua crop 1 of
+2021 comes out at 0.40 of normal (Yunlin's at 0.11, its crop-1 share being 0.33), against its intake of 12-14 cms in March and 8 in May
+for a normal 25-41. Percolation flooding takes the same factor, capped at 1. The weir
+figures are whole-district (the fan holds most, not all, of both districts), and the
+2015 dip (Changhua 5.45) is scaled over both crops because its timing is not documented
+here. Not represented: monthly weir releases (not public as a table).
+
+Not represented, and recorded in the npz: per-canal duty beyond the 2021 proxy, the
+HSR-corridor well sealing (no public map), and township-level fallow changes (the
+district rice area stands in). The Jiji diversion history is only in v3.
 """
 
 from __future__ import annotations
@@ -115,6 +132,28 @@ I_TEX_MM_D = (4.4, 3.8, 3.2)
 # 2021 first-crop canal rotation: (district, year) -> {month: duty}
 DROUGHT_DUTY = {("changhua", 2021): {3: 0.4, 4: 0.4, 5: 0.4},
                 ("yunlin", 2021): {3: 0.5, 4: 0.5, 5: 0.5}}
+# v3 (--jiji-supply): the Jiji weir's supply to each irrigation district, 10^8 m3 a year
+# (集集攔河堰歷年標的供水量表, WRA Central Region Water Resources Branch), as
+# year: (Yunlin district, Changhua district, weir inflow). Read by hand from JIJI_URL on
+# 2026-09-29 (an HTML table, no download endpoint); 2006-2025 as published.
+JIJI_URL = "https://web.wra.gov.tw/jiji/News.aspx?n=8802&sms=13345"
+JIJI_SUPPLY = {
+    2006: (11.19, 8.63, 62.86), 2007: (10.65, 9.42, 64.82), 2008: (9.82, 7.21, 77.10),
+    2009: (8.27, 7.19, 41.56), 2010: (9.82, 7.64, 27.62), 2011: (10.11, 7.41, 24.54),
+    2012: (10.71, 9.86, 69.69), 2013: (11.84, 9.99, 62.23), 2014: (10.06, 8.22, 31.53),
+    2015: (8.99, 5.45, 24.76), 2016: (13.00, 9.72, 51.03), 2017: (10.54, 8.08, 57.29),
+    2018: (9.62, 8.62, 30.79), 2019: (10.02, 8.96, 51.00), 2020: (6.98, 5.63, 17.51),
+    2021: (7.49, 6.11, 28.47), 2022: (8.81, 8.18, 26.61), 2023: (7.66, 7.68, 36.40),
+    2024: (8.18, 8.49, 44.96), 2025: (9.00, 7.99, 50.57)}
+JIJI_COL = {"yunlin": 0, "changhua": 1}
+JIJI_REF_YEARS = tuple(range(2012, 2020))
+# the crop a year's documented shortfall fell on; every other year scales both crops. 2020:
+# no typhoon for the first time since 1964, the Choushui entered its dry season early (WRA
+# CRWRB release 2021-03-05), so the cut is the second crop; 2021: first-crop rotation from
+# early March to 22 June (Changhua: Choushui intake 12-14 cms against 25-30 normal, 8 cms
+# in May; Agriharvest 2022-05-20), normal second crop after the June rains
+JIJI_SHORTFALL_CROP = {2020: 2, 2021: 1}
+JIJI_MIN_FACTOR = 0.1
 # rotation calendar: month -> (crop 1 or 2, weight); months absent get no water
 CALENDAR = {2: (1, 1.5), 3: (1, 1.5), 4: (1, 1.0), 5: (1, 1.0), 6: (1, 0.5),
             7: (2, 1.5), 8: (2, 1.0), 9: (2, 1.0), 10: (2, 1.0), 11: (2, 0.5)}
@@ -327,6 +366,85 @@ def duty_factor(district: str, day: pd.Timestamp, duty: dict | None) -> float:
     return float(duty.get((district, day.year), {}).get(day.month, 1.0))
 
 
+def jiji_crop_factors(years, share_crop1: dict[str, float], table: dict | None = None,
+                      ref_years: tuple[int, ...] = JIJI_REF_YEARS,
+                      shortfall_crop: dict[int, int] | None = None,
+                      min_factor: float = JIJI_MIN_FACTOR) -> dict[str, pd.DataFrame]:
+    """v3 supply factors ``{district: DataFrame(index=year, columns=[ratio, crop1, crop2,
+    timing])}``: each crop's canal delivery relative to the district's ``ref_years`` mean.
+
+    ``ratio`` is the Jiji weir's annual supply to the district over its ``ref_years`` mean.
+    In a ``shortfall_crop`` year with ``ratio < 1`` the whole annual shortfall is put on the
+    named crop (``share_crop1`` is the district's crop-1 share of a year's water), floored
+    at ``min_factor``, and whatever the floor leaves over is taken from the other crop, so
+    ``share1 * crop1 + (1 - share1) * crop2 == ratio`` in every year. Other years scale
+    both crops by ``ratio``."""
+    table = JIJI_SUPPLY if table is None else table
+    shortfall_crop = JIJI_SHORTFALL_CROP if shortfall_crop is None else shortfall_crop
+    out = {}
+    for d in DISTRICTS:
+        col = JIJI_COL[d]
+        ref = [table[y][col] for y in ref_years if y in table]
+        if not ref:
+            raise ValueError(f"Jiji table has none of the reference years {ref_years}")
+        base = float(np.mean(ref))
+        s1 = float(share_crop1[d])
+        rows = []
+        for y in years:
+            if y not in table:
+                raise ValueError(f"Jiji table has no {y} (covers {min(table)}-{max(table)})")
+            r = float(table[y][col]) / base
+            f1 = f2 = r
+            timing = "both"
+            c = shortfall_crop.get(y)
+            if c in (1, 2) and r < 1.0:
+                s_c = s1 if c == 1 else 1.0 - s1
+                f_c = max(1.0 - (1.0 - r) / s_c, min_factor)
+                f_o = (r - s_c * f_c) / (1.0 - s_c)
+                f1, f2 = (f_c, f_o) if c == 1 else (f_o, f_c)
+                timing = f"crop{c}"
+            rows.append((y, r, f1, f2, timing))
+        t = pd.DataFrame(rows, columns=["year", "ratio", "crop1", "crop2", "timing"])
+        t = t.set_index("year")
+        t.attrs.update(base_1e8_m3=base, share_crop1=s1)
+        out[d] = t
+    return out
+
+
+def jiji_seasons(seasons: dict[str, pd.DataFrame], factors: dict[str, pd.DataFrame],
+                 ref_years: tuple[int, ...] = JIJI_REF_YEARS) -> dict[str, pd.DataFrame]:
+    """v3 volumes: each district's MOA per-crop volume averaged over ``ref_years`` (the
+    level) times the Jiji ``factors`` (the year-to-year change). The MOA table's own
+    year-to-year steps, including Changhua's 2016 reporting switch, are dropped."""
+    out = {}
+    for d, t in seasons.items():
+        ref = [y for y in ref_years if y in t.index]
+        if not ref:
+            raise ValueError(f"{d}: none of the reference years {ref_years} in the MOA "
+                             "table's span; build with --t0 at or before 2019")
+        b1, b2 = float(t.loc[ref, "crop1"].mean()), float(t.loc[ref, "crop2"].mean())
+        f = factors[d]
+        rows = [(y, b1 * float(f.loc[y, "crop1"]), b2 * float(f.loc[y, "crop2"]), "jiji")
+                for y in t.index]
+        n = pd.DataFrame(rows, columns=["year", "crop1", "crop2", "split"]).set_index("year")
+        n.attrs.update(t.attrs)
+        out[d] = n
+    return out
+
+
+def jiji_percolation_duty(factors: dict[str, pd.DataFrame]) -> dict:
+    """``DROUGHT_DUTY``-shaped duty for the percolation field: each flooded month takes its
+    crop's factor, capped at 1 (a wetter year cannot flood more than the paddy area)."""
+    duty: dict = {}
+    for d, t in factors.items():
+        for y, row in t.iterrows():
+            m_k = {m: min(float(row[f"crop{CALENDAR[m][0]}"]), 1.0) for m in F_FLOOD}
+            m_k = {m: k for m, k in m_k.items() if k != 1.0}
+            if m_k:
+                duty[(d, int(y))] = m_k
+    return duty
+
+
 def build_percolation(grid, farm: dict, dates: pd.DatetimeIndex, ratios: dict | None,
                       zone_of_cell: np.ndarray, duty: dict | None = None,
                       i_tex_mm_d: tuple[float, float, float] = I_TEX_MM_D) -> np.ndarray:
@@ -404,12 +522,20 @@ def main(argv=None) -> None:
     ap.add_argument("--drought-duty", action="store_true",
                     help="v2: scale March-May 2021 deliveries and flooding by the "
                          "first-crop canal rotation (Changhua 0.4, Yunlin 0.5)")
+    ap.add_argument("--jiji-supply", action="store_true",
+                    help="v3: year-to-year deliveries from the Jiji weir's supply to each "
+                         "district (JIJI_SUPPLY), on the MOA 2012-2019 mean level, with the "
+                         "2020 shortfall on crop 2 and the 2021 one on crop 1; percolation "
+                         "flooding follows the same factors (capped at 1). Replaces "
+                         "--drought-duty")
     ap.add_argument("--no-percolation", action="store_true",
                     help="skip the v2 paddy percolation field (and its WRA download)")
     ap.add_argument("--zone-boundaries", default="205,182",
                     help="proximal/mid and mid/distal eastings (km) for the texture zones")
     ap.add_argument("--out", default="results/twin/surface_water.npz")
     args = ap.parse_args(argv)
+    if args.jiji_supply and args.drought_duty:
+        ap.error("--jiji-supply already carries the 2021 rotation; drop --drought-duty")
 
     grid = build_grid(args.polygon, dx=args.dx)
     dates = pd.date_range(args.t0, args.t1, freq="MS", inclusive="left")
@@ -420,6 +546,15 @@ def main(argv=None) -> None:
         print(f"  {d}: crop-1 share {t.attrs['share_crop1']:.2f}; annual 10^8 m3 "
               + " ".join(f"{y}:{(r.crop1 + r.crop2) / 1e8:.2f}" for y, r in t.iterrows()),
               flush=True)
+    jiji = None
+    if args.jiji_supply:
+        jiji = jiji_crop_factors(range(dates[0].year, dates[-1].year + 1),
+                                 {d: t.attrs["share_crop1"] for d, t in seasons.items()})
+        seasons = jiji_seasons(seasons, jiji)
+        for d, t in jiji.items():
+            print(f"  {d} (v3, Jiji {t.attrs['base_1e8_m3']:.2f} x 10^8 m3 ref mean): "
+                  + " ".join(f"{y}:{r.crop1:.2f}/{r.crop2:.2f}" for y, r in t.iterrows()),
+                  flush=True)
     print("land use:", flush=True)
     img, box = fetch_landuse(grid, args.cache_dir, zoom=args.zoom, refresh=args.refresh)
     farm = farmland_by_cell(grid, img, box, args.county_gpkg, step_m=args.step_m)
@@ -427,6 +562,19 @@ def main(argv=None) -> None:
     f = build_field(grid, seasons, farm, dates, dry_weight=args.dry_weight, duty=duty)
     sw = f["sw_m_per_day"]
     extra: dict = {"canal_m2": farm["canal_m2"], "drought_duty": np.array(str(duty or {}))}
+    if jiji:
+        buf3 = io.StringIO()
+        pd.concat({d: t for d, t in jiji.items()}).to_csv(buf3)
+        extra.update(sw_version=np.array("v3"), jiji_factors_csv=np.array(buf3.getvalue()),
+                     jiji_supply=np.array(str(JIJI_SUPPLY)), jiji_url=np.array(JIJI_URL),
+                     jiji_ref_years=np.array(JIJI_REF_YEARS),
+                     jiji_shortfall_crop=np.array(str(JIJI_SHORTFALL_CROP)),
+                     jiji_caveat=np.array(
+                         "v3: annual Jiji weir supply per district (whole district, not "
+                         "only the part inside the fan) scaled onto the MOA 2012-2019 mean "
+                         "level; within-year timing only for 2020 (crop 2) and 2021 (crop "
+                         "1), every other year scales both crops; the drought_duty key is "
+                         "unused (the 2021 rotation is inside the factors)"))
     if duty:
         extra["sw_deficit_m3"] = f["deficit_m3"]
         print(f"2021 rotation: {f['deficit_m3'].sum() / 1e8:.2f} x 10^8 m3 of canal water "
@@ -443,7 +591,8 @@ def main(argv=None) -> None:
             print(f"  {d}: crop-1 ratio " + " ".join(
                 f"{y}:{r.crop1:.2f}{'*' if r.source == 'held' else ''}"
                 for y, r in t.iterrows()), flush=True)
-        perc = build_percolation(grid, farm, dates, ratios, zoc, duty=duty)
+        perc = build_percolation(grid, farm, dates, ratios, zoc,
+                                 duty=(jiji_percolation_duty(jiji) if jiji else duty))
         days_ = np.array([d.days_in_month for d in dates], dtype="float64")
         pmm = (perc * days_).reshape(grid.n_active, -1, 12).sum(axis=2).mean(axis=1) * 1000
         vol = (perc * days_).sum(axis=1).sum() * grid.dx ** 2 / (len(dates) / 12) / 1e8
@@ -464,6 +613,19 @@ def main(argv=None) -> None:
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     buf = io.StringIO()
     pd.concat({d: t for d, t in seasons.items()}).to_csv(buf)
+    caveats = ("LUIMAP classes per the NLSC ROC 109 colour table; 2024 land use "
+               "for every year (percolation rescaled by district rice area, WRA "
+               "associations 12/13 read as Changhua/Yunlin, 2021-22 held at "
+               "2020); Changhua 2016 step may be a reporting change; delivered "
+               "water, not recharge; 2021 rotation only if drought_duty is set; "
+               "no Jiji diversion history")
+    if jiji:   # v3: the v1/v2 caveat string above would misdescribe this field
+        caveats = ("LUIMAP classes per the NLSC ROC 109 colour table; 2024 land use for "
+                   "every year (percolation rescaled by district rice area, 2021-22 held "
+                   "at 2020, times the Jiji crop factor capped at 1); delivered water, not "
+                   "recharge; v3 volumes = MOA 2012-2019 mean level x Jiji weir supply "
+                   "ratio (see jiji_caveat), so the MOA year-to-year steps (incl. the "
+                   "Changhua 2016 step) are not used")
     np.savez_compressed(
         args.out, sw_m_per_day=sw.astype("float64"),
         dates=np.array([d.strftime("%Y-%m-01") for d in dates]),
@@ -477,12 +639,7 @@ def main(argv=None) -> None:
         paddy_rgb=np.array(PADDY_RGB), dry_rgb=np.array(DRY_RGB), source=np.array(SOURCE),
         calendar=np.array(str(CALENDAR)),
         legend_url=np.array(LEGEND_URL), **extra,
-        caveats=np.array("LUIMAP classes per the NLSC ROC 109 colour table; 2024 land use "
-                         "for every year (percolation rescaled by district rice area, WRA "
-                         "associations 12/13 read as Changhua/Yunlin, 2021-22 held at "
-                         "2020); Changhua 2016 step may be a reporting change; delivered "
-                         "water, not recharge; 2021 rotation only if drought_duty is set; "
-                         "no Jiji diversion history"))
+        caveats=np.array(caveats))
     print(f"wrote {args.out} ({os.path.getsize(args.out) / 1e6:.1f} MB)")
 
 

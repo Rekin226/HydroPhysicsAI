@@ -147,7 +147,8 @@ def policy_response(inp, member, vep_json: str | None = None, levels=LEVELS,
                                 allow_split=True)[:2]
     cent = inp.grid.centroids()
     col, _ = load_or_fit_vep(vep_path, None, inp.hf, device, zone_of_cell=zoc,
-                             zone_weights=lambda km: zone_blend_weights(cent, *zb, km))
+                             zone_weights=lambda km: zone_blend_weights(cent, *zb, km),
+                             band_xy=cent)
     eta_classes = member.meta.get("eta_classes")
     if eta_classes:
         E_hist = torch.tensor(np.stack([inp.E_by_class[c] for c in eta_classes]),

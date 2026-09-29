@@ -122,3 +122,72 @@ def zone_blend_weights(xy: np.ndarray,
     w[DISTAL] = np.where(prox, 0.0, w_d)
     w[MID] = np.where(prox, 0.0, 1.0 - w_d)
     return w
+
+
+# ---------------------------------------------------------------------------------------
+# Banded column (opt-in, 2026-09-29): column parameters on N bands along the down-fan axis
+# ---------------------------------------------------------------------------------------
+BAND_KINDS = ("hat", "step")
+
+
+def band_centres_km(x_km: np.ndarray, n_bands: int,
+                    lo_km: float | None = None, hi_km: float | None = None) -> np.ndarray:
+    """``n_bands`` evenly spaced band centres (km) from ``lo_km`` to ``hi_km``.
+
+    The defaults are the westmost and eastmost cell eastings, so the end bands sit on the
+    coast and on the apex."""
+    if int(n_bands) < 2:
+        raise ValueError(f"a banded column needs at least 2 bands, got {n_bands}")
+    x = np.asarray(x_km, dtype="float64")
+    lo = float(np.min(x)) if lo_km is None else float(lo_km)
+    hi = float(np.max(x)) if hi_km is None else float(hi_km)
+    if not hi > lo:
+        raise ValueError(f"band range must have hi > lo, got {lo:g}..{hi:g} km")
+    return np.linspace(lo, hi, int(n_bands))
+
+
+def band_weights(xy: np.ndarray, centres_km, kind: str = "hat") -> np.ndarray:
+    """Per-cell band weights ``(n_bands, n)``, each column summing to 1.
+
+    Only the easting is read: the bands run along the fan's down-fan (west-east) axis,
+    the same axis as :func:`fan_zones`.
+
+    ``kind="hat"`` interpolates linearly between the two nearest band centres (a cell
+    beyond the end centres takes the end band). Mixed through ``forward.blended_column``,
+    each log-parameter is then a piecewise-geometric and ``h_pc0`` a piecewise-linear
+    function of easting, continuous everywhere: no line on the map where the column
+    parameters jump. ``kind="step"`` gives each cell the band of its nearest centre
+    (one-hot), which does jump, at the midpoints between centres."""
+    if kind not in BAND_KINDS:
+        raise ValueError(f"band kind must be one of {BAND_KINDS}, got {kind!r}")
+    arr = np.asarray(xy, dtype="float64")
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        raise ValueError(f"xy must be (n, 2) coordinates in metres, got shape {arr.shape}")
+    c = np.asarray(centres_km, dtype="float64").reshape(-1)
+    if c.size < 2 or not np.all(np.diff(c) > 0):
+        raise ValueError("band centres must be >= 2 strictly increasing values (km)")
+    x = arr[:, 0] / 1000.0
+    n = x.shape[0]
+    w = np.zeros((c.size, n), dtype="float64")
+    if kind == "step":
+        w[np.argmin(np.abs(x[:, None] - c[None, :]), axis=1), np.arange(n)] = 1.0
+        return w
+    xc = np.clip(x, c[0], c[-1])
+    i = np.clip(np.searchsorted(c, xc, side="right") - 1, 0, c.size - 2)
+    f = (xc - c[i]) / (c[i + 1] - c[i])
+    w[i, np.arange(n)] = 1.0 - f
+    w[i + 1, np.arange(n)] += f
+    return w
+
+
+def column_band_weights(params: dict, xy: np.ndarray) -> np.ndarray:
+    """The ``(n_bands, n)`` weights of a banded column JSON (``calibrate_coupled
+    --configs banded``) on the cells ``xy``, rebuilt from the centres and kind it
+    records."""
+    centres = params.get("band_centres_km")
+    if not params.get("banded") or centres is None:
+        raise ValueError("not a banded column: needs 'banded' and 'band_centres_km'")
+    if len(centres) != len(params["banded"]):
+        raise ValueError(f"banded column has {len(params['banded'])} parameter sets but "
+                         f"{len(centres)} band centres")
+    return band_weights(xy, centres, params.get("band_kind", "hat"))

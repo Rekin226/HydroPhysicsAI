@@ -18,6 +18,11 @@ Configurations (the ablation the design spec asked for):
 - ``weighted`` -- one global set plus learnable softmax weights over the four aquifers, so
                  the data say which layers drive compaction (``CoupledTwin.driver=weighted``).
 - ``zonal``    -- one parameter set per fan zone (proximal/mid/distal), layer-mean head.
+- ``banded``   -- (opt-in, 2026-09-29) one parameter set per band along the down-fan
+                 (easting) axis, ``--n-bands`` bands mixed per cell by hat weights, with a
+                 smoothness penalty ``--band-lambda`` on neighbouring bands. It targets the
+                 182 km step: the zonal column's parameters jump on that line and the field
+                 steps with them, which leveling does not show.
 
 ``--target leveling`` (2026-09-14) calibrates against the leveling network instead: ~800
 benchmarks with 5-site-grouped folds, scored out of fold, with the rings as the
@@ -55,7 +60,7 @@ from ..config import Config
 from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
 from .calibrate_flow import set_compile_matvec
-from .compaction import VEPColumn
+from .compaction import VEPColumn, column_param_sets
 from .forward import (
     N_LAYERS,
     attach_sw_recharge,
@@ -66,7 +71,14 @@ from .forward import (
     sw_hist,
 )
 from .inputs import input_options, load_twin_inputs
-from .zones import N_ZONES, fan_zones, zone_blend_weights
+from .zones import (
+    BAND_KINDS,
+    N_ZONES,
+    band_centres_km,
+    band_weights,
+    fan_zones,
+    zone_blend_weights,
+)
 
 TAU_MAX_YEARS: float | None = None      # set by --tau-max-years; None = the record length
 # --hpc0-guard-days (fix A1, 2026-09-23): h_pc0 <= 0 in any column whose tau is below this
@@ -80,6 +92,14 @@ SKE_MIN: float | None = None
 # least SKE_MIN / SKE_SKV_MAX so that both constraints can hold at once
 SKE_SKV_MAX: float | None = None
 SKE_MAX = 1e-1
+# --configs banded (opt-in, 2026-09-29): number of bands and the smoothness weight
+N_BANDS: int = 7
+BAND_LAMBDA: float = 0.0
+BAND_KIND: str = "hat"
+# --band-hpc0-guard (review 2026-09-29): "band" applies --hpc0-guard-days per band (the
+# screened behaviour); "cell" also caps slow bands next to fast ones so that no hat cell
+# has tau < D with h_pc0 > 0 (``_guard_hpc0_banded``)
+BAND_HPC0_GUARD: str = "band"
 
 
 def column_constraints() -> dict:
@@ -138,6 +158,49 @@ class _WeightedColumn(nn.Module):
         return torch.softmax(self.logits.detach(), dim=0).cpu().numpy()
 
 
+class _BandedColumns(nn.ModuleList):
+    """One VEP column per down-fan band, mixed per cell by band weights (``_predict``
+    passes ``zone`` as ``(n, n_bands)`` weights to ``blended_column``), with a smoothness
+    penalty on neighbouring bands.
+
+    ``penalty()`` is ``lam * sum_k sum_i (p_k[i+1] - p_k[i])^2`` over the four column
+    parameters (``log_ske``, ``log_skv``, ``log_tau`` in log units, ``h_pc0`` in metres),
+    added to the masked MSE (m^2) in ``_fit``. ``lam = 0`` is N free columns; a large
+    ``lam`` drives the bands toward one shared column."""
+
+    def __init__(self, n_bands: int, lam: float = 0.0, device=None, kind: str = "hat"):
+        if int(n_bands) < 2:
+            raise ValueError(f"a banded column needs at least 2 bands, got {n_bands}")
+        if kind not in BAND_KINDS:
+            raise ValueError(f"band kind must be one of {BAND_KINDS}, got {kind!r}")
+        super().__init__([VEPColumn(n_sites=1, dt_days=30.0, device=device)
+                          for _ in range(int(n_bands))])
+        self.lam = float(lam)
+        # 'hat' mixes neighbouring bands per cell, which the A1 guard has to see
+        self.kind = kind
+
+    def stacked(self, key: str) -> torch.Tensor:
+        return torch.cat([getattr(c, key).reshape(1) for c in self])
+
+    def penalty(self) -> torch.Tensor:
+        keys = ("log_ske", "log_skv", "log_tau", "h_pc0")
+        rough = sum(((self.stacked(k)[1:] - self.stacked(k)[:-1]) ** 2).sum() for k in keys)
+        return self.lam * rough
+
+
+def banded_from_zonal(zonal: nn.Module, band_zone: np.ndarray, lam: float,
+                      device=None, kind: str = "hat") -> _BandedColumns:
+    """A banded column whose band ``i`` starts at the fitted zonal column of zone
+    ``band_zone[i]`` (``--band-init zonal``): the fit then starts in the zonal column's
+    basin and the smoothness penalty only has to remove the jumps between zones."""
+    model = _BandedColumns(len(band_zone), lam, device=device, kind=kind).to(device)
+    with torch.no_grad():
+        for c, z in zip(model, band_zone, strict=True):
+            for k in ("log_ske", "log_skv", "log_tau", "h_pc0"):
+                getattr(c, k).copy_(getattr(zonal[int(z)], k).detach())
+    return model
+
+
 def _fit(model: nn.Module, heads: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
          zone: torch.Tensor | None, epochs: int, lr: float, rezero: bool = False) -> float:
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -150,7 +213,10 @@ def _fit(model: nn.Module, heads: torch.Tensor, obs: torch.Tensor, mask: torch.T
         if rezero:
             pred = _rezero(pred, mask)
         loss = (((pred - obs) ** 2) * mask).sum() / mask.sum().clamp(min=1)
-        loss.backward()
+        if isinstance(model, _BandedColumns) and model.lam > 0.0:
+            (loss + model.penalty()).backward()
+        else:
+            loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         sched.step()
@@ -162,6 +228,9 @@ def _fit(model: nn.Module, heads: torch.Tensor, obs: torch.Tensor, mask: torch.T
                 rng = float(heads.max() - heads.min())
                 c.h_pc0.clamp_(min=-rng, max=rng)
                 _guard_hpc0(c)
+        if isinstance(model, _BandedColumns):
+            with torch.no_grad():
+                _guard_hpc0_banded(model)
     return float(loss.detach())
 
 
@@ -179,6 +248,36 @@ def _guard_hpc0(c: VEPColumn) -> None:
         return
     fast = torch.exp(c.log_tau) < float(HPC0_GUARD_DAYS)
     c.h_pc0.copy_(torch.where(fast, torch.clamp(c.h_pc0, max=0.0), c.h_pc0))
+
+
+def _guard_hpc0_banded(model: _BandedColumns) -> None:
+    """``--hpc0-guard-days D`` for a hat-banded column, per *cell* (review, 2026-09-29).
+
+    ``_guard_hpc0`` holds per band, but a hat cell mixes two neighbouring bands (``log_tau``
+    linearly in log space, ``h_pc0`` linearly), so between a slow band ``i`` with
+    ``h_pc0 > 0`` and a fast neighbour ``j`` (``tau_j < D``, ``h_j <= 0``) there are cells
+    with ``tau < D`` and ``h_pc0 > 0``: the A1 start-up the guard exists to remove. With
+    ``f_D = ln(tau_i / D) / ln(tau_i / tau_j)`` (the mix at which ``tau`` reaches ``D``) no
+    such cell exists iff ``h_i (1 - f_D) <= -f_D h_j``, so ``h_i`` is capped at
+    ``max(0, -f_D h_j / (1 - f_D))``. Pairs of two slow or two fast bands need nothing.
+    Opt-in (``--band-hpc0-guard cell``): on the datum model at lambda 1e-5 it moves the
+    fit into the all-short-tau basin (every band tau 25-52 d, rings -3.1).
+    A step-banded column does not mix bands; ``_guard_hpc0`` is already per cell there."""
+    if HPC0_GUARD_DAYS is None or model.kind != "hat" or BAND_HPC0_GUARD != "cell":
+        return
+    d = float(HPC0_GUARD_DAYS)
+    tau = [float(torch.exp(c.log_tau).reshape(-1)[0]) for c in model]
+    h = [float(c.h_pc0.reshape(-1)[0]) for c in model]
+    for i, c in enumerate(model):
+        if tau[i] < d or h[i] <= 0.0:
+            continue
+        cap = h[i]
+        for j in (i - 1, i + 1):
+            if 0 <= j < len(model) and tau[j] < d:
+                f_d = math.log(tau[i] / d) / math.log(tau[i] / tau[j])
+                cap = min(cap, max(0.0, -f_d * min(h[j], 0.0) / (1.0 - f_d)))
+        if cap < h[i]:
+            c.h_pc0.clamp_(max=cap)
 
 
 def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -> torch.Tensor:
@@ -207,6 +306,8 @@ def _make(config: str, device) -> nn.Module:
     if config == "zonal":
         return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device)
                               for _ in range(N_ZONES)]).to(device)
+    if config == "banded":
+        return _BandedColumns(N_BANDS, BAND_LAMBDA, device=device, kind=BAND_KIND).to(device)
     raise ValueError(config)
 
 
@@ -288,14 +389,17 @@ def _rezero(pred: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def kfold_sites(config: str, H, OBS, M, Z, epochs, lr, device, n_folds: int = 5,
-                seed: int = 0, rezero: bool = True) -> float:
+                seed: int = 0, rezero: bool = True, make=None) -> float:
+    """Site-grouped k-fold R2. ``make(keep)`` (optional) returns the fold's starting
+    model from the kept sites only (the banded column's zonal warm start); by default
+    each fold starts from ``_make(config)``."""
     n = H.shape[0]
     order = np.random.default_rng(seed).permutation(n)
     folds = np.array_split(order, n_folds)
     preds = torch.zeros_like(OBS)
     for held in folds:
         keep = np.setdiff1d(np.arange(n), held)
-        model = _make(config, device)
+        model = _make(config, device) if make is None else make(keep)
         _fit(model, H[keep], OBS[keep], M[keep], Z[keep], epochs, lr, rezero=rezero)
         with torch.no_grad():
             p = _predict(model, H[held], Z[held])
@@ -326,6 +430,8 @@ def column_json(model: nn.Module) -> dict:
                 for k in ("log_ske", "log_skv", "log_tau", "h_pc0")}
     if isinstance(model, _WeightedColumn):
         return {**one(model.col), "layer_weights": model.weights().tolist()}
+    if isinstance(model, _BandedColumns):
+        return {"banded": [one(c) for c in model], "band_lambda": model.lam}
     if isinstance(model, nn.ModuleList):
         return {"zonal": [one(c) for c in model]}
     return one(model)
@@ -337,12 +443,12 @@ def tau_ceiling_days(T: int, dt_days: float = 30.0) -> float:
 
 
 def tau_at_ceiling(params: dict, T: int, rtol: float = 1e-3) -> list[bool]:
-    """Per column (one, or one per zone): does ``tau`` sit on its ceiling? A column that
-    does has a creep time constant the record cannot identify (STATE §3.2) -- its
+    """Per column (one, one per zone or one per band): does ``tau`` sit on its ceiling?
+    A column that does has a creep time constant the record cannot identify (STATE §3.2) -- its
     decadal creep is a modelling choice, which ``twin.forward`` can carry as a rheology
     axis by running columns fitted under different ceilings side by side."""
     ceil = math.log(tau_ceiling_days(T))
-    cols = params.get("zonal", [params])
+    cols = column_param_sets(params)
     return [bool(abs(float(c["log_tau"]) - ceil) < rtol * max(abs(ceil), 1.0)) for c in cols]
 
 
@@ -378,6 +484,30 @@ def main(argv=None) -> None:
     ap.add_argument("--ske-skv-max", type=float, default=None,
                     help="cap on Ske/Skv (default: none). Skv is first raised to at least "
                          "ske_min/ratio so that the floor and the cap can both hold")
+    ap.add_argument("--n-bands", type=int, default=7,
+                    help="banded config: number of column bands along the easting "
+                         "(default 7, about 10 km apart over the fan)")
+    ap.add_argument("--band-lambda", type=float, default=0.0,
+                    help="banded config: weight of the smoothness penalty, the sum of "
+                         "squared differences of each column parameter between "
+                         "neighbouring bands, added to the masked MSE in m^2 (0 = none)")
+    ap.add_argument("--band-kind", choices=BAND_KINDS, default="hat",
+                    help="banded config: 'hat' interpolates the parameters linearly "
+                         "between band centres (continuous, no line where they jump); "
+                         "'step' gives each cell its nearest band")
+    ap.add_argument("--band-init", choices=("default", "zonal"), default="default",
+                    help="banded config: 'default' starts every band at the column's "
+                         "default parameters; 'zonal' first fits the zonal column on the "
+                         "same sites (per fold in the k-fold, so nothing held out leaks) "
+                         "and starts each band at the zone of its centre. Leveling target "
+                         "only; doubles the fitting time")
+    ap.add_argument("--band-hpc0-guard", choices=("band", "cell"), default="band",
+                    help="banded config, with --hpc0-guard-days D: 'band' (default) guards "
+                         "each band; 'cell' also caps h_pc0 in a slow band next to a fast "
+                         "one so that no hat-mixed cell has tau < D and h_pc0 > 0")
+    ap.add_argument("--band-range-km", default=None,
+                    help="banded config: 'lo,hi' easting of the first and last band "
+                         "centre, km (default: the westmost and eastmost cells)")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -389,6 +519,23 @@ def main(argv=None) -> None:
 
     set_compile_matvec(args.compile_matvec)
     global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
+    global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD
+    N_BANDS, BAND_LAMBDA = int(args.n_bands), float(args.band_lambda)
+    BAND_KIND, BAND_HPC0_GUARD = args.band_kind, args.band_hpc0_guard
+    configs = [c.strip() for c in args.configs.split(",") if c.strip()]
+    band_range = (None, None)
+    if "banded" in configs:
+        if N_BANDS < 2:
+            raise SystemExit(f"--n-bands must be >= 2, got {N_BANDS}")
+        if BAND_LAMBDA < 0.0:
+            raise SystemExit(f"--band-lambda must be >= 0, got {BAND_LAMBDA}")
+        if args.band_init == "zonal" and args.target != "leveling":
+            raise SystemExit("--band-init zonal needs --target leveling")
+        if args.band_range_km:
+            band_range = tuple(float(v) for v in args.band_range_km.split(","))
+            if len(band_range) != 2 or not band_range[1] > band_range[0]:
+                raise SystemExit(f"--band-range-km needs 'lo,hi' with hi > lo, got "
+                                 f"{args.band_range_km!r}")
     TAU_MAX_YEARS = args.tau_max_years
     HPC0_GUARD_DAYS = args.hpc0_guard_days
     TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX = args.tau_min_days, args.ske_min, args.ske_skv_max
@@ -447,9 +594,52 @@ def main(argv=None) -> None:
     rows = []
     heads_all = torch.tensor(heads, dtype=torch.float32, device=device).permute(1, 0, 2)  # (A, L, T)
     zone_all = torch.tensor(zone_rows, dtype=ztype, device=device)
-    for config in [c.strip() for c in args.configs.split(",") if c.strip()]:
+    by_config = {None: (Zt, Zr, zone_all, ztype)}
+    band_info = {}
+    if "banded" in configs:
+        # the rows' own cells (a second pass with the cell index as the "zone"), then the
+        # (n, n_bands) band weights of each row and of every cell
+        cent = inp.grid.centroids()
+        centres = band_centres_km(cent[:, 0] / 1000.0, N_BANDS, *band_range)
+        bw = band_weights(cent, centres, args.band_kind).T                     # (A, N)
+        cells = np.arange(cent.shape[0])
+        cells_r = site_rows(ddir, inp, heads, cells)[3]
+        cells_f = (leveling_rows(ddir, inp, heads, cells)[3]
+                   if args.target == "leveling" else cells_r)
+        by_config["banded"] = (torch.tensor(bw[cells_f], dtype=torch.float32, device=device),
+                               bw[cells_r],
+                               torch.tensor(bw, dtype=torch.float32, device=device),
+                               torch.float32)
+        band_info = {"band_centres_km": [float(c) for c in centres],
+                     "band_kind": args.band_kind, "band_axis": "easting",
+                     "band_init": args.band_init,
+                     **({"band_hpc0_guard": "cell"} if args.band_hpc0_guard == "cell"
+                        else {})}
+        if args.band_init == "zonal":
+            from .calibrate_flow import _parse_zone_boundaries
+
+            zb3 = _parse_zone_boundaries(member.meta.get("zone_boundaries", "205,182"),
+                                         allow_split=True)[:2]
+            band_zone = fan_zones(np.column_stack([centres * 1000.0, np.zeros_like(centres)]),
+                                  *zb3)
+            band_info["band_init_zones"] = [int(z) for z in band_zone]
+            Z0 = by_config[None][0]
+
+            def warm(keep=None):
+                """The zonal column fitted on ``keep`` (all sites if None), as bands."""
+                idx = slice(None) if keep is None else keep
+                zon = _make("zonal", device)
+                _fit(zon, Ht[idx], Ot[idx], Mt[idx], Z0[idx], args.epochs, args.lr,
+                     rezero=rezero)
+                return banded_from_zonal(zon, band_zone, BAND_LAMBDA, device, BAND_KIND)
+        print(f"banded column: {N_BANDS} bands ({args.band_kind}) centred at "
+              f"{np.round(centres, 1).tolist()} km, smoothness lambda {BAND_LAMBDA:g}",
+              flush=True)
+    for config in configs:
         t0 = time.perf_counter()
-        model_c = _make(config, device)
+        Zt, Zr, zone_all, ztype = by_config.get(config, by_config[None])
+        band_warm = config == "banded" and args.band_init == "zonal"
+        model_c = warm() if band_warm else _make(config, device)
         loss = _fit(model_c, Ht, Ot, Mt, Zt, args.epochs, args.lr, rezero=rezero)
         with torch.no_grad():
             p_ins = _predict(model_c, Ht, Zt)
@@ -457,7 +647,8 @@ def main(argv=None) -> None:
             ins = _r2(p_ins.cpu().numpy(), OBS, M.astype(bool))
         if args.target == "leveling":
             r2_loso = kfold_sites(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
-                                  n_folds=args.n_folds, rezero=True)
+                                  n_folds=args.n_folds, rezero=True,
+                                  make=warm if band_warm else None)
             # the rings become the independent check
             Hrt = torch.tensor(Hr, dtype=torch.float32, device=device)
             Zrt = torch.tensor(Zr, dtype=ztype, device=device)
@@ -482,6 +673,7 @@ def main(argv=None) -> None:
                        "target": args.target, "tau_max_years": args.tau_max_years,
                        **({"zone_blend_km": float(args.zone_blend_km)}
                           if config == "zonal" and args.zone_blend_km else {}),
+                       **(band_info if config == "banded" else {}),
                        "hpc0_guard_days": args.hpc0_guard_days,
                        **column_constraints(),
                        "tau_ceiling_days": tau_ceiling_days(heads.shape[-1]),
