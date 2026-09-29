@@ -83,8 +83,46 @@ not identified once levels are out of the physics' way, so the ensemble spans 0.
 the policy effects above already carry that spread. The earlier reading ("the census
 locates meters, not wells") is not needed to explain it.
 
-**Still open.** At unseen wells the model is worse than interpolation on head changes
-(+0.34 vs +0.61), worst in the proximal fan. The stress radius is not identified. The
+**Round 9 (2026-09-29), the open items examined:**
+
+- *Unseen wells.* The physics adds no between-well head-change skill: regression kriging
+  (model + interpolated residual anomalies, `twin/residual_kriging.py`, no leakage) reaches
+  +0.635 against the gate IDW's +0.605 only through its interpolator, and model-free
+  per-layer IDW scores +0.654. The model's head swings at unseen wells are damped (sd
+  ratio 0.62, about 0.25 on the upper fan; 58 % of the anomaly error is amplitude, 30 %
+  phase). Closing this needs a flow-model change; interpolation cannot.
+- *Rebound or slowed creep.* The 14 rings and the leveling network give an elastic
+  response of 3.4 mm per metre of seasonal head change and a sustained-rate sensitivity
+  that the record cannot pin down (the rings-versus-leveling disagreement is not robust,
+  `twin/mechanism.py`). The two models differ in policy response through their projected
+  heads, not their columns: the datum model's heads stay above their 2012-2022 minimum, so
+  no new inelastic compaction occurs; the previous model's heads keep setting new minima.
+  **The avoided-subsidence numbers assume no new head minima after 2026.**
+- *182 km step.* A banded column with a smoothness penalty removes the step over all cells
+  and halves it at the leveling benchmarks, at the cost of the rings (−0.43) and of the
+  2017-2022 rate fit; stronger smoothing goes degenerate. It is a robustness check, not a
+  replacement. Batch 7 confirmed it: every smoothing strength removes the step only by
+  going degenerate (rings −0.43 to −3.3; two of three project no ongoing sinking). Rejected;
+  the zonal column stays and its step (14.7 vs −2.0 cm across the first column) is a caveat.
+- *2022 recovery.* Canal deliveries rebuilt from the Jiji weir record with the 2021
+  curtailment and 2022 resumption (surface water v3, `temporal_d3_sw3`) explain part of it:
+  the modelled 2021→2022 rise grows from 0.48 to 0.73 m (observed 1.53), fair ratio 1.09,
+  leveling +0.667, but the fit still drives one canal component to its floor, rings fall to
+  −0.07 and the policy effect to −0.85 cm. Not adopted; about three quarters of the 2022
+  recovery remain unexplained by any forcing in the model.
+- *Damped swings at unseen wells.* Not the stress radius: D3's folds learned 0.5-10 km and
+  their swing ratios (0.42-0.65) and anomaly skill show no relation to it. The damping is
+  structural across the fan.
+
+**Still open, and why no calibration option closes them.** Each was diagnosed and the
+candidate fixes screened; what remains needs new data or a different model class:
+(1) head changes at unseen wells, worse than interpolation because the model's swings are
+damped fan-wide (not the radius, not the upper-fan layering, not storage or boundary
+options); (2) three quarters of the 2022 recovery, which no forcing in the model carries
+(the canal-water timing explains a quarter); (3) whether a pumping cut slows the sinking or
+only rebounds it, which the 2012-2022 record cannot test because heads never recovered
+above their past minimum; (4) the 182 km column step, which every smooth column removes
+only by going degenerate. The stress radius is not identified. The
 2022 recovery is missed by every model. The 182 km column step: see the app's caveat for its
 size under this model.
 
