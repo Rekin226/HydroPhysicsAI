@@ -2,6 +2,7 @@
 
     export WISENVR_BASE_URL=https://<host>/<api-root>     # never committed
     export WISENVR_USERNAME=... WISENVR_PASSWORD=...        # never committed
+    # When authentication has a different root, also set WISENVR_TOKEN_URL.
     python -m hydrophysics.twin.fetch_amp stations --out AMP_V2/data/fan_stations.parquet
     python -m hydrophysics.twin.fetch_amp wells --stations AMP_V2/data/fan_stations.parquet \\
         --out AMP_V2/data/wells
@@ -38,9 +39,11 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-GW_DATASET = "gw"                       # monitoring-well water levels
+GW_DATASET = "gw-wra-gw10min-obs"       # monitoring-well water levels
 PUMP_DATASET = "etc-tpc-etc1mon-obs"    # monthly kWh per registered pump
 FAN_ZONE_ID = 50                        # GroundwaterZoneIdentifier of the Choushui fan
+DEFAULT_START = "2012-01-01T00:00:00"
+DEFAULT_END = "2023-01-01T00:00:00"
 
 
 class AuthError(RuntimeError):
@@ -49,8 +52,10 @@ class AuthError(RuntimeError):
 
 @dataclass
 class Client:
-    """Thin authenticated client. ``base_url`` is the API root (``.../<version>``); the
-    token endpoint is ``<base_url>/token`` and datasets hang off ``<base_url>/``."""
+    """Authenticated dataset client with an optional separate authentication endpoint.
+
+    ``token_url`` defaults to ``<base_url>/token`` for legacy API deployments.
+    """
 
     base_url: str
     username: str
@@ -58,13 +63,15 @@ class Client:
     timeout: float = 60.0
     retries: int = 5
     _token: str | None = None
+    token_url: str | None = None
 
     @classmethod
     def from_env(cls) -> Client:
         try:
             return cls(base_url=os.environ["WISENVR_BASE_URL"].rstrip("/"),
                        username=os.environ["WISENVR_USERNAME"],
-                       password=os.environ["WISENVR_PASSWORD"])
+                       password=os.environ["WISENVR_PASSWORD"],
+                       token_url=os.environ.get("WISENVR_TOKEN_URL"))
         except KeyError as e:
             raise AuthError(f"set {e.args[0]} (and WISENVR_BASE_URL, WISENVR_USERNAME, "
                             "WISENVR_PASSWORD) in the environment; nothing is read from "
@@ -74,7 +81,7 @@ class Client:
     def login(self) -> None:
         import requests
 
-        r = requests.post(f"{self.base_url}/token",
+        r = requests.post(self.token_url or f"{self.base_url}/token",
                           data={"username": self.username, "password": self.password},
                           timeout=self.timeout)
         if r.status_code != 200:
@@ -134,6 +141,29 @@ class Client:
                        params=params)
         return pd.read_parquet(io.BytesIO(raw)).reset_index()
 
+    def station_interval(self, dataset: str, station: str, start: str, end: str,
+                         row_limit: int = 20000) -> pd.DataFrame:
+        """Read [start, end), splitting capped responses instead of silently losing history.
+
+        The live API returns the newest 20,000 rows even for a longer date request.
+        Boundary timestamps are filtered locally because the API includes both ends.
+        """
+        first, last = pd.Timestamp(start), pd.Timestamp(end)
+        if pd.isna(first) or pd.isna(last) or first >= last:
+            raise ValueError("Fetch start must precede end")
+        frame = self.station_data(dataset, station, first.isoformat(), last.isoformat())
+        if len(frame) >= row_limit:
+            if last - first <= pd.Timedelta(seconds=1):
+                raise ValueError("API row cap cannot be resolved at one-second resolution")
+            middle = first + (last - first) / 2
+            parts = [self.station_interval(dataset, station, a.isoformat(), b.isoformat(), row_limit)
+                     for a, b in ((first, middle), (middle, last))]
+            return pd.concat(parts, ignore_index=True)
+        if "datetime" not in frame:
+            raise ValueError("API series has no datetime column")
+        frame["datetime"] = pd.to_datetime(frame["datetime"])
+        return frame[(frame.datetime >= first) & (frame.datetime < last)].copy()
+
 
 # ---------------------------------------------------------------------------------------
 # resume state: successes only
@@ -152,6 +182,32 @@ class Resume:
         with open(tmp, "w") as fh:
             json.dump(sorted(self.done), fh)
         os.replace(tmp, self.path)
+
+
+def _dated_resume(directory: str, dataset: str, start: str, end: str) -> Resume:
+    """Keep each output directory tied to one request interval, including legacy caches."""
+    from pathlib import Path
+
+    from .release import atomic_json
+
+    first, last = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+    if pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Fetch start must precede end")
+    root = Path(directory)
+    request = {"dataset": dataset, "start": first.isoformat(), "end": last.isoformat()}
+    manifest = root / ".request.json"
+    if manifest.exists():
+        previous = json.loads(manifest.read_text())
+    elif any(root.iterdir()):
+        previous = {"dataset": dataset,
+                    "start": pd.Timestamp(DEFAULT_START, tz="UTC").isoformat(),
+                    "end": pd.Timestamp(DEFAULT_END, tz="UTC").isoformat()}
+    else:
+        previous = request
+    if previous != request:
+        raise ValueError("Output directory belongs to another interval; use a new dated directory")
+    atomic_json(manifest, request)
+    return Resume(str(root / ".fetched.json"))
 
 
 # ---------------------------------------------------------------------------------------
@@ -173,13 +229,13 @@ def fetch_wells(client: Client, stations: pd.DataFrame, out_dir: str,
     """Hourly water level per well -> ``<out_dir>/<sid>.parquet`` (index datetime, column
     ``value``), the layout ``heads.build_head_field`` reads."""
     os.makedirs(out_dir, exist_ok=True)
-    resume = Resume(os.path.join(out_dir, ".fetched.json"))
+    resume = _dated_resume(out_dir, GW_DATASET, start, end)
     n = 0
     for sid in stations["sid"].astype(str):
         if sid in resume.done:
             continue
         try:
-            df = client.station_data(GW_DATASET, sid, start, end)
+            df = client.station_interval(GW_DATASET, sid, start, end)
         except FileNotFoundError:
             resume.mark(sid)
             continue
@@ -209,6 +265,9 @@ def fetch_pumps(client: Client, polygon: str, out: str, kwh_out: str,
                 start: str = "2012-01-01T00:00:00", end: str = "2023-01-01T00:00:00",
                 log=print) -> tuple[int, int]:
     """Pump census inside the fan polygon + monthly kWh per pump -> two parquets."""
+    shard_dir = kwh_out + ".shards"
+    os.makedirs(shard_dir, exist_ok=True)
+    resume = _dated_resume(shard_dir, PUMP_DATASET, start, end)
     census = client.stations(PUMP_DATASET)
     census["sid"] = census["sid"].astype(str)
     inside = _inside_polygon(census, polygon)
@@ -217,15 +276,12 @@ def fetch_pumps(client: Client, polygon: str, out: str, kwh_out: str,
     census.to_parquet(out, index=False)
     log(f"census: {len(census)} pumps inside the fan")
 
-    shard_dir = kwh_out + ".shards"
-    os.makedirs(shard_dir, exist_ok=True)
-    resume = Resume(os.path.join(shard_dir, ".fetched.json"))
     n = 0
     for sid in census["sid"]:
         if sid in resume.done:
             continue
         try:
-            df = client.station_data(PUMP_DATASET, sid, start, end)
+            df = client.station_interval(PUMP_DATASET, sid, start, end)
         except FileNotFoundError:
             resume.mark(sid)
             continue
@@ -258,6 +314,9 @@ def main(argv=None) -> None:
     p.add_argument("--polygon", required=True)
     p.add_argument("--out", default="AMP_V2/data/tpc_pumps.parquet")
     p.add_argument("--kwh-out", default="AMP_V2/data/pump_kwh_all.parquet")
+    for parser in (w, p):
+        parser.add_argument("--start", default=DEFAULT_START)
+        parser.add_argument("--end", default=DEFAULT_END)
     args = ap.parse_args(argv)
 
     client = Client.from_env()
@@ -266,10 +325,11 @@ def main(argv=None) -> None:
         print(f"wrote {args.out}: {len(df)} fan wells")
     elif args.cmd == "wells":
         stn = pd.read_parquet(args.stations)
-        n = fetch_wells(client, stn, args.out)
+        n = fetch_wells(client, stn, args.out, start=args.start, end=args.end)
         print(f"wrote {n} new well files under {args.out}")
     else:
-        n_p, n_k = fetch_pumps(client, args.polygon, args.out, args.kwh_out)
+        n_p, n_k = fetch_pumps(client, args.polygon, args.out, args.kwh_out,
+                             start=args.start, end=args.end)
         print(f"wrote {args.out} ({n_p} pumps) and {args.kwh_out} ({n_k} rows)")
 
 

@@ -3093,6 +3093,7 @@ def main(argv=None) -> None:
         os.makedirs(args.out, exist_ok=True)
         np.savez_compressed(os.path.join(args.out, "stage3_temporal_pred.npz"),
                             pred=arrs["pred"], obs=arrs["obs"], clim=arrs["clim"],
+                            dates=np.asarray(hf.dates[1:]).astype("U32"),
                             T_fit=arrs["T_fit"], sids=np.array(sids_used),
                             obs_raw=obs_raw_full[:, 1:],
                             # pred is the PHYSICAL head; pred + well_datum[:, None] is the

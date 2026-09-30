@@ -619,7 +619,8 @@ def restart_taper(inp: TwinInputs, month: int, n_layers: int, taper_km: float) -
 def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
                           gain: float, noise: np.ndarray | None = None,
                           taper_km: float | None = None,
-                          datum: np.ndarray | None = None) -> torch.Tensor:
+                          datum: np.ndarray | None = None, method: str = "field",
+                          operator=None) -> torch.Tensor:
     """``h_model + gain * (h_obs - h_model)`` in every layer that has an observation in
     ``month``; other layers keep the model state. ``h_model`` is ``(L, A)``.
 
@@ -633,7 +634,24 @@ def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
     state. Without it, a layer with any well anywhere is replaced wholesale by the IDW
     field. At the Dec-2022 origin that put heads carried in from mid and distal wells into
     the unmeasured proximal layers 3-4, a median of -21 and -25 m. The column turned that
-    into a step of +21 cm per proximal cell, and the rebound that followed elsewhere."""
+    into a step of +21 cm per proximal cell, and the rebound that followed elsewhere.
+
+    ``method="innovation"`` uses the same nearest-cell observation operator as scoring
+    and spreads only ``obs - (sampled state + datum)``. Perfect observations then leave
+    every cell unchanged. Pass a cached ``HeadObservationOperator`` for repeated steps.
+    The caller must supply the same fixed datum used when scoring this trajectory.
+    The historical ``field`` default is preserved for reproducibility."""
+    if method not in ("field", "innovation"):
+        raise ValueError("Unknown head update method")
+    if method == "innovation":
+        from .assimilation import HeadObservationOperator
+
+        operator = operator or HeadObservationOperator.from_inputs(inp, h_model.device)
+        observations = inp.obs_h[:, month].copy()
+        if noise is not None:
+            observations += noise
+        return operator.update(h_model, observations, datum, gain,
+                               radius_km=5.0 if taper_km is None else taper_km)
     if gain <= 0.0:
         return h_model
     h = inp.obs_h[:, month].copy()

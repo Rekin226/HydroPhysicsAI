@@ -116,24 +116,32 @@ python -m hydrophysics.twin.viewer_app --forward results/twin_forward/datum_gate
     --basis results/twin_forward/response_basis_datum.npz --out results/twin/twin_app.html
 ```
 
-`results/twin/twin_app.html` is the twin as a decision page: one self-contained file of
-about 1.8 MB, nothing to install (spec: `docs/superpowers/specs/2026-09-23-twin-decision-app-redesign.md`).
-It opens on the answer. A generated headline and six tiles compare the current policy with
+`results/twin/twin_app.html` is a research scenario page: one self-contained file of
+about 2.2 MB, with its 3D renderer bundled for offline use. It opens on a basin overview
+and, on desktop, a schematic four-aquifer scene. A generated headline and six tiles compare the current policy with
 business as usual: subsidence avoided by 2032 with its 36-run range, area sinking faster
 than a threshold, the high-speed-rail gradient, layer-2 head recovery, the pumping energy
 given up, and how many runs agree. Below them sit a 2D map of the policy's change from
 baseline, drawn on a fixed symmetric scale, and a linked time series. The series marks the
-fitted, tested and not-validated periods and has a policy-minus-baseline panel. A slider per
+fitted and projected periods and has a policy-minus-baseline panel. Historical validation
+dates remain separate from future projection years. A slider per
 water-use class and a 2026/2030 start set the policy. When the policy matches a solved run
 the page uses the full 36-run fields; otherwise it builds the result from the per-class
 response basis and prints that fast estimate's error. Tabs hold township small multiples
 (low-confidence townships flagged from the leveling support), the THSR profile, a
 cross-section, pinned-policy comparison and "where the model is trusted". The 3D exploded
-block is a drawer, built only when opened. A five-step story mode guides first-time
+block is a drawer, opened automatically on desktop and on demand on mobile. A five-step story mode guides first-time
 readers, and the page offers EN/中文, keyboard control, table views and CSV/PNG export.
 The known limits from `docs/superpowers/STATE.md` are named next to the numbers they
 qualify. Rail and river lines are OpenStreetMap traces (`python -m hydrophysics.twin.app.geo`,
 committed under `hydrophysics/twin/app/geodata/`).
+
+The new 2023–August 2026 groundwater challenge gives datum-adjusted RMSE **2.07 m**
+against **1.67 m** for seasonal climatology (158 wells). The current frozen forecast
+does not beat this baseline. Pass `--challenge results/twin/new_data_challenge/report.json`
+to include that report in a rebuilt page; the report must match the forward file's hash.
+See [release and validation workflow](docs/TWIN_RELEASE.md) for data ingestion, independent
+MODFLOW checks, browser acceptance, and atomic local releases.
 
 The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
 

@@ -89,6 +89,7 @@ import numpy as np
 import pandas as pd
 
 from .app import geo, prep
+from .release import provenance, sha256
 from .zones import ZONE_NAMES, fan_zones
 
 TEMPLATE = os.path.join(os.path.dirname(__file__), "app", "template.html")
@@ -727,6 +728,16 @@ def _temporal_block(temporal_npz, temporal_key="auto",
     out = {"rmse_model": rm, "rmse_clim": rc, "months": int(o.shape[1]),
            "n_wells": int(o.shape[0]), "fit_months": T_fit, "passed": bool(rm <= rc),
            "source": os.path.relpath(temporal_npz)}
+    if "dates" in tz.files:
+        dates = tz["dates"]
+        if len(dates) != tz["obs"].shape[1]:
+            raise ValueError("Temporal dates must align with the scored predictions")
+        out["test_start"] = str(dates[T_fit])[:7]
+        out["test_end"] = str(dates[-1])[:7]
+    elif os.path.abspath(temporal_npz) == os.path.abspath(DEFAULT_TEMPORAL):
+        # This legacy artifact predates dated outputs. Its exact interval is recorded
+        # in STATE.md; never infer calendar years from the duration of another run.
+        out.update(test_start="2020-01", test_end="2022-12")
     here = os.path.dirname(os.path.abspath(temporal_npz))
     rescored = _rescored(rescore_csv)
     sc = next((x for x in (_scorecard(os.path.join(here, "coupled_leveling", "scorecard.json")),
@@ -1155,7 +1166,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           prev_dir: str | None = DEFAULT_PREV_DIR,
           prev_temporal: str | None = DEFAULT_PREV_TEMPORAL,
           rescore_csv: str | None = DEFAULT_RESCORE,
-          three: str = "cdn", public: bool = True, max_bytes: int | None = None) -> dict:
+          three: str = "inline", public: bool = True, max_bytes: int | None = None,
+          observations_csv: str | None = None, challenge_json: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1169,6 +1181,10 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     two columns.
     """
     fw = np.load(forward_npz, allow_pickle=False)
+    if observations_csv is not None and (
+            "observations_sha256" not in fw.files
+            or str(fw["observations_sha256"].item()) != sha256(observations_csv)):
+        raise ValueError("Forward run must identify the supplied observation batch by SHA-256")
     g = _geometry(fw)
     A, y_obs, y_ref = g.A, g.y_obs, g.y_ref
     sizes = {}
@@ -1278,12 +1294,21 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     modelcard = _modelcard(fw, g, f, forward_npz, chain, column, temporal,
                            _spread_km(theta_json, g.gate_all), public,
                            os.path.dirname(theta_json) if theta_json else None)
+    if challenge_json is not None:
+        with open(challenge_json) as handle:
+            challenge = json.load(handle)
+        if challenge.get("model_sha256") != sha256(forward_npz):
+            raise ValueError("New-data challenge does not match the supplied forward run")
+        fields = ("task", "metrics", "best_baseline", "rmse_ratio", "beats_best_baseline",
+                  "stations", "scored_months", "forecast_origin", "end_exclusive",
+                  "prospective_validation", "causal_policy_validation", "qc")
+        modelcard["new_data_challenge"] = {k: challenge[k] for k in fields}
     if rheo_npz == "auto":
         rheo_npz = forward_npz if len(f.rheo_labels) > 1 else None
     rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
-    # the held-out-years test ran the model free for ``months``: that is the tested horizon
-    y_tested = min(y_obs + (int(np.ceil(temporal["months"] / 12)) if temporal else 0),
-                   len(g.years) - 1)
+    # A historical test of a 36-month horizon does not validate 2023-2025.
+    # Keep this legacy key at the observation boundary for old consumers.
+    y_tested = y_obs
 
     # ---- payload ------------------------------------------------------------------------
     arrays = {
@@ -1338,6 +1363,20 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "timingKind": prep.timing_kind([x["timing"] for x in solved]),
         "rheology": rheology,
     }
+    payload["release"] = provenance({
+        "forward": forward_npz, "basis": basis_npz, "theta": theta_json,
+        "observations": observations_csv,
+        "new_data_challenge": challenge_json,
+        "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
+        "alternative": alt_npz, "alternative_theta": alt_theta,
+        "rheology": rheo_npz, "rheology_column": rheo_column_csv,
+        "rescore": rescore_csv, "townships": townships_csv,
+        "rail": hsr_csv, "rivers": rivers_csv,
+        "members": (os.path.splitext(forward_npz)[0] + ".members.npz"
+                    if members_npz == "auto" else members_npz),
+        "member_summary": (os.path.splitext(forward_npz)[0] + ".members.csv"
+                           if members_csv == "auto" else members_csv),
+    }, payload["meta"]["vintage"], public, three in ("inline", "none"))
 
     _summary(payload, solved, members, basis, base_ye, g, towns, town_idx, town_skill,
              lev, hsr_out, log)
@@ -1374,8 +1413,8 @@ def _render(payload: dict, three: str, log=print) -> str:
             with open(src, encoding="utf-8") as fh:
                 inline = "<script>" + fh.read() + "</script>"
         else:
-            log(f"--three inline: no pinned three.min.js at {src}; falling back to cdn")
-            three = "cdn"
+            raise FileNotFoundError(f"Offline renderer missing: {src}; use --three none "
+                                    "for a 2D-only page or explicitly choose --three cdn")
     page = page.replace("__THREE_MODE__", three)
     page = page.replace("__THREE_CDN__", THREE_CDN if three == "cdn" else "")
     page = page.replace("<!--__THREE_INLINE__-->", inline)
@@ -1557,7 +1596,9 @@ def main(argv=None) -> None:
                     help="the previous deliverable's held-out-years screen dir; 'none'")
     ap.add_argument("--rescore-csv", default=DEFAULT_RESCORE,
                     help="twin.rescore_temporal's table: the fair verdict of older screens")
-    ap.add_argument("--three", choices=("cdn", "inline", "none"), default="cdn")
+    ap.add_argument("--three", choices=("cdn", "inline", "none"), default="inline")
+    ap.add_argument("--observations", help="QC observation CSV already identified by the forward run")
+    ap.add_argument("--challenge", help="Frozen-model new-data challenge report, shown as aggregates")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1576,7 +1617,8 @@ def main(argv=None) -> None:
           alt_theta=opt(args.alt_theta), rheo_npz=opt(args.rheo_forward),
           rheo_column_csv=opt(args.rheo_column_csv), prev_dir=opt(args.prev_dir),
           prev_temporal=opt(args.prev_temporal), rescore_csv=opt(args.rescore_csv),
-          three=args.three, public=not args.private,
+          three=args.three, public=not args.private, observations_csv=args.observations,
+          challenge_json=args.challenge,
           log=lambda s: print(s, flush=True))
 
 

@@ -52,6 +52,8 @@ data = [
     "pyproj>=3.4",
 ]
 dev = ["pytest>=7.0", "ruff>=0.1"]
+reference = ["flopy>=3.10,<4"]
+browser = ["playwright>=1.48"]
 
 [project.urls]
 Repository = "https://github.com/Rekin226/HydroPhysicsAI"
@@ -64,7 +66,7 @@ hydrophysics-baselines = "hydrophysics.run_baselines:main"
 include = ["hydrophysics*"]
 
 [tool.setuptools.package-data]
-hydrophysics = ["sample_data/**/*.csv", "twin/app/template.html", "twin/app/geodata/*.csv"]
+hydrophysics = ["sample_data/**/*.csv", "twin/app/template.html", "twin/app/geodata/*.csv", "twin/app/vendor/*"]
 
 [tool.ruff]
 line-length = 100

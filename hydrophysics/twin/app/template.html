@@ -243,6 +243,20 @@ body.story-mode .analyst-only{display:none!important}
 }
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 @media print{.story,details.drawer,.toolbar,.yearbar button{display:none!important}}
+
+.intro{display:grid;grid-template-columns:1.5fr 1fr;gap:28px;padding:26px 28px;background:linear-gradient(115deg,#102d3c,#194d5c);color:#f1f8f9;border-radius:14px;margin-bottom:16px}
+.intro h2{font-size:clamp(24px,3vw,38px);line-height:1.1;letter-spacing:-.025em;margin:10px 0 12px;font-weight:600}
+.intro p{max-width:680px;font-size:15px;color:#cee0e5;margin:0}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:#9ccdc8}
+.intro-facts{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:center}
+.intro-facts div{padding:12px;border-top:1px solid #56808b;font-size:12px;color:#c7dadf}
+.intro-facts strong{display:block;color:#fff;font-size:19px;font-weight:500;margin-bottom:3px}
+.geometry-note{padding:10px 12px;border-left:3px solid var(--accent);background:var(--accent-soft);font-size:12px;line-height:1.6}
+.d3stage{background:radial-gradient(ellipse at 50% 45%,#edf3f3,#cedddd)!important;min-height:480px}
+.drawer{margin-bottom:20px!important;border-radius:12px!important;overflow:hidden}
+.drawer summary{font-weight:600;font-size:15px!important;padding:15px!important}
+.headline{border-left:3px solid var(--accent)}
+@media(max-width:760px){.intro{grid-template-columns:1fr;padding:20px;gap:14px}.intro-facts div{padding:8px}.d3stage{min-height:360px}}
 </style>
 </head>
 <body>
@@ -271,6 +285,27 @@ body.story-mode .analyst-only{display:none!important}
 <main><div class="wrap">
 <div id="loading">Loading the model fields…</div>
 <div id="app" hidden>
+
+<section class="intro" aria-label="Basin overview">
+  <div><div class="eyebrow" id="introTag"></div><h2 id="introTitle"></h2><p id="introText"></p><p id="newEvidence" style="margin-top:14px;font-size:13px;color:#ffe0b5"></p></div>
+  <div class="intro-facts" id="releaseFacts"></div>
+</section>
+<details class="drawer" id="drawer">
+  <summary><span data-i18n="d3">3D context view</span> <span class="note" data-i18n="d3note">(built when opened; no values are read from it)</span></summary>
+  <div class="d3wrap">
+    <div class="row" style="margin-bottom:8px">
+      <label class="note" for="exag" data-i18n="exag">Vertical exaggeration</label>
+      <select id="exag"><option value="10">10×</option><option value="25" selected>25×</option><option value="50">50×</option></select>
+      <label class="note"><input type="checkbox" id="d3Explode"> <span data-i18n="explode">Separate the layers</span></label>
+      <label class="note"><input type="checkbox" id="d3Photo" checked> <span data-i18n="drape">Drape the orthophoto</span></label>
+      <label class="note"><input type="checkbox" id="d3Clip"> <span data-i18n="clip">Cut along the section line</span></label>
+      <button class="btn" id="d3Reset" data-i18n="resetview">Reset view</button>
+      <button class="btn primary" id="d3Explain" data-i18n="explain">▶ How pumping sinks the ground</button>
+    </div>
+    <p class="geometry-note" id="geometryNote"></p><div class="d3stage" id="d3stage"><div class="d3msg" id="d3msg"></div></div>
+    <div class="note" data-i18n="d3hint">drag = rotate · right-drag or two-finger = pan · wheel or pinch = zoom · click = select a cell (linked to the map and chart)</div>
+  </div>
+</details>
 
 <section class="headline" aria-label="headline">
   <p id="headline" aria-live="polite"></p>
@@ -432,22 +467,7 @@ body.story-mode .analyst-only{display:none!important}
   </div>
 </section>
 
-<details class="drawer" id="drawer">
-  <summary><span data-i18n="d3">3D context view</span> <span class="note" data-i18n="d3note">(built when opened; no values are read from it)</span></summary>
-  <div class="d3wrap">
-    <div class="row" style="margin-bottom:8px">
-      <label class="note" for="exag" data-i18n="exag">Vertical exaggeration</label>
-      <select id="exag"><option value="10">10×</option><option value="25" selected>25×</option><option value="50">50×</option></select>
-      <label class="note"><input type="checkbox" id="d3Explode" checked> <span data-i18n="explode">Separate the layers</span></label>
-      <label class="note"><input type="checkbox" id="d3Photo"> <span data-i18n="drape">Drape the orthophoto</span></label>
-      <label class="note"><input type="checkbox" id="d3Clip"> <span data-i18n="clip">Cut along the section line</span></label>
-      <button class="btn" id="d3Reset" data-i18n="resetview">Reset view</button>
-      <button class="btn primary" id="d3Explain" data-i18n="explain">▶ How pumping sinks the ground</button>
-    </div>
-    <div class="d3stage" id="d3stage"><div class="d3msg" id="d3msg"></div></div>
-    <div class="note" data-i18n="d3hint">drag = rotate · right-drag or two-finger = pan · wheel or pinch = zoom · click = select a cell (linked to the map and chart)</div>
-  </div>
-</details>
+
 
 <div class="foot" id="foot"></div>
 </div>
@@ -1279,14 +1299,14 @@ function renderTS() {
   const line = (arr, x = xs, Yf = Yp) => arr.map((v, i) => `${i ? "L" : "M"}${X(x[i]).toFixed(1)},${Yf(v).toFixed(1)}`).join("");
   const area = (a, b, Yf = Yp) => line(a, xs, Yf) + b.slice().reverse().map((v, i) => `L${X(xs[b.length-1-i]).toFixed(1)},${Yf(v).toFixed(1)}`).join("") + "Z";
   const ink = cssv("--ink"), ink3 = cssv("--ink-3");
-  const zFit = [x0, M.years[YO] + 1], zTest = [M.years[YO] + 1, M.years[M.yTested] + 1], zProj = [M.years[M.yTested] + 1, x1];
+  const zFit = [x0, M.years[YO] + 1], zTest = [M.years[YO] + 1, M.years[YO] + 1], zProj = [M.years[YO] + 1, x1];
   const tp = D.modelcard.temporal, failed = tp && !tp.passed;
   const zones = (top, bot) => fit ? "" : `<rect x="${X(zProj[0])}" y="${top}" width="${X(zProj[1]) - X(zProj[0])}" height="${bot - top}" fill="url(#hp)"/><rect x="${X(zTest[0])}" y="${top}" width="${X(zTest[1]) - X(zTest[0])}" height="${bot - top}" fill="${failed ? "#b35806" : ink3}" fill-opacity="${failed ? .1 : .08}"/>`;
   let g = `<defs><pattern id="hp" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="${ink3}" stroke-opacity=".35" stroke-width="1.2"/></pattern></defs>`;
   g += zones(m.t, H - m.b);
   const zl = (a, txt, row, anchor = "middle") => `<text x="${anchor === "middle" ? X((a[0] + a[1]) / 2) : X(a[0]) + 3}" y="${m.t - 8 - row * 13}" font-size="${fs - .5}" text-anchor="${anchor}" fill="${ink3}">${txt}</text>`;
   g += zl(zFit, zh ? "擬合觀測資料" : (phone ? "fitted" : `${M.years[0]}–${M.years[YO]} fitted to observations`), 0);
-  if (!fit) g += zl(zTest, tp ? testedWord(phone) : (zh ? "已檢驗" : "tested"), 1, "start") + `<text x="${W - m.r}" y="${m.t - 8}" font-size="${fs - .5}" text-anchor="end" fill="${ink3}">${zh ? "模型自身趨勢（未驗證）" : (phone ? "not validated" : "model's own trend, not validated")}</text>`;
+  if (!fit) g += `<text x="${W - m.r}" y="${m.t - 8}" font-size="${fs - .5}" text-anchor="end" fill="${ink3}">${zh ? "模型自身趨勢（未驗證）" : (phone ? "not validated" : "model's own trend, not validated")}</text>`;
   const nt = niceTicks(lo, hi); for (const v of nt.ticks) { g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Yp(v)}" y2="${Yp(v)}" stroke="${ink3}" stroke-opacity=".18"/><text x="${m.l - 6}" y="${Yp(v) + 4}" font-size="${fs}" text-anchor="end" fill="${ink3}">${+v.toFixed(nt.step < 1 ? 1 : 0)}</text>`; }
   const every = phone ? 5 : 4;
   for (let yr = M.years[0]; yr <= x1; yr += fit ? 2 : every) g += `<text x="${X(yr)}" y="${H - m.b + 15}" font-size="${fs}" text-anchor="middle" fill="${ink3}">${yr}</text><line x1="${X(yr)}" x2="${X(yr)}" y1="${H - m.b}" y2="${H - m.b + 4}" stroke="${ink3}"/>`;
@@ -1708,13 +1728,13 @@ function driftMore() {                 // the held-out test's shape scores and t
   return t;
 }
 function heldOutCaveat() {             // caveat 1: what the held-out-years test says, from the file
-  const zh = LANG === "zh", tp = TP(), fr = FAIR(), o = M.years[YO], yt = M.years[M.yTested];
+  const zh = LANG === "zh", tp = TP(), fr = FAIR(), o = M.years[YO], yt = M.years[YO];
   if (!tp) return zh ? ["十年尺度的趨勢未經驗證。", `預報自${o}年12月起由模型自行運算；保留年份檢驗結果未載入。`] : ["The decade-scale trend is not validated.", ` The projection runs free from Dec ${o}. The held-out-years test is not loaded.`];
   const fy = Math.round(tp.fit_months / 12), ny = Math.round(tp.months / 12);
   if (tp.passed && fr) {
     const ex = fr.n_excluded ? (zh ? `，並排除擬合期少於24個月的${fr.n_excluded}口井` : `, and the ${fr.n_excluded} wells with too short a fitted record are left out`) : "";
     return zh ? [`通過${ny}年的保留年份檢驗；之後的十年未經檢驗。`, `預報自${o}年12月起由模型自行運算（水頭只在起點重新接上觀測值一次）。保留年份檢驗以前${fy}年擬合、再自行運算${tp.months}個月，並依事先登錄的「公平」規則評分：每口井的固定偏差只用擬合期估計${ex}。去除偏差後，模型在${fr.n_wells}口井的誤差為 ${f2(fr.rmse)} 公尺，最佳簡單預測（${bestName(fr.best)}）為 ${f2(fr.rmse_best)} 公尺，比值 ${fr.ratio.toFixed(2)}（≤ ${fr.k} 通過）；井的變化形狀 R² ${sg(fr.shape, 2)}，氣候平均 ${sg(fr.shape_clim, 2)}（加趨勢 ${sg(fr.shape_clim_trend, 2)}）。不去除偏差時誤差為 ${f1(fr.rmse_raw)} 公尺，其中 ${pctf(100 * fr.datum_share)} 就是這些固定偏差：模型不知道每口井的絕對水位，它追蹤的是變化。${driftMore()}${yt}年12月以後的每個數值都是模型本身未經檢驗的趨勢。`]
-      : [`It passes a ${ny}-year held-out test; the decade after is untested.`, ` The projection runs free from Dec ${o}: the heads are restarted from the observed field once, at that origin, and the model is on its own after that. The held-out-years test fits the first ${fy} years and runs free for ${tp.months} months, scored by the fair rule registered beforehand: each well's constant offset is estimated from the fitted years only${ex}. After that offset its error at the ${fr.n_wells} wells is ${f2(fr.rmse)} m, against ${f2(fr.rmse_best)} m for the best simple forecast (${bestName(fr.best)}), a ratio of ${fr.ratio.toFixed(2)} (≤ ${fr.k} passes), and the shape of the wells' changes scores R² ${sg(fr.shape, 2)} against ${sg(fr.shape_clim, 2)} for climatology (${sg(fr.shape_clim_trend, 2)} with its trend). Without removing the offsets the error is ${f1(fr.rmse_raw)} m, ${pctf(100 * fr.datum_share)} of it the offsets themselves: the model does not know each well's absolute level, it tracks changes.${driftMore()} Every value after Dec ${yt} is the model's own, untested trend.`]; }
+      : [`It passes a historical ${ny}-year test; all years after ${o} are unvalidated.`, ` The projection runs free from Dec ${o}: the heads are restarted from the observed field once, at that origin, and the model is on its own after that. The held-out-years test fits the first ${fy} years and runs free for ${tp.months} months, scored by the fair rule registered beforehand: each well's constant offset is estimated from the fitted years only${ex}. After that offset its error at the ${fr.n_wells} wells is ${f2(fr.rmse)} m, against ${f2(fr.rmse_best)} m for the best simple forecast (${bestName(fr.best)}), a ratio of ${fr.ratio.toFixed(2)} (≤ ${fr.k} passes), and the shape of the wells' changes scores R² ${sg(fr.shape, 2)} against ${sg(fr.shape_clim, 2)} for climatology (${sg(fr.shape_clim_trend, 2)} with its trend). Without removing the offsets the error is ${f1(fr.rmse_raw)} m, ${pctf(100 * fr.datum_share)} of it the offsets themselves: the model does not know each well's absolute level, it tracks changes.${driftMore()} Every value after Dec ${yt} is the model's own, untested trend.`]; }
   if (tp.passed) return zh ? ["十年尺度的趨勢未經驗證。", `保留年份檢驗（以前${fy}年擬合、再自行運算${tp.months}個月）：模型誤差 ${tp.rmse_model.toFixed(1)} 公尺，重複過去平均 ${tp.rmse_clim.toFixed(1)} 公尺，通過。${yt}年12月以後的數值未經檢驗。`]
     : ["The decade-scale trend is not validated.", ` In the held-out-years test (fit the first ${fy} years, then run free for ${tp.months} months) the error is ${tp.rmse_model.toFixed(1)} m against ${tp.rmse_clim.toFixed(1)} m for repeating the past average: it passes. Every value after Dec ${yt} is untested.`];
   const r = [tp.rmse_model.toFixed(1), tp.rmse_clim.toFixed(1), tp.n_wells, tp.months, fy];
@@ -1803,6 +1823,8 @@ function testRows() {                  // [test, this model, verdict, reference,
   const zh = LANG === "zh", mc = D.modelcard, tp = mc.temporal, fr = tp && tp.fair, pv = PREV(), pt = pv && pv.temporal, pf = pt && pt.fair;
   const V = v => v ? `<b class="vd ${v === "PASS" ? "ok" : "no"}">${v}</b>` : "–";
   const rows = [];
+  const nc = mc.new_data_challenge;
+  if (nc) rows.push([zh ? "新增觀測：凍結預報 RMSE" : "New observations: frozen-forecast RMSE", `${f2(nc.metrics.model_datum.rmse_m)} m`, V(nc.beats_best_baseline ? "PASS" : "FAIL"), `${bestName(nc.best_baseline)} ${f2(nc.metrics[nc.best_baseline].rmse_m)} m`, "–"]);
   if (fr) {
     rows.push([zh ? `保留年份：去除各井偏差後誤差比（≤ ${fr.k} 通過）` : `Held-out years: error ratio after each well's offset (≤ ${fr.k} passes)`, fr.ratio.toFixed(2), V(fr.verdict), `${bestName(fr.best)} ${f2(fr.rmse_best)} m`, pf ? `${pf.ratio.toFixed(2)} ${V(pf.verdict)}` : "–"]);
     rows.push([zh ? "保留年份：變化形狀 R²" : "Held-out years: shape R²", sg(fr.shape, 2), "", `${zh ? "氣候平均" : "climatology"} ${sg(fr.shape_clim, 2)}`, pf ? sg(pf.shape, 2) : "–"]);
@@ -1862,6 +1884,12 @@ function renderCard() {
   if (PREV()) add(zh ? "前一版模型" : "Previous model", prevLine());
   add(zh ? "資料" : "Data vintage", `${mc.record[0]} – ${mc.record[1]} observed; projection to ${mc.horizon}; ${esc(mc.source)}; commit ${mc.git_commit || "–"}; ${zh ? "校正紀錄中的保留年份檢驗" : "held-out-years gate stored with the calibration"}: ${mc.temporal_gate ?? (zh ? "無（上列結果來自 --temporal）" : "none (the row above comes from --temporal)")}; ${mc.public ? (zh ? "公開版：觀測只以彙總呈現" : "public page: observations as aggregates only") : (zh ? "本機版：含個別觀測點，請勿公開" : "local page with individual observations: do not publish")}`);
   add(zh ? "來源" : "Attribution", (D.attrib || []).concat(D.hsr ? [D.hsr.attrib] : []).map(esc).join("<br>"));
+  if (D.release) {
+    add(zh ? "發布狀態" : "Release status", "Research scenario · " + esc(D.release.uncertainty));
+    add(zh ? "歷史檢驗期間" : "Historical test period", TP() && TP().test_start ? `${esc(TP().test_start)} – ${esc(TP().test_end)} (separate historical evaluation)` : "Calendar dates not recorded in this evaluation artifact");
+    add(zh ? "可重現性" : "Reproducibility", `Code SHA256 ${esc(D.release.code_sha256)}; ${Object.keys(D.release.sources).length} hashed input artifacts`);
+    add(zh ? "政策檢查" : "Policy check", "Behavioral monotonicity and magnitude check; not validation against a measured intervention.");
+  }
   $("cardBody").innerHTML = testTable() + `<div class="kv">${kv.join("")}</div>`;
 }
 
@@ -1892,14 +1920,26 @@ function setView(v) { S.view = v; ["vDiff", "vSide", "vSwipe"].forEach(id => $(i
 function refreshAB() { const opts = [["base", t("baseline")], ["cur", polName("cur")], ["late", polName("late")]].concat(S.pins.map((p, i) => [String(i), String.fromCharCode(65 + i) + ": " + p.name]));
   for (const [id, cur] of [["aSel", S.A], ["bSel", S.B]]) $(id).innerHTML = opts.map(o => `<option value="${o[0]}" ${o[0] === cur ? "selected" : ""}>${esc(o[1])}</option>`).join("");
   $("pinCount").textContent = S.pins.length ? `${S.pins.length}/4 ${LANG === "zh" ? "已釘選" : "pinned"}` : ""; }
-function setLang(l) { LANG = l; document.documentElement.lang = l === "zh" ? "zh-Hant" : "en"; $("lEn").setAttribute("aria-pressed", l === "en"); $("lZh").setAttribute("aria-pressed", l === "zh");
+function releaseContext(l) {
+  const zh = l === "zh", vintage = M.vintage || "unknown", rel = D.release;
+  $("introTag").textContent = zh ? "濁水溪沖積扇 · 研究情境" : "CHOUSHUI ALLUVIAL FAN · RESEARCH SCENARIOS";
+  $("introTitle").textContent = zh ? "探索地下水與地層下陷" : "A basin above. Four aquifers below.";
+  $("introText").textContent = zh ? "探索抽水、水頭與地層下陷的關係。比較模型情境，並檢查觀測與模型的差異。" : "Explore how pumping, groundwater pressure and land subsidence connect. Compare conditional scenarios, then inspect the evidence behind them.";
+  const nc = D.modelcard.new_data_challenge;
+  $("newEvidence").textContent = nc ? (zh ? `新增觀測檢驗：${nc.stations}口井，模型 RMSE ${f2(nc.metrics.model_datum.rmse_m)} m，基準 ${f2(nc.metrics[nc.best_baseline].rmse_m)} m。${nc.beats_best_baseline ? "優於基準；政策因果效果尚未驗證。" : "未優於基準，仍為研究情境。"}` : `New-data check · ${nc.stations} wells · model RMSE ${f2(nc.metrics.model_datum.rmse_m)} m vs ${f2(nc.metrics[nc.best_baseline].rmse_m)} m baseline. ${nc.beats_best_baseline ? "Beats this baseline; intervention effects remain unvalidated." : "Does not beat the baseline. Research use only."}`) : "";
+  const facts = [[vintage, zh ? "模型預報起點" : "model forecast origin"], [M.dx / 1000 + " km", zh ? "模型網格" : "model resolution"], [String(M.L), zh ? "含水層" : "aquifer layers"], [rel && rel.offline ? (zh ? "離線" : "Offline") : (zh ? "連線" : "Connected"), zh ? "瀏覽方式" : "viewer"]];
+  $("releaseFacts").innerHTML = facts.map(([v,k]) => `<div><strong>${esc(v)}</strong>${esc(k)}</div>`).join("");
+  $("geometryNote").textContent = zh ? "地表來自高程資料；地下含水層為示意，採用井篩深度中位數及假設厚度，並非鑽探地質界面。水頭是壓力高程。圖示垂直誇張與分層間距不改變任何數值。" : "Terrain uses elevation data. Underground layers are schematic: median well-screen depths and assumed thicknesses, not surveyed geological interfaces. Heads are pressure elevations. Vertical exaggeration and exploded gaps never change the numerical results.";
+}
+function setLang(l) { releaseContext(l); LANG = l; document.documentElement.lang = l === "zh" ? "zh-Hant" : "en"; $("lEn").setAttribute("aria-pressed", l === "en"); $("lZh").setAttribute("aria-pressed", l === "zh");
   const vars = {rec: `${M.years[0]}-${M.years[YO]}`, H: M.years[Y-1]};
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n, vars); });
   $("layerSel").innerHTML = LAYERS.map(L => `<option value="${L.id}" ${L.id === S.layer ? "selected" : ""}>${layerName(L.id)}</option>`).join("");
   $("baseSel").innerHTML = [["photo", l === "zh" ? "正射影像" : "Orthophoto"], ["emap", l === "zh" ? "電子地圖" : "e-Map"], ["none", l === "zh" ? "無" : "None"]].filter(o => o[0] === "none" || D.img[o[0]]).map(o => `<option value="${o[0]}" ${o[0] === S.base ? "selected" : ""}>${o[1]}</option>`).join("");
   const tp = D.modelcard.temporal;
   const fr = FAIR();
-  $("bannerText").innerHTML = tp && !tp.passed ? `<span class="lg">${esc(t("bannerT", {y: M.years[YO], m: tp.months, r: tp.rmse_model.toFixed(1), c: tp.rmse_clim.toFixed(1)}))}</span><span class="sh">${esc(t("bannerS", {y: M.years[YO], m: tp.months}))}</span>`
+  const nc = D.modelcard.new_data_challenge;
+  $("bannerText").innerHTML = nc ? esc(l === "zh" ? `新增觀測：僅使用歷史資料估計各井偏差後，預報 RMSE 為 ${f2(nc.metrics.model_datum.rmse_m)} m，基準為 ${f2(nc.metrics[nc.best_baseline].rmse_m)} m。${nc.beats_best_baseline ? "優於基準；政策效果尚未驗證。" : "未通過準確度門檻；情境僅供研究。"}` : `New observations: forecast RMSE ${f2(nc.metrics.model_datum.rmse_m)} m vs ${f2(nc.metrics[nc.best_baseline].rmse_m)} m baseline, using historical-only well offsets. ${nc.beats_best_baseline ? "Beats this baseline; intervention effects remain unvalidated." : "Accuracy gate failed; scenarios remain for research use."}`) : tp && !tp.passed ? `<span class="lg">${esc(t("bannerT", {y: M.years[YO], m: tp.months, r: tp.rmse_model.toFixed(1), c: tp.rmse_clim.toFixed(1)}))}</span><span class="sh">${esc(t("bannerS", {y: M.years[YO], m: tp.months}))}</span>`
     : tp && fr ? `<span class="lg">${esc(t("bannerP", {y: M.years[YO], m: tp.months, r: fr.rmse.toFixed(1), c: fr.rmse_best.toFixed(1), t: M.years[M.yTested]}))}</span><span class="sh">${esc(t("bannerPS", {m: tp.months, t: M.years[M.yTested]}))}</span>` : esc(t("banner", {y: M.years[YO]}));
   const mc = D.modelcard, hasA = mc.r2_anom != null && mc.r2_anom_idw != null;
   const worse = mc.r2_kfold != null && mc.r2_kfold < mc.r2_idw && (!hasA || mc.r2_anom < mc.r2_anom_idw);
@@ -1929,8 +1969,11 @@ function loadThree(cb) {
   document.head.appendChild(s);
 }
 function build3D() {
-  const T3 = window.THREE, stage = $("d3stage"), msg = $("d3msg"); if (msg) msg.remove();
-  const renderer = new T3.WebGLRenderer({antialias: true, alpha: true}); renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.localClippingEnabled = true;
+  const T3 = window.THREE, stage = $("d3stage"), msg = $("d3msg");
+  let renderer;
+  try { renderer = new T3.WebGLRenderer({antialias: true, alpha: true}); }
+  catch (error) { if (msg) msg.textContent = LANG === "zh" ? "此裝置無法啟用3D；地圖、剖面與圖表仍可使用。" : "3D is unavailable on this device. Maps, sections and charts remain available."; return null; }
+  if (msg) msg.remove(); renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.localClippingEnabled = true;
   // software GL (SwiftShader, llvmpipe: a phone or VM without a GPU) gets a cheaper scene and no animation
   let SOFT = false; try { const gl = renderer.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
     SOFT = /swiftshader|llvmpipe|software/i.test(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch (e) {}
@@ -2043,7 +2086,7 @@ function build3D() {
     const zh = LANG === "zh", yE = YO, y = Math.round(f * yE);
     const dLim = X.dLim, sLo = 0, sHi = D.scales.absSubs[1];
     // the head against sea level: below it (orange) the water is held down by pumping
-    const dh = {kind: "div", L: LUT.diverging, lim: dLim, sign: -1, unit: "m", title: zh ? "水頭相對海平面（橘＝低於海平面）" : "head against sea level (orange = below it)"};
+    const dh = {kind: "div", L: LUT.diverging, lim: dLim, sign: -1, unit: "m", title: zh ? "水頭相對海平面（橘＝低於海平面）" : "pressure head relative to sea level (orange = below)"};
     const cum = {kind: "seq", L: LUT.cividis, lo: sLo, hi: sHi, unit: "cm", title: zh ? `累積下陷（自${M.years[0]}年）` : `cumulative subsidence since ${M.years[0]}`};
     const yy = ph3 === 0 ? y : yE;
     setTop(aqM[1], c => rgbAt(LUT.diverging, colT(dh, F.headBase[(A + c)*Y + yy])));
@@ -2055,9 +2098,9 @@ function build3D() {
     pos.needsUpdate = true; if (ph3 === 2) setTop(topMesh, c => rgbAt(LUT.cividis, (F.subsBase[c*Y + yg] - sLo) / (sHi - sLo)));
     meshes.forEach(m => { const on = m === aqM[1] || (ph3 >= 1 && clayM.includes(m)) || (ph3 === 2 && m === topMesh);
       m.material.opacity = on ? m.userData.baseOpacity : .18; m.material.depthWrite = on; });
-    const steps = [[zh ? "1 · 抽水壓低地下水位" : "1 · Pumping holds the water down", zh ? "主要抽水層（含水層2）的水位：橘色處低於海平面，這是抽水造成的；藍色處高於海平面。" : "The water level in the main pumping layer (aquifer 2): orange where it is below sea level, which only pumping causes; blue above it."],
+    const steps = [[zh ? "1 · 抽水壓低地下水位" : "1 · Pumping holds the water down", zh ? "主要抽水層（含水層2）的水位：橘色處低於海平面，藍色處高於海平面。此為壓力水頭，並非地下開放水面。" : "The water level in the main pumping layer (aquifer 2): orange where the simulated pressure head is below sea level; blue above. This is a pressure field, not an underground open-water surface."],
       [zh ? "2 · 黏土排水並被壓密" : "2 · The clay drains and compacts", zh ? "水位下降時，相鄰黏土層的水被擠出，黏土被壓密；顏色＝該網格的總壓密量（模型不分層，此處分配僅為示意）。" : "As the head falls, water is squeezed out of the clay beside it and the clay compacts. Colour = the cell's total compaction (the model does not split it by layer; the split here is illustrative)."],
-      [zh ? "3 · 地面下陷，而且不會回彈" : "3 · The ground lowers, and does not come back", zh ? `地表隨壓密量下降（下降量放大 ${Math.round(X.sx)} 倍於垂直比例）。流失的儲水空間不會恢復。` : `The surface drops by the compaction (drawn ${Math.round(X.sx)}× larger than the vertical scale). The lost storage does not come back.`]];
+      [zh ? "3 · 彈性回彈與永久壓密" : "3 · Elastic rebound and permanent compaction", zh ? `地表隨壓密量下降（下降量放大 ${Math.round(X.sx)} 倍於垂直比例）。非彈性壓密不會恢復；彈性部分可回彈。時間與深度分布仍是模型假設。` : `The surface drops by the compaction (drawn ${Math.round(X.sx)}× larger than the vertical scale). Inelastic compaction is permanent; the elastic part can rebound. The timing and depth distribution remain model assumptions.`]];
     cap.hidden = false; cap.innerHTML = `<b>${steps[ph3][0]}</b>${steps[ph3][1]} <span class="note">${M.years[ph3 === 0 ? yy : ph3 === 1 ? yc : yg]}</span>`;
     legend3(null, {top: ph3 === 2 ? cum : null, aq: dh, clay: ph3 >= 1 ? cum : null}); dirty = true;
   }
@@ -2104,8 +2147,8 @@ function build3D() {
   $("exag").onchange = () => { exag = +$("exag").value; stopExplain(); fitted = false; rebuild(); };
   $("d3Explode").onchange = () => { stopExplain(); fitted = false; rebuild(); }; $("d3Photo").onchange = () => { stopExplain(); rebuild(); }; $("d3Clip").onchange = rebuild; $("d3Reset").onclick = reset;
   $("d3Explain").onclick = explain;
-  return { recolor() { if (X) return; const fd = fieldFor(S.layer, P, S.year); if (!topMesh || $("d3Photo").checked) return rebuild();
-      setTop(topMesh, c => rgbAt(fd.L, colT(fd, fd.v[c]))); aqM.forEach((m, l) => setTop(m, headCol(l, S.year))); legend3(fd); hudText(fd); },
+  return { recolor() { if (X) return; const fd = fieldFor(S.layer, P, S.year); if (!topMesh) return rebuild();
+      if (!$("d3Photo").checked) setTop(topMesh, c => rgbAt(fd.L, colT(fd, fd.v[c]))); aqM.forEach((m, l) => setTop(m, headCol(l, S.year))); legend3(fd); hudText(fd); },
     mark, explain, stopExplain, spinOnce() { if (!REDUCED && !SOFT) spin = Math.PI * 2; }, rebuild, reveal: () => stage, exag: () => exag };
 }
 $("drawer").addEventListener("toggle", () => { if ($("drawer").open && !d3) loadThree(() => { if (!d3 && window.THREE) d3 = build3D(); }); });
@@ -2230,12 +2273,13 @@ function wire() {
   if (D.leveling) F.levSeries = await unpack(D.leveling.series); if (D.wells) F.wellObs = await unpack(D.wells.obs);
   for (const n of ["diverging", "cividis", "viridis"]) LUT[n] = lut(n);
   derive();
-  const hasPolicy = hashRead(); storeLoad();
+  hashRead(); storeLoad();
   $("loading").hidden = true; $("app").hidden = false;
   P = policyFields(S.f, S.start); KP = kpis(P); KPB = kpis(policyFields(new Array(K).fill(1), 0));
   wire(); buildMapDom(); loadImages();
   setLang(LANG); $("layerSel").value = S.layer;
-  if (hasPolicy) setMode("analyst"); else setMode("story");
+  setMode("analyst");
+  if (innerWidth >= 1000) $("drawer").open = true;
   document.body.dataset.ready = "1";
 })().catch(e => { console.error(e); $("loading").textContent = "The page failed to load: " + e.message; });
 </script>

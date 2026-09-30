@@ -134,3 +134,40 @@ def test_resume_records_successes_only(tmp_path):
     r.mark("a")
     assert Resume(str(tmp_path / "state.json")).done == {"a"}
     assert not os.path.exists(str(tmp_path / "state.json.tmp"))
+
+
+def test_different_interval_cannot_reuse_or_overwrite_cache(fake, tmp_path):
+    c = Client("https://example.invalid/api", "u", "p", retries=3)
+    stations = pd.DataFrame({"sid": ["1"]})
+    out = tmp_path / "wells"
+    fetch_wells(c, stations, str(out), log=lambda *_: None)
+    before = (out / "1.parquet").read_bytes()
+    with pytest.raises(ValueError, match="new dated directory"):
+        fetch_wells(c, stations, str(out), start="2023-01-01", end="2025-01-01")
+    assert (out / "1.parquet").read_bytes() == before
+
+
+def test_separate_token_endpoint_from_environment(fake, monkeypatch):
+    monkeypatch.setenv("WISENVR_BASE_URL", "https://example.invalid/datasets")
+    monkeypatch.setenv("WISENVR_TOKEN_URL", "https://example.invalid/auth/token")
+    monkeypatch.setenv("WISENVR_USERNAME", "u")
+    monkeypatch.setenv("WISENVR_PASSWORD", "p")
+    c = Client.from_env()
+    assert c.token_url == "https://example.invalid/auth/token"
+    c.login()
+    assert fake.tokens_issued == 1
+
+
+def test_capped_series_is_split_and_boundaries_not_duplicated(monkeypatch):
+    client = Client("https://example.invalid", "u", "p")
+    record = pd.DataFrame({"datetime": pd.date_range("2023-01-01", periods=10, freq="h"),
+                           "value": np.arange(10)})
+
+    def capped(dataset, station, start, end):
+        return record[record.datetime.between(pd.Timestamp(start), pd.Timestamp(end))].tail(4)
+
+    monkeypatch.setattr(client, "station_data", capped)
+    actual = client.station_interval("synthetic", "1", "2023-01-01", "2023-01-01T10:00:00",
+                                     row_limit=4)
+    assert actual.value.tolist() == list(range(10))
+    assert not actual.datetime.duplicated().any()

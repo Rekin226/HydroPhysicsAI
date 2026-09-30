@@ -141,6 +141,13 @@ def _payload(out) -> dict:
     return json.loads(m.group(1).replace("<\\/", "</"))
 
 
+def test_observations_require_forward_lineage(tmp_path, quiet):
+    obs = tmp_path / "observations.csv"
+    obs.write_text("station_id,date,head_m,layer,datum\ns1,2022-12-01,1,1,synthetic\n")
+    with pytest.raises(ValueError, match="identify the supplied observation"):
+        _build(tmp_path, observations_csv=str(obs))
+
+
 # 1 ---------------------------------------------------------------------------------------
 def test_cli_builds_one_page_without_network(tmp_path, quiet):
     fw, bs, _ = _write_inputs(tmp_path)
@@ -467,7 +474,7 @@ def test_forward_change_is_measured_after_the_restart(tmp_path, quiet):
     assert d["meta"]["yTested"] == d["meta"]["yObs"]
 
 
-def test_tested_horizon_comes_from_the_held_out_test(tmp_path, quiet):
+def test_historical_test_never_validates_future_calendar_years(tmp_path, quiet):
     rng = np.random.default_rng(1)
     obs = rng.normal(size=(5, 131))
     tz = tmp_path / "temporal.npz"
@@ -476,7 +483,7 @@ def test_tested_horizon_comes_from_the_held_out_test(tmp_path, quiet):
     d = _payload(out)
     tp = d["modelcard"]["temporal"]
     assert tp["months"] == 36 and tp["fit_months"] == 95 and tp["passed"] is False
-    assert d["meta"]["years"][d["meta"]["yTested"]] == 2025
+    assert d["meta"]["years"][d["meta"]["yTested"]] == 2022
 
 
 def test_artefact_steps_are_removed_only_in_the_selected_cells():

@@ -179,9 +179,18 @@ repository; both are rebuilt as below. Paths are the `DEFAULT_PATHS` in
 | `results/et/openmeteo_et0_2012_2022.npz` | cached ET0 per curated well | committed (`hydrophysics.et`) |
 
 The fetcher takes the API host and account from `WISENVR_BASE_URL`, `WISENVR_USERNAME`
-and `WISENVR_PASSWORD` only. It renews the bearer token on expiry and records *successes*
+and `WISENVR_PASSWORD` only, with optional `WISENVR_TOKEN_URL` when authentication has
+a different root. It renews the bearer token on expiry and records *successes*
 in a `.fetched.json` beside the output, so an interrupted fetch resumes without skipping
 what failed.
+
+The current groundwater dataset is `gw-wra-gw10min-obs`. Requests can be capped at
+20,000 rows; `Client.station_interval` recursively splits capped intervals and enforces
+an exclusive end locally. Use `--start` and `--end` for dated well or pumping downloads.
+Each output directory records its interval in `.request.json` and rejects a different
+interval. Download newer records into a separate directory to preserve calibration inputs.
+Station metadata dates may lag the actual series: query measurements before declaring
+a dataset stale. See [TWIN_RELEASE.md](TWIN_RELEASE.md) for the new-data challenge format.
 
 **Canonical head field.** `heads.build_head_field` on the current cache yields **174 wells
 passing QC, 158 inside the 1 km grid, 8.79 % NaN month-cells** (the numbers every run
