@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hydrophysics.twin.challenge import monthly_observations, score
+pytest.importorskip("torch")  # twin.challenge imports torch through the twin package
+
+from hydrophysics.twin.challenge import monthly_observations, score  # noqa: E402
 
 
 def test_datum_and_baselines_do_not_use_holdout():

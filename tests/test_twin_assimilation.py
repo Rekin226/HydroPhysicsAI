@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
 
-from hydrophysics.twin.assimilation import (
+torch = pytest.importorskip("torch")
+
+from hydrophysics.twin.assimilation import (  # noqa: E402
     HeadObservationOperator,
     historical_offsets,
     lagged_residual_forecast,

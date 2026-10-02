@@ -4,9 +4,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-import torch
 
-from hydrophysics.twin.forcing_experiment import (
+torch = pytest.importorskip("torch")
+
+from hydrophysics.twin.forcing_experiment import (  # noqa: E402
     advance_before_update,
     align_weather,
     paired_metrics,
