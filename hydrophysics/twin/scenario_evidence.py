@@ -20,7 +20,8 @@ def _summarize(values: np.ndarray) -> dict:
 
 
 def evaluate_sidecar(path: str | Path, *, policy_start_year: int = 2026,
-                     final_year: int = 2032, late_start_year: int = 2028) -> dict:
+                     final_year: int = 2032, late_start_year: int = 2028,
+                     forward: str | Path | None = None) -> dict:
     """Pair each policy with its baseline under the same parameter/IC/rheology member."""
     with np.load(path, allow_pickle=False) as z:
         required = {"subs_members_yr", "subs_scale_m", "years", "scenario_names",
@@ -34,6 +35,7 @@ def evaluate_sidecar(path: str | Path, *, policy_start_year: int = 2026,
         ics = np.asarray(z["ic"], dtype=int)
         rheologies = np.asarray(z["rheology"], dtype=str)
         scale_cm = float(z["subs_scale_m"]) * 100
+        ye_idx = np.asarray(z["ye_idx"], dtype=int) if "ye_idx" in z else None
     if raw.ndim != 4 or raw.shape[0] != len(names) or raw.shape[1] != len(members):
         raise ValueError("Expected scenario/member/cell/year subsidence array")
     if np.any(np.abs(raw.astype(np.int32)) >= np.iinfo(np.int16).max):
@@ -49,6 +51,29 @@ def evaluate_sidecar(path: str | Path, *, policy_start_year: int = 2026,
         raise ValueError("One uniquely named baseline is required")
     if not np.isfinite(scale_cm) or scale_cm <= 0:
         raise ValueError("Invalid subsidence unit scale")
+    crosscheck = None
+    if forward is not None:
+        if ye_idx is None:
+            raise ValueError("Annual sidecar needs year-end indices for monthly crosscheck")
+        with np.load(forward, allow_pickle=False) as z:
+            if names != [str(v) for v in z["scenario_names"]]:
+                raise ValueError("Monthly and annual scenarios differ")
+            months = np.asarray(z["dates"]).astype("datetime64[M]")
+            if not np.array_equal(months[ye_idx].astype("datetime64[Y]").astype(int) + 1970,
+                                  years):
+                raise ValueError("Annual indices do not match monthly December states")
+            if np.any(months[ye_idx].astype(int) % 12 != 11):
+                raise ValueError("Annual sidecar index is not December")
+            annual_mean = raw.astype(np.float32).mean(axis=1) * (scale_cm / 100)
+            monthly_mean = z["subs_mean"][:, :, ye_idx]
+            if annual_mean.shape != monthly_mean.shape:
+                raise ValueError("Monthly and annual cell arrays differ")
+            max_abs = float(np.max(np.abs(annual_mean - monthly_mean)))
+            if max_abs > 0.0005:
+                raise ValueError("Quantized annual member mean disagrees with monthly field")
+        crosscheck = {"monthly_forward_sha256": sha256(forward),
+                      "max_annual_mean_difference_m": max_abs,
+                      "tolerance_m": 0.0005}
     before, first, last, late_before = (policy_start_year - 1, policy_start_year,
                                         final_year, late_start_year - 1)
     if not (years[0] <= before < first <= late_before < last <= years[-1]):
@@ -128,6 +153,7 @@ def evaluate_sidecar(path: str | Path, *, policy_start_year: int = 2026,
     return {
         "schema": 1, "task": "conditional-subsidence-scenario-diagnostic",
         "source_sha256": sha256(path), "scenarios": results, "pairwise_rankings": rankings,
+        "monthly_forward_crosscheck": crosscheck,
         "policy_start_year": policy_start_year,
         "late_rate_years": [late_start_year, final_year],
         "comparison": "paired annual December subsidence; baseline minus policy",
@@ -145,9 +171,15 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sidecar", required=True, type=Path, nargs="+",
                         help="saved yearly member sidecars for alternative physical models")
+    parser.add_argument("--forward", type=Path, nargs="+",
+                        help="optional monthly forward files, one per sidecar, for unit/year checks")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
-    result = {path.stem: evaluate_sidecar(path) for path in args.sidecar}
+    if args.forward is not None and len(args.forward) != len(args.sidecar):
+        parser.error("--forward needs exactly one monthly file per --sidecar")
+    forward = args.forward or [None] * len(args.sidecar)
+    result = {path.stem: evaluate_sidecar(path, forward=monthly)
+              for path, monthly in zip(args.sidecar, forward, strict=True)}
     atomic_json(args.out, result)
     for model, evidence in result.items():
         print(model)

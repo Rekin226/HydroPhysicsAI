@@ -45,6 +45,37 @@ probabilities or predictive intervals. Spatial cell fractions are model-grid dia
 not a map of protected people or assets. Scenario inputs are not verified feasible water
 management plans.
 
+### What the local ring downloads can test
+
+The 14-site old clean ring cache was used for prior model checks and the 2010–2025
+mechanism review. Fourteen downloaded series match **47,735 overlapping ring values**
+in that cache to floating-point precision. They add only 27 later survey rows across
+those sites and are not an untouched temporal holdout. Two other downloaded sites are
+absent from the old clean cache, inside the model grid, and have 26 sampled months
+between February 2023 and May 2025. Their ring measurements were not fitted by the
+coupled column, although regional leveling data influenced column selection.
+
+A local hashed protocol was written before scoring their measured changes. Its first
+version failed a prespecified 12-pair completeness rule because one site's deepest
+ring stopped reporting. The original protocol was retained; a missingness-only
+amendment fixed the common NO1–NO26 interval at both sites before examining change
+values; those ring labels do not imply identical physical depth at both sites. The
+amended protocol hash, source hashes and site-specific output are in the
+ignored `results/decision_evidence/` directory. This remains **retrospective**: the
+observations had already been downloaded, and the 30 annual pairs overlap in time.
+
+| Twelve-month ring change, two sites | Equal-site RMSE |
+|---|---:|
+| Zero-change baseline | 2.439 cm/year |
+| Median annual rate from 14 old sites, using pre-2023 records only | 1.538 cm/year |
+| Selected datum model | 1.528 cm/year |
+| Previous spread model | 1.666 cm/year |
+
+The selected model's 0.010 cm/year aggregate edge over the historical baseline is
+too small to establish useful skill. It improves on that baseline at one site and is
+worse at the other. The test scores total interval compaction at one 1-km cell, not
+an observed pumping intervention, basin-wide surface subsidence, or interval coverage.
+
 Reproduce the saved diagnostics, writing only to an ignored local directory:
 
 ```bash
@@ -54,12 +85,47 @@ python -m hydrophysics.twin.evidence \
 python -m hydrophysics.twin.scenario_evidence \
   --sidecar /path/to/existing/results/twin_forward/datum_gate.members.npz \
             /path/to/existing/results/twin_forward/physical_spread_apex.members.npz \
+  --forward /path/to/existing/results/twin_forward/datum_gate.npz \
+            /path/to/existing/results/twin_forward/physical_spread_apex.npz \
   --out results/decision_evidence/scenarios.json
+python -m hydrophysics.twin.compaction_evidence \
+  --protocol results/decision_evidence/compaction_protocol.json \
+  --out results/decision_evidence/compaction_report.json
 ```
 
 `site_scores.csv` contains observation-derived per-well results and stays local and
 ignored. The JSON files record hashes of the saved inputs; copying a score to a public
 slide without its model, period, metric and caveat would be misleading.
+
+## Prospective compaction protocol to register before new surveys
+
+1. Freeze the model code and parameter hashes, raw scenario trajectories, column
+   geometry, measurement operator, intervention definitions, pumping/forcing vintages,
+   and the complete site population. Archive those predictions and a time-stamped protocol
+   before receiving any new ring, leveling or InSAR measurements. Record exclusions and
+   minimum survey coverage now; do not add sites because they later score well.
+2. Make the primary endpoint the change in compaction over a registered 12-month
+   interval at each site, in cm/year, with an explicitly declared ring-depth or surface
+   displacement operator. Score fixed-origin 1-year and 2-year leads separately. Use the
+   same available site-periods for every method, equal site weights, and historical-only
+   zero-change, site-trend (where prior site data exist), and regional seasonal/rate
+   baselines. Disclose site- and region-level errors and missing surveys. Require the
+   physical model to beat the strongest registered baseline, not just zero change.
+3. Estimate uncertainty from errors in periods and sites excluded from calibration and
+   model selection. Report interval coverage by lead, zone and event as well as point
+   errors. A parameter-ensemble spread alone is insufficient coverage evidence.
+4. To claim **policy impact**, identify an actual, measured change in pumping with its
+   location, date, volume, compliance and any replacement canal water or nearby pumping.
+   Prespecify comparison sites and confounders such as rainfall and infrastructure
+   movement. Test both the immediate rebound and the later rate difference against
+   observed controls. The current two hypothetical scenarios have no such intervention
+   record, so a causal policy gate cannot run yet.
+
+The next eligible measurement period starts after the last used May 2025 ring downloads;
+it also needs new independent surface displacement data because an interval ring does
+not by itself measure surface subsidence. The number and location of required sites
+should be set from power and coverage analysis with the agency, not chosen after seeing
+new outcomes.
 
 ## Readiness gates and next work
 
@@ -67,7 +133,10 @@ slide without its model, period, metric and caveat would be misleading.
    selected model has poor 14-ring fit and the two models disagree on rebound versus
    reduced creep. Obtain independent, dated leveling/ring or InSAR observations spanning
    recovery or a documented intervention, with vertical reference and measurement
-   uncertainty. Lock the calibration and validation split before refitting. **Pass:**
+   uncertainty. Specifically, seek ring/leveling or InSAR measurements after May 2025
+   at sites with documented pumping changes; register the site population, depth-to-
+   surface mapping, survey intervals, QC, baselines and rate metric **before** acquiring
+   those observations. Lock the calibration and validation split before refitting. **Pass:**
    held-out compaction *rate* and cumulative change beat prespecified simple baselines,
    the post-recovery behavior is captured, and the sign and timing of intervention
    response agree with observations. Head skill alone cannot pass this gate.

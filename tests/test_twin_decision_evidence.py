@@ -67,6 +67,7 @@ def _sidecar(path, policy):
     data[1] = np.asarray(policy, dtype="int16")
     np.savez_compressed(path, subs_members_yr=data, subs_scale_m=0.001,
                         years=np.arange(2024, 2029), scenario_names=["baseline", "cut30"],
+                        ye_idx=np.arange(5), dates=[f"{year}-12-01" for year in range(2024, 2029)],
                         member=["one", "two"], ic=[0, 0], rheology=["r1", "r1"])
 
 
@@ -86,3 +87,22 @@ def test_scenario_comparison_rejects_prepolicy_difference(tmp_path):
     with pytest.raises(ValueError, match="before"):
         evaluate_sidecar(path, policy_start_year=2026, final_year=2028,
                          late_start_year=2027)
+
+
+def test_annual_sidecar_matches_unquantized_monthly_mean(tmp_path):
+    path = tmp_path / "yearly.npz"
+    _sidecar(path, [0, 10, 15, 25, 35])
+    forward = tmp_path / "monthly.npz"
+    with np.load(path, allow_pickle=False) as z:
+        mean = z["subs_members_yr"].astype(float).mean(axis=1) * 0.001
+    np.savez(forward, scenario_names=["baseline", "cut30"],
+             dates=[f"{year}-12-01" for year in range(2024, 2029)], subs_mean=mean)
+    result = evaluate_sidecar(path, policy_start_year=2026, final_year=2028,
+                              late_start_year=2027, forward=forward)
+    assert result["monthly_forward_crosscheck"]["max_annual_mean_difference_m"] < 1e-7
+    mean[0] += 0.001
+    np.savez(forward, scenario_names=["baseline", "cut30"],
+             dates=[f"{year}-12-01" for year in range(2024, 2029)], subs_mean=mean)
+    with pytest.raises(ValueError, match="disagrees"):
+        evaluate_sidecar(path, policy_start_year=2026, final_year=2028,
+                         late_start_year=2027, forward=forward)
