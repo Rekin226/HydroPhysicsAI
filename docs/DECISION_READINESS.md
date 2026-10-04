@@ -73,7 +73,10 @@ observations had already been downloaded, and the 30 annual pairs overlap in tim
 
 The selected model's 0.010 cm/year aggregate edge over the historical baseline is
 too small to establish useful skill. It improves on that baseline at one site and is
-worse at the other. The test scores total interval compaction at one 1-km cell, not
+worse at the other. The descriptive year split also reverses: for 22 pairs ending in
+2024, the historical baseline scores 1.195 versus the selected model's 1.531 cm/year;
+for eight pairs ending by May 2025, the selected model scores 1.521 versus 2.224.
+The test scores total interval compaction at one 1-km cell, not
 an observed pumping intervention, basin-wide surface subsidence, or interval coverage.
 
 Reproduce the saved diagnostics, writing only to an ignored local directory:

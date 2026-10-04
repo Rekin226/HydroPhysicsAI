@@ -156,7 +156,8 @@ def evaluate(protocol_path: str | Path) -> dict:
         if len(annual) < protocol["min_annual_pairs_per_site"]:
             raise ValueError(f"Too few annual pairs at {name}")
         for month, value in annual.items():
-            pairs.append({"site": name, "month": month, "observed_cm": value,
+            pairs.append({"site": name, "month": month, "year": month.year,
+                          "observed_cm": value,
                           "zero_cm": 0.0, "historical_median_cm": historical})
     frame = pd.DataFrame(pairs)
     model_names = [key for key in files if key.endswith("_model")]
@@ -197,6 +198,10 @@ def evaluate(protocol_path: str | Path) -> dict:
         site_results[name] = {"annual_pairs": len(part),
                               "observed_mean_cm_per_year": float(part.observed_cm.mean()),
                               "scores": _equal_site_scores(part, methods)}
+    year_results = {str(year): {"annual_pairs": len(part),
+                                "sites": int(part.site.nunique()),
+                                "scores": _equal_site_scores(part, methods)}
+                    for year, part in frame.groupby("year")}
     return {"schema": 1, "task": "retrospective-unmodeled-site-compaction-rate",
             "protocol_sha256": sha256(path), "prospective_validation": False,
             "causal_policy_validation": False,
@@ -205,6 +210,7 @@ def evaluate(protocol_path: str | Path) -> dict:
             "evaluation_sites": len(sites), "evaluation_annual_pairs": len(frame),
             "annual_pairs_are_overlapping": True,
             "scores": _equal_site_scores(frame, methods), "by_site": site_results,
+            "by_year_exploratory": year_results,
             "limitations": ["Two ring sites absent from the old 14-site clean cache; the regional leveling network was used for column selection",
                             "The data were acquired before this protocol; this is retrospective",
                             "Ring interval compaction is compared with modeled column compaction at one 1-km cell",
