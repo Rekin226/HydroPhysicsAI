@@ -209,6 +209,11 @@ def evaluate(protocol_path: str | Path) -> dict:
             "historical_median_cm_per_year": historical,
             "evaluation_sites": len(sites), "evaluation_annual_pairs": len(frame),
             "annual_pairs_are_overlapping": True,
+            "distinct_site_units": len(sites),
+            "inference_status": (f"exploratory: overlapping windows at {len(sites)} sites "
+                                 "do not establish rate skill, predictive coverage, "
+                                 "or a causal intervention effect"),
+            "decision_ready": False,
             "scores": _equal_site_scores(frame, methods), "by_site": site_results,
             "by_year_exploratory": year_results,
             "limitations": ["Two ring sites absent from the old 14-site clean cache; the regional leveling network was used for column selection",
