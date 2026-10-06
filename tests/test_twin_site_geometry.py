@@ -23,10 +23,11 @@ def test_tuku_source_tables_have_checked_station_version_and_depths():
 
 def test_actual_installed_ring_intervals_conserve_thickness_across_soil_contacts():
     site = load_tuku_geometry()
-    first = installed_ring_overlap(site, 1, 2)
-    assert first.sum() == pytest.approx(12.02 - 9.85)
-    assert first[1] == pytest.approx(0.35)  # CL, 9.85–10.2 m
-    assert first[2] == pytest.approx(1.82)  # SP, 10.2–12.02 m
+    first = installed_ring_overlap(site, 2, 3)
+    assert first.sum() == pytest.approx(25.67 - 12.02)
+    assert first[2] == pytest.approx(10.98)  # SP, 12.02–23 m
+    assert first[3] == pytest.approx(1.60)  # CL, 23–24.6 m
+    assert first[4] == pytest.approx(1.07)  # SP, 24.6–25.67 m
     middle = installed_ring_overlap(site, 12, 13)
     assert middle[23] == pytest.approx(3.04)  # CL, 172.96–176 m
     assert middle[24] == pytest.approx(1.77)  # ML, 176–177.77 m
@@ -35,9 +36,20 @@ def test_actual_installed_ring_intervals_conserve_thickness_across_soil_contacts
     assert hydro.sum() == pytest.approx(middle.sum())
 
 
+def test_reported_soil_and_hydro_interpretations_remain_separate_near_48m():
+    site = load_tuku_geometry()
+    soil = installed_ring_overlap(site, 4, 5)
+    hydro = installed_ring_overlap(site, 4, 5, basis="hydro")
+    assert soil[10] == pytest.approx(2.07)  # IOT SP~GP, 48.3–50.37 m
+    assert hydro[1] == pytest.approx(8.72)  # WRA confining unit, 41.65–50.37 m
+    assert soil.sum() == pytest.approx(hydro.sum())
+
+
 def test_logged_coverage_refuses_deepest_installed_interval_and_invalid_geometry():
     site = load_tuku_geometry()
     assert installed_ring_overlap(site, 24, 25).sum() == pytest.approx(2.25)
+    with pytest.raises(ValueError, match="NO1 installation depth conflicts"):
+        installed_ring_overlap(site, 1, 2)
     with pytest.raises(ValueError, match="exceeds logged depth"):
         installed_ring_overlap(site, 25, 26)  # ring 26 is at 302.01 m, log ends at 300 m
     with pytest.raises(ValueError, match="Invalid installed ring"):

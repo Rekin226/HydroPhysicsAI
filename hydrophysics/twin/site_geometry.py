@@ -101,6 +101,8 @@ def installed_ring_overlap(geometry: TukuGeometry, shallow_ring: int,
     if (not 1 <= shallow_ring < deep_ring <= len(geometry.installed_ring_depths_m_bgs)
             or basis not in {"soil", "hydro"}):
         raise ValueError("Invalid installed ring IDs or geometry basis")
+    if shallow_ring in geometry.source["rings"]["unresolved_original_ring_numbers"]:
+        raise ValueError("Original NO1 installation depth conflicts with first measured survey")
     depths = geometry.installed_ring_depths_m_bgs
     bounds = geometry.soil_bounds_m_bgs if basis == "soil" else geometry.hydro_bounds_m_bgs
     return overlap_lengths(bounds, depths[shallow_ring - 1], depths[deep_ring - 1])
