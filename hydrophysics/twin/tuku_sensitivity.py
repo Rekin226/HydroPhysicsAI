@@ -16,7 +16,7 @@ from hydrophysics.twin.site_geometry import load_tuku_geometry
 
 # Within an aquifer use its modeled head; within a confining unit use
 # the mean of its two adjacent aquifers. Both are unverified stress drivers.
-_DRIVER = np.array([
+ADJACENT_HEAD_DRIVER = np.array([
     [1, 0, 0, 0],
     [.5, .5, 0, 0],
     [0, 1, 0, 0],
@@ -42,7 +42,7 @@ def support_weights() -> dict[str, np.ndarray]:
         for (lo, hi), used in zip(bounds, mask, strict=True):
             if not used:
                 continue
-            for (unit_lo, unit_hi), driver in zip(g.hydro_bounds_m_bgs, _DRIVER, strict=True):
+            for (unit_lo, unit_hi), driver in zip(g.hydro_bounds_m_bgs, ADJACENT_HEAD_DRIVER, strict=True):
                 coeff += max(0.0, min(hi, unit_hi) - max(lo, unit_lo)) * driver
         if coeff.sum() <= 0:
             raise ValueError("Empty compressible support")

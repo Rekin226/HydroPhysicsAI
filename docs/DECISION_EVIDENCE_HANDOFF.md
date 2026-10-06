@@ -10,7 +10,7 @@ warnings. It cannot identify which pumping action will reduce observed future
 subsidence. No code was pushed, merged or deployed.
 
 This audit and bounded engineering are on a separate worktree (`HydroPhysicsAI-decision-evidence`),
-branch `audit/decision-evidence`, through commit `fd37c76`. The original
+branch `audit/decision-evidence`, through the isolated branch tip. The original
 main checkout remained clean, and its existing
 Claude daemon and localhost preview were not interrupted. Public source
 downloads and private evaluation outputs remain under ignored
@@ -42,6 +42,17 @@ independence from human selection is unverified.
 
 ## Completed engineering versus remaining defect
 
+- **Completed synthetic design check:** original installed NO2–NO24 rings
+  give 22 intervals. Under four idealized independent head drivers,
+  29 individual IOT fine-soil coefficients have rank 24 (five null
+  directions); seven source-aggregated zone coefficients have rank seven
+  but miss an illustrative 50% precision target at 1 mm synthetic noise.
+  Three WRA confining-unit coefficients have rank three and pass that
+  synthetic target. Numerical ring and whole-column sums agree to below
+  1e-17 m; no field material parameters were estimated. See
+  `hydrophysics/twin/synthetic_depth_identifiability.py` and
+  [site audit](SITE_GEOLOGY_SOURCE_AUDIT.md). Thirty CPU cycles took
+  0.385 s, 12.85 ms per one-column design analysis, not a fit runtime.
 - **Completed:** saved-evidence diagnostics, source-hashed 土庫 geometry and
   interval-overlap checks, a zero-right-hand-side adjoint fix, a four-layer
   head structural sensitivity script, and an observation-only GNSS QC and
@@ -80,8 +91,8 @@ independence from human selection is unverified.
 | Priority and dependency | Bounded next work | Acceptance test and resource estimate |
 |---|---|---|
 | 1. WRA station/reference package; external owner | Resolve GNSS height type, antenna/reference changes and version differences, plus ring maintenance and pressure screens. Freeze QC before new scoring. | Station crosswalk explains or explicitly bounds 2022-06-17, 2024-01-01 and 2024-11-02/03 changes and the 2025-02-01 5.55 cm discrepancy; independent datum and uncertainty documented. Desk review is days once records arrive; no compute expense. |
-| 2. Depth-resolved one-site model; depends on item 1 and deeper material bounds | Implement explicit stress driver and strain history per surveyed interval; compare WRA confining-unit and IOT soil-class structures without forcing one contact. Use synthetic mass/strain-sum and elastic-limit tests before any fit. | Ring interval operator and total-column sum agree on synthetic columns; parameters recover on synthetic data; observed ring fit assessed only on pre-registered dates. Small geometry checks run about 2 ms per 24 intervals; full fit runtime is **unmeasured** and must be benchmarked on one CPU column before training. |
-| 3. Fixed-origin forecast challenge; depends on registered data split | Compare heads and surface/ring rates with seasonal, persistence and site-rate baselines by site, layer, lead and event; lock preprocessing before evaluation. | Model beats strongest registered baseline on genuinely held-out periods with calibrated interval coverage. CPU evaluation is cheap relative to simulation; existing relevant tests ran 113 in 6.96 s. No training is authorized here. |
+| 2. Depth-resolved one-site physical model; depends on item 1 and deeper material bounds | The linear synthetic ring operator and identifiability gate are complete. Next implement independently justified stress history, drainage and delayed strain per surveyed interval; compare WRA and IOT structures without forcing one contact. | Synthetic delayed-law limits, component sums and parameter recovery pass before any field fit; observed depth-matched ring fit uses pre-registered dates. The numerical one-column design check took 12.85 ms; a physical fit runtime is **unmeasured** and must be benchmarked on one CPU column before training. |
+| 3. Fixed-origin forecast challenge; depends on registered data split | Compare heads and surface/ring rates with seasonal, persistence and site-rate baselines by site, layer, lead and event; lock preprocessing before evaluation. | Model beats strongest registered baseline on genuinely held-out periods with calibrated interval coverage. CPU evaluation is cheap relative to simulation; existing relevant tests ran 116 in 6.96 s. No training is authorized here. |
 | 4. Intervention decision; depends on measured implementation | Obtain pumping volumes, spatial scope, timing, substitution supply and control sites. Compare immediate rebound separately from sustained rate change across model structures. | Observed treated-minus-control later rate is distinguishable from zero and robust to reasonable confounder/structure sensitivity. This requires field records and later measurements; no meaningful runtime estimate substitutes for them. |
 
 The strongest supported public statement is that the app illustrates how two
@@ -97,6 +108,6 @@ Run `python -m hydrophysics.twin.gnss_surface_evidence --help` and
 environment for bounded read-only diagnostics. The site audit gives exact
 input paths and hashes. A broader CPU suite covering column, observation
 boundary, leveling, forward, policy, evidence, geology, GNSS and viewer tests
-passed **113 tests in 6.96 s**; the two known 800-epoch training tests were
+passed **116 tests in 6.96 s**; the two known 800-epoch training tests were
 excluded. Ruff, staged whitespace, and credential-pattern checks passed. No paid compute,
 lengthy simulation, package install or external publication was used.

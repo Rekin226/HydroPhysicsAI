@@ -232,3 +232,47 @@ A targeted search also surfaced a WRA land-subsidence
 alternate route around the rejection was tried. The exact station-specific
 reference and maintenance records remain an external-owner request in
 `docs/UNSENT_WRA_RECORDS_REQUEST.md`.
+
+## Synthetic depth operator and identifiability gate
+
+`python -m hydrophysics.twin.synthetic_depth_identifiability` reads the
+source-checked geometry, uses original installed NO2–NO24 (22 adjacent
+intervals), and invents four independent basis-head drivers plus 12
+correlated monthly head-drawdown paths. It assumes a common synthetic
+compliance of `2e-4 m / (m thickness · m head drawdown)` and an
+illustrative 1 mm independent ring-error scale. No station observation,
+pressure history or material property is fitted. The IOT scenarios map
+soil supports to the WRA hydro contacts only as an explicit competing
+stress hypothesis.
+
+| Synthetic parameterization | Best-case four-driver rank | Correlated-driver condition | Maximum 95% relative half-width under 1 mm synthetic noise | Gate at explicitly declared 50% target |
+|---|---:|---:|---:|---|
+| WRA three interpreted confining units | 3 / 3 | 1.10 | 16.0% | Passes numerical design only |
+| IOT 29 individual CL/ML intervals | 24 / 29 | Undefined | Unbounded in five null directions | Reject structural |
+| IOT fine support aggregated by seven WRA hydro units | 7 / 7 | 7.86 | 59.8% | Reject practical at this noise/target |
+
+The direct ring-interval operator agrees with the difference between
+cumulative displacement at ring depths to below `1e-17 m` in all
+three designs; a separate 0–300 m total operator agrees at the same
+scale. Both full-rank designs recover the invented coefficients in a
+noise-free solve to below `2e-19`. For the 29-parameter version, a
+second **positive** coefficient vector differs by `1e-4` yet changes
+predicted ring values by less than `1e-18 m`: no optimizer can infer
+that contrast from these idealized observations. The seven-zone
+aggregation is a source-based reduction that removes structural
+degeneracy, but its precision depends on the noise assumption and
+tolerance. The three WRA confining coefficients are the smallest
+source-motivated synthetic candidate; the 48–51 m contact conflict
+prevents declaring that interpretation true at the site.
+
+The structural check uses four orthogonal head drivers, a best-case
+information limit. Actual correlated field heads cannot repair these structural null
+directions and may worsen practical conditioning; uncertain ring
+continuity is another limitation. The practical gate must be
+recomputed with justified measurement covariance, pressure mapping
+and constitutive model before any parameter estimate is reported.
+The ignored JSON `results/decision_evidence/tuku_synthetic_identifiability.json`
+contains the ranks, singular-value conditions, gate states and
+conservation residuals. Thirty serial CPU-only analyses took 0.385 s
+(12.85 ms per one-column check); this is **not** a training or physical
+fit runtime.
