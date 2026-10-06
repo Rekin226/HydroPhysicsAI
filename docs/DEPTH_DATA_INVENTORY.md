@@ -61,6 +61,12 @@ has yet been assigned to a ring station, screen or model cell. The WRA
 [well-construction report catalog](https://web.wra.gov.tw/wralib/WraLib/wSite/books_39283)
 lists physical copies but no downloadable site-specific completion log was located.
 
+### Historic boring and ring-site reconciliation
+
+The same [1999 official appendix, PDF pages 105, 108 and 148–151](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/public/Attachment/1999/19990238/0001.pdf) identifies the historic 元長 boring at E 178806.50, N 2616895.947 m and 土庫 boring at E 187124.529, N 2619830.231 m. A separate table lists a historic observation station 元長 091702 at E 178792.031, N 2616970.687 m; no corresponding 土庫 station was identified in that table. These historic names must not be used as current ring-site identifiers. The ring manifest instead records 元長國小 at E 179484, N 2616803 m and 土庫國中 at E 187771, N 2620610 m in TWD97/EPSG:3826. All coordinates above are transcribed source values, not a common-datum distance comparison.
+
+The appendix calls the older coordinates `TM` and labels northings/eastings in metres, but gives no datum on these pages. The official [survey-methods section, printed page 17](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/public/Attachment/1999/19990159/0016.pdf) describes GPS surveying and comparison to the Taiwan-wide coordinate system without naming a datum in that passage. A verified CRS/epoch and an agency identifier crosswalk are still needed before computing a reliable separation or assigning historic contacts to a current instrument. Even a small distance would require a demonstrated stratigraphic correlation and screen/interval match; these are currently absent. Treat the logs as regional context only.
+
 For evaluation, freeze the observation geometry and candidate vertical model before
 new measurements. The old 14 ring sites and the two 2023–2025 sites have already
 influenced or been examined by model selection, so reuse of them is exploratory.

@@ -238,6 +238,32 @@ def test_adjoint_gradient_matches_finite_differences():
     assert analytic == pytest.approx(numeric, rel=0.02)
 
 
+@pytest.mark.filterwarnings("error:_cg did not converge")
+def test_adjoint_gradient_large_head_matches_finite_differences():
+    """A small adjoint gradient must be right even when forward heads are ~300 m."""
+    g = _uniform_grid(n=9)
+    m = FlowModel(g, n_layers=1, dt_days=1.0)
+    A = g.n_active
+    h0 = torch.full((1, A), 300.0, dtype=torch.float64)
+    rech = torch.zeros((1, A, 2), dtype=torch.float64)
+    rech[0, 0, :] = 1e-3
+    pump = torch.zeros_like(rech)
+
+    def objective(delta):
+        with torch.no_grad():
+            m.log_T.fill_(float(np.log(500.0)) + delta)
+        h = m(h0, rech, pump, 2)
+        return (h[0, 0, -1] - h0[0, 0]).square()
+
+    m.zero_grad()
+    objective(0.0).backward()
+    analytic = float(m.log_T.grad.sum())
+    eps = 1e-4
+    numeric = (float(objective(eps).detach()) - float(objective(-eps).detach())) / (2 * eps)
+    assert abs(analytic) > 1e-4
+    assert analytic == pytest.approx(numeric, rel=5e-4)
+
+
 def test_leakage_moves_water_between_layers_and_conserves_it():
     """NOTE (brief defect, corrected here): the brief's `added` omits the `m.dt` factor
     that `test_mass_balance_closes_each_step` above established is required (stored =
