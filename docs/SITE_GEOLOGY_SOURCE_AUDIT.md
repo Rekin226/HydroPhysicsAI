@@ -120,8 +120,8 @@ lists 土庫國中 among its continuous surface-height stations; the linked
 `A130600LSTKJS` at TWD97 E 187770.14, N 2620603.69 m, about 6.37 m from
 the ring coordinate. This is a *separate instrument and ID* from ring
 `A130600GWMWTKJS`. The public metadata says GNSS measures one point,
-not regional surface subsidence. The official measurement dataset is published
-annually; its current post-March-2025 rows were not independently fetched here.
+not regional surface subsidence. The official measurement dataset is published annually; a current public JSON
+response was downloaded read-only for the version check below.
 
 An existing original-checkout cache
 `chou-shui-data/data/ls_cache/ls-wra-gnss-obs__TKJS.parquet` (SHA-256
@@ -136,3 +136,88 @@ datum, GNSS processing offsets and outliers, antenna/site maintenance, frozen
 model selection date, and whether a surface displacement operator matches
 the saved modeled total column. A single station cannot validate a regional
 map or a pumping-policy effect.
+
+### Public GNSS version and fail-closed surface comparison
+
+The public [WRA GNSS measurement endpoint](https://opendata.wra.gov.tw/api/v2/d98a5c3b-7e65-4aa2-996c-97215c6074bf?format=JSON&sort=_importdate+asc),
+fetched 2026-10-06 into ignored
+`results/decision_evidence/public_sources/wra_gnss_36694.json`, returned 76,970
+rows (SHA-256 `d946a756295b3501ad1e2d510bbbc484b2efb23318479a75b95b365e940649a6`).
+It has 2,461 rows labeled `A130600LSTKJS` / 土庫國中 from 2011-01-02
+through 2025-12-31, with no duplicated station dates. The official
+[dataset description](https://data.gov.tw/dataset/36694) calls `height`
+elevation in metres but does not specify whether the value is an
+orthometric, ellipsoidal, or corrected height; the [station metadata](https://data.gov.tw/dataset/36693)
+specifies TWD97 for horizontal coordinates only. No station maintenance,
+antenna-offset, reference-frame history, or processing revision document was
+found in those two datasets. These are unknowns, not zero corrections.
+
+All 1,690 cached 土庫 dates overlap the public response. Most differences
+reflect its coarser printed centimetre precision (median absolute difference
+0.25 cm), but nine overlapping dates differ by more than 1 cm and
+2025-02-01 differs by 5.55 cm (public 40.37 m; cache 40.4255 m). That date is
+the only cached February 2025 observation and is excluded by the monthly
+coverage rule. Do not silently combine the two vintages.
+
+The public values show 40.49→40.60 m on 2022-06-16/17, 40.58→40.48 m
+on 2023-12-31/2024-01-01, and 40.41→40.38→40.35 m on
+2024-11-01/03. Four nearby cached GNSS stations showed no comparable change
+around the first two windows. Cause is unverified: an equipment, datum or
+processing change is plausible, but physical motion cannot be ruled out.
+An exploratory 2.5 cm persistent-step detector also flags 2023-05-25,
+2023-07-11/21 and 2025-06-15/20 in the rounded public series. It never
+corrects values or scores across a flag. The threshold was chosen after
+inspection, so this is descriptive QC rather than a registered test.
+
+`hydrophysics.twin.gnss_surface_evidence` requires the exact public
+GNSS ID or named local cache, checks the 6.37 m GNSS-to-ring coordinate
+match, rejects duplicate days, and uses a calendar-month median only when
+at least 20 daily heights exist, and excludes every month containing a
+flagged step. It resets the offset within each apparently continuous segment, matches the same labeled model months, and reports a
+zero-change comparator. This removes an arbitrary absolute height offset;
+it does not remove tectonic motion, seasonality, antenna changes,
+differential motion below the model column, or model-to-GNSS timing ambiguity.
+The short, disrupted pre-origin record does not justify a seasonal
+baseline. JSON status is always
+`NOT_VALIDATED_OBSERVATION_OPERATOR_AND_REFERENCE_UNRESOLVED`.
+
+For orientation only, the public-source, post hoc, within-segment raw
+cumulative-change RMSEs are:
+
+| Months; usable monthly points | Selected model | Previous model | Zero change |
+|---|---:|---:|---:|
+| Aug–Dec 2023; 5 | 1.17 cm | 1.16 cm | 0.67 cm |
+| Feb–Oct 2024; 9 | 1.06 cm | 1.08 cm | 1.29 cm |
+| Dec 2024–May 2025; 5 | 0.50 cm | 1.27 cm | 2.14 cm |
+| Aug–Dec 2025; 5 | 1.12 cm | 0.95 cm | 0.45 cm |
+
+Each segment is re-zeroed at its first usable month; monthly changes are
+correlated, not independent forecast cases. The selected model is better than zero change in two segments and
+worse in two on this uncorrected contrast. The older cache yields different QC segments
+and numbers. Full hashes, flags and endpoints are in ignored
+`results/decision_evidence/tuku_gnss_public_raw_contrast.json` and
+`tuku_gnss_raw_contrast.json`. Run
+`python -m hydrophysics.twin.gnss_surface_evidence --height-source
+results/decision_evidence/public_sources/wra_gnss_36694.json --metadata
+chou-shui-data/data/ls_cache/ls-wra-gnss-obs__meta.parquet
+--forward results/twin_forward/datum_gate.npz
+results/twin_forward/physical_spread_apex.npz`
+from this worktree to reproduce without fitting or changing source data.
+
+The archived model predicts positive whole-column compaction. A GNSS
+elevation also includes reference-frame, tectonic, deeper-layer and
+station effects. The model lacks a fixed base depth and those extra terms.
+No direct GNSS read was found in the twin implementation, but prior
+human model-selection independence is unverified; the column was fitted
+against a regional leveling network. A surface-skill claim requires an
+official height-reference and maintenance crosswalk plus a defensible
+correction or uncertainty bound for motion outside the modeled column.
+The 2025 public observations are retrospective in this analysis.
+
+The conditional viewer was independently rendered from isolated source
+with synthetic inputs to ignored
+`results/decision_evidence/viewer_check/conditional_viewer.html`
+(SHA-256 `92db6ed78c7cdc68e67355a5b126418b1c6ab0a9821409887d500ffc785f53e4`).
+The offline 295,936-byte artifact contains the English and Chinese
+conditional-ranking labels and non-recommendation warning. It was not
+served or deployed; synthetic scenario numbers are not field evidence.

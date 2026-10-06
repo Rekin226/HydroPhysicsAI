@@ -156,10 +156,11 @@ slide without its model, period, metric and caveat would be misleading.
    observed controls. The current two hypothetical scenarios have no such intervention
    record, so a causal policy gate cannot run yet.
 
-The original data cache also contains a separate 土庫 WRA GNSS surface-height
-series through March 2025; see `docs/SITE_GEOLOGY_SOURCE_AUDIT.md` for its
-station crosswalk and QC requirements. It may support a retrospective single-site
-surface diagnostic, not a prospective or causal claim.
+A separate 土庫 WRA GNSS surface-height cache ends in March 2025, while the
+current public source extends through December 2025. The site series contains
+unexplained discontinuities and its vertical reference is unresolved; the bounded
+raw-contrast diagnostic in `docs/SITE_GEOLOGY_SOURCE_AUDIT.md` is not a
+validated surface forecast or a prospective or causal test.
 
 The next eligible measurement period starts after the last used May 2025 ring downloads;
 it also needs new independent surface displacement data because an interval ring does
