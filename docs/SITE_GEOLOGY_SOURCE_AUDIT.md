@@ -111,3 +111,28 @@ stress-history information. It would require independently justified drainage,
 effective-stress and time-response assumptions, then a prospective depth-matched
 ring/surface test. Assigning strain from the present head proxy would fabricate
 those missing inputs.
+
+## Independent surface-height candidate found after the geometry check
+
+The official WRA [GNSS measurement dataset](https://data.gov.tw/dataset/36694)
+lists 土庫國中 among its continuous surface-height stations; the linked
+[station metadata dataset](https://data.gov.tw/dataset/36693) identifies
+`A130600LSTKJS` at TWD97 E 187770.14, N 2620603.69 m, about 6.37 m from
+the ring coordinate. This is a *separate instrument and ID* from ring
+`A130600GWMWTKJS`. The public metadata says GNSS measures one point,
+not regional surface subsidence. The official measurement dataset is published
+annually; its current post-March-2025 rows were not independently fetched here.
+
+An existing original-checkout cache
+`chou-shui-data/data/ls_cache/ls-wra-gnss-obs__TKJS.parquet` (SHA-256
+`561f1d53ff27e8ec14451ce6357961aa6dd97b4accf1b30975c20fb21dcc3e16`)
+has 1,690 non-null daily heights from 2020-01-01 to 2025-03-31, no duplicate
+dates; 2025 has 56 observed days through March. The cache was only read.
+It does not supply post-May-2025 prospective surface evidence. The twin
+package has no direct reference to this cache, but absence of a code reference
+does not prove it was excluded from human model selection or the broader
+leveling data. Before even a *retrospective* surface check, audit vertical
+datum, GNSS processing offsets and outliers, antenna/site maintenance, frozen
+model selection date, and whether a surface displacement operator matches
+the saved modeled total column. A single station cannot validate a regional
+map or a pumping-policy effect.

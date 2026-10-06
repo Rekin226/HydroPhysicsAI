@@ -156,6 +156,11 @@ slide without its model, period, metric and caveat would be misleading.
    observed controls. The current two hypothetical scenarios have no such intervention
    record, so a causal policy gate cannot run yet.
 
+The original data cache also contains a separate 土庫 WRA GNSS surface-height
+series through March 2025; see `docs/SITE_GEOLOGY_SOURCE_AUDIT.md` for its
+station crosswalk and QC requirements. It may support a retrospective single-site
+surface diagnostic, not a prospective or causal claim.
+
 The next eligible measurement period starts after the last used May 2025 ring downloads;
 it also needs new independent surface displacement data because an interval ring does
 not by itself measure surface subsidence. The number and location of required sites
