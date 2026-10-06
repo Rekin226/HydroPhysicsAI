@@ -62,3 +62,30 @@ def test_official_json_selects_only_tuku_and_rejects_duplicate_days(tmp_path):
     source.write_text(json.dumps(rows + rows[:1]))
     with pytest.raises(ValueError, match="invalid"):
         checked_height(source)
+
+
+def test_missing_month_does_not_bridge_unknown_reference():
+    jan_feb = pd.date_range("2023-01-01", "2023-02-28")
+    apr_may = pd.date_range("2023-04-01", "2023-05-31")
+    days = jan_feb.append(apr_may)
+    series = pd.Series(np.full(len(days), 40.0), index=days)
+    model_months = pd.date_range("2023-01-01", "2023-05-01", freq="MS")
+    assert segment_contrasts(series, [], model_months,
+                             np.zeros(len(model_months))) == []
+    with pytest.raises(ValueError, match="threshold"):
+        step_candidates(series, 0.001)
+
+
+def test_nonmidnight_or_gross_unit_mismatch_rejected(tmp_path):
+    source = tmp_path / "official.json"
+    row = {"observatoryidentifier": "A130600LSTKJS",
+           "observatoryname": "土庫國中",
+           "observationttime": "2025-05-01T12:00:00", "height": "40.38"}
+    source.write_text(json.dumps([row]))
+    with pytest.raises(ValueError, match="invalid"):
+        checked_height(source)
+    row["observationttime"] = "2025-05-01T00:00:00"
+    row["height"] = "4038"
+    source.write_text(json.dumps([row]))
+    with pytest.raises(ValueError, match="implausible"):
+        checked_height(source)

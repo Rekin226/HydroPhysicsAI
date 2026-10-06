@@ -168,12 +168,15 @@ An exploratory 2.5 cm persistent-step detector also flags 2023-05-25,
 2023-07-11/21 and 2025-06-15/20 in the rounded public series. It never
 corrects values or scores across a flag. The threshold was chosen after
 inspection, so this is descriptive QC rather than a registered test.
+Observation-only sensitivity finds 30 candidate dates at 2.0 cm, eight at
+2.5 or 3.0 cm, and two at 5.0 cm. The JSON records every date for these
+thresholds; no threshold is selected by model score.
 
 `hydrophysics.twin.gnss_surface_evidence` requires the exact public
 GNSS ID or named local cache, checks the 6.37 m GNSS-to-ring coordinate
 match, rejects duplicate days, and uses a calendar-month median only when
-at least 20 daily heights exist, and excludes every month containing a
-flagged step. It resets the offset within each apparently continuous segment, matches the same labeled model months, and reports a
+at least 20 daily heights exist, excludes every month containing a
+flagged step, and splits at missing months. It resets the offset within each apparently continuous segment, matches the same labeled model months, and reports a
 zero-change comparator. This removes an arbitrary absolute height offset;
 it does not remove tectonic motion, seasonality, antenna changes,
 differential motion below the model column, or model-to-GNSS timing ambiguity.
@@ -188,12 +191,13 @@ cumulative-change RMSEs are:
 |---|---:|---:|---:|
 | Aug–Dec 2023; 5 | 1.17 cm | 1.16 cm | 0.67 cm |
 | Feb–Oct 2024; 9 | 1.06 cm | 1.08 cm | 1.29 cm |
-| Dec 2024–May 2025; 5 | 0.50 cm | 1.27 cm | 2.14 cm |
+| Mar–May 2025; 3 | 0.12 cm | 0.50 cm | 0.82 cm |
 | Aug–Dec 2025; 5 | 1.12 cm | 0.95 cm | 0.45 cm |
 
 Each segment is re-zeroed at its first usable month; monthly changes are
 correlated, not independent forecast cases. The selected model is better than zero change in two segments and
-worse in two on this uncorrected contrast. The older cache yields different QC segments
+worse in two on this uncorrected contrast. The three-point Mar–May row
+has especially little independent information. The older cache yields different QC segments
 and numbers. Full hashes, flags and endpoints are in ignored
 `results/decision_evidence/tuku_gnss_public_raw_contrast.json` and
 `tuku_gnss_raw_contrast.json`. Run
@@ -221,3 +225,10 @@ with synthetic inputs to ignored
 The offline 295,936-byte artifact contains the English and Chinese
 conditional-ranking labels and non-recommendation warning. It was not
 served or deployed; synthetic scenario numbers are not field evidence.
+
+A targeted search also surfaced a WRA land-subsidence
+`/water_new/File/GNSSsitePatrolFile/` route. Its public response was
+`Request Rejected`; no patrol or maintenance content was accessed and no
+alternate route around the rejection was tried. The exact station-specific
+reference and maintenance records remain an external-owner request in
+`docs/UNSENT_WRA_RECORDS_REQUEST.md`.

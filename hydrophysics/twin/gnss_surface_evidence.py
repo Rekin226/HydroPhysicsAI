@@ -50,6 +50,9 @@ def checked_height(path: Path) -> pd.Series:
             or not np.isfinite(s.to_numpy()).all()
             or not (s.index == s.index.normalize()).all()):
         raise ValueError("GNSS daily dates or values are invalid")
+    # Gross unit check for this low-elevation site; it cannot certify the datum.
+    if not 0 <= float(s.median()) <= 200:
+        raise ValueError("Tuku height is implausible in published metres")
     return s
 
 
@@ -69,18 +72,20 @@ def station_match(meta_path: Path) -> dict:
             "ring_distance_m": distance}
 
 
-def step_candidates(s: pd.Series) -> list[dict]:
+def step_candidates(s: pd.Series, threshold_m: float = STEP_M) -> list[dict]:
     """Flag persistent jumps; do not correct or silently interpolate them."""
+    if not 0.005 <= threshold_m <= 0.2:
+        raise ValueError("GNSS step threshold must be 0.5–20 cm")
     candidates = []
     for day, jump in s.diff().dropna().items():
-        if abs(jump) < STEP_M:
+        if abs(jump) < threshold_m:
             continue
         before = s.loc[day - pd.Timedelta(days=15):day - pd.Timedelta(days=1)]
         after = s.loc[day:day + pd.Timedelta(days=14)]
         if min(len(before), len(after)) < 10:
             continue
         shift = float(after.median() - before.median())
-        if abs(shift) >= STEP_M:
+        if abs(shift) >= threshold_m:
             candidates.append({"date": day.strftime("%Y-%m-%d"),
                                "one_day_jump_cm": float(jump * 100),
                                "window_median_shift_cm": shift * 100})
@@ -141,27 +146,37 @@ def segment_contrasts(s: pd.Series, steps: list[dict], dates: pd.DatetimeIndex,
         # A partial event month cannot share the model full-month timestamp.
         monthly = monthly.loc[(monthly.index >= pd.Timestamp("2022-12-01"))
                               & ~monthly.index.isin(flagged_months)]
-        common = monthly.index.intersection(model.index)
-        if len(common) < 3:
+        common = monthly.index.intersection(model.index).sort_values()
+        if common.empty:
             continue
-        obs_cm = (monthly.loc[common[0]] - monthly.loc[common]).to_numpy() * 100
-        pred_cm = (model.loc[common] - model.loc[common[0]]).to_numpy() * 100
-        out.append({
-            "start_month": common[0].strftime("%Y-%m"), "end_month": common[-1].strftime("%Y-%m"),
-            "n_months": len(common), "months": [d.strftime("%Y-%m") for d in common],
-            "endpoint_raw_height_drop_cm": float(obs_cm[-1]),
-            "endpoint_model_column_cm": float(pred_cm[-1]),
-            "rmse_raw_model_cm": float(np.sqrt(np.mean((obs_cm - pred_cm) ** 2))),
-            "rmse_zero_change_cm": float(np.sqrt(np.mean(obs_cm ** 2))),
-            "status": "exploratory_raw_contrast_NOT_VALIDATION",
-        })
+        # A missing month might conceal an unobserved reference change.
+        breaks = np.flatnonzero(np.diff(common.to_period("M").asi8) != 1) + 1
+        for block in np.split(common, breaks):
+            if len(block) < 3:
+                continue
+            obs_cm = (monthly.loc[block[0]] - monthly.loc[block]).to_numpy() * 100
+            pred_cm = (model.loc[block] - model.loc[block[0]]).to_numpy() * 100
+            out.append({
+                "start_month": block[0].strftime("%Y-%m"),
+                "end_month": block[-1].strftime("%Y-%m"),
+                "n_months": len(block), "months": [d.strftime("%Y-%m") for d in block],
+                "endpoint_raw_height_drop_cm": float(obs_cm[-1]),
+                "endpoint_model_column_cm": float(pred_cm[-1]),
+                "rmse_raw_model_cm": float(np.sqrt(np.mean((obs_cm - pred_cm) ** 2))),
+                "rmse_zero_change_cm": float(np.sqrt(np.mean(obs_cm ** 2))),
+                "status": "exploratory_raw_contrast_NOT_VALIDATION",
+            })
     return out
 
 
-def analyze(cache: Path, metadata: Path, forward: list[Path]) -> dict:
+def analyze(cache: Path, metadata: Path, forward: list[Path],
+            step_threshold_cm: float = STEP_M * 100) -> dict:
     station = station_match(metadata)
     series = checked_height(cache)
-    steps = step_candidates(series)
+    steps = step_candidates(series, step_threshold_cm / 100)
+    qc_sensitivity = {str(value): [x["date"] for x in step_candidates(series, value / 100)]
+                      for value in (2.0, 2.5, 3.0, 5.0)}
+    monthly_count = series.resample("MS").count().loc["2022-12-01":]
     loc = load_tuku_geometry().source["location"]
     results = {}
     for path in forward:
@@ -172,12 +187,16 @@ def analyze(cache: Path, metadata: Path, forward: list[Path]) -> dict:
         }
     return {
         "status": "NOT_VALIDATED_OBSERVATION_OPERATOR_AND_REFERENCE_UNRESOLVED",
+        "height_unit_as_published": "m; vertical component and datum unresolved",
         "station": station,
         "height_source": str(cache), "height_source_sha256": _sha256(cache),
         "metadata_sha256": _sha256(metadata),
         "n_daily": len(series), "first_day": str(series.index.min().date()),
         "last_day": str(series.index.max().date()),
-        "step_threshold_cm": STEP_M * 100, "step_candidates": steps,
+        "step_threshold_cm": step_threshold_cm, "step_candidates": steps,
+        "qc_threshold_sensitivity_dates": qc_sensitivity,
+        "post_origin_months": len(monthly_count),
+        "post_origin_months_with_20_days": int((monthly_count >= MIN_DAYS_PER_MONTH).sum()),
         "min_days_per_month": MIN_DAYS_PER_MONTH,
         "limits": [
             "WRA describes height in metres but does not specify the height component or vertical datum here",
@@ -197,8 +216,10 @@ def main() -> None:
     parser.add_argument("--cache", "--height-source", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--forward", required=True, nargs="+", type=Path)
+    parser.add_argument("--step-threshold-cm", type=float, default=STEP_M * 100)
     args = parser.parse_args()
-    print(json.dumps(analyze(args.cache, args.metadata, args.forward),
+    print(json.dumps(analyze(args.cache, args.metadata, args.forward,
+                             args.step_threshold_cm),
                      ensure_ascii=False, indent=2))
 
 
