@@ -219,3 +219,53 @@ smooth or recalibrate either model. Reproduce from the saved monthly archives wi
 results/decision_evidence/boundary.json`; pass `--earlier`, `--later`, and
 `--boundary-km` for explicitly labeled sensitivity periods and locations. No
 physical correction is justified without better depth and geological constraints.
+
+## Audit closure matrix (2026-10-06)
+
+This is the status of evidence in the isolated worktree, **not** a claim that the
+decision gate has passed. The three ignored diagnostics were independently rerun into
+`results/decision_evidence/recheck_2026_10_06/`; their JSON content matches the
+previous `evidence.json`, `scenarios.json`, and `compaction_report.json` exactly.
+The source challenge and forward archives reside in the original checkout and were
+read without modification. No new model fitting was performed.
+
+| Gate and status | Evidence and issue | Next action; impact, effort, dependency, acceptance |
+|---|---|---|
+| Archived-score reproducibility: **pass, limited** | Diagnostic rerun reproduced 158 wells/6,186 well-months, 2.072 m datum-model versus 1.667 m climatology RMSE, and both scenario and ring reports exactly. See `results/decision_evidence/recheck_2026_10_06/` and `hydrophysics/twin/evidence.py`. This verifies arithmetic on archived predictions, not how they were trained. | Preserve source hashes, frozen model and execution environment; low effort. Pass only when an independent machine can regenerate the forecasts, not just rescore them. |
+| CG numerical convergence: **mixed** | The selected `results/twin_runs/stage3_datum_gate/stage3_flow.csv` records `cg_maxiter=2000`, `cg_nonconverged=0`, `cg_worst_residual=0.0`; the previous `stage3_spreadL_gate` also records zero. `hydrophysics/twin/flow.py` recomputes true residual and warns on failure. A broad 128-test run passed but produced 89 warnings: some explicitly test a 400-iteration failure, while synthetic optimization tests such as `test_fit_flow_masks_nan_target_months` emitted genuine failures even at 2,000 iterations, including a residual above 1e15. Passing assertions that only check finite loss do not certify those synthetic fits. These are not evidence that the recorded field calibration failed, but they are an unresolved robustness defect. | Keep counters on every run; investigate synthetic optimization conditioning and make tests assert numerical validity or explicitly bound intentional failure; moderate engineering effort. Pass each production run only with zero failures or separately bounded error, and pass relevant tests without unexplained failed solves. |
+| Forecast-origin integrity: **partial** | `hydrophysics/twin/challenge.py` masks history after the December 2022 origin for datum offsets and baselines and scores matched rows through August 2026. `hydrophysics/twin/forward.py:457` and `scenario.py:194` generate future electricity and recharge from month-of-year means of the record ending at origin; no observed 2023–2026 forcing enters that forward call. However, the challenge was scored after acquisition, source vintages and later model-selection exposure are not fully frozen, and weather/pumping forecasts were never tested. | Freeze dated inputs, source vintages, model-selection log and forecast before a new observation period; moderate effort plus elapsed observation time. Pass a prospective fixed-origin score with no post-origin tuning or input, matched historical-only baselines and horizon strata. |
+| Head predictive skill: **fail** | The selected model loses to seasonal climatology overall and in every saved lead bucket and layer; its spatial fold gate also records `r2_kfold=0.643` versus IDW `0.702` (FAIL) in the archived `datum_gate.npz` gate metadata. The previous spread model's fold gate passes, but this does not repair the selected model's future RMSE. | Revisit physical/input structure using historical-only development data, then prospectively test a frozen candidate; high impact, high effort. Pass only if the new model beats the strongest registered baseline at decision horizons and material regions. |
+| Depth-matched compaction: **fail** | The two-site ring report labels `depth_match_valid=false`; 30 overlapping annual windows and a 0.010 cm/year aggregate RMSE edge over a historical median cannot validate a total-column model against NO1–NO26 ring shortening. `hydrophysics/twin/observation_operator.py` and `ring_geometry.py` provide boundaries and a future operator, but `forward.py` saves no vertical strain state. | Obtain surveyed lithology, screen intervals and depth stress/strain constraints before fitting a vertical model; high impact, high effort. Pass synthetic component-sum/reference checks and new site/period ring scores at registered depths, beating site-rate and zero-change baselines. |
+| Deep-benchmark cross-check: **blocked by data dictionary** | WRA [basic](https://data.gov.tw/dataset/58335) and [monitoring](https://data.gov.tw/dataset/58339) catalogs define ground-surface-to-depth compression and metre installation depth, but do not specify the cached displacement value unit, sign or datum. The cached generic values cannot safely be converted. | Obtain the instrument series dictionary or a station report giving observed-value scale, reference and sign; low analysis effort, external source dependency. Pass a documented transformation and independent comparison at overlapping stations; reject physically impossible scales. |
+| Forcing and intervention realism: **fail** | Saved `datum_gate.npz` and `physical_spread_apex.npz` use the same pre-origin seasonal forcing, irrigation-energy ×0.7 and aquaculture-energy ×0 from January 2026; neither scenario represents verified metered abstraction, canal substitution, compliance or measured intervention. The two model structures reverse the late-rate story (near zero versus about 0.08 cm/year). | Obtain dated metered volumes, canal deliveries and plausible substitution ranges; high impact, high effort. Pass water-budget checks and robust rate effects under forcing, calibration and rheology sensitivity. |
+| Uncertainty and spatial credibility: **fail** | Member spread is sensitivity, not calibrated predictive coverage. The selected model has a 1.835 cm 2025–2026 excess at the 182 km column boundary; structural alternatives change it. No archived predictive bounds or observed interval coverage exist. | Use withheld site/time residuals for calibrated intervals and geologic support for boundary transitions; moderate to high effort. Pass 50/90% coverage by site, zone, horizon and event and a prespecified spatial-discontinuity check. |
+| Causal policy recommendation: **blocked** | Neither saved scenario was an observed intervention, and the depth comparison and predictive gates above fail. | Register an actual action, pumping date/volume and controls, then compare pre/post rates and displacement against confounders; high impact, high effort and agency cooperation. Pass a prespecified, uncertainty-bounded rate reduction at the affected sites, with substitution and adjacent-area effects reported. |
+
+### Station-specific geology search boundary
+
+The existing WRA zone-50 well catalog was joined spatially to all 16 inventoried ring
+sites. Examples of **nearby catalog wells, not proven identical borings**, are
+`3132015GW09050321` (14 m from 土庫國中), `3132015GW09050211` (5 m from 秀潭國小),
+`3132015GW09080321` (52 m from 仁和國小), and `3132015GW09080211` (83 m from
+舊庄國小). The catalog supplies total/finished well depth and layer code, but no screen
+top/bottom, lithologic interval, core description or ring-installation log. Exact-ID
+queries produced no matching completion records. The official 1999 Geological Survey
+[fan report appendix](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/ct?ctNode=217&mp=6&xItem=117602)
+**does** provide scanned core/geophysical logs of 90 named historical boreholes,
+including 土庫 and 元長 (PDF pages 108 and 105 respectively). It was downloaded on
+2026-10-06 from the linked public PDF into the ignored
+`results/decision_evidence/public_sources/` directory; SHA-256 of the 180-page
+appendix is `bb4460c446a3e780a82ddcfa5dbaf4cbe16f39eb89e1560cd634a67241e853e5`.
+Those historical boreholes have different identifiers from the current catalog wells;
+the scan labels its coordinates `TM` without a verified datum. Their contacts are
+**measured at those borings only** and cannot yet be assigned to a ring location or
+model cell. The separate WRA library
+[well-construction report catalog](https://web.wra.gov.tw/wralib/WraLib/wSite/books_39283)
+lists physical copies, but no downloadable site-specific completion log was found.
+An official WRA
+[geologic-log form example](https://wr.wra.gov.tw/GWMGAPI/Document/GWMGInfo/page3/01.%E5%9C%B0%E8%B3%AA%E6%9F%B1%E7%8B%80%E5%9C%96%28%E7%AF%84%E4%BE%8B%29.pdf)
+shows such a record would include screen locations, but is a blank example, not a
+site log. The next concrete request to WRA is the completion/log record for those
+well identifiers plus the 16 ring installations; do not infer contacts from nearby
+well depth, historical borehole labels or ring locations. This is a missing exact-site
+source and coordinate-reference blocker, not an SSH authorization blocker.

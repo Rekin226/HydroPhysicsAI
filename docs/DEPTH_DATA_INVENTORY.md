@@ -49,6 +49,18 @@ queries are `濁水溪沖積扇 地下水觀測井 井柱狀圖`, `濁水溪 水
 `水利署 地層下陷監測井 磁環 安裝深度 地質剖面`, and
 `Choushui alluvial fan borehole litholog aquitard contact`.
 
+An official [1999 Geological Survey fan appendix](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/ct?ctNode=217&mp=6&xItem=117602)
+was found and downloaded on 2026-10-06 into ignored
+`results/decision_evidence/public_sources/`. Its 180-page scanned PDF (SHA-256
+`bb4460c446a3e780a82ddcfa5dbaf4cbe16f39eb89e1560cd634a67241e853e5`)
+contains named historic core/geophysical logs, including 土庫 (PDF page 108) and
+元長 (PDF page 105). The logs measure lithology at their own borings. Their
+identifiers do not match the current observation-well catalog, and their coordinate
+field says only `TM`; the datum has not been established. Thus none of those contacts
+has yet been assigned to a ring station, screen or model cell. The WRA
+[well-construction report catalog](https://web.wra.gov.tw/wralib/WraLib/wSite/books_39283)
+lists physical copies but no downloadable site-specific completion log was located.
+
 For evaluation, freeze the observation geometry and candidate vertical model before
 new measurements. The old 14 ring sites and the two 2023–2025 sites have already
 influenced or been examined by model selection, so reuse of them is exploratory.
