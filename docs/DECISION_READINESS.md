@@ -77,6 +77,11 @@ compaction profile. They therefore do not establish depth-matched ring accuracy.
 `hydrophysics.twin.observation_operator` supplies an exact-boundary depth operator
 for future resolved profiles and refuses unsupported partial-layer allocation.
 
+A bounded 土庫 one-cell head-support comparison, using the two official geology
+interpretations without a compaction fit, is documented in
+`docs/SITE_GEOLOGY_SOURCE_AUDIT.md`. Its selected-model head ranking and the
+saved whole-column subsidence ranking differ. Neither is a site strain validation.
+
 The present four-layer flow solver outputs heads by aquifer, but the calibrated VEP
 column is driven by their mean (or another single weighted driver) and returns one
 scalar compaction history per cell. Its elastic and delayed inelastic terms are

@@ -60,3 +60,54 @@ For the 24 shared ring numbers, comparing IOT 2015-05-21 to local 2015-05-15 (si
 The 48–51 m lithology conflict is also real in the printed sources. WRA 2003 Table 3-1-21 (PDF p. 63) interprets 34–51 m as a confining unit, and Table 3-1-10 (PDF p. 48) classifies samples 48.5–49.3 and 50.0–50.8 m as `ML`. IOT Table 4-4 (PDF p. 83) classifies 48.3–85 m as `SP~GP`. The reports do not state that the later table revises the sampled core, and the IOT table also has an unrelated printed layer-number typo. Keep the two classifications as alternative measured/derived interpretations; do not assign a single material property across this boundary until the original lithologic log, sample positions and later table provenance are reconciled.
 
 **Inputs still required for a physical fit:** a dated WRA ring installation/maintenance and API field crosswalk for `NO1`, `NO25`, `NO26`; vertical survey reference definitions; the original core/geophysical log and sampling record near 48–51 m; screened intervals and datum for the pressure wells; deeper consolidation and hydraulic properties or an explicit independently justified constitutive prior; and a frozen held-out ring/pressure evaluation protocol. The completed code tests overlap geometry and excludes unsupported intervals. It supplies no strain predictions or calibrated full-column parameters.
+
+## One-cell structural sensitivity, without a compaction fit
+
+The bounded command below reads only the two existing forward archives and prints JSON;
+it does not start a flow run, fit material parameters, or change the source checkout:
+
+```bash
+python -m hydrophysics.twin.tuku_sensitivity --forward \
+  results/twin_forward/datum_gate.npz
+python -m hydrophysics.twin.tuku_sensitivity --forward \
+  results/twin_forward/physical_spread_apex.npz
+```
+
+The analysis locates the exact 土庫 site coordinate in the 1 km model grid (active
+cell 541) and reads the four saved aquifer-head differences at 2032-12-01. The
+selected archive SHA-256 is recorded in ignored
+`results/decision_evidence/tuku_datum_sensitivity.json`; the previous archive
+SHA-256 is `17a16b8cd6ce9266d9726c6a7ea69622ad4fd11f29351c501be90c8aff366ff8`,
+recorded with full values in ignored
+`results/decision_evidence/tuku_spread_sensitivity.json`.
+The comparison is a **normalized weighted head rise in metres**, not strain,
+settlement, subsidence rate, or probability. The WRA support counts only its three
+interpreted confining units (53 m); the IOT support counts its CL and ML intervals
+(132.8 m). Both assume equal unknown compliance per included metre; a confining
+interval gets the average of adjacent model aquifer heads. These stress-driver and
+compliance assumptions have not been established at the site. The two sources
+disagree at 48–51 m and are kept separate.
+
+| Archive, December 2032 | Cut30 − retire, by aquifer (m head) | WRA support: cut / retire (m proxy) | IOT support: cut / retire (m proxy) |
+|---|---|---:|---:|
+| Selected datum | +0.135, +1.048, +0.667, +0.557 | 1.828 / 1.120 | 1.832 / 1.154 |
+| Previous spread | −0.385, +0.692, +0.350, +0.025 | 0.726 / 0.411 | 0.695 / 0.421 |
+
+In the selected archive, cut30 gives more head rise than retire_aqua in every
+aquifer at this cell, so **any nonnegative four-layer head weighting** ranks it
+higher on that narrow head metric. In the previous archive, the shallow-layer
+difference is negative and the other three are positive, so an unmeasured
+shallow-heavy compliance weighting reverses the head-proxy ranking. Neither
+support is a calibrated compliance distribution. More importantly, the saved
+*whole-column subsidence* comparison in `docs/DECISION_READINESS.md` ranks
+retire_aqua higher for 2032 cumulative fan-average avoided displacement in both
+archives. This is a different quantity and spatial aggregation; the one-cell
+head ranking cannot replace it or validate its mechanism. Neither comparison
+ranks verified late *rate* benefits or observed interventions.
+
+A depth-resolved constitutive fit is still blocked by pressure screen/datum
+metadata, ring maintenance/reference crosswalk, deeper compressibility and
+stress-history information. It would require independently justified drainage,
+effective-stress and time-response assumptions, then a prospective depth-matched
+ring/surface test. Assigning strain from the present head proxy would fabricate
+those missing inputs.

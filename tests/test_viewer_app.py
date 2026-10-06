@@ -462,6 +462,8 @@ def test_template_has_no_remote_fonts_or_plotly():
         html = fh.read()
     assert "googleapis" not in html and "plotly" not in html.lower()
     assert os.path.basename(va.THREE_CDN) == "three.min.js" and "cdnjs" in va.THREE_CDN
+    assert "Scenario order is not a recommendation." in html
+    assert "depth-resolved compaction and policy effects are unvalidated." in html
 
 
 # review fixes (M1-M5, S1) -------------------------------------------------------------------
