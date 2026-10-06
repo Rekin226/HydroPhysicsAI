@@ -71,13 +71,19 @@ observations had already been downloaded, and the 30 annual pairs overlap in tim
 | Selected datum model | 1.528 cm/year |
 | Previous spread model | 1.666 cm/year |
 
+These model scores compare an unresolved **total-column proxy** with shortening
+between the registered NO1–NO26 rings; the saved forward archive has no vertical
+compaction profile. They therefore do not establish depth-matched ring accuracy.
+`hydrophysics.twin.observation_operator` supplies an exact-boundary depth operator
+for future resolved profiles and refuses unsupported partial-layer allocation.
 The selected model's 0.010 cm/year aggregate edge over the historical baseline is
 too small to establish useful skill. It improves on that baseline at one site and is
 worse at the other. The descriptive year split also reverses: for 22 pairs ending in
 2024, the historical baseline scores 1.195 versus the selected model's 1.531 cm/year;
 for eight pairs ending by May 2025, the selected model scores 1.521 versus 2.224.
-The test scores total interval compaction at one 1-km cell, not
-an observed pumping intervention, basin-wide surface subsidence, or interval coverage.
+The model proxy is total-column compaction at one 1-km cell while the observation
+is ring-interval shortening. Neither measures an observed pumping intervention,
+basin-wide surface subsidence, or predictive interval coverage.
 
 Reproduce the saved diagnostics, writing only to an ignored local directory:
 
@@ -175,3 +181,20 @@ not field compaction or policy effects. The 182 km zonal column discontinuity an
 unexplained 2022 head recovery remain structural blockers. See
 `docs/superpowers/STATE.md` section 0 and `docs/TWIN_RELEASE.md` for the original
 experiments and caveats.
+
+### Saved-field boundary sensitivity (exploratory)
+
+At the 182 km easting line, 41 grid rows have four consecutive active 1-km cells.
+For the December 2025–December 2026 modeled total-column change, the median
+east-minus-west difference after subtracting the average slope of the neighboring
+cell pairs is 1.835 cm in the selected baseline and 4.618 cm in the previous
+baseline. Under the selected model's irrigation cut and aquaculture retirement the
+same excess is 3.111 and 3.497 cm; under the previous model it is 4.861 and
+5.840 cm. These are spatial discontinuities in model output, not measured
+subsidence rates or proof that the underlying geology is continuous. The model
+structures themselves change the excess substantially. The diagnostic does not
+smooth or recalibrate either model. Reproduce from the saved monthly archives with
+`python -m hydrophysics.twin.boundary_evidence --forward ARCHIVE.npz --out
+results/decision_evidence/boundary.json`; pass `--earlier`, `--later`, and
+`--boundary-km` for explicitly labeled sensitivity periods and locations. No
+physical correction is justified without better depth and geological constraints.

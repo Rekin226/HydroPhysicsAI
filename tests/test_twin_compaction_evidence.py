@@ -74,6 +74,7 @@ def test_locked_compaction_evaluation_and_source_hash(tmp_path):
     assert result["evaluation_annual_pairs"] == 12
     assert result["distinct_site_units"] == 1
     assert result["decision_ready"] is False
+    assert result["depth_match_valid"] is False
     assert result["by_year_exploratory"]["2024"]["annual_pairs"] == 12
     assert result["scores"]["test_model"]["rmse_cm_per_year"] < 1e-9
     assert result["scores"]["zero_cm"]["rmse_cm_per_year"] == pytest.approx(12)

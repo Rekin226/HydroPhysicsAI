@@ -203,6 +203,8 @@ def evaluate(protocol_path: str | Path) -> dict:
                                 "scores": _equal_site_scores(part, methods)}
                     for year, part in frame.groupby("year")}
     return {"schema": 1, "task": "retrospective-unmodeled-site-compaction-rate",
+            "prediction_operator": "total-column proxy at ring cell; depth interval unresolved",
+            "depth_match_valid": False,
             "protocol_sha256": sha256(path), "prospective_validation": False,
             "causal_policy_validation": False,
             "training_ring_sites": training_sites, "training_annual_pairs": training_pairs,
@@ -210,8 +212,9 @@ def evaluate(protocol_path: str | Path) -> dict:
             "evaluation_sites": len(sites), "evaluation_annual_pairs": len(frame),
             "annual_pairs_are_overlapping": True,
             "distinct_site_units": len(sites),
-            "inference_status": (f"exploratory: overlapping windows at {len(sites)} sites "
-                                 "do not establish rate skill, predictive coverage, "
+            "inference_status": (f"exploratory total-column proxy: overlapping windows at "
+                                 f"{len(sites)} sites with unmatched ring depths do not "
+                                 "establish ring-rate skill, predictive coverage, "
                                  "or a causal intervention effect"),
             "decision_ready": False,
             "scores": _equal_site_scores(frame, methods), "by_site": site_results,
