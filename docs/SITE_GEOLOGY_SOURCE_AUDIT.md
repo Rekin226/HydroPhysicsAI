@@ -276,3 +276,33 @@ contains the ranks, singular-value conditions, gate states and
 conservation residuals. Thirty serial CPU-only analyses took 0.385 s
 (12.85 ms per one-column check); this is **not** a training or physical
 fit runtime.
+
+## Observed 土庫 heads: information in the recorded correlations
+
+The read-only diagnostic `hydrophysics.twin.observed_head_information` uses the three existing WRA 10-minute well caches, rather than invented time paths, to stress the same linear ring operator. The source is [WRA well-status dataset 32718](https://data.gov.tw/dataset/32718) and the adjacent [real-time water-level dataset 161082](https://data.gov.tw/dataset/161082). The latter describes raw, unquality-controlled measurements with possible sensor anomalies. The local station catalog identifies `09050321` 土庫(2), total depth 90 m and layer code 2; `09050331` 土庫(3), 185 m and **also code 2**; and `09050341` 土庫(4), 269 m and code 3. All three list TWD97 E 187777.40, N 2620597.81, about 14 m from the ring site. The cached catalog ends in June 2025 even though the head files extend to September 2026, an unresolved metadata-vintage mismatch. Neither the catalog nor the 2017 report identifies screened intervals or a verified head-value vertical reference. Total well depth and a parenthesized well name are not screened aquifer assignments. In the 2003 WRA interpretation, 185 m lies inside the 171–193 m confining unit, making a direct depth-to-aquifer assignment particularly questionable.
+
+The diagnostic rejects sentinel values `<= -100000` and nonfinite entries, takes monthly medians only when at least half the scheduled ten-minute samples are valid, and uses December 2022–September 2026. This leaves **42 common months**; September 2024 and January–March 2026 are missing from the three-well intersection. It removes the first common-month offset and divides each series by its common-window sample standard deviation. These *dimensionless* anomalies preserve recorded temporal correlation without assigning metres of head drawdown, a screen, or a strain coefficient. The pairwise correlations are **0.953** for well 2/3, **0.809** for 2/4 and **0.835** for 3/4; the three-driver singular-value ratio is **11.40**. This is a retrospective input-information check, not forecast skill or an estimate of field parameter uncertainty.
+
+The mapping sensitivity table reports algebraic rank with a relative SVD cutoff of 1e-10. An unfilled model aquifer slot is zero only for the **projection onto observed drivers**, not an assertion that its true head stayed fixed. Four hypotheses preserve increasing well depth while injecting the three series into any three of four modeled aquifer slots; two more honor the catalog codes by choosing either code-2 well for modeled aquifer 2 and the code-3 well for modeled aquifer 3. These are conditional bounds, not validated screen maps. The present WRA/IOT hydro-to-stress assignment inside the operator itself also remains unverified.
+
+| Conditional projection | WRA three confining coefficients | IOT seven hydro-zone coefficients | IOT 29 fine-interval coefficients |
+|---|---:|---:|---:|
+| Ordered slots 1,2,3 | 3/3 | 6/7 | 19/29 |
+| Ordered slots 1,2,4 | 3/3 | 6/7 | 17/29 |
+| Ordered slots 1,3,4 | 3/3 | 6/7 | 17/29 |
+| Ordered slots 2,3,4 | 3/3 | 6/7 | 22/29 |
+| Catalog codes 2/3, using well 2 or 3 for code 2 | 3/3 | 5/7 | 17/29 |
+
+Within these assumptions, the three WRA confining coefficients remain separable in the ring operator because they occupy distinct measured depth bands; their **column-normalized** design condition is about 1 under all six projections. That geometric result does not measure coefficient accuracy: head units/reference, screen locations, ring error covariance and constitutive law are unresolved. The seven-zone reduction that passed the *synthetic basis* rank test loses one or two directions with observed wells, so it should **not** proceed to field fitting as seven free coefficients. The 29-interval proposal is deficient in every case. The bounded candidate for later testing is at most the WRA three-band structure, with independently verified layer pressures and pre-registered ring dates; even that is a rank candidate, not an intervention model. Its structure-specific ring depth, initial conditions, delayed drainage, vertical datum and validation remain necessary.
+
+Additional synchronized pressure histories with documented screen tops/bottoms, including the presently unobserved aquifer slot, would distinguish the zone terms only if they add independent head changes and depth support. A controlled pumping step with recorded volumes could help separate forcing from natural correlation; deep reference motion, ring maintenance and multiple site observations would be needed to test a causal subsidence response. The existing ring archive could support a held-out depth-matched *observational* test after those mappings and references are resolved, but cannot by itself establish an intervention benefit. No measured ring outcomes were read or fitted for this diagnostic.
+
+Run in the existing hydro environment:
+
+```bash
+python -m hydrophysics.twin.observed_head_information \
+  --head-dir ../HydroPhysicsAI/data_fetch_api/new_measurements/heads_202210_202610 \
+  --metadata ../HydroPhysicsAI/data_fetch_api/new_measurements/gw-wra-gw10min-obs-stations.parquet
+```
+
+The local output is ignored `results/decision_evidence/tuku_observed_head_information.json`. It records exact source hashes, counts, dates, correlations, and each mapping result. The station catalog SHA-256 is `ed14025f5e67427d8b4e1c98f024390628bea9e0f349f9004b7d05cd1a5b6e72`; well-file hashes and row-level counts are in the JSON. This diagnostic reads the original checkout but writes only to the isolated worktree's ignored result area.
