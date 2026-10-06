@@ -132,9 +132,9 @@ HSR_REACH_KM = 1.5          # half the 2 km smoothing plus half the 1 km distort
 # policies are shown
 BASIS_MAX_REL = 0.15
 
-# Per-zone aquifer geometry, metres below ground, from the median screen depth of the
+# Per-zone aquifer geometry, metres below ground, from the median total depth of the
 # zone-50 wells in each layer (AMP_V2 station metadata; see heads.py for the QC). The
-# proximal layer-4 depth is extrapolated (no zone-50 well is screened there); it only
+# proximal layer-4 depth is extrapolated (no zone-50 well is assigned there); it only
 # places a slab in the drawing, nothing numerical uses it.
 LAYER_DEPTHS = {
     "proximal": [67.0, 125.0, 205.0, 250.0],

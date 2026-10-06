@@ -48,7 +48,7 @@ from .compaction import VEPColumn
 from .grid import build_grid
 from .heads import DEFAULT_LAYERS, build_head_field
 
-# Median screen depth per aquifer, metres below ground, from the zone-50 station metadata
+# Median total well depth per catalog layer, metres below ground, from the zone-50 station metadata
 # (WellDepth medians over 103/134/60/19 wells in layers 1-4). Used only to place the
 # surfaces vertically in the render; nothing physical depends on it.
 LAYER_DEPTH_M = {"1": 53.3, "2": 119.0, "3": 210.5, "4": 282.0}

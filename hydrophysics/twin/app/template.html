@@ -1555,7 +1555,7 @@ function renderSection() {
   const hb = (l, c) => F.headBase[(l*A + c)*Y + yEnd];
   const dh = (l, c) => { if (!F.dHeadEnd || NOPOL()) return 0; let s = 0; for (let k = 0; k < K; k++) { const w = 1 - P.f[k]; if (w) s += w * F.dHeadEnd[((P.start*K + k)*M.L + l)*A + c]; } return s; };
   const gr = c => F.ground[c];
-  // one vertical axis in metres above sea level: ground, aquifers (ground − screen depth) and heads
+  // one vertical axis in metres above sea level: ground, aquifers (ground − catalog well depth) and heads
   const bot = Math.min(...cells.map(s => { const z = zoneName(s.c); return gr(s.c) - D.layerDepths[z][3] - D.layerThick[z][3] / 2; }));
   const top = Math.max(...cells.map(s => gr(s.c)), ...cells.flatMap(s => [0, 1, 2, 3].map(l => hb(l, s.c)))) + 5;
   const nt = niceTicks(bot, top, 5), lo = Math.min(bot, nt.ticks[0]), hi = top;
@@ -1931,7 +1931,7 @@ function releaseContext(l) {
   $("newEvidence").textContent = nc ? (zh ? `新增觀測檢驗：${nc.stations}口井，模型 RMSE ${f2(nc.metrics.model_datum.rmse_m)} m，基準 ${f2(nc.metrics[nc.best_baseline].rmse_m)} m。${nc.beats_best_baseline ? "優於基準；政策因果效果尚未驗證。" : "未優於基準，仍為研究情境。"}` : `New-data check · ${nc.stations} wells · model RMSE ${f2(nc.metrics.model_datum.rmse_m)} m vs ${f2(nc.metrics[nc.best_baseline].rmse_m)} m baseline. ${nc.beats_best_baseline ? "Beats this baseline; intervention effects remain unvalidated." : "Does not beat the baseline. Research use only."}`) : "";
   const facts = [[vintage, zh ? "模型預報起點" : "model forecast origin"], [M.dx / 1000 + " km", zh ? "模型網格" : "model resolution"], [String(M.L), zh ? "含水層" : "aquifer layers"], [rel && rel.offline ? (zh ? "離線" : "Offline") : (zh ? "連線" : "Connected"), zh ? "瀏覽方式" : "viewer"]];
   $("releaseFacts").innerHTML = facts.map(([v,k]) => `<div><strong>${esc(v)}</strong>${esc(k)}</div>`).join("");
-  $("geometryNote").textContent = zh ? "地表來自高程資料；地下含水層為示意，採用井篩深度中位數及假設厚度，並非鑽探地質界面。水頭是壓力高程。圖示垂直誇張與分層間距不改變任何數值。" : "Terrain uses elevation data. Underground layers are schematic: median well-screen depths and assumed thicknesses, not surveyed geological interfaces. Heads are pressure elevations. Vertical exaggeration and exploded gaps never change the numerical results.";
+  $("geometryNote").textContent = zh ? "地表來自高程資料；地下含水層為示意，採用井深中位數及假設厚度，並非鑽探地質界面。水頭是壓力高程。圖示垂直誇張與分層間距不改變任何數值。" : "Terrain uses elevation data. Underground layers are schematic: median total well depths and assumed thicknesses, not surveyed geological interfaces. Heads are pressure elevations. Vertical exaggeration and exploded gaps never change the numerical results.";
 }
 function setLang(l) { releaseContext(l); LANG = l; document.documentElement.lang = l === "zh" ? "zh-Hant" : "en"; $("lEn").setAttribute("aria-pressed", l === "en"); $("lZh").setAttribute("aria-pressed", l === "zh");
   const vars = {rec: `${M.years[0]}-${M.years[YO]}`, H: M.years[Y-1]};
