@@ -1,0 +1,54 @@
+# Existing depth and deformation data: Choushui fan
+
+**Scope:** project data under `chou-shui-data/data/` and
+`data_fetch_api/new_measurements/`, plus the existing twin inputs and saved outputs.
+Counts below describe files already on the authorized host, not a fresh download.
+Raw observations stay in ignored project data paths; this inventory contains only
+aggregate coverage and public dataset identifiers.
+
+| Source | Local coverage and geometry | Provenance and limitation |
+|---|---|---|
+| Magnetic-ring positions | `chou-shui-data/data/ls_cache/clean/`: 14 nonempty Choushui sites, 20–31 rings per site. At the first survey, shallow rings span 1.351–28.921 m and deepest rings 280.339–340.464 m. Records start in 2010 and extend at most to March 2025. | `ls-wra-mlcw-obs` from WRA; [dataset 41572](https://data.gov.tw/dataset/41572) describes depths below ground and metre units. `hydrophysics/subsidence.py` treats `NO1..NO31` values as ring positions in metres. These are measured ring locations, **not** lithology or aquifer boundaries. Each interval is local to its own well. |
+| Later magnetic-ring downloads | `chou-shui-data/data/ls_cache/` has 38 downloaded station files, 16 nonempty; its other parquet file is a station catalog. The two sites absent from the old clean cache have a fixed NO1–NO26 interval near 1.4–292 m at their first survey. Their evaluation window contains 26 monthly surveys, February 2023–May 2025. | Already examined in the retrospective protocol at `results/decision_evidence/compaction_protocol.json`. The downloaded files have additional earlier dates at one site. They are not prospective validation or a new source of unseen field skill. |
+| Ring-station locations | `data_fetch_api/new_measurements/ls-wra-mlcw-obs-stations.parquet`: 62 stations overall, 38 tagged groundwater zone 50 (Choushui), with TWD97/EPSG:3826 coordinates and installation dates. `chou-shui-data/data/mlcw_stations.csv` locates the 14 old sites. | [WRA station dataset 41571](https://data.gov.tw/dataset/41571). No layer contacts or ring installation litholog in these catalogs. |
+| Groundwater-observation wells | `data_fetch_api/new_measurements/gw-wra-gw10min-obs-stations.parquet`: 1,000 stations overall; 344 in zone 50, 343 with `WellDepth`, and layer codes 1–4 at 316 of them. All 14 old ring sites have a catalog well within 1.5 km. | Fields include `WellDepth`, `FinishDepth`, `GroundwaterLayerCode`, ground elevation and TWD97 location. Well depth and aquifer code locate head observations approximately; they do **not** define screen top/bottom, aquitard contacts or a cell-specific strain profile. Depth units need confirmation from the WRA well data dictionary. |
+| Deep benchmarks | `data_fetch_api/new_measurements/ls-wra-dbm-obs-stations.parquet`: nine listed stations, eight with nominal installation depths 70–400 m; nested stations include depths 70/300 m and 130/300/400 m. `chou-shui-data/data/ls_cache/` holds time series extending into March 2025. | WRA API dataset ID `ls-wra-dbm-obs`. The cached series is a generic `value` column; physical quantity, units, vertical reference and sign have **not** been verified. It must not yet be interpreted as compaction or combined with ring/leveling data. |
+| Surface geodesy | `chou-shui-data/data/ls_cache/`: 26 nonempty GNSS series, generally 2020–March 2025; `ls-wra-lsp-obs__choushui_panel.parquet` has 13,997 elevation records at 1,239 benchmarks, 1997–September 2021. | WRA API IDs `ls-wra-gnss-obs` and `ls-wra-lsp-obs`. Surface displacement needs datum, stable reference, trend and uncertainty handling. The leveling panel does not provide a post-2021 intervention check. |
+| Model output | `results/twin_forward/*.npz` has four aquifer-head layers but only `(scenario, cell, month)` total-column compaction. | The fitted VEP column reduces heads to one driver per cell and has no vertical strain state. Ring geometry cannot be matched to its saved total without a new identified vertical model. |
+
+## Consequence for the next implementation
+
+Observation geometry is **partly available and previously underused**.
+`python -m hydrophysics.twin.ring_geometry` now writes a hash-checked, ignored local
+manifest of each ring source, its first usable survey's ordered depths below ground,
+TWD97 coordinates and paired model cell. It checks monotonicity and missingness.
+The existing local sources yielded 16 sites in 16 active grid cells, with 20–31 rings
+per site; the output stays in `results/decision_evidence/ring_geometry.json` and is
+not committed. This needs no new model run or fit. The existing
+`observation_operator.ring_interval` can be exercised on synthetic profiles with
+those boundaries, but cannot score the current scalar forward archive.
+
+Run from the isolated project worktree, substituting the existing data-root paths:
+
+```bash
+python -m hydrophysics.twin.ring_geometry \
+  --cache-dir DATA_ROOT/ls_cache/clean \
+  --stations-csv DATA_ROOT/mlcw_stations.csv \
+  --forward EXISTING_FORWARD.npz \
+  --protocol results/decision_evidence/compaction_protocol.json \
+  --out results/decision_evidence/ring_geometry.json
+```
+
+The limiting missing inputs are surveyed lithology/aquitard contacts and compressible
+thickness by location, a verified screen-interval map, and a measured relation between
+depth-specific stress and strain. The original twin design explicitly deferred the
+geometry source in `docs/superpowers/specs/2026-08-22-choushui-differentiable-twin-design.md`
+§11. Search or request the WRA/Geological Survey borehole completion and lithology
+records using the station identifiers and coordinates already in the catalogs; useful
+queries are `濁水溪沖積扇 地下水觀測井 井柱狀圖`, `濁水溪 水文地質 鑽井 岩心 地層柱狀圖`,
+`水利署 地層下陷監測井 磁環 安裝深度 地質剖面`, and
+`Choushui alluvial fan borehole litholog aquitard contact`.
+
+For evaluation, freeze the observation geometry and candidate vertical model before
+new measurements. The old 14 ring sites and the two 2023–2025 sites have already
+influenced or been examined by model selection, so reuse of them is exploratory.
