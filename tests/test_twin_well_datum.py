@@ -32,9 +32,6 @@ from hydrophysics.twin.flow import FlowModel  # noqa: E402
 from hydrophysics.twin.grid import FanGrid  # noqa: E402
 
 D = torch.float64
-# An exact fit (zero residual) hands the adjoint solve a zero right-hand side, whose
-# "relative residual" is then undefined: the CG warning is expected there and harmless.
-EXACT = pytest.mark.filterwarnings("ignore:_cg did not converge")
 T = 24
 OFFSETS = np.array([7.0, -3.0, 12.0, 0.5])
 
@@ -84,7 +81,9 @@ def test_default_is_bit_identical_to_explicit_off():
     assert not any(k.startswith(("well_datum", "r2_with")) for k in a)
 
 
-@EXACT
+# The exact anomaly objective leaves one nonzero adjoint RHS near 2.5e-17; its
+# warned residual is also near 2.5e-17. Keep this exception limited to that fixture.
+@pytest.mark.filterwarnings("ignore:_cg did not converge")
 def test_datum_recovers_a_constant_offset_per_well():
     truth = _truth()
     obs = truth + torch.tensor(OFFSETS, dtype=D)[:, None]
@@ -103,6 +102,7 @@ def test_datum_recovers_a_constant_offset_per_well():
     assert an["well_datum"] == pytest.approx(OFFSETS, abs=1e-8)
 
 
+@pytest.mark.filterwarnings("error:_cg did not converge")
 def test_datum_fit_moves_the_physics_differently_but_stays_out_of_theta():
     obs = _truth() + torch.tensor(OFFSETS, dtype=D)[:, None]
     _, off = _fit(obs, epochs=5, lr=0.05)
@@ -170,7 +170,6 @@ def test_prior_scaling_three_months_versus_a_long_record():
     assert stats["shrink_min"] == pytest.approx(shrink[1])
 
 
-@EXACT
 @pytest.mark.parametrize("loss_mode", ["level", "anomaly"])
 def test_back_filled_months_never_inform_the_datum(loss_mode):
     """main passes the months actually observed as ``datum_mask``: a late-starting well
@@ -192,7 +191,6 @@ def test_back_filled_months_never_inform_the_datum(loss_mode):
         _fit(filled, well_datum="fit", datum_mask=real[:, :5])
 
 
-@EXACT
 def test_temporal_gate_applies_the_fitted_period_datum_unchanged():
     T_full, T_fit = 30, 24
     truth = _truth(T_full)
@@ -235,6 +233,7 @@ def test_temporal_gate_applies_the_fitted_period_datum_unchanged():
     assert fa["rmse_datum_model_m"] == pytest.approx(fb["rmse_datum_model_m"], abs=1e-9)
 
 
+@pytest.mark.filterwarnings("error:_cg did not converge")
 def test_held_out_months_never_move_the_datum_or_the_physics_while_learning():
     """With a moving fit (lr > 0, several epochs, back-fill-shaped datum_mask), a +100 m
     shift of every held-out month leaves the datum AND theta bit-identical."""
@@ -260,7 +259,6 @@ def test_held_out_months_never_move_the_datum_or_the_physics_while_learning():
     assert np.all(a["well_datum"] != 0.0)
 
 
-@EXACT
 def test_kfold_held_out_wells_are_predicted_without_a_datum(tmp_path):
     truth = _truth()
     obs = truth + torch.tensor(OFFSETS, dtype=D)[:, None]

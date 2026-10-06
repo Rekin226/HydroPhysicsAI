@@ -7,6 +7,8 @@ import pytest
 from hydrophysics.twin import drift_diag
 from hydrophysics.twin.drift_diag import fair_baselines, fair_temporal_verdict
 
+pytestmark = pytest.mark.filterwarnings("error:_cg did not converge")
+
 T, T_FIT = 131, 95
 
 

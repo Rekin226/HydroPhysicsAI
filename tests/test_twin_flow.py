@@ -1225,6 +1225,18 @@ def test_cg_stats_reset_and_clean_run_read_zero_not_blank():
     assert worst == 0.0
 
 
+def test_zero_rhs_ignores_nonzero_warm_start_without_cg_warning():
+    _reset_cg_stats()
+    rhs = torch.zeros(4, dtype=torch.float64)
+    warm = torch.ones_like(rhs)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        solution = _cg(lambda v: 2.0 * v, rhs, x0=warm)
+    assert torch.equal(solution, rhs)
+    assert caught == []
+    assert _cg_stats() == (0, 0.0)
+
+
 def test_cg_stats_count_and_worst_residual_increment_on_non_convergence():
     """_cg must increment the module counter and track the worst true relative
     residual every time it warns, without suppressing the warning itself (operators
