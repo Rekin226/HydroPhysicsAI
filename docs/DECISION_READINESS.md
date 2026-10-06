@@ -76,6 +76,27 @@ between the registered NO1–NO26 rings; the saved forward archive has no vertic
 compaction profile. They therefore do not establish depth-matched ring accuracy.
 `hydrophysics.twin.observation_operator` supplies an exact-boundary depth operator
 for future resolved profiles and refuses unsupported partial-layer allocation.
+
+The present four-layer flow solver outputs heads by aquifer, but the calibrated VEP
+column is driven by their mean (or another single weighted driver) and returns one
+scalar compaction history per cell. Its elastic and delayed inelastic terms are
+mechanism components of that **same whole column**, not deformation assigned to
+known depth intervals. The one-interbed CSUB comparison in `twin.reference` is a
+synthetic elastic-limit test, not a depth profile for the fan. Therefore no valid
+depth-resolved field history can be exported from existing solver state or reconstructed
+from the saved `subs_mean` array. The viewer source labels its ring R² as a
+depth-unmatched proxy; previously generated viewer files are unchanged.
+
+The smallest defensible route to such an export is a separately identified vertical
+strain model with surveyed cell-by-cell layer boundaries, a head/stress driver for each
+compressible interval, and explicit elastic, inelastic and delayed histories per
+interval. It must report the existing scalar-column prediction separately from the
+new depth model, record depth and displacement datums and parameter/input hashes,
+and demonstrate component-sum and reference-solution checks on synthetic columns.
+Only then can the ring operator integrate a registered physical interval and compare
+it with new held-out ring measurements; fitting the vertical fractions to the already examined
+two sites would not be validation.
+
 The selected model's 0.010 cm/year aggregate edge over the historical baseline is
 too small to establish useful skill. It improves on that baseline at one site and is
 worse at the other. The descriptive year split also reverses: for 22 pairs ending in
