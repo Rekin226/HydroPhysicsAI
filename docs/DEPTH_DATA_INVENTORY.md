@@ -39,9 +39,7 @@ python -m hydrophysics.twin.ring_geometry \
   --out results/decision_evidence/ring_geometry.json
 ```
 
-The limiting missing inputs are surveyed lithology/aquitard contacts and compressible
-thickness by location, a verified screen-interval map, and a measured relation between
-depth-specific stress and strain. The original twin design explicitly deferred the
+Site-linked lithology/aquitard contacts are now documented at 土庫國中 in the official WRA 2003 installation report and 2017 MOT summary; see `docs/SITE_GEOLOGY_SOURCE_AUDIT.md`. For the remaining sites, and for any model-wide use, the limiting inputs are verified station-linked contacts and compressible thickness, a screen-interval map, ring-maintenance history, and a measured relation between depth-specific stress and strain. The original twin design explicitly deferred the
 geometry source in `docs/superpowers/specs/2026-08-22-choushui-differentiable-twin-design.md`
 §11. Search or request the WRA/Geological Survey borehole completion and lithology
 records using the station identifiers and coordinates already in the catalogs; useful
@@ -59,13 +57,13 @@ identifiers do not match the current observation-well catalog, and their coordin
 field says only `TM`; the datum has not been established. Thus none of those contacts
 has yet been assigned to a ring station, screen or model cell. The WRA
 [well-construction report catalog](https://web.wra.gov.tw/wralib/WraLib/wSite/books_39283)
-lists physical copies but no downloadable site-specific completion log was located.
+has physical copies. A separate WRA 2003 installation report is publicly downloadable for the current 土庫國中 ring station, as detailed in `docs/SITE_GEOLOGY_SOURCE_AUDIT.md`.
 
 ### Historic boring and ring-site reconciliation
 
 The same [1999 official appendix, PDF pages 105, 108 and 148–151](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/public/Attachment/1999/19990238/0001.pdf) identifies the historic 元長 boring at E 178806.50, N 2616895.947 m and 土庫 boring at E 187124.529, N 2619830.231 m. A separate table lists a historic observation station 元長 091702 at E 178792.031, N 2616970.687 m; no corresponding 土庫 station was identified in that table. These historic names must not be used as current ring-site identifiers. The ring manifest instead records 元長國小 at E 179484, N 2616803 m and 土庫國中 at E 187771, N 2620610 m in TWD97/EPSG:3826. All coordinates above are transcribed source values, not a common-datum distance comparison.
 
-The appendix calls the older coordinates `TM` and labels northings/eastings in metres, but gives no datum on these pages. The official [survey-methods section, printed page 17](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/public/Attachment/1999/19990159/0016.pdf) describes GPS surveying and comparison to the Taiwan-wide coordinate system without naming a datum in that passage. A verified CRS/epoch and an agency identifier crosswalk are still needed before computing a reliable separation or assigning historic contacts to a current instrument. Even a small distance would require a demonstrated stratigraphic correlation and screen/interval match; these are currently absent. Treat the logs as regional context only.
+The appendix calls the older coordinates `TM` and labels northings/eastings in metres, but gives no datum on these pages. The official [survey-methods section, printed page 17](https://twgeoref.gsmma.gov.tw/GipOpenWeb/wSite/public/Attachment/1999/19990159/0016.pdf) describes GPS surveying and comparison to the Taiwan-wide coordinate system without naming a datum in that passage. The separate Geological Survey borehole index (dataset 16799) now gives explicit TWD97 positions for those older borehole IDs: 元長 `091702G1` lies 193 m from the current 元長 ring and 土庫 `090551G1` lies 1007 m from the current 土庫國中 ring. This is a same-datum separation from an independent index, not a datum identification for the old appendix or a borehole-to-ring identity crosswalk. Even a small distance requires stratigraphic correlation and screen/interval matching before transfer. Treat those older logs as regional context. The exact-current-site 土庫 sources and their 24-versus-26 ring discrepancy are inventoried in `docs/SITE_GEOLOGY_SOURCE_AUDIT.md`.
 
 For evaluation, freeze the observation geometry and candidate vertical model before
 new measurements. The old 14 ring sites and the two 2023–2025 sites have already
