@@ -1169,7 +1169,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           three: str = "inline", public: bool = True, max_bytes: int | None = None,
           observations_csv: str | None = None, challenge_json: str | None = None,
           validation_protocol: str | None = None,
-          validation_predictions: str | None = None) -> dict:
+          validation_predictions: str | None = None,
+          coverage_json: str | None = None, prospective_json: str | None = None,
+          ring_holdout_json: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1305,6 +1307,11 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                   "stations", "scored_months", "forecast_origin", "end_exclusive",
                   "prospective_validation", "causal_policy_validation", "qc")
         modelcard["new_data_challenge"] = {k: challenge[k] for k in fields}
+    for key, block in (("coverage", _coverage_block(coverage_json, forward_npz)),
+                       ("prospective", _prospective_block(prospective_json, forward_npz)),
+                       ("ring_holdout", _ring_holdout_block(ring_holdout_json))):
+        if block is not None:
+            modelcard[key] = block
     if rheo_npz == "auto":
         rheo_npz = forward_npz if len(f.rheo_labels) > 1 else None
     rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
@@ -1370,7 +1377,10 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "observations": observations_csv,
         "validation_protocol": validation_protocol,
         "validation_predictions": validation_predictions,
-        "new_data_challenge": challenge_json,
+        "new_data_challenge": challenge_json, "coverage": coverage_json,
+        "prospective": prospective_json,
+        "ring_holdout": ring_holdout_json if ring_holdout_json and os.path.exists(
+            ring_holdout_json) else None,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1404,6 +1414,63 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     return payload
 
 
+def _read_report(path: str | None, forward_npz: str | None = None, what: str = "report"):
+    """A JSON evidence report; None when no path is given. A report that names the forward
+    run it scored (``model_sha256``) must name this one."""
+    if not path:
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    if forward_npz is not None and report.get("model_sha256") not in (None, sha256(forward_npz)):
+        raise ValueError(f"The {what} does not match the supplied forward run")
+    return report
+
+
+def _coverage_block(path: str | None, forward_npz: str | None) -> dict | None:
+    """What twin.coverage found: how often the 90 % band of the runs held the observations.
+
+    Only the numbers the page quotes are kept; the page prints them, it computes nothing."""
+    report = _read_report(path, forward_npz, "coverage report")
+    if report is None:
+        return None
+    metrics = report["metrics"]
+    ens, comb = metrics["model_ensemble"], metrics["model_combined"]
+    return {"picp_90": float(ens["picp_90"]), "inflation_90": float(ens["inflation_90"]),
+            "combined_picp_90": float(comb["picp_90"]), "stations": int(report["stations"]),
+            "scored_months": int(report["scored_months"]),
+            "forecast_origin": report.get("forecast_origin"),
+            "end_exclusive": report.get("end_exclusive"),
+            "prospective_validation": bool(report.get("prospective_validation", False))}
+
+
+def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:
+    """twin.prospective's manifest, with the test window from protocol.json beside it."""
+    manifest = _read_report(path, forward_npz, "prospective manifest")
+    if manifest is None:
+        return None
+    out = {"registered_on": manifest["registered_on"], "stations": int(manifest["stations"]),
+           "test_start": None, "test_end": None, "result": "pending"}
+    protocol = os.path.join(os.path.dirname(path), "protocol.json")
+    if os.path.exists(protocol):
+        with open(protocol) as handle:
+            proto = json.load(handle)
+        out["test_start"], out["test_end"] = proto.get("test_start"), proto.get("test_end")
+    return out
+
+
+def _ring_holdout_block(path: str | None) -> dict | None:
+    """twin.ring_holdout's report; absent file or no path means no line on the page."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    rings = report["rings"]
+    return {"rings": {"n_sites": int(rings["n_sites"]), "cum": rings["cum"],
+                      "rate": rings.get("rate")},
+            "gnss": report.get("gnss"), "window": report.get("window"),
+            "independence": [str(x) for x in report.get("independence", [])]}
+
+
 def _render(payload: dict, three: str, log=print) -> str:
     with open(TEMPLATE, encoding="utf-8") as fh:
         page = fh.read()
@@ -1415,7 +1482,9 @@ def _render(payload: dict, three: str, log=print) -> str:
         src = os.environ.get("TWIN_THREE_JS", THREE_LOCAL)
         if os.path.exists(src):
             with open(src, encoding="utf-8") as fh:
-                inline = "<script>" + fh.read() + "</script>"
+                # evaluated by the page when the 3D drawer first opens, not on load
+                inline = ('<script type="text/plain" id="three-src">'
+                          + fh.read().replace("</script", "<\\/script") + "</script>")
         else:
             raise FileNotFoundError(f"Offline renderer missing: {src}; use --three none "
                                     "for a 2D-only page or explicitly choose --three cdn")
@@ -1605,6 +1674,12 @@ def main(argv=None) -> None:
     ap.add_argument("--challenge", help="Frozen-model new-data challenge report, shown as aggregates")
     ap.add_argument("--validation-protocol", help="Protocol bound to the update acceptance report")
     ap.add_argument("--validation-predictions", help="Predictions bound to update acceptance")
+    ap.add_argument("--coverage", help="twin.coverage report.json: how often the 90 %% band "
+                                       "of the runs held the observations")
+    ap.add_argument("--prospective", help="twin.prospective manifest.json (protocol.json "
+                                          "beside it gives the test window)")
+    ap.add_argument("--ring-holdout", help="twin.ring_holdout report.json; the line is "
+                                           "omitted when the file does not exist")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1624,9 +1699,10 @@ def main(argv=None) -> None:
           rheo_column_csv=opt(args.rheo_column_csv), prev_dir=opt(args.prev_dir),
           prev_temporal=opt(args.prev_temporal), rescore_csv=opt(args.rescore_csv),
           three=args.three, public=not args.private, observations_csv=args.observations,
-          challenge_json=args.challenge,
           validation_protocol=args.validation_protocol,
           validation_predictions=args.validation_predictions,
+          coverage_json=args.coverage,
+          prospective_json=args.prospective, ring_holdout_json=args.ring_holdout,
           log=lambda s: print(s, flush=True))
 
 

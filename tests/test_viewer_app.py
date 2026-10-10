@@ -968,3 +968,72 @@ def test_payload_carries_the_timing_of_this_and_the_previous_model(tmp_path, qui
         a["timing"]["retire_aqua"]["rate_base"], abs=1e-6)
     html = out.read_text(encoding="utf-8")
     assert "timingCaveat()" in html and 'id="startNote"' in html and "reboundLine(kp)" in html
+
+
+# evidence reports on the model card ------------------------------------------------------------
+def _fake_forward(tmp_path):
+    forward = tmp_path / "forward.npz"
+    forward.write_bytes(b"forward-run")
+    return str(forward)
+
+
+def test_coverage_block_keeps_only_what_the_page_quotes(tmp_path):
+    forward = _fake_forward(tmp_path)
+    report = {"model_sha256": va.sha256(forward), "stations": 158, "scored_months": 6186,
+              "forecast_origin": "2022-12-01", "end_exclusive": "2026-09-01",
+              "prospective_validation": False,
+              "metrics": {"model_ensemble": {"picp_90": 0.747, "inflation_90": 1.86, "other": 1},
+                          "model_combined": {"picp_90": 0.926}}}
+    path = tmp_path / "coverage.json"
+    path.write_text(json.dumps(report))
+    block = va._coverage_block(str(path), forward)
+    assert block == {"picp_90": 0.747, "inflation_90": 1.86, "combined_picp_90": 0.926,
+                     "stations": 158, "scored_months": 6186, "forecast_origin": "2022-12-01",
+                     "end_exclusive": "2026-09-01", "prospective_validation": False}
+    assert va._coverage_block(None, forward) is None
+    report["model_sha256"] = "0" * 64
+    path.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="coverage report"):
+        va._coverage_block(str(path), forward)
+
+
+def test_prospective_block_reads_the_window_from_the_protocol(tmp_path):
+    forward = _fake_forward(tmp_path)
+    (tmp_path / "manifest.json").write_text(json.dumps(
+        {"registered_on": "2026-10-11", "stations": 158, "model_sha256": va.sha256(forward)}))
+    block = va._prospective_block(str(tmp_path / "manifest.json"), forward)
+    assert block == {"registered_on": "2026-10-11", "stations": 158, "test_start": None,
+                     "test_end": None, "result": "pending"}
+    (tmp_path / "protocol.json").write_text(json.dumps(
+        {"test_start": "2026-11-01", "test_end": "2027-10-31"}))
+    block = va._prospective_block(str(tmp_path / "manifest.json"), forward)
+    assert (block["test_start"], block["test_end"], block["result"]) == (
+        "2026-11-01", "2027-10-31", "pending")
+
+
+def test_ring_holdout_block_is_absent_until_the_report_exists(tmp_path):
+    path = tmp_path / "ring.json"
+    assert va._ring_holdout_block(str(path)) is None and va._ring_holdout_block(None) is None
+    report = {"rings": {"n_sites": 12, "cum": {"model": {"r2": 0.4}, "base_continue": {"r2": 0.3}},
+                        "rate": {}}, "gnss": {"n_sites": 3}, "window": ["2023-01", "2025-12"],
+              "independence": ["rings share the column"]}
+    path.write_text(json.dumps(report))
+    block = va._ring_holdout_block(str(path))
+    assert block["rings"]["n_sites"] == 12 and block["window"] == ["2023-01", "2025-12"]
+    assert block["independence"] == ["rings share the column"]
+    assert block["rings"]["cum"]["base_continue"]["r2"] == 0.3
+
+
+def test_three_is_shipped_unevaluated_and_the_page_has_one_dictionary():
+    page = va._render({"meta": {}}, "inline", log=lambda s: None)
+    marker = '<script type="text/plain" id="three-src">'
+    assert marker in page
+    head, _, rest = page.partition(marker)
+    assert "WebGLRenderer" not in head and "WebGLRenderer" in rest
+    with open(va.TEMPLATE, encoding="utf-8") as fh:
+        template = fh.read()
+    # one i18n mechanism: no inline language ternaries, and both languages carry the same keys
+    assert not re.search(r"\bzh\s*\?", template)
+    en, zh = template.split("const T = {")[1].split("\nzh: {")
+    key = re.compile(r'(?<![\w"])([A-Za-z0-9_]+):\s*"')
+    assert set(key.findall(en)) == set(key.findall(zh.split("\n}};")[0]))
