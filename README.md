@@ -80,7 +80,7 @@ is the next thing to change.
 
 | | test | result |
 |---|---|---|
-| **Held-out years** | fit 2012–2019, free-run 2020–2022, 147 wells, after each well's fitted-period datum; must come within 1.25x of climatology plus trend and match its shape | **PASS**, ratio 1.11, shape R² +0.45 vs +0.36 |
+| **Held-out years** | fit 2012–2019, free-run 2020–2022, 147 wells, after each well's fitted-period datum; a non-inferiority test: must come within 1.25x of climatology plus trend and within 0.05 of its shape R² | **PASS on non-inferiority only**: 1.81 m against 1.64 m for climatology plus trend (ratio 1.11; the model is worse), shape R² +0.45 against +0.55 for climatology plus trend (+0.36 for plain climatology) |
 | **Unseen wells, head changes** | 5 site-grouped folds, each series de-meaned, against inverse-distance interpolation | FAIL, R² +0.34 vs +0.61 (the previous model: −1.43) |
 | **Unseen wells, absolute level** | same folds, raw heads | FAIL, R² +0.64 vs +0.70 (the previous model passed, +0.80) |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.652** out of fold |

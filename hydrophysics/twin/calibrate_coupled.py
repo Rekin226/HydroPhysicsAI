@@ -60,7 +60,7 @@ from ..config import Config
 from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
 from .calibrate_flow import set_compile_matvec
-from .compaction import VEPColumn, column_param_sets
+from .compaction import AQUITARD_BOUNDS, CREEP_MODES, VEPColumn, column_param_sets
 from .forward import (
     N_LAYERS,
     attach_sw_recharge,
@@ -100,6 +100,9 @@ BAND_KIND: str = "hat"
 # screened behaviour); "cell" also caps slow bands next to fast ones so that no hat cell
 # has tau < D with h_pc0 > 0 (``_guard_hpc0_banded``)
 BAND_HPC0_GUARD: str = "band"
+# --creep (opt-in, 2026-10-11): "aquitard" adds compaction.aquitard_compaction's delayed
+# drainage term to every column (shared and zonal configs); "vep" is the historical column
+CREEP: str = "vep"
 
 
 def column_constraints() -> dict:
@@ -140,6 +143,9 @@ def _clamp_column(col: VEPColumn, T: int) -> None:
             col.log_ske.copy_(torch.minimum(col.log_ske,
                                             col.log_skv + math.log(float(SKE_SKV_MAX))))
         col.log_tau.clamp_(min=math.log(tau_min), max=math.log(tau_max))
+        if col.creep == "aquitard":
+            for k, (lo, hi) in AQUITARD_BOUNDS.items():
+                getattr(col, k).clamp_(min=lo, max=hi)
 
 
 class _WeightedColumn(nn.Module):
@@ -299,12 +305,14 @@ def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -
 
 
 def _make(config: str, device) -> nn.Module:
+    if CREEP != "vep" and config not in ("shared", "zonal"):
+        raise ValueError(f"--creep {CREEP} is implemented for the shared and zonal configs only")
     if config == "shared":
-        return VEPColumn(n_sites=1, dt_days=30.0, device=device).to(device)
+        return VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP).to(device)
     if config == "weighted":
         return _WeightedColumn(N_LAYERS, device=device).to(device)
     if config == "zonal":
-        return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device)
+        return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP)
                               for _ in range(N_ZONES)]).to(device)
     if config == "banded":
         return _BandedColumns(N_BANDS, BAND_LAMBDA, device=device, kind=BAND_KIND).to(device)
@@ -426,8 +434,7 @@ def loso(config: str, H, OBS, M, Z, epochs, lr, device) -> float:
 
 def column_json(model: nn.Module) -> dict:
     def one(c: VEPColumn) -> dict:
-        return {k: float(getattr(c, k).detach().cpu().reshape(-1)[0])
-                for k in ("log_ske", "log_skv", "log_tau", "h_pc0")}
+        return {k: float(getattr(c, k).detach().cpu().reshape(-1)[0]) for k in c.param_keys()}
     if isinstance(model, _WeightedColumn):
         return {**one(model.col), "layer_weights": model.weights().tolist()}
     if isinstance(model, _BandedColumns):
@@ -508,6 +515,11 @@ def main(argv=None) -> None:
     ap.add_argument("--band-range-km", default=None,
                     help="banded config: 'lo,hi' easting of the first and last band "
                          "centre, km (default: the westmost and eastmost cells)")
+    ap.add_argument("--creep", choices=CREEP_MODES, default="vep",
+                    help="column rheology: 'vep' (historical) or 'aquitard', which adds the "
+                         "delayed-drainage term (compaction.aquitard_compaction) whose rate "
+                         "depends on the head level; shared and zonal configs. Recorded as "
+                         "'creep' in the column JSON, which twin.forward reads")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -519,7 +531,8 @@ def main(argv=None) -> None:
 
     set_compile_matvec(args.compile_matvec)
     global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
-    global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD
+    global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD, CREEP
+    CREEP = args.creep
     N_BANDS, BAND_LAMBDA = int(args.n_bands), float(args.band_lambda)
     BAND_KIND, BAND_HPC0_GUARD = args.band_kind, args.band_hpc0_guard
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
@@ -669,7 +682,7 @@ def main(argv=None) -> None:
                   "identifiable; run twin.forward with columns fitted under two ceilings "
                   "(--vep-json a.json,b.json) to carry the rheology spread", flush=True)
         with open(os.path.join(args.out, f"vep_{config}_{args.target}.json"), "w") as fh:
-            json.dump({**params, "config": config, "driver": "flow-model heads",
+            json.dump({**params, "config": config, "creep": CREEP, "driver": "flow-model heads",
                        "target": args.target, "tau_max_years": args.tau_max_years,
                        **({"zone_blend_km": float(args.zone_blend_km)}
                           if config == "zonal" and args.zone_blend_km else {}),

@@ -62,7 +62,7 @@ from .calibrate_flow import (
     well_datum_vector,
     zone_tensor,
 )
-from .compaction import VEPColumn, column_param_sets
+from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
 from .flow import FlowModel
 from .inputs import TwinInputs, input_options, load_twin_inputs
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
@@ -671,6 +671,18 @@ def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
 # ---------------------------------------------------------------------------------------
 # compaction
 # ---------------------------------------------------------------------------------------
+def column_from_params(p: dict, device=None) -> VEPColumn:
+    """One ``VEPColumn`` from a column JSON's parameter dict: the historical four VEP
+    keys, plus the aquitard term when the dict carries its keys (``calibrate_coupled
+    --creep aquitard``, 2026-10-11)."""
+    creep = "aquitard" if all(k in p for k in AQUITARD_KEYS) else "vep"
+    c = VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=creep)
+    with torch.no_grad():
+        for k in c.param_keys():
+            getattr(c, k).fill_(float(p[k]))
+    return c
+
+
 class ZonalColumn(torch.nn.Module):
     """One VEP parameter set per fan zone (``calibrate_coupled --configs zonal``), applied
     cell by cell through ``zone_of_cell``. Same call signature as ``VEPColumn`` on the
@@ -681,10 +693,7 @@ class ZonalColumn(torch.nn.Module):
         super().__init__()
         self.cols = torch.nn.ModuleList()
         for p in params:
-            c = VEPColumn(n_sites=1, dt_days=30.0, device=device)
-            with torch.no_grad():
-                for k in ("log_ske", "log_skv", "log_tau", "h_pc0"):
-                    getattr(c, k).fill_(float(p[k]))
+            c = column_from_params(p, device)
             self.cols.append(c)
         self.register_buffer("zone", torch.as_tensor(zone_of_cell, dtype=torch.long,
                                                      device=device))
@@ -814,10 +823,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 zw = zone_weights(w_km)
             return ZonalColumn(p["zonal"], zone_of_cell, device=device,
                                zone_w=zw).to(device), p
-        col = VEPColumn(n_sites=1, dt_days=30.0, device=device)
-        with torch.no_grad():
-            for k in ("log_ske", "log_skv", "log_tau", "h_pc0"):
-                getattr(col, k).fill_(float(p[k]))
+        col = column_from_params(p, device)
         return col.to(device), p
     if ddir is None:
         raise SystemExit("no --vep-json to load and no data dir to fit one from")
