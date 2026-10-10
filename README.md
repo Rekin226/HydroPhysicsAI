@@ -7,9 +7,11 @@
 [![Stack](https://img.shields.io/badge/stack-PyTorch%20%7C%20PhysicsNeMo%20%7C%20CUDA-76b900.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Project state](docs/superpowers/STATE.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
+[Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
 
-**Current status (September 2026):** the frozen forecast fails the newer groundwater
+**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence test (2023-25 rings and GNSS) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. The September status follows.
+
+**Status in September 2026:** the frozen forecast fails the newer groundwater
 challenge. An observation-update defect is corrected in an opt-in method, but the
 physical forecasts still lose to simple short-term baselines. Policy and subsidence
 projections remain research scenarios. See the [latest experiment findings](docs/TWIN_ASSIMILATION.md)

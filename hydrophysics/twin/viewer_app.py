@@ -1701,6 +1701,7 @@ def main(argv=None) -> None:
           three=args.three, public=not args.private, observations_csv=args.observations,
           validation_protocol=args.validation_protocol,
           validation_predictions=args.validation_predictions,
+          challenge_json=args.challenge,
           coverage_json=args.coverage,
           prospective_json=args.prospective, ring_holdout_json=args.ring_holdout,
           log=lambda s: print(s, flush=True))

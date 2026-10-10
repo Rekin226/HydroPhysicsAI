@@ -915,6 +915,10 @@ def main(argv=None) -> None:
     ap.add_argument("--ring-fit-epochs", type=int, default=600,
                     help="epochs per fit of the VEP vs VEP+aquitard ring comparison "
                          "(0 = skip it)")
+    ap.add_argument("--recompute-column", action="store_true",
+                    help="drive each model's column JSON on its archive's layer-mean heads "
+                         "at the ring cells instead of reading the archive's own "
+                         "compaction (needed when the JSON is not the archive's column)")
     ap.add_argument("--out", default="results/twin/mechanism")
     args = ap.parse_args(argv)
 
@@ -1013,6 +1017,13 @@ def main(argv=None) -> None:
         # drive it, produce the rate-on-level dependence the rings show?
         zone_of = dict(zip([n for n, c in zip(names, cells, strict=True) if c >= 0],
                            zones, strict=True))
+        if args.recompute_column:
+            # the column JSON on the archive's own layer-mean heads, so a column that is
+            # not the archive's (e.g. --creep aquitard) is judged on the same hindcast
+            for n in list(Cm):
+                c_sim = column_on_series(params[int(zone_of[n])], -Dm[n])
+                if c_sim is not None:
+                    Cm[n] = c_sim.reindex(Cm[n].index)
         Co, Do = {}, {}
         for n, dser in D.items():
             if n in zone_of and not dser.empty:

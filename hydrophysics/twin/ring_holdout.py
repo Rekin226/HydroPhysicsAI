@@ -244,6 +244,8 @@ def run(theta: list[str], inputs_pkl: str, forcing_npz: str, vep_json: str, forw
     archive = np.asarray(npz["subs_mean_by_rheology"][0, 0], dtype="float64")
     arch_dates = pd.DatetimeIndex(pd.to_datetime(npz["dates"])) + pd.offsets.MonthEnd(0)
 
+    assert (arch_dates[:len(dates)] == dates).all()
+    archive = archive[:, :len(dates)]          # the archive runs to 2032; score its 2023-25 only
     rings, ring_xy = ring_totals(ddir)
     gnss, gnss_xy = gnss_vertical(ddir)
     ring_c = ring_cells(npz, ring_xy[["x", "y"]].to_numpy())
@@ -262,7 +264,6 @@ def run(theta: list[str], inputs_pkl: str, forcing_npz: str, vep_json: str, forw
     gnss_tab, gnss_scores = score_sites(
         gnss, gnss_xy, gnss_c, {a: s[:, nr:] for a, s in sims.items()}, dates, archive,
         ref, t0, t1, "2020-01-01", "2022-12-31", rates_only=True)
-    assert (arch_dates[:len(dates)] == dates).all()
     out.mkdir(parents=True, exist_ok=True)
     ring_tab.to_csv(out / "rings_sites.csv", index=False)
     gnss_tab.to_csv(out / "gnss_sites.csv", index=False)

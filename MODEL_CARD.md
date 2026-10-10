@@ -116,3 +116,7 @@ python -m hydrophysics.forecast_eval --device cuda --horizons 1,7,30 --probabili
 
 MIT (see [LICENSE](LICENSE)). Author: Abdoul Rachid Ouedraogo. Repository:
 https://github.com/Rekin226/HydroPhysicsAI
+
+## October 2026 evidence update
+
+Interval coverage, the registered prospective test, the 2023-25 ring/GNSS continuation and the negative aquitard-column result are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.
