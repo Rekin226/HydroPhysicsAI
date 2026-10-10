@@ -13,8 +13,12 @@ irrigation schedules shift with crop stage, drought and tariff.
 from __future__ import annotations
 
 import numpy as np
-from gafd import hgt, instantaneous_mean
 from scipy.signal import hilbert
+
+if __package__:
+    from .gafd import hgt, instantaneous_mean
+else:
+    from gafd import hgt, instantaneous_mean
 
 
 def gaussian_highpass(x: np.ndarray, fs: float, f_cut: float) -> np.ndarray:

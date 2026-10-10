@@ -19,8 +19,9 @@ the [README](README.md) for the full tables.
 - Research and benchmarking of physics-ML vs classical gray-box ODEs for groundwater.
 - **Simulation**: free-running hindcast of levels from an initial condition + forcing,
   for scenario analysis where no live observations are available.
-- **Forecast**: short-horizon (1–30 day) operational forecasting with calibrated
-  uncertainty, for early-warning / water-management contexts.
+- **Forecast**: research on short-horizon (1–30 day) forecasts and uncertainty.
+  Operational skill and calibrated coverage require validation after the October
+  2026 forecast-window corrections below.
 
 ### Out of scope
 
@@ -47,6 +48,15 @@ the [README](README.md) for the full tables.
 Metrics: KGE, NSE, RMSE (per-well, reported as medians over 61 wells). Simulation and
 forecast modes are scored **separately and are not comparable** (forecasting with
 assimilation is an easier task).
+
+**Forecast results below are historical and require retraining and reevaluation.** The October 2026
+audit reproduced training targets crossing the held-out cutoff, inference depending
+on future target availability, and point-score comparisons on different rows. Those
+paths have been repaired, but the earlier forecast scores/coverage are not evidence
+for the corrected implementation. Perfect future forcing is also a conditional
+experiment, not a forecast of rainfall or upstream heads available at issuance.
+These findings concern the forecast LSTM/evaluator, not a new re-evaluation of the
+separate simulation results.
 
 | Task | Result | Reference |
 |---|---|---|

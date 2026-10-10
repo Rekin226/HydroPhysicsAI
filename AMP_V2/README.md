@@ -1,5 +1,12 @@
 # AMP_V2 / AMP-G — a multi-band pumping signature, validated at network scale
 
+**Forecasting update (2026-10-06):** the new [origin-safe forecast experiment](../docs/AMP_FORECAST_EXPERIMENT.md)
+recomputes AMP from past-only windows. Full-record exports below are retrospective
+signatures and must not be used directly as forecast features. The bounded 土庫
+pilot found no incremental forecast gain over its electricity comparator; only
+18 test well-months passed QC, so the result is limited. Electricity correlations
+below do not establish metered pumping volume or future forecast accuracy.
+
 **Date:** 2026-08-22 · **Status:** experiment complete, recommendation below
 
 Tests whether the Hilbert–Gauss Transform (GAFD + Hilbert, Lin et al. 2023,

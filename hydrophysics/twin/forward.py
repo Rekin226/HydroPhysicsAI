@@ -10,12 +10,10 @@ What one run does, in order:
 1. **Hindcast** the observed record (2012-2022) with the calibrated flow model, from the
    IDW initial head field, under the recorded electricity and recharge -- the same
    rollout the Stage-3 gate scored, so the run carries its own in-sample skill.
-2. **Restart from observations.** At the forecast origin (the last observed month) the
-   model state is nudged toward the IDW field of that month's observed heads,
-   ``h = h_model + gain * (h_obs - h_model)`` per layer, in layers that have wells. This
-   is the assimilation step the architecture names as its second layer: the forecast
-   starts from what was measured, not from wherever the hindcast drifted to. ``gain=1``
-   is a full re-initialisation; ``gain=0`` is a free run.
+2. **Restart from observations.** At the forecast origin (the last observed month),
+   spread the differences between observed and sampled modeled heads, after removing
+   fixed well offsets. Perfect observations preserve the state. ``gain=0`` is a free
+   run; ``--update-method field`` reproduces the historical IDW-field replacement.
 3. **Run forward** for ``horizon`` months under assumed forcing: month-of-year climatology
    of the recorded electricity per policy class and of the recharge, with the scenario's
    multipliers applied (``scenario.PumpingScenario``). Pumping still feeds back on head
@@ -878,7 +876,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
                           pump_layer: int = 1, recharge_layer: int = 0,
                           sw: torch.Tensor | None = None, return_state: bool = False,
                           return_u_path: bool = False, datum: np.ndarray | None = None,
-                          apex_from: torch.Tensor | None = None):
+                          apex_from: torch.Tensor | None = None,
+                          update_method: str = "field"):
     """Hindcast in segments of ``every`` months, nudging the state toward that month's
     observed IDW field by ``gain`` at each segment end (sequential assimilation through
     the record; ``datum``: see :func:`nudge_to_observations` -- it never touches ``h0``,
@@ -922,7 +921,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         out.append(seg[..., 1:])
         t += n
         # month index t in the record (E is the record from month 1 on)
-        h = nudge_to_observations(inp, seg[..., -1], t, gain, datum=datum)
+        h = nudge_to_observations(inp, seg[..., -1], t, gain, datum=datum,
+                                  method=update_method)
         if t < T:
             out[-1] = torch.cat([seg[..., 1:-1], h[..., None]], dim=-1)
     heads = torch.cat(out, dim=-1)
@@ -937,8 +937,10 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         log=print, hindcast_gain: float = 0.0, hindcast_every: int = 0,
         dump_delay_state: bool = False, restart_taper_km: float | None = None,
         column_heads: str = "restart", save_members: str | None = None,
-        apex_hold: str = "restart") -> dict:
-    """Run every member through every scenario. Opt-in fixes (2026-09-23), defaults off:
+        apex_hold: str = "restart", update_method: str = "innovation") -> dict:
+    """Run every member through every scenario, using innovation updates by default.
+
+    ``update_method="field"`` preserves historical IDW updates. Other opt-in fixes:
 
     - ``restart_taper_km`` tapers the origin restart by distance to the wells (A2,
       :func:`nudge_to_observations`).
@@ -951,6 +953,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
       layer-2 head (``members_yearly`` in the result; ``main`` writes the sidecar
       ``<out>.members.npz``).
     """
+    if update_method not in ("field", "innovation"):
+        raise ValueError("update_method must be 'field' or 'innovation'")
     if column_heads not in ("restart", "free"):
         raise ValueError(f"column_heads must be 'restart' or 'free', got {column_heads!r}")
     # ``col`` is one column or the rheology axis ``[(label, column), ...]``: every flow
@@ -1020,10 +1024,11 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
             pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
             return_u_path=True, datum=datum,
-            apex_from=apex0) if dump_u else (*hindcast_with_nudging(
+            apex_from=apex0, update_method=update_method) if dump_u else (*hindcast_with_nudging(
                 model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
                 pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
-                return_state=True, datum=datum, apex_from=apex0), None)
+                return_state=True, datum=datum, apex_from=apex0,
+                update_method=update_method), None)
         pred = h_hist[inp.obs_layer, inp.obs_idx, 1:].cpu().numpy()
         r2 = _r2(pred, obs_target)
         hindcast_r2.append(r2)
@@ -1032,7 +1037,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         h_end = h_hist[..., -1]
         for ni, noise in enumerate(ic_noises):
             h_start = nudge_to_observations(inp, h_end, origin, gain, noise=noise,
-                                            taper_km=restart_taper_km, datum=datum)
+                                            taper_km=restart_taper_km, datum=datum,
+                                            method=update_method)
             h_col0 = None
             if column_heads == "free":
                 # the model's own end state, plus only the initial-field perturbation this
@@ -1041,7 +1047,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                 if noise is not None:
                     h_col0 = h_end + (h_start - nudge_to_observations(
                         inp, h_end, origin, gain, noise=None, taper_km=restart_taper_km,
-                        datum=datum))
+                        datum=datum, method=update_method))
             for si, (scen, rain) in enumerate(scenarios):
                 E_fut, r_fut, fut_dates = future_forcing(inp, scen, horizon, rain_scale=rain,
                                                          zone_of_cell=zone_of_cell,
@@ -1117,6 +1123,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             "heads_std": heads_std.astype("float32"), "subs_mean": subs_mean.astype("float32"),
             "subs_std": subs_std.astype("float32"),
             "rheology_labels": [c[0] for c in cols],
+            "update_method": update_method,
             "subs_mean_by_rheology": (subs_sum / n_mem).astype("float32"),
             "scenarios": [s.describe() for s, _ in scenarios],
             "scenario_names": [s.name for s, _ in scenarios],
@@ -1188,11 +1195,11 @@ def main(argv=None) -> None:
                          "(no change) is always run first.")
     ap.add_argument("--horizon", type=int, default=120, help="months past the record")
     ap.add_argument("--gain", type=float, default=1.0,
-                    help="observation nudging gain at the forecast origin (1 = restart "
-                         "from the observed field, 0 = free run)")
+                    help="observation nudging gain at the forecast origin (1 = full "
+                         "correction under --update-method, 0 = free run)")
     ap.add_argument("--hindcast-gain", type=float, default=0.0,
                     help="sequential assimilation through the record: nudge the state "
-                         "toward the observed field by this gain every --hindcast-every "
+                         "using --update-method by this gain every --hindcast-every "
                          "months (0 = plain hindcast, the default). The hindcast R2 "
                          "printed per member is then an assimilated score, not a "
                          "free-running one. WARNING (2026-09-19): the compaction column "
@@ -1227,18 +1234,19 @@ def main(argv=None) -> None:
                          "CAVEAT: the column is still driven by the aquifer heads; the "
                          "bed's drainage is clay compaction the column also represents, "
                          "so do not add the two")
-    # --- opt-in artefact fixes (2026-09-23); every default reproduces the runs before ---
+    # Historical artifact options plus the explicit observation-update choice.
     ap.add_argument("--apex-hold", choices=("restart", "calibrated"), default="restart",
                     help="apex (mountain-front) boundary head in restarted/nudged segments "
                          "and the projection: 'restart' re-pins it to each segment's "
                          "starting field (the behaviour before 2026-09-26); "
                          "'calibrated' keeps the month-0 field the calibration used")
     ap.add_argument("--restart-taper-km", type=float, default=None,
-                    help="A2: taper the origin restart by exp(-(d/R)^2), where d is the "
-                         "distance to the nearest well of the same layer with a head in "
-                         "the origin month. Without it, the restart replaces whole layers "
-                         "with the IDW field, and the unmeasured proximal layers 3-4 take "
-                         "heads from distant wells")
+                    help="observation-update radius in km; innovation defaults to 5 km. "
+                         "For legacy field updates, None leaves the IDW replacement "
+                         "untapered and a supplied radius applies exp(-(d/R)^2)")
+    ap.add_argument("--update-method", choices=("innovation", "field"), default="innovation",
+                    help="observation update: innovation (default) preserves a state that "
+                         "matches wells; field reproduces historical IDW-field updates")
     ap.add_argument("--column-heads", choices=("restart", "free"), default="restart",
                     help="A2: which projection drives the compaction column. 'restart' "
                          "(default) uses the restarted heads that are also displayed. "
@@ -1349,7 +1357,7 @@ def main(argv=None) -> None:
               recharge_layer=args.recharge_layer, hindcast_gain=args.hindcast_gain,
               hindcast_every=args.hindcast_every, dump_delay_state=args.dump_delay_state,
               restart_taper_km=args.restart_taper_km, column_heads=args.column_heads,
-              apex_hold=args.apex_hold,
+              apex_hold=args.apex_hold, update_method=args.update_method,
               save_members=args.save_members)
     print(f"ran {res['n_members']} members x {len(scenarios)} scenarios x "
           f"{len(res['dates'])} months in {time.perf_counter() - t0:.1f}s", flush=True)
@@ -1407,6 +1415,7 @@ def main(argv=None) -> None:
         # which artefact fixes (2026-09-23) this run used; the app reads it
         forward_options=json.dumps({
             "restart_taper_km": args.restart_taper_km, "column_heads": args.column_heads,
+            "update_method": args.update_method,
             **({"apex_hold": args.apex_hold} if args.apex_hold != "restart" else {}),
             "column_hpc0_fast_days": args.column_hpc0_fast_days,
             "hpc0_released": [c[2].get("hpc0_released") for c in columns],

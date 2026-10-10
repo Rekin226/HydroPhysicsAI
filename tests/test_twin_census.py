@@ -253,6 +253,7 @@ def test_temporal_gate_scores_a_continuation_against_climatology():
     assert np.isfinite(out["r2_model"]) and np.isfinite(out["r2_persist"])
 
 
+@pytest.mark.filterwarnings("error:_cg did not converge")
 def test_anomaly_loss_ignores_a_pure_level_offset_but_level_loss_does_not():
     g = FanGrid(nx=4, ny=4, dx=1000.0, x0=0.0, y0=0.0, mask=np.ones((4, 4), dtype=bool))
     A, steps = g.n_active, 4

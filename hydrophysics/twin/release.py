@@ -52,7 +52,7 @@ def provenance(sources: dict, vintage: str, public: bool, offline: bool) -> dict
             "public": public, "offline": offline, "sources": inputs,
             "code_sha256": digest.hexdigest(), "software": versions,
             "uncertainty": "conditional model ensemble; not calibrated predictive coverage",
-            "geometry": "schematic aquifers; screen-depth medians and assumed thicknesses"}
+            "geometry": "schematic aquifers; total-well-depth medians and assumed thicknesses"}
 
 
 def read_payload(path: str | Path) -> dict:
@@ -109,11 +109,14 @@ def atomic_json(path: Path, value: dict) -> None:
             os.unlink(name)
 
 
-def publish(page: str | Path, root: str | Path) -> dict:
+def publish(page: str | Path, root: str | Path, *, expected_sha256: str | None = None,
+            acceptance: list[dict] | None = None) -> dict:
     """Validate an immutable copy before atomically switching the local pointer."""
     page, root = Path(page), Path(root)
     raw = page.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
+    if expected_sha256 is not None and digest != expected_sha256:
+        raise ValueError("Page changed after acceptance checks; current release retained")
     # Parse exactly the bytes being published (the producer could be rebuilding page).
     root.mkdir(parents=True, exist_ok=True)
     fd, scratch = tempfile.mkstemp(suffix=".html", prefix=".candidate-", dir=root)
@@ -128,6 +131,8 @@ def publish(page: str | Path, root: str | Path) -> dict:
         os.replace(scratch, target)
         manifest = {**payload["release"], "page": target.name, "page_sha256": digest,
                     "published_utc": datetime.now(timezone.utc).isoformat()}
+        if acceptance is not None:
+            manifest["acceptance"] = acceptance
         atomic_json(root / f"{digest}.json", manifest)
         atomic_json(root / "current.json", manifest)
         return manifest

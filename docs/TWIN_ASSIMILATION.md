@@ -4,6 +4,20 @@ The update experiment separates an aquifer state correction from a forecast corr
 at monitoring wells. Neither establishes subsidence skill or validates an intervention.
 Local results and a browser report live under `results/twin/update_experiment/`.
 
+## October 7 reliability update
+
+New `twin.forward` CLI runs and `forward.run` use `update_method="innovation"`.
+The choice is propagated through hindcast updates, origin restarts and the
+initial-state perturbation calculation, and recorded in `forward_options`.
+Use `--update-method field` to reproduce the historical IDW-field update. Direct
+low-level helpers retain their historical default for compatibility; callers
+should specify the method. Existing archived forecasts have not been rewritten.
+
+This makes the corrected observation operator available in the normal run path;
+it does not establish a new forecasting score or convert assimilation increments
+into physical pumping/recharge. Historical comparisons elsewhere in this document
+remain experiments on their stated configurations.
+
 ## What changed
 
 `HeadObservationOperator` samples the same active cell and aquifer layer used during

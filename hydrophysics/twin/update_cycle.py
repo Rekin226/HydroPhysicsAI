@@ -14,7 +14,46 @@ import time
 from pathlib import Path
 
 from .release import atomic_json, publish, read_payload, sha256
-from .validation import observations
+from .validation import evaluate, observations
+
+
+def _acceptance(entry: dict, cwd: Path, release: dict, observation_hash: str) -> dict:
+    """Recompute the supported gate and bind its inputs to the rendered release.
+
+    This checks reproducibility/identity, not authenticity of supplied field records
+    or proof that a holdout was untouched. Only the head-validation task is supported.
+    """
+    required = {"report", "protocol", "predictions"}
+    if not isinstance(entry, dict) or set(entry) != required:
+        raise ValueError("Each acceptance entry needs report, protocol and predictions paths")
+    paths = {key: Path(value) if Path(value).is_absolute() else cwd / value
+             for key, value in entry.items()}
+    hashes = {key: sha256(path) for key, path in paths.items()}
+    supplied = json.loads(paths["report"].read_text())
+    if not isinstance(supplied, dict) or supplied.get("passed") is not True:
+        raise ValueError("Acceptance check failed; current release retained")
+    checked = evaluate(paths["predictions"], paths["protocol"])
+    if supplied != checked or not checked["passed"]:
+        raise ValueError("Acceptance report does not reproduce from its protocol and predictions")
+    if hashes != {key: sha256(path) for key, path in paths.items()}:
+        raise ValueError("Acceptance artifacts changed during validation")
+    sources = release.get("sources", {})
+    expected = {
+        "model_sha256": sources.get("forward", {}).get("sha256"),
+        "code_sha256": release.get("code_sha256"),
+        "observations_sha256": observation_hash,
+        "protocol_sha256": sources.get("validation_protocol", {}).get("sha256"),
+        "predictions_sha256": sources.get("validation_predictions", {}).get("sha256"),
+    }
+    for key, value in expected.items():
+        if (not isinstance(value, str) or len(value) != 64
+                or any(c not in "0123456789abcdef" for c in value)
+                or checked.get(key) != value):
+            raise ValueError(f"Acceptance {key} does not match the rendered release")
+    if checked["task"] != "free-running-head-validation":
+        raise ValueError("Unsupported acceptance task")
+    return {"name": paths["report"].name, "sha256": hashes["report"],
+            "task": checked["task"], "period": checked["period"], **expected}
 
 
 def run(config: dict, status_path: Path) -> dict:
@@ -47,21 +86,19 @@ def run(config: dict, status_path: Path) -> dict:
                 atomic_json(status_path, report)
             if not config.get("acceptance_reports"):
                 raise ValueError("At least one explicit acceptance report is required")
-            report["acceptance"] = []
-            for filename in config["acceptance_reports"]:
-                path = Path(filename)
-                path = path if path.is_absolute() else cwd / path
-                acceptance = json.loads(path.read_text())
-                if acceptance.get("passed") is not True:
-                    raise ValueError("Acceptance check failed; current release retained")
-                report["acceptance"].append({"name": path.name, "sha256": sha256(path)})
+            page_hash = sha256(config["page"])
             payload = read_payload(config["page"])
             source = payload.get("release", {}).get("sources", {}).get("observations", {})
             if source.get("sha256") != qc["input_sha256"]:
                 raise ValueError("Rendered run does not identify the ingested observation batch")
             if payload["meta"]["vintage"] < qc["last_date"][:7]:
                 raise ValueError("Model origin predates the observation batch")
-            manifest = publish(config["page"], root)
+            report["acceptance"] = [_acceptance(entry, cwd, payload["release"], qc["input_sha256"])
+                                    for entry in config["acceptance_reports"]]
+            if sha256(config["observations"]) != qc["input_sha256"]:
+                raise ValueError("Observation batch changed during the update")
+            manifest = publish(config["page"], root, expected_sha256=page_hash,
+                               acceptance=report["acceptance"])
             report.update(state="published", release_sha256=manifest["page_sha256"])
         except (ValueError, OSError, KeyError, TypeError) as exc:
             report.update(state="failed", error=str(exc))

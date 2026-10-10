@@ -287,7 +287,7 @@ body.story-mode .analyst-only{display:none!important}
 <div id="app" hidden>
 
 <section class="intro" aria-label="Basin overview">
-  <div><div class="eyebrow" id="introTag"></div><h2 id="introTitle"></h2><p id="introText"></p><p id="newEvidence" style="margin-top:14px;font-size:13px;color:#ffe0b5"></p></div>
+  <div><div class="eyebrow" id="introTag"></div><h2 id="introTitle"></h2><p id="introText"></p><p id="newEvidence" style="margin-top:14px;font-size:13px;color:#ffe0b5"></p><p id="decisionNote" style="margin-top:12px;font-size:13px;color:#ffe0b5"></p></div>
   <div class="intro-facts" id="releaseFacts"></div>
 </section>
 <details class="drawer" id="drawer">
@@ -408,7 +408,7 @@ body.story-mode .analyst-only{display:none!important}
     </div>
     <div id="rankWrap"></div>
     <div id="rankTbl" hidden></div>
-    <p class="warnnote"><span id="cav2Short"></span> <button class="link" data-cav="2" data-i18n="more">More</button></p>
+    <p class="warnnote" id="rankingLimit"></p><p class="warnnote"><span id="cav2Short"></span> <button class="link" data-cav="2" data-i18n="more">More</button></p>
   </section>
 </div>
 
@@ -513,7 +513,7 @@ const I18N = {
   timeseries:"Time series", tssubs:"Subsidence", tshead:"Layer-2 head", fanavg:"Fan average", hop:"play runs one by one",
   astable:"Show as table", aschart:"Show as chart", levers:"Policy levers", leversu:"pumping by water-use class, relative to {rec}",
   starts:"Policy starts", reset:"Reset to baseline", suggest:"Suggestions:", pin:"Pin this policy", share:"Copy share link",
-  ranking:"What each lever buys", rkcm:"cm avoided by {H}", rkgwh:"per 100 GWh/yr forgone", more:"More",
+  ranking:"Conditional model comparison", rkcm:"cm avoided by {H}", rkgwh:"per 100 GWh/yr forgone", more:"More",
   ttowns:"Townships", thsr:"High-speed rail", tsec:"Section", tcmp:"Compare pinned", ttrust:"Where the model is trusted",
   sortby:"Sort by", sbenefit:"Benefit of the policy", sbase:"Baseline sinking to {H}", sname:"Name", csv:"Download CSV",
   thr:"Screening threshold 1/", secaxis:"Fan axis", sechsr:"Along the rail", sechuwei:"West-east through Huwei", secdraw:"Draw on the map",
@@ -528,7 +528,7 @@ const I18N = {
   bannerT:"The model runs free from Dec {y}. Its {m}-month held-out test failed (it drifted: {r} m error at the wells against {c} m for repeating the past average), so every value after Dec {y} is the model's own, untested trend.",
   bannerP:"The model runs free from Dec {y}. It passes a {m}-month held-out test once each well's constant offset is removed ({r} m error against {c} m for the best simple forecast); every value after Dec {t} is its own, untested trend.",
   bannerPS:"Passes a {m}-month held-out test after each well's offset; untested after Dec {t}.",
-  tAvoid:"Avoided subsidence", tArea:"Area sinking > {t} cm/yr", tHsr:"Rail: max gradient", tHead:"Layer-2 head recovery", tCost:"Pumping cut (the cost)", tConf:"Confidence",
+  tAvoid:"Avoided subsidence", tArea:"Area sinking > {t} cm/yr", tHsr:"Rail: max gradient", tHead:"Layer-2 head recovery", tCost:"Pumping cut (the cost)", tConf:"Sample sign agreement",
   baseline:"Business as usual", policy:"Policy"},
  zh: {title:"濁水溪沖積扇數位孿生：政策探索", subtitle:"抽水政策如何改變地層下陷（雲林、彰化）",
   story:"導覽", analyst:"分析", modelcard:"模型說明", why:"原因", map:"地圖", vdiff:"差異", vside:"並排", vswipe:"滑動比較",
@@ -537,7 +537,7 @@ const I18N = {
   timeseries:"時間序列", tssubs:"地層下陷", tshead:"第二含水層水頭", fanavg:"全扇平均", hop:"逐一播放模擬",
   astable:"以表格顯示", aschart:"以圖表顯示", levers:"政策槓桿", leversu:"各用水類別抽水量，相對於{rec}",
   starts:"政策開始", reset:"回到基準情境", suggest:"建議：", pin:"釘選此政策", share:"複製分享連結",
-  ranking:"各槓桿的效益", rkcm:"{H}年前減少下陷（公分）", rkgwh:"每減少100 GWh/年", more:"更多",
+  ranking:"模型假設下的情境比較", rkcm:"{H}年前減少下陷（公分）", rkgwh:"每減少100 GWh/年", more:"更多",
   ttowns:"鄉鎮", thsr:"高鐵", tsec:"剖面", tcmp:"比較釘選政策", ttrust:"模型可信之處",
   sortby:"排序", sbenefit:"政策效益", sbase:"基準情境至{H}下陷", sname:"名稱", csv:"下載CSV",
   thr:"篩選門檻 1/", secaxis:"扇軸", sechsr:"沿高鐵", sechuwei:"經虎尾東西向", secdraw:"在地圖上繪製",
@@ -552,7 +552,7 @@ const I18N = {
   bannerT:"模型自{y}年12月起自行運算。它的{m}個月保留年份檢驗未通過（會漂移：井位誤差 {r} 公尺，單純重複過去平均只有 {c} 公尺），因此{y}年12月以後的數值都是模型本身未經驗證的趨勢。",
   bannerP:"模型自{y}年12月起自行運算。去除各井的固定偏差後，它通過{m}個月的保留年份檢驗（誤差 {r} 公尺，最佳簡單預測 {c} 公尺）；{t}年12月以後的數值都是模型本身未經檢驗的趨勢。",
   bannerPS:"去除各井固定偏差後通過{m}個月檢驗；{t}年12月以後未經檢驗。",
-  tAvoid:"減少的下陷量", tArea:"下陷速率 > {t} 公分/年的面積", tHsr:"高鐵：最大差異沉陷", tHead:"第二含水層水頭回升", tCost:"減抽量（代價）", tConf:"可信度",
+  tAvoid:"減少的下陷量", tArea:"下陷速率 > {t} 公分/年的面積", tHsr:"高鐵：最大差異沉陷", tHead:"第二含水層水頭回升", tCost:"減抽量（代價）", tConf:"樣本方向一致性",
   baseline:"維持現狀", policy:"政策"}
 };
 let LANG = "en";
@@ -821,7 +821,7 @@ const confWord = (a, n) => a == null ? "na" : a/n >= .9 ? "robust" : a/n >= .66 
 // another model shown beside this one that answers less than half as much makes the answer
 // uncertain, however well the parameter sets of this one agree
 const structWeak = kp => kp.alt != null && kp.avoid > 0 && kp.alt / kp.avoid < .5;
-const WORD = {en:{robust:"robust", likely:"likely", uncertain:"uncertain", na:"not measured"}, zh:{robust:"穩健", likely:"可能", uncertain:"不確定", na:"未量測"}};
+const WORD = {en:{robust:"≥90% agree", likely:"≥66% agree", uncertain:"low or mixed", na:"not measured"}, zh:{robust:"≥90%一致", likely:"≥66%一致", uncertain:"低或混合", na:"未量測"}};
 const lowConf = i => D.townSkill ? D.townSkill[i].low : true;
 
 // ---------- headline and tiles ----------------------------------------------------------
@@ -998,7 +998,7 @@ function renderTiles() {
   const kmA = D.alt && D.alt.spread_km != null ? Math.round(D.alt.spread_km) : null;
   const altLine = !isB && kp.alt != null ? `<div class="alt"><span class="lg">${zh ? `${altWords()}：${f2(kp.alt)} 公分` : `${altWords()[0].toUpperCase() + altWords().slice(1)}: ${f2(kp.alt)} cm`}${xl}</span><span class="sh">${zh ? `${kmA ?? ""}公里模型：${f2(kp.alt)} 公分` : `${kmA != null ? kmA + " km" : "other"} model: ${f2(kp.alt)} cm`}${xl}</span></div>` : "";
   tiles.push(tile("tF", t("tConf"), isB ? "–" : (kp.agree != null ? `${kp.agreeLB ? "≥" : ""}${kp.agree}/${kp.nRuns}` : "–") + ` <span class="word ${w}">${WORD[LANG][w]}</span>`,
-    confR + ca + altLine, "", zh ? `模擬中政策減少下陷的參數組比例：≥90% 穩健，≥66% 可能，其餘不確定。一組參數的兩個初始場幾乎給出相同答案，所以按參數組計算。這些模擬只改變參數與初始場，不改變模型結構；因此旁邊列出${D.alt ? altWords(true) : "另一個模型"}的答案，當它不到本模型的一半時，評語為「不確定」。` : `Share of the parameter sets in which the policy reduces subsidence: robust ≥ 90 %, likely ≥ 66 %, uncertain below. A set's initial fields give almost the same answer, so sets are counted, not runs. The runs vary parameters and initial fields only, not the model's structure, so ${D.alt ? altWords(true) : "another model"}'s answer is shown beside it; when that gives less than half this model's value the word is "uncertain".`,
+    confR + ca + altLine, "", zh ? `模擬中政策減少下陷的參數組比例：標籤僅描述樣本方向一致性，不代表真實政策結果的機率或驗證。一組參數的兩個初始場幾乎給出相同答案，所以按參數組計算。這些模擬只改變參數與初始場，不改變模型結構；因此旁邊列出${D.alt ? altWords(true) : "另一個模型"}的答案，當它不到本模型的一半時，評語為「不確定」。` : `Share of sampled parameter sets in which modeled subsidence falls. The label describes sign agreement only, not a calibrated probability or validated policy outcome. A set's initial fields give almost the same answer, so sets are counted, not runs. The runs vary parameters and initial fields only, not the model's structure, so ${D.alt ? altWords(true) : "another model"}'s answer is shown beside it; when that gives less than half this model's value the word is "uncertain".`,
     cavLink(2, zh ? "模型結構：抽水分散範圍" : "model structure: stress spread") + "<br>" + cavLink(1, TP() && TP().passed ? (zh ? `保留年份：${testedWord(true)}` : `held-out years: ${testedWord(true).replace("tested: ", "")}, decade untested`) : (zh ? "保留年份檢驗未通過" : "held-out test failed (drift)")) + "<br>" + cavLink(6, zh ? "未見過的井：不如內插" : "unseen wells: worse than interpolation") + "<br>" + cavLink(4, zh ? `${D.modelcard.bounds_at}個參數在邊界` : `${D.modelcard.bounds_at} parameters at bounds`)));
   $("tiles").innerHTML = tiles.join("");
   const ts = $("thrSel"); if (ts) ts.onchange = () => { S.thr = +ts.value; update(true); };
@@ -1555,7 +1555,7 @@ function renderSection() {
   const hb = (l, c) => F.headBase[(l*A + c)*Y + yEnd];
   const dh = (l, c) => { if (!F.dHeadEnd || NOPOL()) return 0; let s = 0; for (let k = 0; k < K; k++) { const w = 1 - P.f[k]; if (w) s += w * F.dHeadEnd[((P.start*K + k)*M.L + l)*A + c]; } return s; };
   const gr = c => F.ground[c];
-  // one vertical axis in metres above sea level: ground, aquifers (ground − screen depth) and heads
+  // one vertical axis in metres above sea level: ground, aquifers (ground − catalog well depth) and heads
   const bot = Math.min(...cells.map(s => { const z = zoneName(s.c); return gr(s.c) - D.layerDepths[z][3] - D.layerThick[z][3] / 2; }));
   const top = Math.max(...cells.map(s => gr(s.c)), ...cells.flatMap(s => [0, 1, 2, 3].map(l => hb(l, s.c)))) + 5;
   const nt = niceTicks(bot, top, 5), lo = Math.min(bot, nt.ticks[0]), hi = top;
@@ -1768,8 +1768,8 @@ function ringsCaveat() {               // caveat 10: leveling skill against the 
   const zh = LANG === "zh", mc = D.modelcard, c = mc.column, pv = PREV(), pc = pv && pv.column;
   if (!c) return zh ? ["壓密柱技巧未載入。", ""] : ["The column's skill is not loaded.", ""];
   const n = c.n_rings ?? "–", better = pc && c.r2_oof > pc.r2_oof, lost = pc && c.rings < pc.rings - .05;
-  return zh ? [lost ? "下陷技巧提升，但壓密環的技巧退步。" : "壓密柱對水準測量與壓密環的技巧。", `對水準測量，本模型的跨折 R² 為 ${r3(c.r2_oof)}${pc ? `（前一版 ${r3(pc.r2_oof)}）` : ""}${mc.chain ? `，全鏈回推 ${r3(mc.chain.r2)}${pv && pv.chain ? `（前一版 ${r3(pv.chain.r2)}）` : ""}` : ""}。對${n}個壓密監測井（磁環，獨立檢驗）的 R² 為 ${r3(c.rings)}${pc ? `（前一版 ${r3(pc.rings)}）` : ""}${lost ? "：地表下陷較準，但壓密在各深度的分布未獲證實。" : "。"}`]
-    : [lost ? (better ? "Subsidence skill improved, but the compaction rings regressed." : "The compaction rings regressed.") : "The column's skill against leveling and rings.", ` Against the leveling this model scores out of fold R² ${r3(c.r2_oof)}${pc ? ` (previous model ${r3(pc.r2_oof)})` : ""}${mc.chain ? ` and ${r3(mc.chain.r2)} in the full-chain hindcast${pv && pv.chain ? ` (previous ${r3(pv.chain.r2)})` : ""}` : ""}. Against the ${n} compaction-monitoring wells (rings), an independent check, it scores R² ${r3(c.rings)}${pc ? ` (previous model ${r3(pc.rings)})` : ""}${lost ? ": the ground surface is matched better, but how the compaction is distributed with depth is no longer confirmed." : "."}`];
+  return zh ? [lost ? "下陷技巧提升，但壓密環的技巧退步。" : "水準測量擬合與未分層的壓密環代理檢查。", `對水準測量，本模型的跨折 R² 為 ${r3(c.r2_oof)}${pc ? `（前一版 ${r3(pc.r2_oof)}）` : ""}${mc.chain ? `，全鏈回推 ${r3(mc.chain.r2)}${pv && pv.chain ? `（前一版 ${r3(pv.chain.r2)}）` : ""}` : ""}。對${n}個壓密監測井（磁環；模型為未分層總柱代理）的 R² 為 ${r3(c.rings)}${pc ? `（前一版 ${r3(pc.rings)}）` : ""}${lost ? "：地表下陷較準，但模型仍無各深度的壓密預測。" : "。"}`]
+    : [lost ? (better ? "Subsidence skill improved, but the compaction rings regressed." : "The compaction rings regressed.") : "Leveling fit and depth-unmatched ring proxy.", ` Against the leveling this model scores out of fold R² ${r3(c.r2_oof)}${pc ? ` (previous model ${r3(pc.r2_oof)})` : ""}${mc.chain ? ` and ${r3(mc.chain.r2)} in the full-chain hindcast${pv && pv.chain ? ` (previous ${r3(pv.chain.r2)})` : ""}` : ""}. Against the ${n} compaction-monitoring wells (rings), using a depth-unmatched total-column proxy, it scores R² ${r3(c.rings)}${pc ? ` (previous model ${r3(pc.rings)})` : ""}${lost ? ": the ground surface is matched better, but the model still has no depth-resolved compaction prediction." : "."}`];
 }
 function recoveryCaveat() {            // caveat 11: the last fitted year's head recovery
   const zh = LANG === "zh", wf = D.wellsFan, n = wf ? wf.obs.length : 0;
@@ -1833,7 +1833,7 @@ function testRows() {                  // [test, this model, verdict, reference,
   if (mc.r2_kfold != null) rows.push([zh ? "未見過的井：絕對水位 R²" : "Unseen wells: absolute-level R²", r3(mc.r2_kfold), V(mc.verdict), `IDW ${r3(mc.r2_idw)}`, pv && pv.r2_kfold != null ? `${r3(pv.r2_kfold)} ${V(pv.verdict)}` : "–"]);
   if (mc.column) rows.push([zh ? "水準測量：壓密柱跨折 R²" : "Leveling: column out of fold R²", r3(mc.column.r2_oof), "", "", pv && pv.column ? r3(pv.column.r2_oof) : "–"]);
   if (mc.chain) rows.push([zh ? `水準測量：全鏈回推 R²（${mc.chain.n}點）` : `Leveling: full-chain hindcast R² (${mc.chain.n} sites)`, r3(mc.chain.r2), "", "", pv && pv.chain ? r3(pv.chain.r2) : "–"]);
-  if (mc.column) rows.push([zh ? `壓密環（${mc.column.n_rings ?? "–"}個，獨立）R²` : `Compaction rings (${mc.column.n_rings ?? "–"}, independent) R²`, r3(mc.column.rings), "", "", pv && pv.column ? r3(pv.column.rings) : "–"]);
+  if (mc.column) rows.push([zh ? `壓密環（${mc.column.n_rings ?? "–"}個，未分層代理）R²` : `Compaction rings (${mc.column.n_rings ?? "–"}, total-column proxy) R²`, r3(mc.column.rings), "", "", pv && pv.column ? r3(pv.column.rings) : "–"]);
   if (mc.policy) rows.push([zh ? "政策反應檢驗" : "Policy-response check", "", V(mc.policy), "", pv && pv.policy ? V(pv.policy) : "–"]);
   return rows;
 }
@@ -1925,11 +1925,13 @@ function releaseContext(l) {
   $("introTag").textContent = zh ? "濁水溪沖積扇 · 研究情境" : "CHOUSHUI ALLUVIAL FAN · RESEARCH SCENARIOS";
   $("introTitle").textContent = zh ? "探索地下水與地層下陷" : "A basin above. Four aquifers below.";
   $("introText").textContent = zh ? "探索抽水、水頭與地層下陷的關係。比較模型情境，並檢查觀測與模型的差異。" : "Explore how pumping, groundwater pressure and land subsidence connect. Compare conditional scenarios, then inspect the evidence behind them.";
+  $("decisionNote").textContent = zh ? "尚未有土庫深度配對的地層壓密驗證，也沒有經觀測確認的政策因果效果。請勿將情境排序視為建議。" : "No depth-matched Tuku compaction validation or observed causal policy effect is available. Scenario order is not a recommendation.";
+  $("rankingLimit").textContent = zh ? "此排序僅依模型假設；缺乏經驗證的抽水量、垂向壓密及政策效果。" : "Ranking follows model assumptions; pumping volumes, depth-resolved compaction and policy effects are unvalidated.";
   const nc = D.modelcard.new_data_challenge;
   $("newEvidence").textContent = nc ? (zh ? `新增觀測檢驗：${nc.stations}口井，模型 RMSE ${f2(nc.metrics.model_datum.rmse_m)} m，基準 ${f2(nc.metrics[nc.best_baseline].rmse_m)} m。${nc.beats_best_baseline ? "優於基準；政策因果效果尚未驗證。" : "未優於基準，仍為研究情境。"}` : `New-data check · ${nc.stations} wells · model RMSE ${f2(nc.metrics.model_datum.rmse_m)} m vs ${f2(nc.metrics[nc.best_baseline].rmse_m)} m baseline. ${nc.beats_best_baseline ? "Beats this baseline; intervention effects remain unvalidated." : "Does not beat the baseline. Research use only."}`) : "";
   const facts = [[vintage, zh ? "模型預報起點" : "model forecast origin"], [M.dx / 1000 + " km", zh ? "模型網格" : "model resolution"], [String(M.L), zh ? "含水層" : "aquifer layers"], [rel && rel.offline ? (zh ? "離線" : "Offline") : (zh ? "連線" : "Connected"), zh ? "瀏覽方式" : "viewer"]];
   $("releaseFacts").innerHTML = facts.map(([v,k]) => `<div><strong>${esc(v)}</strong>${esc(k)}</div>`).join("");
-  $("geometryNote").textContent = zh ? "地表來自高程資料；地下含水層為示意，採用井篩深度中位數及假設厚度，並非鑽探地質界面。水頭是壓力高程。圖示垂直誇張與分層間距不改變任何數值。" : "Terrain uses elevation data. Underground layers are schematic: median well-screen depths and assumed thicknesses, not surveyed geological interfaces. Heads are pressure elevations. Vertical exaggeration and exploded gaps never change the numerical results.";
+  $("geometryNote").textContent = zh ? "地表來自高程資料；地下含水層為示意，採用井深中位數及假設厚度，並非鑽探地質界面。水頭是壓力高程。圖示垂直誇張與分層間距不改變任何數值。" : "Terrain uses elevation data. Underground layers are schematic: median total well depths and assumed thicknesses, not surveyed geological interfaces. Heads are pressure elevations. Vertical exaggeration and exploded gaps never change the numerical results.";
 }
 function setLang(l) { releaseContext(l); LANG = l; document.documentElement.lang = l === "zh" ? "zh-Hant" : "en"; $("lEn").setAttribute("aria-pressed", l === "en"); $("lZh").setAttribute("aria-pressed", l === "zh");
   const vars = {rec: `${M.years[0]}-${M.years[YO]}`, H: M.years[Y-1]};

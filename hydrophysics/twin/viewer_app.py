@@ -1167,7 +1167,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           prev_temporal: str | None = DEFAULT_PREV_TEMPORAL,
           rescore_csv: str | None = DEFAULT_RESCORE,
           three: str = "inline", public: bool = True, max_bytes: int | None = None,
-          observations_csv: str | None = None, challenge_json: str | None = None) -> dict:
+          observations_csv: str | None = None, challenge_json: str | None = None,
+          validation_protocol: str | None = None,
+          validation_predictions: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1366,6 +1368,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     payload["release"] = provenance({
         "forward": forward_npz, "basis": basis_npz, "theta": theta_json,
         "observations": observations_csv,
+        "validation_protocol": validation_protocol,
+        "validation_predictions": validation_predictions,
         "new_data_challenge": challenge_json,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
@@ -1599,6 +1603,8 @@ def main(argv=None) -> None:
     ap.add_argument("--three", choices=("cdn", "inline", "none"), default="inline")
     ap.add_argument("--observations", help="QC observation CSV already identified by the forward run")
     ap.add_argument("--challenge", help="Frozen-model new-data challenge report, shown as aggregates")
+    ap.add_argument("--validation-protocol", help="Protocol bound to the update acceptance report")
+    ap.add_argument("--validation-predictions", help="Predictions bound to update acceptance")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1619,6 +1625,8 @@ def main(argv=None) -> None:
           prev_temporal=opt(args.prev_temporal), rescore_csv=opt(args.rescore_csv),
           three=args.three, public=not args.private, observations_csv=args.observations,
           challenge_json=args.challenge,
+          validation_protocol=args.validation_protocol,
+          validation_predictions=args.validation_predictions,
           log=lambda s: print(s, flush=True))
 
 

@@ -239,10 +239,39 @@ lock prevents overlapping updates. Nonzero exits, timeouts, stale observations, 
 acceptance reports and mismatched observation lineage retain the previous release.
 
 Configuration fields are `cwd`, `release_root`, `observations`, `page`, `steps`
-(non-empty list of command argument lists), `acceptance_reports` (non-empty list of JSON
-reports with `passed: true`), and optional `fetch`, `timeout_seconds`, `max_age_days` and
+(non-empty list of command argument lists), `acceptance_reports` (the artifact bindings
+below), and optional `fetch`, `timeout_seconds`, `max_age_days` and
 `as_of`. Relative data paths resolve against `cwd`. Commands inherit environment
 credentials; their arguments and output are not copied into status files.
+
+As of October 7, a boolean passing report alone is rejected. Each acceptance entry
+must identify all three local files:
+
+```json
+{"report": "acceptance.json", "protocol": "protocol.json", "predictions": "predictions.csv"}
+```
+
+The runner recomputes `validation.evaluate(predictions, protocol)` and requires an
+exact match to the report. It currently supports only `free-running-head-validation`;
+this is not a subsidence or policy-effect gate. The protocol must additionally
+identify `code_sha256` and `observations_sha256` for publication. Its `model_sha256`
+must equal the rendered page's forward-artifact hash. Historical evaluation can
+still run without these extra fields, but cannot approve an update.
+
+Render with `--validation-protocol protocol.json --validation-predictions predictions.csv`
+so the page's source manifest binds the exact protocol (including task period and
+criteria) and predictions. Only hashes/names are embedded; the prediction table is
+not published. Code, forward run, observation batch, protocol and prediction hashes
+must all match the recomputed report. The accepted manifest retains the report hash,
+task, period and input identities. Changed evidence, a changed observation file or a
+page modified between checking and publishing retains the previous release.
+
+These checks establish artifact consistency and repeatable scoring. They do not
+attest that a manually declared registration date is genuine, that the holdout was
+unused, or that measured interventions establish causality. Preserve independently
+timestamped prediction issuance and source availability for prospective evaluation.
+The standalone `release publish` command remains a local **research-artifact**
+publisher; it does not run or claim observational acceptance.
 
 The simulation producer must store `observations_sha256` in its forward NPZ. The viewer
 accepts `--observations` only when that hash matches, and the update runner also checks

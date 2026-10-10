@@ -76,3 +76,62 @@ def test_wells_lonlat_crs_mismatch_raises(data):
     d = replace(data, crs="EPSG:4326")
     with pytest.raises(ValueError, match="crs"):
         wells_lonlat(d)
+
+
+def test_et_download_dates_are_aligned_without_shifting_gaps(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from hydrophysics.et import _fetch_one
+
+    monkeypatch.setitem(sys.modules, "aquascope.collectors.openmeteo", None)
+    payload = {"daily": {"time": ["2024-01-03", "2024-01-01"],
+                         "et0_fao_evapotranspiration": [3.0, 1.0]}}
+    monkeypatch.setitem(sys.modules, "requests", SimpleNamespace(
+        get=lambda *a, **kw: SimpleNamespace(json=lambda: payload)))
+    values = _fetch_one(23.5, 120.5, "2024-01-01", "2024-01-03")
+    np.testing.assert_allclose(values, [1.0, np.nan, 3.0])
+    payload["daily"]["time"] = ["2024-01-01", "2024-01-01"]
+    assert _fetch_one(23.5, 120.5, "2024-01-01", "2024-01-03") is None
+
+
+def test_total_et_outage_cannot_produce_zero_weather_or_cache(data, tmp_path, monkeypatch):
+    import hydrophysics.et as et
+
+    monkeypatch.setattr(et, "wells_lonlat", lambda d: (np.zeros(d.n_wells),
+                                                      np.zeros(d.n_wells)))
+    monkeypatch.setattr(et, "_fetch_one", lambda *a: None)
+    monkeypatch.setattr(et.time, "sleep", lambda *a: None)
+    cache = tmp_path / "failed.npz"
+    with pytest.raises(ValueError, match="No ET0 observations"):
+        et0_for_data(data, str(cache), retries=1, pause=0)
+    assert not cache.exists()
+
+
+def test_spatial_et_fill_retains_imputation_mask(data, tmp_path, monkeypatch):
+    import hydrophysics.et as et
+
+    monkeypatch.setattr(et, "wells_lonlat", lambda d: (np.zeros(d.n_wells),
+                                                      np.zeros(d.n_wells)))
+    values = iter([None] + [np.full(data.n_days, 2.0)] * (data.n_wells - 1))
+    monkeypatch.setattr(et, "_fetch_one", lambda *a: next(values))
+    monkeypatch.setattr(et.time, "sleep", lambda *a: None)
+    cache = tmp_path / "partial.npz"
+    result = et0_for_data(data, str(cache), retries=1, pause=0)
+    assert (result == 2.0).all()
+    with np.load(cache) as saved:
+        assert saved["spatially_imputed"][0].all()
+        assert not saved["spatially_imputed"][1:].any()
+
+
+def test_missing_weather_requires_explicit_repair(data):
+    from dataclasses import replace
+
+    rain = data.rainfall.copy()
+    rain[0, 0] = np.nan
+    with pytest.raises(ValueError, match="Rainfall contains missing"):
+        net_recharge(replace(data, rainfall=rain), et0=np.ones_like(rain))
+    with pytest.raises(ValueError, match="ET0 must be finite"):
+        net_recharge(data, et0=np.full_like(rain, np.nan))
+    with pytest.raises(ValueError, match="ET0 must be finite"):
+        net_recharge(data, et0=np.ones((1, 1)))
