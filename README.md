@@ -201,7 +201,7 @@ the page uses the full 36-run fields; otherwise it builds the result from the pe
 response basis and prints that fast estimate's error. Tabs hold township small multiples
 (low-confidence townships flagged from the leveling support), the THSR profile, a
 cross-section, pinned-policy comparison and "where the model is trusted". The 3D exploded
-block is a drawer, opened automatically on desktop and on demand on mobile. A five-step story mode guides first-time
+block is a drawer, closed until opened (the bundled renderer is only evaluated then). A five-step story mode guides first-time
 readers, and the page offers EN/中文, keyboard control, table views and CSV/PNG export.
 The known limits from `docs/superpowers/STATE.md` are named next to the numbers they
 qualify. Rail and river lines are OpenStreetMap traces (`python -m hydrophysics.twin.app.geo`,
