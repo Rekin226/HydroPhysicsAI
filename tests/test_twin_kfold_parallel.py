@@ -226,6 +226,13 @@ def test_merge_refuses_a_missing_fold_or_a_mixed_configuration(tmp_path):
                      "abc123")
     write_fold_file(str(tmp_path), g1, same, (0, 0.0), 1.0, SIDS)
     assert merge(str(tmp_path), log=lambda *_: None)["n_folds"] == 2
+    # a commit made while the jobs were queued changes the recorded git_commit only:
+    # provenance, logged, not a refusal
+    later = _flow_cfg(_args(only_fold=1), g.n_active, None, None, None, None, None, "def456")
+    write_fold_file(str(tmp_path), g1, later, (0, 0.0), 1.0, SIDS)
+    lines = []
+    assert merge(str(tmp_path), log=lines.append)["n_folds"] == 2
+    assert any("git_commit 'def456' differs" in ln for ln in lines)
     with pytest.raises(ValueError, match="outside 0..1"):
         kfold_wells(g, obs, idx, lay, rch, only_fold=2, **kw)
 

@@ -339,4 +339,40 @@ now records the rainfall file's hash in `stage3_theta.json`.
 recipe was rerun unchanged on the rebuilt rainfall, then the column refitted on leveling
 (the column pairs with its head field), the posterior redrawn, the forward archive and
 response basis rebuilt with the innovation update, and every evidence tool rerun into
-`*_cwa` directories. Results: pending (this section is completed when the batch finishes).
+`*_cwa` directories (batch 8, 18 jobs, finished 2026-10-12; `results/twin_runs/stage3_datum_gate_cwa/`,
+`results/twin_forward/datum_gate_cwa.npz`, `results/twin/*_cwa/report.json`).
+
+**Results: the rebuilt rainfall changes nothing the evidence can see.** Flow fit: in-sample
+R² 0.865 (was 0.865); k-fold R² +0.643 against IDW +0.702 (was +0.643 / +0.702); own-mean
+anomaly R² +0.342 against +0.605 (unchanged); the gate still fails. The parameters moved
+within their posterior spread except the pumping-spread kernel, which fell from 2.7 km to
+its 0.5 km lower bound (posterior median 0.8 km, was 3.2 km) with no change in skill: the
+well record does not identify it, and that bound says so, not anything about the aquifer.
+Leveling column: R² 0.652 in sample, 0.649 out of fold (was 0.656 / 0.652). Heads 2023-26
+on the same 158 wells and 6,186 well-months: the model with its datum 2.042 m (was 2.048 m)
+against climatology 1.667 m; the statistical layer stays at 1.507 m because it does not use
+the physics; the physics' own anomaly ratio 0.999 (was 1.001). The 90 % ensemble band
+covered 74.7 % (was 74.7 %), the combined band 92.9 % (was 92.6 %). Deep piles: 0.55 cm
+on the three piles below 200 m, R² 0.90 (was 0.50 cm, 0.92); 1.30 cm on all four (was
+1.27); after the feeds stopped 0.65 cm (was 0.70). Rings 2023-25: cumulative R² +0.24
+(was +0.23), rates still not captured. Projection: basin-mean subsidence 2026-32 under
+the baseline 2.66 cm (was 2.68), avoided by the 30 % irrigation cut 0.52 cm (was 0.50),
+by retiring aquaculture 0.56 cm (was 0.58).
+
+**Reading.** The dry hole was real and sat on the recharge field for two years, but recharge
+is 4-5 % of rainfall in this calibration and the heads are set by pumping and by the apex
+and coastal boundaries; the 2023-25 forcing screen (`results/twin/forcing_experiment/`)
+had already shown observed weather moving the head RMSE by 0.03 m and observed pumping by
+0.22 m. Correct rainfall was owed to the record, and the record now runs to October 2026
+with a station named behind every day, which is what the next recalibration and a
+gauge-based forcing experiment need. It is not a route to head skill; section 8's
+deliveries and the pumping record are.
+
+**Decision.** The page keeps the registered model (`datum_gate_innov`): both prospective
+registrations are hash-bound to it, the recalibrated model is not distinguishable from it
+on any test above, and re-registering is ruled out. `stage3_datum_gate_cwa` is the
+reference for any later calibration (it records the rainfall file's hash) and its
+artefacts are kept beside the registered ones. One tooling note: `merge_folds` now treats
+a `git_commit` that differs between the full fit and a fold as provenance (logged) rather
+than as a different configuration, since a commit made while the fold jobs were queued
+had stopped the merge without changing what they ran.

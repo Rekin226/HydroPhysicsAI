@@ -136,7 +136,12 @@ only after reading the comparison. A recalibration on new rainfall is the whole 
 `results/twin_runs/par8/jobs.sh` holds the deliverable's recipe (full fit + 5 parallel folds
 under MPS, `merge_folds`, posterior, two leveling columns, forward with `--update-method
 innovation`, response basis, then challenge/coverage/hybrid/deep-pile/ring tools), started
-with `tmux new -d -s hydro-par8 "bash results/twin_runs/par8/controller.sh"`.
+with `tmux new -d -s hydro-par8 "bash results/twin_runs/par8/controller.sh"`. The October
+2026 rerun (`stage3_datum_gate_cwa`, `datum_gate_cwa.npz`, `results/twin/*_cwa/`) scored
+within noise of the registered model on every test (evidence section 11), so the page above
+is still built from `datum_gate_innov`, to which the prospective registrations are bound.
+Do not commit mid-batch from the checkout the jobs run in: the fold files record `HEAD`,
+and `merge_folds` logs (no longer refuses) a commit-only difference.
 
 ## Fetching dated observations
 
