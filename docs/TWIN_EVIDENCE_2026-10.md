@@ -217,8 +217,80 @@ reports exist at a predictable address from January 2024 to 2026-01 (25 monthly 
 `data_fetch_api/new_measurements/wra_monthly_reports/`, with their source record); their
 text tables carry the six deep benchmarks (monthly and annual compression) and the
 observation-well heads, while the ring and GNSS values appear only as numbers printed on
-figures, so they are not a reliable source for the ring record. The reliable extension of
-the rings is the vendor API that already supplied the heads through October 2026: the ring
-cache stops in May 2025 and a refresh needs the WiseEnvr credentials in the environment
-(`docs/TWIN_RELEASE.md`), after which `twin.ring_holdout` can be rerun to September 2026,
-seventeen months no model choice has seen.
+figures, so they are not a reliable source for the ring record. The vendor API is not an
+extension either: its rings and deep benchmarks end in May 2025 even in files fetched on
+30 September 2026, and the open-data deep-pile feed ends in April 2025 (section 10). The
+deep-benchmark tables of the monthly reports are therefore the only subsidence numbers
+past May 2025; section 10 transcribes and scores them.
+
+## 10. Subsidence evidence to January 2026, transcribed from the printed monthly reports
+
+Every instrument feed the project can reach stops in spring 2025: the vendor API's rings
+and deep benchmarks end in May 2025 even in files fetched on 30 September 2026, and the
+WRA open-data deep-pile feed (data.gov.tw 58339, read through a real browser because the
+host now answers plain clients with a script challenge) ends on 16 April 2025. The only
+later subsidence numbers in the public domain are printed: table 3 of each monthly
+地層下陷監測整合分析月報 gives, for six deep benchmarks (深層樁), the compression of the
+month and of the trailing twelve months in centimetres. Four stand on the model grid
+(溪州國小 300 m, 土庫國中 400 m, 秀潭國小 70 m, 中科虎尾 300 m); the deep piles were never
+used in any calibration or model choice.
+
+**Transcription with the Claude API, verified three ways** (`twin.report_extract`,
+`results/twin/report_extract/deep_piles/`). Each report's table page was transcribed
+twice, independently: the page as a PDF document by `claude-opus-5-5` and the page as
+poppler layout text by `claude-sonnet-5-5`, both under a structured-output schema that
+allows only copying (null where the table prints —). The two agreed on 135
+of 143 values; in the other 8 the text model had dropped the 秀潭 row, a third
+transcription (the PDF model on the text) agreed with the first, and the pages were read
+by eye here. All 143 values are verified; 181 k input and 61 k output tokens.
+Two checks on the printed record follow. The trailing-twelve-month identity
+Y(m) − Y(m−1) = M(m) − M(m−12) holds within rounding for 48 of 49 testable months (the
+exception is the reports' own arithmetic at 秀潭 in March 2025, 1.0 cm; the reports also
+switch 土庫國中 between its 400 m and 300 m sensors in three months, which the check keys
+on). Against the raw hourly feed, the printed monthly value is matched within 0.15 cm in
+44 of 59 overlapping months, and every mismatch coincides with a step in the feed (a
+step at every pile on 29 February to 1 March 2024, resets at 溪州 in March 2025 and at
+灣內) or with 灣內, whose feed reads with the opposite sign. The printed values, which the
+agency has already screened, are used; the feed is the check.
+
+**Cumulative compression** is reconstructed per pile by weighted least squares on the
+printed values (monthly differences at weight 1, trailing-twelve-month differences at
+0.5 and only where the same sensor was printed twelve months earlier), so a month printed
+as — is bridged by the year value and nothing is interpolated across an unconstrained
+gap (195 constraints, residual RMS 0.05 cm). The sum of the twelve printed 2024
+values agrees with the printed 2024 trailing-year value where both exist (土庫 3.11 vs 3.1 cm).
+
+**Scores** (`twin.deep_pile_holdout`, `results/twin/deep_pile_holdout/`): the forward
+archive's column (ensemble mean; 10–90 % band from the year-end members) at the pile's
+cell, reference 31 December 2023, against the pile's printed trailing-year compression
+in the January 2024 report continued (base_continue) and no displacement (base_zero).
+
+| window | piles | model RMSE (R²) | continue last year | no change | inside 10–90 % |
+|---|---|---|---|---|---|
+| Jan 2024 – Dec 2025, all on grid | 4 | 1.27 cm (+0.45) | 1.09 cm | 3.53 cm | 2 of 4 |
+| same, piles anchored ≥ 200 m | 3 | 0.50 cm (+0.92) | 1.26 cm | 3.94 cm | 2 of 3 |
+| Jun 2025 – Jan 2026 (after every feed stopped), all | 4 | 0.70 cm | 2.01 cm | 0.62 cm | |
+| same, ≥ 200 m | 3 | 0.57 cm | 2.22 cm | 0.65 cm | |
+
+Per pile over the 24 months (observed / model / band, cm): 土庫國中 4.7 / 4.4 / 3.9–4.9;
+溪州國小 1.0 / 1.2 / 0.8–1.8; 中科虎尾 4.8 / 4.0 / 3.7–4.4; 秀潭國小 (70 m) 1.8 / 4.2 / 3.6–4.6.
+The median correlation of month-to-month increments is 0.55 (土庫 0.67, 虎尾 0.55,
+溪州 0.14): the column follows the spring compression and summer rebound that the piles
+record. After the feeds stopped, the column predicted the 2025 summer rebound at 土庫
+(−1.1 cm against −1.1 observed), over-predicted it at 虎尾 (−0.8 against +0.1) and is level
+with "no change" over those eight months, while continuing the previous year's rate is
+off by 2 cm.
+
+**Reading.** On the three piles that see most of the compacting column, the frozen
+projection's two-year compaction is within 0.8 cm of the agency's own numbers at every
+site, inside its band at two, and well ahead of both baselines; the 70 m pile is
+over-predicted by 2.4 cm because the column is total depth, which is the caveat the ring
+test already carries. This is the first subsidence evidence past May 2025 and the first
+on an instrument family the model never saw. It is not a clean holdout: three of the
+four piles stand at schools whose compaction rings were a Stage-2 target through 2022,
+the pooled R² rests on three or four sites, and the model runs its calibration
+climatology from the 2022 origin. The report carries these caveats verbatim; the page's
+evidence list carries the line. The same transcription route extends month by month as
+the WRA publishes: the series at the predictable address ran from January 2024 to
+January 2026 at the time of writing (the 2023 files are not there), and a new file needs
+one `twin.report_extract` run (earlier reports are cached) and one `twin.deep_pile_holdout` run.

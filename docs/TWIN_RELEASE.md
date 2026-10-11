@@ -210,6 +210,7 @@ python -m hydrophysics.twin.viewer_app \
   --ring-holdout results/twin/ring_holdout/report.json \
   --hybrid results/twin/hybrid_datum_gate_innov/report.json \
   --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
+  --deep-piles results/twin/deep_pile_holdout/report.json \
   --out results/twin/twin_app.html
 python -m hydrophysics.twin.release inspect results/twin/twin_app.html
 python -m hydrophysics.twin.browser_check \
@@ -230,6 +231,25 @@ python -m hydrophysics.twin.hybrid register ... --test-start 2026-11-01 --test-e
   --out results/twin/prospective_2026-11_hybrid
 python -m hydrophysics.twin.prospective score --registration results/twin/prospective_2026-11_hybrid \
   --new-wells <acquisitions through 2027-10> --out results/twin/prospective_2026-11_hybrid/score
+```
+
+The deep-benchmark line comes from the WRA monthly reports: `twin.report_extract`
+transcribes table 3 of each PDF twice with the Claude API (needs `ANTHROPIC_API_KEY`;
+`.env` is gitignored) and checks the numbers against each other, against the reports'
+own trailing-year arithmetic and against the open-data hourly feed; `twin.deep_pile_holdout`
+reconstructs each pile's cumulative compression and scores the frozen column against it:
+
+```bash
+set -a; . ./.env; set +a
+python -m hydrophysics.twin.report_extract \
+  --reports data_fetch_api/new_measurements/wra_monthly_reports \
+  --feed <open-data 58339 JSON dumps> --out results/twin/report_extract/deep_piles
+python -m hydrophysics.twin.deep_pile_holdout \
+  --piles results/twin/report_extract/deep_piles/deep_piles.csv \
+  --sites chou-shui-data/data/subsidence/deep_pile_sites.csv \
+  --forward results/twin_forward/datum_gate_innov.npz \
+  --members results/twin_forward/datum_gate_innov.members.npz \
+  --out results/twin/deep_pile_holdout
 ```
 
 The default includes the licensed Three.js renderer. The public payload contains
