@@ -212,7 +212,13 @@ What survives:
 | Tuku trial | 立法院預算中心 audit of the 黃金廊道 programme (zones A/B/C 523/1,242/1,808 ha, phased 2013-20); 公視 summary (verified): 1,056 public deep wells cut, closed or sealed by 2019 | programme areas and dates, not measured responses | public pages; the measured response must come from the WRA reports above |
 | InSAR 2023+ | none open from a Taiwanese agency; papers deposit nothing derived; COMET-LiCS frames exist but coverage of 彰雲 unchecked | fan-wide deformation would have to be computed from Sentinel-1 | LiCSBAS on a LiCSAR frame, or ASF HyP3 (Earthdata login) |
 
-The scout's role ends at pointers. The next step that the twin can absorb without new
-field access is the first row: the agency's monthly reports since 2023, extracted into the
-ring and GNSS caches by the same API (PDF support, structured output) and accepted only
-where the extracted values reproduce the vendor data over the months both cover.
+The scout's role ends at pointers. Following the first row by hand: the integrated monthly
+reports exist at a predictable address from January 2024 to 2026-01 (25 monthly files fetched into
+`data_fetch_api/new_measurements/wra_monthly_reports/`, with their source record); their
+text tables carry the six deep benchmarks (monthly and annual compression) and the
+observation-well heads, while the ring and GNSS values appear only as numbers printed on
+figures, so they are not a reliable source for the ring record. The reliable extension of
+the rings is the vendor API that already supplied the heads through October 2026: the ring
+cache stops in May 2025 and a refresh needs the WiseEnvr credentials in the environment
+(`docs/TWIN_RELEASE.md`), after which `twin.ring_holdout` can be rerun to September 2026,
+seventeen months no model choice has seen.
