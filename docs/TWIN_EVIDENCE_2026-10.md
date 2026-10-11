@@ -125,3 +125,94 @@ finding. Resolving it needs a target that sees the rate response: the 2023-25 ri
 and GNSS continuation (section 5) and the Tuku trial records requested in
 [FIELD_DATA_ACQUISITION.md](FIELD_DATA_ACQUISITION.md). Fitting the column on the
 rings themselves would make the judge part of the fit and was not done.
+
+## 7. A statistical layer beats climatology where the physics alone does not
+
+Section 1 scores the frozen free run against climatology and loses (ratio 1.23). After
+the origin the run knows nothing but its own state, so the only honest forecast
+ingredients are each well's climatology, the anomaly observed at the origin with the
+rate at which anomalies fade, and the physics' evolution of its updated state.
+`twin.hybrid score` builds four pre-specified forecasts from the fitted months only
+(`results/twin/hybrid_datum_gate_innov/report.json`, same 158 wells and 6,186 well-months
+as the challenge; `rho` is each well's lag-1 anomaly coefficient, median 0.86, nothing
+tuned on the test):
+
+| 2023-26, equal-well RMSE (m) | all | 2023 | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|
+| climatology (`clim`) | 1.667 | 1.804 | 1.620 | 1.515 | 1.273 |
+| `clim` + decayed last anomaly (`stat`) | **1.507** (ratio 0.90) | **1.432** | 1.516 | 1.478 | 1.266 |
+| `clim` + the physics' own anomaly (`phys`) | 1.669 (1.00) | 1.799 | 1.643 | 1.491 | 1.269 |
+| `clim` + half of each (`mix`) | 1.569 (0.94) | 1.587 | 1.566 | 1.473 | 1.257 |
+| the frozen free run at datum (section 1) | 2.048 (1.23) | 2.223 | 2.136 | 1.798 | 1.594 |
+
+Reading: anomaly persistence carries real forecast skill for about a year after the
+origin (21 % lower error in 2023) and converges to climatology afterwards, as it must.
+The physics' anomaly adds nothing on top of climatology at any lead, so the physics'
+value for the heads is the scenario *difference* it computes, not the absolute level. An
+in-sample regression of the two anomalies on the 2023-26 observations (reported in the
+file as a diagnostic, not a forecast) puts the weight on the persisted anomaly at 1.8 and
+on the physics' at 0.3: anomalies fade more slowly than a lag-1 model says, which a later
+registration may use, but this window cannot select it. With each well's fitted anomaly
+spread as the interval, the `stat` 90 % band covered 87.7 % of the observations.
+
+The `stat` forecast is registered prospectively for November 2026 to October 2027
+(`results/twin/prospective_2026-11_hybrid/`: 147 wells, 1,764 rows, anomalies persisted
+from each well's last observed month, 133 of them September 2026; `model_sha256` is the
+hash of its parameter file, no physics enters the point forecast). It is scored with the
+same `twin.prospective score` command as section 3's registration, which stays in force
+for the physics. Neither registration may be refitted or re-registered for its window.
+
+## 8. A forcing the model lacks: surface-water deliveries track the Yunlin heads
+
+Section 4 named canal deliveries first among the forcings that could carry the missing
+anomaly variance. The Jiji Weir's annual operating table (WRA, `水源運用 > 歷年營運水量統計表`,
+fetched 2026-10-11, 2006-2025, kept as `chou-shui-data/data/water/jiji_weir_annual_supply.csv`
+with its source note) gives the surface water delivered to the Changhua and Yunlin
+irrigation districts and the weir's inflow. `twin.forcing_diag`
+(`results/twin/diagnostics/jiji_deliveries.json`) correlates each county's annual mean
+head anomaly (observed minus the well's climatology) with its district's deliveries, with
+the inflow, and with the deliveries once the inflow is regressed out (14 years, 2012-2025):
+
+| annual mean head anomaly | wells | r with district deliveries | r with weir inflow | partial r, deliveries given inflow (p) |
+|---|---|---|---|---|
+| Changhua, layer 1 | 18 | 0.67 | 0.70 | 0.27 (0.35) |
+| Changhua, layer 2 | 37 | 0.62 | 0.57 | 0.34 (0.24) |
+| Yunlin, layer 1 | 19 | **0.88** | 0.78 | **0.76 (0.002)** |
+| Yunlin, layer 2 | 42 | **0.84** | 0.69 | **0.70 (0.005)** |
+
+Reading: in Yunlin the surface water delivered explains the year's head anomaly beyond
+what the basin's wetness explains (a dry year with normal deliveries and a dry year with
+cut deliveries, as 2021 and 2023, give different heads); in Changhua it does not separate
+from the inflow. Fourteen annual values are a screen, not a forcing, and deliveries are
+themselves decided from availability, so no causal weight is claimed. What it establishes
+is that the Yunlin district's delivery record is the next forcing to acquire at monthly
+resolution and to put into the recharge and pumping-substitution terms; the model has
+never seen it. The same probe found the WRA open-data feeds for the weir (daily operations,
+code 20503, and the hourly reservoir status) serving the latest day only, and the leveling
+"benchmark points" dataset to be a KML of locations without elevations; the monthly intake
+history and any 2022+ leveling results therefore have to come from the WRA's hydrological
+yearbooks or its monitoring systems, which is what the data scout (section 9) looked for.
+
+## 9. What public data exists for the two gaps: the data scout's verified leads
+
+`twin.data_scout` (Claude API, `claude-opus-5-5` with server-side web search and fetch;
+16 searches, 25 fetches, 1.93 M input tokens; `results/twin/data_scout/2026-10-11/`)
+was asked for *downloadable* sources for five targets and told to quote the page that
+proves each lead. Every lead was then probed by HTTP from here. The model's fetcher was
+refused by most `gov.tw` open-data pages, so many leads rest on search snippets and are
+marked unverified in `leads.json`; nothing from any lead has been read into the model.
+What survives:
+
+| gap | lead (verified = page opened and quoted) | what it gives | how to get it |
+|---|---|---|---|
+| subsidence past 2021 | WRA 地層下陷監測資訊整合服務系統, monthly 地層下陷監測整合分析月報 PDFs (verified; e.g. December 2024: deep-benchmark compaction, GNSS and heads by site for 彰雲嘉南屏, "雲林土庫鎮 4.9 公分為最大") and the 彰雲 monthly and InSAR bimonthly reports in the same system | monthly site values 2023-26 and the agency's own InSAR results | open PDFs; tables to be extracted and checked against the ring cache where they overlap |
+| subsidence past 2021 | 112年 彰化與雲林地區地層下陷監測及分析 report (GPN 1011201949, verified): per-benchmark leveling appendix on CD-ROM; the 2026 leveling standard requires contractors to deliver per-benchmark elevation histories as spreadsheets | 2022-23 leveling at every benchmark, later years in the same series | formal request to the WRA (the standard is the justification) |
+| canal deliveries | Jiji Weir annual table (verified here, section 8); the 計價水量月報表 held by 集管中心 | monthly bank-by-bank intake | request to 中區水資源分署 |
+| canal deliveries | 農田水利署 actual irrigation use by 管理處 (open data id 691, annual since 2015) | annual district use | open CSV; annual only |
+| Tuku trial | 立法院預算中心 audit of the 黃金廊道 programme (zones A/B/C 523/1,242/1,808 ha, phased 2013-20); 公視 summary (verified): 1,056 public deep wells cut, closed or sealed by 2019 | programme areas and dates, not measured responses | public pages; the measured response must come from the WRA reports above |
+| InSAR 2023+ | none open from a Taiwanese agency; papers deposit nothing derived; COMET-LiCS frames exist but coverage of 彰雲 unchecked | fan-wide deformation would have to be computed from Sentinel-1 | LiCSBAS on a LiCSAR frame, or ASF HyP3 (Earthdata login) |
+
+The scout's role ends at pointers. The next step that the twin can absorb without new
+field access is the first row: the agency's monthly reports since 2023, extracted into the
+ring and GNSS caches by the same API (PDF support, structured output) and accepted only
+where the extracted values reproduce the vendor data over the months both cover.

@@ -695,6 +695,8 @@ en: {
   evc_cov: "90 % band of the {n} runs covered {a} of {span} observations (needs ×{x}); combined band {c} ({st} wells, {m} well-months).",
   cov_line: "90 % band of the {n} runs covered {a} of {span} observations (needs ×{x}); combined band {c}.",
   evc_pro: "Prospective test registered {reg} for {a}–{b} ({n} wells); result pending.",
+  evc_hyb: "Statistical layer (climatology plus the last observed anomaly, decayed): error {s} m against {c} m for climatology and {r} m for the physics alone, {span} ({y1}: {s1} vs {c1} m). The physics' own anomaly adds nothing (×{p}); the policy effect is still the physics' scenario difference.",
+  evc_hyb_reg: "Statistical layer registered prospectively {reg} for {a}–{b} ({n} wells); result pending.",
   evc_pro_nodates: "Prospective test registered {reg} ({n} wells); result pending.",
   evc_ring: "{span} rings ({n} sites): model R² {a} vs continued-rate baseline {b} (cumulative).",
   ev_counts_long: "Tests: {p} passed, {f} failed (table below).", ev_independence: "Independence caveats", kv_details: "Details",
@@ -978,6 +980,8 @@ zh: {
   evc_cov: "{n} 次模擬的 90 % 範圍涵蓋了 {span} 觀測的 {a}（需擴大 ×{x}）；合併範圍 {c}（{st} 口井，{m} 井月）。",
   cov_line: "{n} 次模擬的 90 % 範圍涵蓋 {span} 觀測的 {a}（需擴大 ×{x}）；合併範圍 {c}。",
   evc_pro: "前瞻性檢驗已於 {reg} 登錄，期間 {a}–{b}（{n} 口井）；結果待定。", evc_pro_nodates: "前瞻性檢驗已於 {reg} 登錄（{n} 口井）；結果待定。",
+  evc_hyb: "統計層（氣候平均加上最後觀測距平的衰減）：{span} 誤差 {s} 公尺，氣候平均 {c} 公尺，純物理模式 {r} 公尺（{y1}：{s1} 對 {c1} 公尺）。物理模式自身距平無額外貢獻（×{p}）；政策效果仍取自物理模式的情境差。",
+  evc_hyb_reg: "統計層已於 {reg} 登錄前瞻性檢驗，期間 {a}–{b}（{n} 口井）；結果待定。",
   evc_ring: "{span} 壓密環（{n} 個站點）：模型 R² {a}，持續速率基準 {b}（累積量）。",
   ev_counts_long: "檢驗：{p} 項通過、{f} 項未通過（見下表）。", ev_independence: "獨立性限制", kv_details: "詳細資料",
   hl_fit: "{year}年12月屬於擬合期（{a}–{b}年）：模型在此重現觀測紀錄。政策只在{y0}年12月之後起作用；請把年份往後移以查看效果。",
@@ -2439,6 +2443,9 @@ function evidenceItems() {              // what is known about how far to trust 
   if (mc.coverage) { const c = mc.coverage; out.push(["warn", tr("evc_cov", {n: mc.n_members, a: pctf(100 * c.picp_90), span: covSpan(c), x: f2(c.inflation_90), c: pctf(100 * c.combined_picp_90), st: c.stations, m: c.scored_months.toLocaleString("en")})]); }
   if (mc.prospective) { const q = mc.prospective;
     out.push(["", q.test_start && q.test_end ? tr("evc_pro", {reg: q.registered_on, a: monthYear(String(q.test_start).slice(0, 7)), b: monthYear(String(q.test_end).slice(0, 7)), n: q.stations}) : tr("evc_pro_nodates", {reg: q.registered_on, n: q.stations})]); }
+  if (mc.hybrid) { const h = mc.hybrid, ys = Object.keys(h.per_year || {}), y1 = ys.length ? ys[0] : "";
+    out.push([h.ratio_stat < 1 ? "ok" : "warn", tr("evc_hyb", {s: f2(h.rmse_stat), c: f2(h.rmse_clim), r: f2(h.rmse_model), span: ncSpan(h), y1, s1: y1 ? f2(h.per_year[y1].stat) : "", c1: y1 ? f2(h.per_year[y1].clim) : "", p: f2(h.ratio_phys)})]);
+    const g = h.registration; if (g && g.test_start && g.test_end) out.push(["", tr("evc_hyb_reg", {reg: g.registered_on, a: monthYear(String(g.test_start).slice(0, 7)), b: monthYear(String(g.test_end).slice(0, 7)), n: g.stations})]); }
   const rl = ringLine(); if (rl) out.push(["", rl]);
   if (p + f) out.push([f ? "warn" : "ok", tr("ev_counts_long", {p, f})]);
   return out;

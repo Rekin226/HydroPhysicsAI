@@ -205,10 +205,31 @@ python -m hydrophysics.twin.viewer_app \
   --basis results/twin_forward/response_basis_datum.npz \
   --basemap results/twin/basemap.npz \
   --challenge results/twin/new_data_challenge/report.json \
+  --coverage results/twin/coverage_datum_gate_innov/report.json \
+  --prospective results/twin/prospective_2026-11/manifest.json \
+  --ring-holdout results/twin/ring_holdout/report.json \
+  --hybrid results/twin/hybrid_datum_gate_innov/report.json \
+  --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
   --out results/twin/twin_app.html
 python -m hydrophysics.twin.release inspect results/twin/twin_app.html
 python -m hydrophysics.twin.browser_check \
   --page results/twin/twin_app.html --out results/twin/browser_acceptance
+```
+
+The statistical layer (`twin.hybrid`, climatology plus the decayed last-observed anomaly)
+is scored on the same acquisitions as the challenge and registered prospectively beside
+the physics; both registrations are scored by `twin.prospective score` after the window:
+
+```bash
+python -m hydrophysics.twin.hybrid score --forward results/twin_forward/datum_gate_innov.npz \
+  --stations AMP_V2/data/fan_stations.parquet --historical-wells AMP_V2/data/wells \
+  --new-wells data_fetch_api/new_measurements/heads_202210_202610 --end 2026-09-01 \
+  --out results/twin/hybrid_datum_gate_innov
+python -m hydrophysics.twin.hybrid register ... --test-start 2026-11-01 --test-end 2027-10-31 \
+  --retrospective results/twin/hybrid_datum_gate_innov/report.json \
+  --out results/twin/prospective_2026-11_hybrid
+python -m hydrophysics.twin.prospective score --registration results/twin/prospective_2026-11_hybrid \
+  --new-wells <acquisitions through 2027-10> --out results/twin/prospective_2026-11_hybrid/score
 ```
 
 The default includes the licensed Three.js renderer. The public payload contains

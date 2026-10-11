@@ -119,4 +119,4 @@ https://github.com/Rekin226/HydroPhysicsAI
 
 ## October 2026 evidence update
 
-Interval coverage, the registered prospective test, the 2023-25 ring/GNSS continuation and the negative aquitard-column result are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.
+Interval coverage, the registered prospective tests (the physics and the statistical layer), the 2023-25 ring/GNSS continuation, the negative aquitard-column result and the statistical layer's 2023-26 score are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.

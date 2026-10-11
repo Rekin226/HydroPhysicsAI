@@ -1171,7 +1171,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           validation_protocol: str | None = None,
           validation_predictions: str | None = None,
           coverage_json: str | None = None, prospective_json: str | None = None,
-          ring_holdout_json: str | None = None) -> dict:
+          ring_holdout_json: str | None = None, hybrid_json: str | None = None,
+          hybrid_registration: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1309,7 +1310,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         modelcard["new_data_challenge"] = {k: challenge[k] for k in fields}
     for key, block in (("coverage", _coverage_block(coverage_json, forward_npz)),
                        ("prospective", _prospective_block(prospective_json, forward_npz)),
-                       ("ring_holdout", _ring_holdout_block(ring_holdout_json))):
+                       ("ring_holdout", _ring_holdout_block(ring_holdout_json)),
+                       ("hybrid", _hybrid_block(hybrid_json, forward_npz, hybrid_registration))):
         if block is not None:
             modelcard[key] = block
     if rheo_npz == "auto":
@@ -1381,6 +1383,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "prospective": prospective_json,
         "ring_holdout": ring_holdout_json if ring_holdout_json and os.path.exists(
             ring_holdout_json) else None,
+        "hybrid": hybrid_json, "hybrid_registration": hybrid_registration,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1455,6 +1458,37 @@ def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None
         with open(protocol) as handle:
             proto = json.load(handle)
         out["test_start"], out["test_end"] = proto.get("test_start"), proto.get("test_end")
+    return out
+
+
+def _hybrid_block(path: str | None, forward_npz: str | None,
+                  registration: str | None) -> dict | None:
+    """twin.hybrid's retrospective score (sha-checked against the forward run) and, when
+    given, the manifest of its prospective registration (hashed on its own parameters)."""
+    report = _read_report(path, forward_npz, "hybrid report")
+    if report is None:
+        return None
+    m, r = report["metrics"], report["rmse_ratio_vs_clim"]
+    out = {"rmse_stat": m["stat"]["rmse_m"], "rmse_clim": m["clim"]["rmse_m"],
+           "rmse_model": m["model_datum"]["rmse_m"], "ratio_stat": r["stat"],
+           "ratio_phys": r["phys"], "ratio_mix": r["mix"],
+           "per_year": {y: {"stat": v["stat"], "clim": v["clim"], "model": v["model_datum"]}
+                        for y, v in report["per_year_rmse_m"].items()},
+           "picp_90_stat": report["interval_90_coverage_with_fitted_anomaly_sd"]["stat"],
+           "stations": int(report["stations"]), "scored_months": int(report["scored_months"]),
+           "forecast_origin": report["forecast_origin"], "end_exclusive": report["end_exclusive"],
+           "registration": None}
+    if registration and os.path.exists(registration):
+        with open(registration) as handle:
+            manifest = json.load(handle)
+        reg = {"registered_on": manifest["registered_on"], "stations": int(manifest["stations"]),
+               "test_start": None, "test_end": None}
+        protocol = os.path.join(os.path.dirname(registration), "protocol.json")
+        if os.path.exists(protocol):
+            with open(protocol) as handle:
+                proto = json.load(handle)
+            reg["test_start"], reg["test_end"] = proto.get("test_start"), proto.get("test_end")
+        out["registration"] = reg
     return out
 
 
@@ -1680,6 +1714,9 @@ def main(argv=None) -> None:
                                           "beside it gives the test window)")
     ap.add_argument("--ring-holdout", help="twin.ring_holdout report.json; the line is "
                                            "omitted when the file does not exist")
+    ap.add_argument("--hybrid", help="twin.hybrid score report.json (statistical layer on "
+                                     "the frozen run; must match --forward)")
+    ap.add_argument("--hybrid-registration", help="twin.hybrid register manifest.json")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1704,6 +1741,7 @@ def main(argv=None) -> None:
           challenge_json=args.challenge,
           coverage_json=args.coverage,
           prospective_json=args.prospective, ring_holdout_json=args.ring_holdout,
+          hybrid_json=opt(args.hybrid), hybrid_registration=opt(args.hybrid_registration),
           log=lambda s: print(s, flush=True))
 
 
