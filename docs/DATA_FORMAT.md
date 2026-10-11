@@ -59,7 +59,7 @@ Wide format: first column timestamp, then **one column per rain gauge**, header 
 | column | meaning |
 |---|---|
 | `date time` (first column) | timestamp (daily). |
-| `<rf_id>` (one per gauge) | rainfall in mm/day. `rf1`, `rf2`, … in the sample. |
+| `<rf_id>` (one per gauge) | rainfall in mm/day. `rf1`, `rf2`, … in the sample. An empty cell is a missing day (never write 0 for a gap: the recharge loader masks months with fewer than 80 % of days and the IDW down-weights the gauge). The real file is rebuilt from CWA CODIS by `twin.cwa_rain` (`rf_timeseries.SOURCE.txt`). |
 
 ### 3. `gw_stations.csv`: station metadata (required)
 One row per well.

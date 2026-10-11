@@ -124,7 +124,7 @@ The calibration uses real observations on the 2,144 km² fan, aggregated monthly
 |---|---|---|
 | Water Resources Agency monitoring wells | 174 wells, 4 aquifers, hourly | heads: calibration target and assimilation |
 | Taiwan Power Company pump census + electricity | 116,769 pumps, 26 M meter-months | abstraction forcing |
-| Rain gauges + ERA5 ET₀ | 26 gauges, daily | recharge |
+| Rain gauges (CWA CODIS, rebuilt 2012–2026) + ERA5 ET₀ | 26 gauges, daily | recharge |
 | Leveling benchmarks | 798 sites, 7,539 surveys | subsidence calibration and validation |
 | Multi-layer compaction wells | 14 sites | independent compaction check |
 | NLSC tile service | orthophoto and topographic base, 252 tiles at zoom 13 | the ground the viewer recognises |

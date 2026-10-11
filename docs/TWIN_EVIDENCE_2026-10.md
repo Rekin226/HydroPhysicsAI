@@ -294,3 +294,49 @@ evidence list carries the line. The same transcription route extends month by mo
 the WRA publishes: the series at the predictable address ran from January 2024 to
 January 2026 at the time of writing (the 2023 files are not there), and a new file needs
 one `twin.report_extract` run (earlier reports are cached) and one `twin.deep_pile_holdout` run.
+
+## 11. The calibration rainfall was zero-filled; rebuilt from the CWA archive and recalibrated
+
+**What was found.** The CWA station inventory (the old `e-service.cwb.gov.tw/wdps/obs/state.htm`
+table, now only on the Wayback Machine, and its live replacement `codis.cwa.gov.tw/api/station_list`;
+copies in `data_fetch_api/new_measurements/cwa_station_inventory/`) records a closure the
+calibration rainfall cache does not: gauge rf11 (田中, C0G850) stopped on 2019-10-29. The
+vendor cache (2012-2022, no missing value anywhere) fills every gap with 0 mm: rf11 is
+exactly 0 for 192 days from October 2019 and for the whole of 2021 and 2022 (734 days,
+2.9 m of rain at the neighbouring gauges), rf15 (崙背) is 0 for 223 days while its station
+was being upgraded in 2015. Because the recharge interpolation counted those zeros as
+observations, the 2021-22 recharge field had a dry hole at the fan apex: basin-mean rain
+3 % low, 6 % of cells more than 10 % low, 44 cells with 田中 as their nearest gauge.
+The same inventory shows two gauges renumbered on 2024-01-08 (北斗 and 芳苑 became
+agricultural stations C2G840/C2G870) and nine gauges that changed ID in spring 2015.
+
+**Rebuild** (`twin.cwa_rain`). Each gauge is a chain of CWA station IDs taken from the
+inventory; CODIS was asked for every (station, year) of every chain, 399 requests, raw
+responses and hashes kept under `data_fetch_api/new_measurements/cwa_codis_rain/raw/`. The
+daily table is assembled with nothing invented: a day is a number only when CWA prints an
+unflagged one (123,726 gauge-days), CWA's missing-value mark (13,737), sentinels (712) and
+absent days are left empty, trace is 0.0. Where a renumbered gauge's two IDs overlap the
+newer station wins. The recharge loader now takes a month's mean over its finite days and
+masks months with fewer than 80 % of days, and the IDW down-weights a missing gauge-month
+instead of reading it as dry. Day by day against the vendor cache on 2012-2022
+(`results/twin/cwa_rain/report.json`): 89,907 of 95,295 jointly numeric days agree to
+0.05 mm (94 %); the predecessor mapping is exact (土庫 C1K340 matches 365 of 365 days of
+2013); 446 days are 0 in the cache and wet in CODIS (3.65 m of rain, 2.93 m of it at rf11);
+4,942 days differ otherwise, two-thirds of them on 201 shared dates, nearly all heavy-rain
+days of 2021-22 where CODIS carries a revised total; 9,173 cache numbers fall on days
+CODIS flags or lacks. Two vendor series are not CWA data at all: rf25 (下水埔) before 2018
+and rf24 (臺西) before 2015-03-28 match no CWA station within 15 km; the rebuild leaves them
+empty. The rebuilt field changes the basin-mean rain by −6.6 % in 2013, +6.1 % in 2021,
++2.6 % in 2022 and within ±2.5 % in the other years. The record now runs to 2026-10-10
+(the vendor cache ended 2022-12-31), so observed rain is available for the whole 2023-26
+test period and for the forcing experiment, which had to use reanalysis rain.
+
+The vendor cache is kept as `rf_timeseries_vendor_2012_2022.csv`; `rf_timeseries.csv` is the
+rebuild, `rf_timeseries_source.csv` names the station behind every day, and the calibration
+now records the rainfall file's hash in `stage3_theta.json`.
+
+**Recalibration** (`results/twin_runs/par8/`, `stage3_datum_gate_cwa`). The deliverable's
+recipe was rerun unchanged on the rebuilt rainfall, then the column refitted on leveling
+(the column pairs with its head field), the posterior redrawn, the forward archive and
+response basis rebuilt with the innovation update, and every evidence tool rerun into
+`*_cwa` directories. Results: pending (this section is completed when the batch finishes).

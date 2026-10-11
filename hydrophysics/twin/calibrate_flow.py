@@ -307,6 +307,16 @@ def parse_delay_layers(text: str | None, n_layers: int = 4) -> tuple[int, ...] |
     return out
 
 
+def _file_sha256(path: str) -> str:
+    """sha256 of an input file for the theta's provenance, "" if unreadable (never raises)."""
+    try:
+        import hashlib
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
+
+
 def _git_commit() -> str:
     """Short commit SHA for the result artifact's provenance, or "" if it cannot be
     determined (e.g. not a git checkout) -- never raises, since a multi-hour sweep must
@@ -2331,6 +2341,18 @@ def _load_pumping_kwh(grid, pump_census_path: str, pump_kwh_path: str,
     return torch.tensor(E, dtype=torch.float64)
 
 
+def monthly_mean_rate(daily: pd.DataFrame, min_fraction: float = 0.8) -> pd.DataFrame:
+    """Calendar-month mean of the finite daily values, masked (NaN) where fewer than
+    ``min_fraction`` of the month's days are finite. The vendor cache has no missing days,
+    so this leaves it unchanged; the CODIS rebuild (``twin.cwa_rain``) leaves gaps missing
+    and a month seen on a few days must not pass as that month's rate. A NaN gauge-month is
+    down-weighted by the IDW instead of counting as 0 mm."""
+    grouped = daily.resample("ME")
+    mean, count = grouped.mean(), grouped.count()
+    days = mean.index.days_in_month.to_numpy()[:, None]
+    return mean.where(count.to_numpy() >= min_fraction * days)
+
+
 def _load_recharge_field(grid, rf_timeseries_path: str, rf_stations_path: str,
                          et_npz_path: str, gw_stations_path: str,
                          t0: str, t1: str) -> torch.Tensor:
@@ -2356,7 +2378,7 @@ def _load_recharge_field(grid, rf_timeseries_path: str, rf_stations_path: str,
     rf = pd.read_csv(rf_timeseries_path)
     rf["date time"] = pd.to_datetime(rf["date time"])
     rf = rf.set_index("date time")
-    rf_monthly = rf.resample("ME").mean().reindex(months)     # mean daily mm rate/month
+    rf_monthly = monthly_mean_rate(rf).reindex(months)        # mean daily mm rate/month
     rf_stn = pd.read_csv(rf_stations_path).set_index("rf_id")
     rf_xy = rf_stn.loc[rf_monthly.columns, ["TM_X97", "TM_Y97"]].to_numpy(dtype="float64")
 
@@ -3179,6 +3201,8 @@ def main(argv=None) -> None:
                      if args.log_t_min_proximal is not None else {}),
                   "pump_layer": args.pump_layer, "recharge_layer": args.recharge_layer,
                   "epochs": args.epochs, "git_commit": git_commit, "r2_insample": ins["r2"],
+                  "rf_timeseries": args.rf_timeseries,
+                  "rf_timeseries_sha256": _file_sha256(args.rf_timeseries),
                   "bounds_hit": ins["bounds_hit"], "n_wells": int(obs_h.shape[0]),
                   "meter_filter": args.meter_filter, "cap_duty": args.cap_duty,
                   "eta_classes": eta_class_names, "fix_eta": args.fix_eta,

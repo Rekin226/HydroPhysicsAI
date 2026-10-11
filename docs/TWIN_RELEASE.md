@@ -115,6 +115,29 @@ for the next investigation; they do not uniquely identify a missing physical pro
 The source-substituted weather arm cannot settle the role of actual gauge rainfall.
 The failed forecast-skill status remains appropriate.
 
+## Rainfall from the CWA archive
+
+The calibration rainfall is rebuilt from CWA CODIS (the vendor cache zero-filled gaps and
+ended in 2022; `docs/TWIN_EVIDENCE_2026-10.md` section 11). Each gauge is a chain of station
+IDs from the CWA inventory (`cwa_rain.CHAINS`); the fetch is idempotent and keeps raw
+responses with hashes, the build leaves missing days empty and compares with the vendor file:
+
+```bash
+python -m hydrophysics.twin.cwa_rain fetch --raw data_fetch_api/new_measurements/cwa_codis_rain/raw \
+    --refresh-year 2026        # re-fetch the growing current year
+python -m hydrophysics.twin.cwa_rain build --raw data_fetch_api/new_measurements/cwa_codis_rain/raw \
+    --cache chou-shui-data/data/rf_timeseries_vendor_2012_2022.csv \
+    --out-csv data_fetch_api/new_measurements/cwa_codis_rain/rf_timeseries_codis.csv \
+    --report results/twin/cwa_rain/report.json
+```
+
+Install the built file as `chou-shui-data/data/rf_timeseries.csv` (with its `_source.csv`)
+only after reading the comparison. A recalibration on new rainfall is the whole chain:
+`results/twin_runs/par8/jobs.sh` holds the deliverable's recipe (full fit + 5 parallel folds
+under MPS, `merge_folds`, posterior, two leveling columns, forward with `--update-method
+innovation`, response basis, then challenge/coverage/hybrid/deep-pile/ring tools), started
+with `tmux new -d -s hydro-par8 "bash results/twin_runs/par8/controller.sh"`.
+
 ## Fetching dated observations
 
 Configure `WISENVR_BASE_URL`, `WISENVR_USERNAME`, `WISENVR_PASSWORD` and, when the
