@@ -64,6 +64,8 @@ BAND_EDGES_M = (0.0, 100.0, 200.0)
 MIN_MONTHS = 9          # a calendar-year mean needs this many monthly values
 NEST_RADIUS_M = 1000.0  # a head-observation well belongs to a ring site within this range
 MAD_K_MONTHLY = 6.0     # per-well monthly despike (sentinel values survive heads.MAD_K)
+HIATUS_DAYS = 180       # consecutive ring surveys further apart than this bracket a hiatus
+REF_SHIFT_M = 0.02      # a shallowest-ring jump above this across a hiatus: reference change
 
 
 # ---------------------------------------------------------------------------------------
@@ -109,6 +111,70 @@ def band_compaction(pos: pd.DataFrame, edges=BAND_EDGES_M,
     for a, b in zip(idx[:-1], idx[1:], strict=True):
         cols[f"{depth[a] - depth[0]:.0f}-{depth[b] - depth[0]:.0f}m"] = interval(a, b)
     return pd.DataFrame(cols)
+
+
+HIATUS_COLUMNS = ["before", "after", "days", "n_rings_before", "n_rings_after",
+                  "common_offset_m", "top_shift_m", "shortening_m", "expected_m",
+                  "unexplained_m", "discontinuity"]
+
+
+def ring_hiatuses(pos: pd.DataFrame, min_days: float = HIATUS_DAYS,
+                  ref_shift_m: float = REF_SHIFT_M, prior_years: float = 3.0) -> pd.DataFrame:
+    """Survey hiatuses in one site's ring positions (m, columns shallow -> deep) and the
+    instrument discontinuity across each.
+
+    A hiatus is a pair of consecutive surveys more than ``min_days`` apart. Over the rings
+    surveyed on both sides: ``common_offset_m`` is their median jump (positive = deeper),
+    ``top_shift_m`` the jump of the shallowest one, which otherwise moves millimetres a
+    year, and ``shortening_m`` the shortening of the interval between the shallowest and
+    the deepest (positive = compaction), against ``expected_m``, the interval's OLS
+    shortening rate over the ``prior_years`` before the hiatus times its length;
+    ``unexplained_m`` is the difference. ``discontinuity`` is set when
+    ``|top_shift_m| > ref_shift_m``: the depth reference changed, so no displacement may
+    be referenced across the hiatus (the rings' 2022 gap: every site's rings jump by a
+    common -16 to +50 cm and the monitored interval by -8 to 0 cm more than its rate)."""
+    p = pos.dropna(how="all").sort_index()
+    rows = []
+    days = np.diff(p.index.values).astype("timedelta64[D]").astype(int)
+    for i in np.flatnonzero(days > min_days):
+        a, b = p.index[i], p.index[i + 1]
+        both = p.loc[a].notna() & p.loc[b].notna()
+        if both.sum() < 2:
+            continue
+        rings = both[both].index
+        jump = p.loc[b, rings] - p.loc[a, rings]
+        sep = p[rings[-1]] - p[rings[0]]
+        shortening = float(sep.loc[a] - sep.loc[b])
+        prior = sep.loc[a - pd.Timedelta(days=round(365.25 * prior_years)): a].dropna()
+        rate = float("nan")
+        if len(prior) >= 6:
+            years = (prior.index - prior.index[0]).days / 365.25
+            rate = -float(np.polyfit(years, prior.to_numpy(dtype=float), 1)[0])
+        expected = rate * days[i] / 365.25
+        rows.append({"before": a, "after": b, "days": int(days[i]),
+                     "n_rings_before": int(p.loc[a].notna().sum()),
+                     "n_rings_after": int(p.loc[b].notna().sum()),
+                     "common_offset_m": float(jump.median()),
+                     "top_shift_m": float(jump.iloc[0]), "shortening_m": shortening,
+                     "expected_m": expected, "unexplained_m": shortening - expected,
+                     "discontinuity": bool(abs(jump.iloc[0]) > ref_shift_m)})
+    return pd.DataFrame(rows, columns=HIATUS_COLUMNS)
+
+
+def ring_hiatus_table(pos: dict[str, pd.DataFrame], **kw) -> pd.DataFrame:
+    """:func:`ring_hiatuses` for every site: one row per hiatus, with a ``site`` column."""
+    tabs = [ring_hiatuses(p, **kw).assign(site=s) for s, p in pos.items()]
+    tabs = [t for t in tabs if len(t)]
+    if not tabs:
+        return pd.DataFrame(columns=["site"] + HIATUS_COLUMNS)
+    return pd.concat(tabs, ignore_index=True)[["site"] + HIATUS_COLUMNS]
+
+
+def discontinuity_between(tab: pd.DataFrame, site: str, t0, t1) -> bool:
+    """True when a flagged discontinuity of ``site`` overlaps ``[t0, t1]``: a difference of
+    its ring readings (or of their means) at the two ends is not a displacement."""
+    t = tab[(tab.site == site) & tab.discontinuity.astype(bool)]
+    return bool(((t.after > pd.Timestamp(t0)) & (t.before < pd.Timestamp(t1))).any())
 
 
 # ---------------------------------------------------------------------------------------
@@ -656,10 +722,13 @@ def regress_all(tab: pd.DataFrame, cluster: str = "site") -> dict:
     return out
 
 
-def recovery_experiment(C: dict[str, pd.Series], D: dict[str, pd.Series]) -> pd.DataFrame:
+def recovery_experiment(C: dict[str, pd.Series], D: dict[str, pd.Series],
+                        hiatuses: pd.DataFrame | None = None) -> pd.DataFrame:
     """Per site: the mean annual rate before the 2021 drought (2015-2020), across the
     2021 -> 2023 gap (drought and recovery; the rings have no 2022 surveys) and after
-    (2023 -> 2024), with the drawdown for the same years where heads exist."""
+    (2023 -> 2024), with the drawdown for the same years where heads exist.
+    ``disc_2021_2023`` flags a site whose rings change reference inside the gap
+    (:func:`ring_hiatuses`): its 2021 -> 2023 rate then carries the instrument step."""
     rows = []
     for s, c in C.items():
         ca = annual_means(c)
@@ -669,7 +738,9 @@ def recovery_experiment(C: dict[str, pd.Series], D: dict[str, pd.Series]) -> pd.
         row = {"site": s, "rate_2014_2020_cm": 100 * float(np.mean(pre)) if pre else np.nan,
                "rate_2021_2023_cm": 100 * float((ca.get(2023, np.nan) - ca.get(2021, np.nan))
                                                 / 2.0),
-               "rate_2023_2024_cm": 100 * float(ca.get(2024, np.nan) - ca.get(2023, np.nan))}
+               "rate_2023_2024_cm": 100 * float(ca.get(2024, np.nan) - ca.get(2023, np.nan)),
+               "disc_2021_2023": hiatuses is not None and discontinuity_between(
+                   hiatuses, s, "2021-01-01", "2023-12-31")}
         for y in (2020, 2021, 2022, 2023, 2024):
             row[f"D_{y}_m"] = float(da.get(y, np.nan))
         rows.append(row)
@@ -932,6 +1003,19 @@ def main(argv=None) -> None:
     # ---- the record ------------------------------------------------------------------
     C, D, meta = load_rings_and_heads(ddir, args.stations, args.wells_dir)
     meta.to_csv(os.path.join(args.out, "rings_sites.csv"), index=False)
+    hiatuses = ring_hiatus_table(ring_positions(ddir))
+    hiatuses.to_csv(os.path.join(args.out, "rings_hiatuses.csv"), index=False)
+    disc = hiatuses[hiatuses.discontinuity.astype(bool)]
+    result["data"]["ring_hiatuses"] = {
+        "n_hiatuses": int(len(hiatuses)), "n_discontinuities": int(len(disc)),
+        "discontinuity_sites": sorted(disc.site.unique().tolist()),
+        "discontinuity_periods": sorted({f"{a:%Y-%m}..{b:%Y-%m}"
+                                         for a, b in zip(disc.before, disc.after,
+                                                         strict=True)})}
+    if len(disc):
+        print(f"WARNING: {disc.site.nunique()} ring sites change depth reference across a "
+              f"survey hiatus ({', '.join(result['data']['ring_hiatuses']['discontinuity_periods'])}); "
+              "no displacement is referenced across it (rings_hiatuses.csv)", flush=True)
     seas_rows = []
     for s, df in C.items():
         for band in df.columns:
@@ -987,11 +1071,14 @@ def main(argv=None) -> None:
             result["data"]["matched"][f"{ycol}_{name}"] = fe_ols(
                 mt, ycol, xs, group="site", cluster="nest") if len(mt) else None
     result["data"]["matched_compare"] = matched_compare(mt) if len(mt) else None
-    rec =recovery_experiment(Ctot, {**D, **Dl})
+    rec = recovery_experiment(Ctot, {**D, **Dl}, hiatuses)
     rec.to_csv(os.path.join(args.out, "rings_recovery.csv"), index=False)
     result["data"]["recovery"] = {
         "median_rate_2014_2020_cm": float(rec.rate_2014_2020_cm.median()),
-        "median_rate_2021_2023_cm": float(rec.rate_2021_2023_cm.median()),
+        # across the 2022 survey hiatus: sites flagged disc_2021_2023 carry the instrument
+        # step, so the median is over the unflagged sites only (NaN when none is left)
+        "median_rate_2021_2023_cm": float(rec.rate_2021_2023_cm[~rec.disc_2021_2023].median()),
+        "n_sites_2021_2023_discontinuous": int(rec.disc_2021_2023.sum()),
         "median_rate_2023_2024_cm": float(rec.rate_2023_2024_cm.median()),
         "n_sites": int(rec.rate_2023_2024_cm.notna().sum())}
     if args.ring_fit_epochs > 0:
@@ -1010,9 +1097,39 @@ def main(argv=None) -> None:
         Cm, Dm, drv = model_ring_series(z, cells, names)
         params = column_params(col_path)
         with open(theta_path) as fh:
-            zb = json.load(fh).get("zone_boundaries", "205,182")
+            tobj = json.load(fh)
+        tmeta = tobj.get("meta", {}) if isinstance(tobj.get("meta"), dict) else {}
+        # the historical lookup (a top-level key no stored theta has, so 205,182) is kept
+        # bit for bit for every unsplit theta; a county-split theta reads its own meta,
+        # whose county map pairs with its own boundaries. (The 205,172 / 205,192 thetas
+        # thus keep the 205,182 ring zoning they have always had here.)
+        zb = (tobj.get("zone_boundaries")
+              or (tmeta.get("zone_boundaries") if tmeta.get("zone_county_split") else None)
+              or "205,182")
         prox, dist = (float(v) for v in str(zb).split(",")[:2])
         zones = fan_zones(xy[cells >= 0], prox, dist)
+        if tmeta.get("zone_county_split"):
+            # rung R1c: the column has a Changhua copy of each zone; a ring takes the
+            # county of its archive cell, from the calibration's own (verified) map
+            from .grid import FanGrid
+            from .zone_county import county_flags_from_meta
+            from .zones import county_split
+
+            agrid = FanGrid(nx=int(z["nx"]) if "nx" in z.files else z["mask"].shape[1],
+                            ny=int(z["ny"]) if "ny" in z.files else z["mask"].shape[0],
+                            dx=float(z["dx"]), x0=float(z["x0"]), y0=float(z["y0"]),
+                            mask=np.asarray(z["mask"], dtype=bool))
+            ch = county_flags_from_meta(agrid, tmeta)
+            zones = county_split(zones, ch[cells[cells >= 0]], 3)
+        with open(col_path) as fh:
+            col_county = bool(json.load(fh).get("zone_county_split"))
+        if col_county != bool(tmeta.get("zone_county_split")):
+            raise ValueError(f"{col_path} and {theta_path} disagree on the county split "
+                             "(zone_county_split): the column pairs with its own flow model")
+        if zones.size and int(zones.max()) >= len(params):
+            raise ValueError(f"{col_path}: {len(params)} column parameter sets but zone ids up "
+                             f"to {int(zones.max())} at the rings (a column not split like "
+                             f"the theta {theta_path})")
         # the same column on the OBSERVED nest heads: does its mechanism, whatever heads
         # drive it, produce the rate-on-level dependence the rings show?
         zone_of = dict(zip([n for n, c in zip(names, cells, strict=True) if c >= 0],

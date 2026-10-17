@@ -69,6 +69,8 @@ from .calibrate_flow import (
 )
 from .forward import Member, attach_sw_recharge, build_model, load_members, rollout, sw_hist
 from .inputs import input_options, load_twin_inputs
+from .zone_county import apply_county_ties, free_copy_pairs, tied_copy_keys
+from .zones import PROXIMAL_ZONE_NAMES
 
 # keys in a theta dict that are derived, not parameters
 _DERIVED = {"eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2day",
@@ -80,6 +82,10 @@ _DERIVED = {"eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2d
             "du0_m", "Sa", "G_per_day", "S_eff", "delay_is_elastic"}
 _DERIVED_PREFIXES = ("Sd_", "tau_days_", "du0_m_", "Sa_", "G_per_day_", "S_eff_",
                      "delay_is_elastic_")
+
+
+# the keys --log-t-min-proximal floors (calibrate_flow.set_log_t_min_proximal)
+_PROXIMAL_T_KEYS = frozenset(f"log_T_{z}" for z in PROXIMAL_ZONE_NAMES)
 
 
 def _is_derived(key: str) -> bool:
@@ -158,9 +164,10 @@ def effective_bounds(index: list[tuple[str, int]], meta: dict | None = None,
             lo[j], hi[j] = BOUNDS[base]
         if base == "log_L" and meta.get("l_min") is not None:
             lo[j] = max(lo[j], float(np.log(float(meta["l_min"]))))
-        if (k in ("log_T_proximal", "log_T_proximal_w")
+        if (k in _PROXIMAL_T_KEYS
                 and meta.get("log_t_min_proximal") is not None):
-            # --log-t-min-proximal (round 3): the calibration's raised proximal floor
+            # --log-t-min-proximal (round 3): the calibration's raised proximal floor,
+            # in both proximal parts and (--zone-county-split) their Changhua copies
             lo[j] = max(lo[j], float(np.log(float(meta["log_t_min_proximal"]))))
         if base == "log_tau" and meta.get("delay_tau_max_years") is not None:
             hi[j] = float(np.log(365.25 * float(meta["delay_tau_max_years"])))
@@ -355,12 +362,36 @@ def jacobian(inp, member: Member, index, device, eps: float = 1e-3,
     return J, resid
 
 
-def laplace(J: np.ndarray, resid: np.ndarray, prior_sd: float = 2.0) -> tuple[np.ndarray, float]:
+def copy_prior_precision(index: list[tuple[str, int]], pairs: list[tuple[str, str]],
+                         sd: float) -> np.ndarray:
+    """``--county-copy-sd``'s prior as a precision matrix over ``index``: ``D^T D / sd^2``
+    with one row ``e_copy - e_parent`` per element of every free (copy, parent) pair --
+    the same Gaussian the calibration put on each copy's departure from its parent."""
+    pos = {ki: j for j, ki in enumerate(index)}
+    rows = []
+    for c, par in pairs:
+        i = 0
+        while (c, i) in pos and (par, i) in pos:
+            r = np.zeros(len(index))
+            r[pos[(c, i)]], r[pos[(par, i)]] = 1.0, -1.0
+            rows.append(r)
+            i += 1
+    if not rows:
+        return np.zeros((len(index), len(index)))
+    D = np.stack(rows)
+    return D.T @ D / float(sd) ** 2
+
+
+def laplace(J: np.ndarray, resid: np.ndarray, prior_sd: float = 2.0,
+            extra_precision: np.ndarray | None = None) -> tuple[np.ndarray, float]:
     """Posterior covariance ``sigma^2 (J^T J / sigma^2 ... )`` with a Gaussian prior of
-    width ``prior_sd`` in log-parameter units on every direction."""
+    width ``prior_sd`` in log-parameter units on every direction (plus
+    ``extra_precision``, e.g. ``copy_prior_precision``)."""
     n, p = J.shape
     sigma2 = float((resid ** 2).sum() / max(n - p, 1))
     H = J.T @ J / sigma2 + np.eye(p) / prior_sd ** 2
+    if extra_precision is not None:
+        H = H + extra_precision
     cov = np.linalg.inv(H)
     return cov, sigma2
 
@@ -390,6 +421,12 @@ def main(argv=None) -> None:
                     help="override a bound, in parameter units (log for log_*), e.g. "
                          "log_spread_km=-0.693147,2.302585 for the 0.5-10 km bound the "
                          "spreadL deliverable was fitted under (repeatable)")
+    ap.add_argument("--hold-weak", type=float, default=None, metavar="F",
+                    help="also hold (never sample) every parameter whose posterior sd "
+                         "exceeds F x the prior sd (e.g. 0.9): nearly uninformed directions, "
+                         "such as a weakly identified --zone-county-split copy, would "
+                         "otherwise spread most of the prior into the forward twin. "
+                         "Default: hold only sd = prior (to 1e-6)")
     ap.add_argument("--from-cov", default=None,
                     help="re-draw from a saved *_cov.json instead of recomputing the "
                          "Jacobian (CPU, seconds); --bound-mean newton needs a cov file "
@@ -404,6 +441,10 @@ def main(argv=None) -> None:
 
     member = load_members([args.theta])[0]
     fixed = tuple(member.meta.get("fixed") or ())
+    # --county-tie: a tied Changhua copy is not a parameter of its own (it follows its
+    # parent through build_model), so it is neither perturbed nor sampled
+    tied = tied_copy_keys(member.theta, member.meta)
+    fixed = fixed + tuple(tied)
     if member.meta.get("fix_eta") is not None:
         fixed = fixed + ("log_eta",)
     if member.meta.get("fix_head_extra") is not None:
@@ -434,13 +475,25 @@ def main(argv=None) -> None:
                                cap_duty=float(member.meta.get("cap_duty", 1.0)),
                                **input_options(member.meta))
         J, resid = jacobian(inp, member, index, device)
-        cov, sigma2 = laplace(J, resid, prior_sd=args.prior_sd)
+        extra = None
+        if member.meta.get("zone_county_copy_sd") is not None:
+            # the calibration's copy-to-parent prior belongs in the posterior too
+            extra = copy_prior_precision(index, free_copy_pairs(member.theta, member.meta),
+                                         float(member.meta["zone_county_copy_sd"]))
+        cov, sigma2 = laplace(J, resid, prior_sd=args.prior_sd, extra_precision=extra)
         prior_sd = args.prior_sd
         grad = J.T @ resid / sigma2
     sd = np.sqrt(np.diag(cov))
     # a parameter whose posterior is its prior carried no information (zero Jacobian
     # column): sampling it would only spread the prior into the forward twin
     uninformed = [j for j in range(len(index)) if abs(sd[j] - prior_sd) < 1e-6 * prior_sd]
+    if args.hold_weak is not None:
+        weak = [j for j in range(len(index))
+                if sd[j] > float(args.hold_weak) * prior_sd and j not in uninformed]
+        if weak:
+            print(f"--hold-weak {args.hold_weak:g}: holding {len(weak)} nearly uninformed "
+                  f"parameters (posterior sd > {args.hold_weak:g} x prior sd)", flush=True)
+        uninformed = sorted(uninformed + weak)
     print(f"residual sd {np.sqrt(sigma2):.3f} m; posterior sd per parameter:")
     for j, (k, i) in enumerate(index):
         flag = ("  (uninformed: sd = prior, held)" if j in uninformed else
@@ -469,7 +522,8 @@ def main(argv=None) -> None:
                   f"{draws[:, j].std():.3f} ({vec[j]:+.3f})")
     samples = [{"fold": f"post{s}", "n_held": 0, "r2_kfold": float("nan"),
                 "r2_idw": float("nan"), "posterior": args.bounded,
-                "theta": unflatten(draws[s], index, member.theta)}
+                "theta": apply_county_ties(unflatten(draws[s], index, member.theta),
+                                           member.meta)}
                for s in range(args.n_samples)]
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as fh:
@@ -477,6 +531,7 @@ def main(argv=None) -> None:
     with open(args.out.replace(".json", "_cov.json"), "w") as fh:
         json.dump({"index": index, "mean": vec.tolist(), "sd": sd.tolist(), "sigma2": sigma2,
                    "at_bound": at_bound, "uninformed": uninformed, "cov": cov.tolist(),
+                   "hold_weak": args.hold_weak, "county_tied": sorted(tied),
                    "prior_sd": prior_sd, "grad": None if grad is None else grad.tolist(),
                    "bounded": args.bounded, "bound_mean": args.bound_mean,
                    "sampler": method, "lo": _finite_or_none(lo), "hi": _finite_or_none(hi),

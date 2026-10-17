@@ -1022,6 +1022,10 @@ def test_ring_holdout_block_is_absent_until_the_report_exists(tmp_path):
     assert block["rings"]["n_sites"] == 12 and block["window"] == ["2023-01", "2025-12"]
     assert block["independence"] == ["rings share the column"]
     assert block["rings"]["cum"]["base_continue"]["r2"] == 0.3
+    assert block["max_ref_age_days"] is None                   # a report from before the fix
+    report["max_ref_age_days"] = 62
+    path.write_text(json.dumps(report))
+    assert va._ring_holdout_block(str(path))["max_ref_age_days"] == 62
 
 
 def test_three_is_shipped_unevaluated_and_the_page_has_one_dictionary():

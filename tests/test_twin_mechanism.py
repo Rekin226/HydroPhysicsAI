@@ -17,6 +17,8 @@ from hydrophysics.twin.mechanism import (
     band_compaction,
     fe_ols,
     rate_table,
+    recovery_experiment,
+    ring_hiatus_table,
     seasonal_slope,
     t_ppf,
     virgin_by_year,
@@ -115,6 +117,24 @@ def test_band_compaction_drops_ring_lost_for_a_year():
     pos.loc[pos.index.year == 2016, "NO4"] = np.nan                 # 25 % gone, one year
     out = band_compaction(pos)
     assert out["total"].notna().all()
+
+
+def test_recovery_experiment_flags_a_rate_across_a_reference_change():
+    d = pd.date_range("2015-01-15", "2025-03-15", freq="MS") + pd.Timedelta(days=14)
+    d = d[(d < pd.Timestamp("2022-01-01")) | (d >= pd.Timestamp("2023-02-01"))]
+    t = ((d - d[0]).days / 365.25).to_numpy()
+    sites = {}
+    for name, offset in (("moved", 0.5), ("kept", 0.0)):
+        pos = np.array([2.0, 150.0, 300.0])[None, :] - np.array([0.0, 0.01, 0.02]) * t[:, None]
+        pos[d >= pd.Timestamp("2023-02-01")] += offset
+        sites[name] = pd.DataFrame(pos, index=d, columns=["NO1", "NO2", "NO3"])
+    hi = ring_hiatus_table(sites)
+    assert hi.set_index("site").discontinuity.to_dict() == {"moved": True, "kept": False}
+    C = {s: band_compaction(p)["total"] for s, p in sites.items()}
+    rec = recovery_experiment(C, {}, hi).set_index("site")
+    assert rec.disc_2021_2023.to_dict() == {"moved": True, "kept": False}
+    assert rec.loc["kept", "rate_2021_2023_cm"] == pytest.approx(2.0, rel=0.05)
+    assert not recovery_experiment(C, {}).disc_2021_2023.any()      # no table, no flag
 
 
 def test_t_ppf_close_to_table():

@@ -68,31 +68,77 @@ physics; another calibration sweep is not the next step.
 
 `twin.ring_holdout` drives the frozen flow model (18 parameter sets) and the deliverable's
 column from the free-running record end state through January 2023 to March 2025 under
-three forcings and scores each site's cumulative displacement (from December 2022) and
-OLS rate against the 14 compaction rings (13 with enough months) and the 19 on-grid WRA
-GNSS stations (`results/twin/ring_holdout/report.json`, `rings_sites.csv`,
-`gnss_sites.csv`). It is not a clean holdout (the report lists six reasons); it is the
-only subsidence observation past the forecast origin.
+three forcings and scores each site's cumulative displacement and OLS rate against the
+14 compaction rings (13 with enough months) and the 19 on-grid WRA GNSS stations. It is
+not a clean holdout (the report lists seven reasons); it is the only subsidence
+observation past the forecast origin.
+
+**The rings change instrument across 2022.** No ring site was surveyed between December
+2021 and February 2023 (北辰 not until July 2024), and across that gap every ring at a
+site jumps by a common amount: −13 to −16 cm at eight sites, −7 cm at 元長, −2 cm at 溪州
+and +15 to +50 cm at four (僑義, 北辰, 宏崙, 拯民), a change of depth reference, since the
+shallowest ring otherwise moves millimetres a year. At the four the monitored interval
+is continuous (its change matches the prior rate times the gap within 0.4 cm); at the
+other ten it lengthens by 4 to 8 cm more than its rate implies, consistent with a probe
+or tape scale change (`mechanism.ring_hiatuses`, `rings_hiatuses.csv`). The 2012-14
+survey gap at eleven sites is not a discontinuity: the shallowest ring is unchanged
+across it.
+The first version of this test took each ring's last reading before December 2022 as
+the reference, which for the rings is December 2021: the observed "cumulative" spanned
+3.25 years and the instrument step while the model and the baselines spanned 2.25. The
+test now starts each ring's cumulative at its first 2023 survey and differences the
+model, the archive and the continued-rate baseline over the same months (February 2023
+to March 2025, 2.1 years; `--max-ref-age-days 62`). Rates are OLS slopes inside the
+window and did not change; GNSS starts in 2020 and is unaffected.
+
+Rerun with otherwise identical inputs (same parameter sets, column, forcing and forward
+archive, sha256-checked in the report): `results/twin/ring_holdout_ref2023/report.json`,
+`rings_sites.csv` (with `ref_month`, `end_month` and the hiatus offset per site),
+`gnss_sites.csv`, `rings_hiatuses.csv`.
 
 | 2023-01 to 2025-03 | rings, cumulative (cm) R² / RMSE / bias | rings, rate (cm/yr) R² / RMSE / bias | GNSS, rate (cm/yr) R² / RMSE / bias |
 |---|---|---|---|
-| model, climatology forcing (the page's projection) | **+0.23 / 2.65 / +1.29** | −2.06 / 1.02 / −0.35 | −1.51 / 2.18 / −1.85 |
-| model, recorded pumping | +0.24 / 2.63 / +0.80 | −5.64 / 1.50 / −0.77 | −3.40 / 2.89 / −2.56 |
-| model, recorded pumping and weather | +0.23 / 2.65 / +0.86 | −5.26 / 1.45 / −0.68 | −3.19 / 2.82 / −2.49 |
-| continue the site's own prior rate | −0.79 / 4.04 / +3.15 | −3.05 / 1.17 / +0.97 | −1.33 / 2.10 / +1.52 |
-| no change | −0.45 / 3.63 / −2.02 | −5.23 / 1.45 / −1.33 | −2.56 / 2.59 / −2.20 |
-| member p10-p90 covers the observed site value | 15 % (climatology) | 31 % | 5 % |
+| model, climatology forcing (the page's projection) | **−0.20 / 1.58 / +0.32** | −2.06 / 1.02 / −0.35 | −1.51 / 2.18 / −1.85 |
+| model, recorded pumping | −4.03 / 3.24 / −1.86 | −5.64 / 1.50 / −0.77 | −3.40 / 2.89 / −2.56 |
+| model, recorded pumping and weather | −3.98 / 3.22 / −1.83 | −5.26 / 1.45 / −0.68 | −3.19 / 2.82 / −2.49 |
+| continue the site's own prior rate | −1.27 / 2.18 / +1.79 | −3.05 / 1.17 / +0.97 | −1.33 / 2.10 / +1.52 |
+| no change | −4.31 / 3.33 / −3.00 | −5.23 / 1.45 / −1.33 | −2.56 / 2.59 / −2.20 |
+| member p10-p90 covers the observed site value | 15 % (climatology) | 23 % | 5 % |
 
-Reading: the rings slowed sharply after 2022 (site rates 1.7-4.0 cm/yr in 2017-22 fell to
-0.6-2.0), so continuing the prior rate overshoots and no-change undershoots; the column's
-cumulative displacement sits between them with weak but real skill. The spatial pattern
-of rates is not captured by the model or by either baseline. Two signatures matter for
-the policy question: the column under-predicts the ongoing rate, and more so when the
-recorded (lower) pumping is used, because recovering heads set no new minima and the
-VEP column then only creeps; the rings kept compacting. That is the same deficit
-section 6 finds. The member spread is far too narrow to be read as a range. GNSS rates
-carry full-column and tectonic motion the model does not represent; the model does not
-beat the continued-rate baseline there.
+Superseded (reference across the gap, `results/twin/ring_holdout/report.json`): ring
+cumulative +0.23 / 2.65 / +1.29 for the climatology run, −0.79 / 4.04 / +3.15 for the
+continued rate, −0.45 / 3.63 / −2.02 for no change. The audit's approximate recompute
+from that run's site table (−0.13 / 1.54 / +0.07) is close; it scaled the model's span
+instead of differencing it over the observed months. The same
+rerun fixes the ring *rate* coverage, which had been counted against the cumulative
+band: it is 23 / 38 / 46 % for the three arms, not 31 / 0 / 0 %.
+
+Reading: observed 2023-25 compaction is a fairly uniform 1.3-5.1 cm (嘉興 −0.8 cm), so
+the step had been inflating the observed spread and with it the R². With the reference
+fixed, the climatology run's absolute error falls 40 % and its bias nearly vanishes, and
+it still beats both baselines (RMSE 1.58 against 2.18 and 3.33 cm), but it has no
+cross-site skill: it puts 5-6 cm at 內寮, 土庫, 秀潭, 宏崙, 光復 and 拯民 where the rings
+measured 3.4-5.1, and 0.7-2.2 cm where they measured −0.8 to 3.9. The rings slowed after 2022
+(site rates 0.8-4.0 cm/yr in 2017-22, −0.2 to 2.0 inside the window), so continuing the
+prior rate overshoots and no-change undershoots. Under recorded pumping the column
+compacts up to 4 cm in January-February 2023 (the 2023 dry-season drawdown) and rebounds
+afterwards (元長: +4.0 cm from December to February, then −3.9 cm to March 2025), so from
+the February reference those two arms under-predict by about 1.9 cm; their score is
+dominated by that elastic swing, which the rings, unsurveyed until late February, cannot
+confirm or rule out. The rate signatures are unchanged: the column under-predicts the
+ongoing rate, more so under the recorded (lower) pumping, because recovering heads set
+no new minima and the VEP column then only creeps; the rings kept compacting. That is
+the same deficit section 6 finds. The member spread is far too narrow to be read as a
+range. GNSS rates carry full-column and tectonic motion the model does not represent;
+the model does not beat the continued-rate baseline there.
+
+The page's evidence line reads this report (build with
+`--ring-holdout results/twin/ring_holdout_ref2023/report.json`): it states that each
+site's cumulative starts after the 2022 gap and gives RMSE beside R², and the
+discontinuity is caveat (vii) in its independence list. The `mechanism` table of mean
+ring rates across 2021-23 (`rings_recovery.csv`, `rate_2021_2023_cm`) spans the same
+step; it is now flagged per site (`disc_2021_2023`) and its median is taken over
+unflagged sites only, which leaves none.
 
 ## 6. Policy mechanism: the aquitard column does not resolve it (negative result)
 

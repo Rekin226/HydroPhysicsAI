@@ -33,6 +33,7 @@ from ..subsidence import (
 )
 from .compaction import VEPColumn
 from .heads import build_head_field
+from .mechanism import ring_hiatus_table, ring_positions
 
 
 def fit_column(h: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor,
@@ -212,6 +213,18 @@ def main(argv=None) -> None:
         H, dates = monthly_heads(data)
         wxy = well_xy(data)
         print(f"heads: {H.shape[0]} curated wells (legacy set)")
+    # a ring depth-reference change inside the head window (the 2022 survey hiatus) would
+    # enter the target as compaction: flag it (mechanism.ring_hiatuses)
+    hi = ring_hiatus_table(ring_positions(ddir))
+    tol = pd.Timedelta("45D")
+    inside = hi[hi.discontinuity.astype(bool) & (hi.before >= dates[0] - tol)
+                & (hi.after <= dates[-1] + tol)]
+    if len(inside):
+        print(f"WARNING: ring depth-reference change inside the head window at "
+              f"{sorted(inside.site.unique())}; their target is not a displacement there")
+    else:
+        print(f"ring hiatuses: {int(hi.discontinuity.sum())} reference changes, none inside "
+              f"the head window {dates[0]:%Y-%m}..{dates[-1]:%Y-%m}")
     rows_h, rows_o, rows_m, rows_x, names = [], [], [], [], []
     for _, r in stations.iterrows():
         name = r["sub_id"]

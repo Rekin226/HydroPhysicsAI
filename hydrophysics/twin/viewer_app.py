@@ -247,6 +247,18 @@ def _geometry(fw) -> SimpleNamespace:
         g.gate_all = json.loads(str(fw["gate"]))
     g.zb = [float(v) for v in str(g.gate_all.get("zone_boundaries", "205,182")).split(",")]
     g.zone = fan_zones(g.cent, proximal_km=g.zb[0], distal_km=g.zb[1])
+    # the column's zones (where its parameters jump): the bands, and with a
+    # --zone-county-split model (rung R1c) also the county line, from the calibration's
+    # own verified county map. g.zone stays the band map the page draws.
+    g.zone_col = g.zone
+    if g.gate_all.get("zone_county_split"):
+        from .grid import FanGrid
+        from .zone_county import county_flags_from_meta
+        from .zones import county_split
+
+        ch = county_flags_from_meta(FanGrid(nx=g.nx, ny=g.ny, dx=g.dx, x0=g.x0, y0=g.y0,
+                                            mask=g.mask), g.gate_all)
+        g.zone_col = county_split(g.zone, ch, len(ZONE_NAMES))
     return g
 
 
@@ -666,8 +678,10 @@ def _hsr_block(hsr_csv, hsr_stations_csv, g) -> dict | None:
                                  "ch": round(float(ch[int(d.argmin())]), 2)})
     step = float(np.median(np.diff(ch))) if len(ch) > 1 else 0.25
     # where the rail's gradient reads cells on both sides of a zone line, the gradient is
-    # the model's parameter boundary; the rail tile leaves those points out
-    mixed = prep.zone_mixed(idx[ok], w[ok], g.zone, step, HSR_REACH_KM)
+    # the model's parameter boundary; the rail tile leaves those points out (the county
+    # line too, for a --zone-county-split model: g.zone_col)
+    mixed = prep.zone_mixed(idx[ok], w[ok], getattr(g, "zone_col", g.zone), step,
+                            HSR_REACH_KM)
     return {"ch": np.round(ch, 3).tolist(),
             "x": np.round((h.x_twd97.to_numpy() - g.x0) / 1000.0, 3).tolist(),
             "y": np.round((h.y_twd97.to_numpy() - g.y0) / 1000.0, 3).tolist(),
@@ -1136,6 +1150,13 @@ def _modelcard(fw, g, f, forward_npz, chain, column, temporal, spread_km, public
         "n_wells": ga.get("n_wells"),
         "git_commit": ga.get("git_commit"), "temporal_gate": ga.get("temporal_gate"),
         "zone_boundaries": g.zb, "bounds_at": n_at, "bounds_tracked": n_tr,
+        # --zone-county-split (rung R1c): Changhua has its own parameters (absent for an
+        # unsplit model, whose card is unchanged)
+        **({"zone_county_split": True,
+            "zone_county_n_changhua": ga.get("zone_county_n_changhua"),
+            "zone_county_tied": ga.get("zone_county_tied") or [],
+            "zone_county_copy_sd": ga.get("zone_county_copy_sd")}
+           if ga.get("zone_county_split") else {}),
         "spread_at_bound": bool(bh.get("global", {}).get("log_spread_km", {}).get("hi", 0)),
         "n_members": int(fw["n_members"]) if "n_members" in fw.files else None,
         "hindcast_r2": [round(float(v), 4) for v in fw["hindcast_r2"]]
@@ -1504,6 +1525,8 @@ def _ring_holdout_block(path: str | None) -> dict | None:
     return {"rings": {"n_sites": int(rings["n_sites"]), "cum": rings["cum"],
                       "rate": rings.get("rate")},
             "gnss": report.get("gnss"), "window": report.get("window"),
+            # present when the cumulative is not referenced across the rings' 2022 gap
+            "max_ref_age_days": report.get("max_ref_age_days"),
             "independence": [str(x) for x in report.get("independence", [])]}
 
 

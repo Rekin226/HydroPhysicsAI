@@ -29,11 +29,12 @@ import pandas as pd
 import torch
 
 from .forward import build_model, compaction, load_columns, load_members, rollout
-from .mechanism import band_compaction, ring_cells, ring_positions
+from .mechanism import band_compaction, ring_cells, ring_hiatus_table, ring_positions
 from .release import atomic_json, sha256
 from .scenario import climatology
 
 ARMS = ("climatology", "observed_pumping", "observed_both")
+MAX_REF_AGE_DAYS = 62   # a reference reading older than this before ``ref`` is not used
 CAVEATS = [
     "(i) rings through 2022 were the Stage-2 target (calibrate_mlcw) and the independent "
     "check (calibrate_coupled rings_independent_r2) used in configuration, guard and tau "
@@ -47,27 +48,61 @@ CAVEATS = [
     "(v) 27 months only; the flow model's head RMSE in this period is about 1.85 m",
     "(vi) sites with fewer than 12 observed months in the window are reported but excluded "
     "from the scores",
+    "(vii) the rings have no survey in 2022 (December 2021 to February 2023) and change depth "
+    "reference across that gap (every ring at a site jumps by a common -16 to +50 cm, and the "
+    "monitored interval by up to 8 cm more than its rate implies); each ring site's "
+    "cumulative therefore starts at its first 2023 survey, and the model and the baselines "
+    "are differenced over the same months, about 2.1 of the 2.25 years",
 ]
 
 
 # --------------------------------------------------------------------------------------
 # scoring (pure numpy / pandas, tested synthetically)
 # --------------------------------------------------------------------------------------
-def window_stats(s: pd.Series, ref: str, t0: str, t1: str, min_months: int = 12
-                 ) -> tuple[float, float, int]:
-    """``(cumulative, rate, n)``: displacement from ``ref`` to the last observed month in
-    ``[t0, t1]`` (same units as ``s``), the OLS slope over the window (units/yr) and the
-    number of observed months. NaN when the reference or window is unobserved."""
+def window_span(s: pd.Series, ref: str, t0: str, t1: str,
+                max_ref_age_days: float | None = None
+                ) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """``(start, end)`` of the cumulative displacement :func:`window_stats` measures: the
+    last observation on or before ``ref`` and the last one in ``[t0, t1]``. With
+    ``max_ref_age_days``, a reference more than that many days before ``ref`` is replaced by
+    the first observation in the window, so a survey hiatus ending inside it (the rings'
+    2022 gap, across which they change depth reference) is never bridged. None when the
+    window or the reference is unobserved (a record that starts inside the window stays
+    unscored, as without the age limit)."""
     s = s.dropna()
-    ref_val = s.loc[: pd.Timestamp(ref) + pd.offsets.MonthEnd(0)]
+    ref_end = pd.Timestamp(ref) + pd.offsets.MonthEnd(0)
+    before = s.loc[:ref_end]
+    win = s.loc[pd.Timestamp(t0): pd.Timestamp(t1) + pd.offsets.MonthEnd(0)]
+    if win.empty or before.empty:
+        return None
+    if max_ref_age_days is None or (ref_end - before.index[-1]).days <= max_ref_age_days:
+        return before.index[-1], win.index[-1]
+    return win.index[0], win.index[-1]
+
+
+def window_stats(s: pd.Series, ref: str, t0: str, t1: str, min_months: int = 12,
+                 max_ref_age_days: float | None = None) -> tuple[float, float, int]:
+    """``(cumulative, rate, n)``: displacement over :func:`window_span` (same units as
+    ``s``), the OLS slope over the window (units/yr) and the number of observed months.
+    NaN when the span is undefined or the window has fewer than ``min_months``."""
+    s = s.dropna()
     win = s.loc[pd.Timestamp(t0): pd.Timestamp(t1) + pd.offsets.MonthEnd(0)]
     n = int(len(win))
-    if ref_val.empty or n < min_months:
+    span = window_span(s, ref, t0, t1, max_ref_age_days)
+    if span is None or n < min_months:
         return float("nan"), float("nan"), n
-    ref_v = float(ref_val.iloc[-1])
     years = (win.index - win.index[0]).days / 365.25
     slope = float(np.polyfit(years, win.to_numpy(dtype=float), 1)[0])
-    return float(win.iloc[-1] - ref_v), slope, n
+    return float(s.loc[span[1]] - s.loc[span[0]]), slope, n
+
+
+def span_change(s: pd.Series, span: tuple[pd.Timestamp, pd.Timestamp] | None) -> float:
+    """``s`` at the end of ``span`` minus ``s`` at its start, matched by calendar month
+    (a model series differenced over an observed series' span); NaN without a span."""
+    if span is None:
+        return float("nan")
+    by_month = pd.Series(s.to_numpy(dtype=float), index=s.index.to_period("M"))
+    return float(by_month.loc[span[1].to_period("M")] - by_month.loc[span[0].to_period("M")])
 
 
 def continued_rate(s: pd.Series, t0: str, t1: str, min_months: int = 24) -> float:
@@ -153,8 +188,11 @@ def model_series(inp, members, forcing: dict, vep_json: str, ddir: str, cells: n
         model, scalars, zone = build_model(inp.grid, member, device)
         if "delay_Sd" in scalars or "aqt_Sa" in scalars:
             raise ValueError("slow-store state is not carried by this test")
+        # zone: the column's map from the member's meta (six zones for a
+        # --zone-county-split member, whose column must be split the same way)
         col = load_columns(vep_json, ddir, inp.hf, device, zone_of_cell=zone,
-                           hpc0_fast_days=365.0)[0][1]
+                           hpc0_fast_days=365.0,
+                           county_sha256=member.meta.get("zone_county_sha256"))[0][1]
         hist = rollout(model, scalars, h0, E_hist, R_hist, ground, apex_from=h0)
         for arm, (E, R) in forcing.items():
             fut = rollout(model, scalars, hist[..., -1], E[:, :n_future].to(device),
@@ -169,26 +207,37 @@ def model_series(inp, members, forcing: dict, vep_json: str, ddir: str, cells: n
 def score_sites(obs: dict[str, pd.Series], xy: pd.DataFrame, cells: np.ndarray,
                 sims: dict[str, np.ndarray], dates: pd.DatetimeIndex, archive: np.ndarray,
                 ref: str, t0: str, t1: str, base_t0: str, base_t1: str,
-                rates_only: bool = False) -> tuple[pd.DataFrame, dict]:
-    """Per-site table and pooled scores for one observation family."""
+                rates_only: bool = False, max_ref_age_days: float | None = MAX_REF_AGE_DAYS
+                ) -> tuple[pd.DataFrame, dict]:
+    """Per-site table and pooled scores for one observation family. Each site's observed
+    cumulative runs over its own :func:`window_span` (``ref_month`` to ``end_month``), and
+    the model, the archive and the continued-rate baseline are taken over the same months;
+    rates are OLS slopes over the whole window, observed months only for the observations."""
     rows = []
-    years = (pd.Timestamp(t1) + pd.offsets.MonthEnd(0) - pd.Timestamp(ref)).days / 365.25
     for k, (_, r) in enumerate(xy.iterrows()):
         name, c = r["site"], int(cells[k])
         s = obs[name]
-        cum_o, rate_o, n = window_stats(s, ref, t0, t1)
+        span = window_span(s, ref, t0, t1, max_ref_age_days)
+        years = (span[1] - span[0]).days / 365.25 if span else float("nan")
+        cum_o, rate_o, n = window_stats(s, ref, t0, t1, max_ref_age_days=max_ref_age_days)
         prior = continued_rate(s, base_t0, base_t1)
-        row = {"site": name, "cell": c, "n_months": n, "obs_cum_cm": cum_o * 100,
+        row = {"site": name, "cell": c, "n_months": n,
+               "ref_month": f"{span[0]:%Y-%m}" if span else "",
+               "end_month": f"{span[1]:%Y-%m}" if span else "", "span_yr": years,
+               "obs_cum_cm": cum_o * 100,
                "obs_rate_cm_yr": rate_o * 100, "prior_rate_cm_yr": prior * 100,
                "base_continue_cum_cm": prior * years * 100, "base_zero_cum_cm": 0.0,
                "base_zero_rate_cm_yr": 0.0}
         if c >= 0:
             a = pd.Series(archive[c], index=dates)
-            cum_a, rate_a, _ = window_stats(a, ref, t0, t1, min_months=1)
-            row.update(archive_cum_cm=cum_a * 100, archive_rate_cm_yr=rate_a * 100)
+            rate_a = window_stats(a, ref, t0, t1, min_months=1)[1]
+            row.update(archive_cum_cm=span_change(a, span) * 100,
+                       archive_rate_cm_yr=rate_a * 100)
             for arm, sim in sims.items():
-                stats = np.array([window_stats(pd.Series(sim[m, k], index=dates), ref, t0,
-                                               t1, min_months=1)[:2] for m in range(sim.shape[0])])
+                series = [pd.Series(sim[m, k], index=dates) for m in range(sim.shape[0])]
+                stats = np.array([(span_change(x, span),
+                                   window_stats(x, ref, t0, t1, min_months=1)[1])
+                                  for x in series])
                 row[f"{arm}_cum_cm"] = float(np.mean(stats[:, 0])) * 100
                 row[f"{arm}_rate_cm_yr"] = float(np.mean(stats[:, 1])) * 100
                 lo, hi = np.quantile(stats[:, 0], [0.1, 0.9]) * 100
@@ -207,21 +256,18 @@ def score_sites(obs: dict[str, pd.Series], xy: pd.DataFrame, cells: np.ndarray,
             if col in scored:
                 block[name] = r2_rmse(scored[col].to_numpy(dtype=float),
                                       scored[oc].to_numpy(dtype=float))
-        if not rates_only:
-            for arm in sims:
-                inside = (scored[oc] >= scored[f"{arm}_cum_p10_cm"]) & (scored[oc] <= scored[f"{arm}_cum_p90_cm"])
-                block[arm]["p10_p90_coverage"] = float(inside.mean())
-        else:
-            for arm in sims:
-                inside = (scored[oc] >= scored[f"{arm}_rate_p10_cm_yr"]) & (scored[oc] <= scored[f"{arm}_rate_p90_cm_yr"])
-                block[arm]["p10_p90_coverage"] = float(inside.mean())
+        # each block against its own member band (the rate block once used the cumulative's)
+        for arm in sims:
+            lo, hi = scored[f"{arm}_{q}_p10{unit}"], scored[f"{arm}_{q}_p90{unit}"]
+            block[arm]["p10_p90_coverage"] = float(((scored[oc] >= lo) & (scored[oc] <= hi)).mean())
         scores[q] = block
     return tab, scores
 
 
 def run(theta: list[str], inputs_pkl: str, forcing_npz: str, vep_json: str, forward_npz: str,
         ddir: str, out: Path, device: str = "cuda", t0: str = "2023-01-01",
-        t1: str = "2025-03-31", log=print) -> dict:
+        t1: str = "2025-03-31", max_ref_age_days: float | None = MAX_REF_AGE_DAYS,
+        log=print) -> dict:
     torch.set_num_threads(8)
     device = device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
     with open(inputs_pkl, "rb") as fh:
@@ -260,21 +306,45 @@ def run(theta: list[str], inputs_pkl: str, forcing_npz: str, vep_json: str, forw
     ref = str((pd.Timestamp(t0) - pd.offsets.MonthEnd(1)).date())
     ring_tab, ring_scores = score_sites(
         rings, ring_xy, ring_c, {a: s[:, :nr] for a, s in sims.items()}, dates, archive,
-        ref, t0, t1, "2017-01-01", "2022-12-31")
+        ref, t0, t1, "2017-01-01", "2022-12-31", max_ref_age_days=max_ref_age_days)
     gnss_tab, gnss_scores = score_sites(
         gnss, gnss_xy, gnss_c, {a: s[:, nr:] for a, s in sims.items()}, dates, archive,
-        ref, t0, t1, "2020-01-01", "2022-12-31", rates_only=True)
+        ref, t0, t1, "2020-01-01", "2022-12-31", rates_only=True,
+        max_ref_age_days=max_ref_age_days)
+    # the rings' survey hiatuses and the depth-reference change across the 2022 one
+    hiatuses = ring_hiatus_table(ring_positions(ddir))
+    disc = hiatuses[hiatuses.discontinuity.astype(bool)
+                    & (hiatuses.before <= pd.Timestamp(ref))
+                    & (hiatuses.after >= pd.Timestamp(ref) - pd.Timedelta(days=366))]
+    by_site = disc.drop_duplicates("site", keep="last").set_index("site")
+    for col in ("common_offset_m", "unexplained_m"):
+        ring_tab[f"hiatus_{col[:-2]}_cm"] = ring_tab.site.map(by_site[col] * 100)
     out.mkdir(parents=True, exist_ok=True)
     ring_tab.to_csv(out / "rings_sites.csv", index=False)
     gnss_tab.to_csv(out / "gnss_sites.csv", index=False)
+    hiatuses.to_csv(out / "rings_hiatuses.csv", index=False)
     report = {
         "schema": 1, "task": "frozen-column-continuation-rings-gnss",
         "prospective_validation": False, "independent_holdout": False,
         "causal_policy_validation": False,
-        "window": [t0, t1], "reference_month": ref, "members": len(members),
+        "window": [t0, t1], "reference_month": ref,
+        "reference_rule": (f"cumulative from the last reading on or before {ref}, or from the "
+                           f"site's first reading in the window when that is more than "
+                           f"{max_ref_age_days} days older; model, archive and baselines over "
+                           "the same months (rings_sites.csv ref_month, end_month)"),
+        "max_ref_age_days": max_ref_age_days,
+        "ring_discontinuity": {
+            "n_sites": int(disc.site.nunique()),
+            "survey_gap": sorted({f"{a:%Y-%m}..{b:%Y-%m}" for a, b in
+                                  zip(disc.before, disc.after, strict=True)}),
+            "common_offset_cm": [round(float(v) * 100, 1) for v in disc.common_offset_m],
+            "interval_unexplained_cm": [round(float(v) * 100, 1) for v in disc.unexplained_m],
+            "sites_referenced_after_gap": ring_tab.site[ring_tab.ref_month > ref[:7]].tolist()},
+        "members": len(members),
         "start_state": "free-running hindcast end state (no observation update)",
         "column": vep_json, "column_sha256": sha256(vep_json),
-        "theta": theta, "forcing_sha256": sha256(forcing_npz),
+        "theta": theta, "inputs_pkl": inputs_pkl, "inputs_sha256": sha256(inputs_pkl),
+        "forcing": forcing_npz, "forcing_sha256": sha256(forcing_npz),
         "forward_archive": forward_npz, "forward_sha256": sha256(forward_npz),
         "units": "cm (cumulative, positive = sinking) and cm/yr (OLS rate over the window)",
         "baselines": {"base_continue": "site's own 2017-22 (rings) / 2020-22 (GNSS) OLS rate continued",
@@ -295,10 +365,13 @@ def main(argv=None) -> None:
     ap.add_argument("--forward", required=True)
     ap.add_argument("--data", default=os.environ.get("HYDROMIND_GW_DATA"))
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--max-ref-age-days", type=float, default=MAX_REF_AGE_DAYS,
+                    help="a reference reading older than this before the window is not used; "
+                         "the site's first reading in the window is (default %(default)s)")
     ap.add_argument("--out", required=True, type=Path)
     args = ap.parse_args(argv)
     rep = run(args.theta, args.inputs_pkl, args.forcing, args.vep_json, args.forward,
-              args.data, args.out, args.device)
+              args.data, args.out, args.device, max_ref_age_days=args.max_ref_age_days)
     for fam in ("rings", "gnss"):
         print(f"== {fam}: {rep[fam]['n_sites']} sites scored; excluded {rep[fam]['sites_excluded']}")
         for q, block in rep[fam].items():

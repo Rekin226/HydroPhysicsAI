@@ -88,7 +88,9 @@ class PumpingScenario:
     ``factors`` maps a policy class to its multiplier (1.0 = unchanged, 0.7 = a 30% cut,
     0.0 = retired). Classes not named are left alone.
 
-    ``zones`` optionally restricts the policy to named fan zones (``zones.ZONE_NAMES``);
+    ``zones`` optionally restricts the policy to named fan zones (``zones.ZONE_NAMES``),
+    i.e. to bands of the fan: on a ``--zone-county-split`` model's six-zone map a band
+    includes its Changhua copy (``zones.fan_band_of``);
     ``start`` optionally delays it, so "cut irrigation 30% from 2026" is expressible
     rather than being applied retroactively over the whole record.
     """
@@ -122,7 +124,7 @@ class PumpingScenario:
     def _scope(self, n_cells: int, dates: pd.DatetimeIndex,
                zone_of_cell: np.ndarray | None) -> np.ndarray:
         """(A, T) in {0, 1}: where and when the policy is in force."""
-        from .zones import ZONE_NAMES
+        from .zones import ZONE_NAMES, fan_band_of
 
         active = np.ones(len(dates), dtype="float64")
         if self.start is not None:
@@ -132,7 +134,7 @@ class PumpingScenario:
             if zone_of_cell is None:
                 raise ValueError("zones= requires zone_of_cell")
             idx = [ZONE_NAMES.index(z) for z in self.zones]
-            cell_sel = np.isin(zone_of_cell, idx).astype("float64")
+            cell_sel = np.isin(fan_band_of(zone_of_cell), idx).astype("float64")
         return cell_sel[:, None] * active[None, :]
 
     def apply_sw(self, sw: np.ndarray, dates: pd.DatetimeIndex,
@@ -148,7 +150,7 @@ class PumpingScenario:
     def apply(self, e_by_class: dict[str, np.ndarray], dates: pd.DatetimeIndex,
               zone_of_cell: np.ndarray | None = None) -> np.ndarray:
         """Combine the per-class energy fields under this policy -> ``(A, T)``."""
-        from .zones import ZONE_NAMES
+        from .zones import ZONE_NAMES, fan_band_of
 
         first = next(iter(e_by_class.values()))
         total = np.zeros_like(first)
@@ -162,7 +164,7 @@ class PumpingScenario:
             if zone_of_cell is None:
                 raise ValueError("zones= requires zone_of_cell")
             idx = [ZONE_NAMES.index(z) for z in self.zones]
-            cell_sel = np.isin(zone_of_cell, idx).astype("float64")
+            cell_sel = np.isin(fan_band_of(zone_of_cell), idx).astype("float64")
 
         for name, E in e_by_class.items():
             f = float(self.factors.get(name, 1.0))

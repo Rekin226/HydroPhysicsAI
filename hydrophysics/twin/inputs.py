@@ -108,7 +108,11 @@ class TwinInputs:
 def input_options(meta: dict | None) -> dict:
     """``load_twin_inputs`` keyword arguments for the opt-in input constructions a
     calibration recorded in its meta (``calibrate_flow._input_opts_record``). Absent keys
-    (every run before 2026-09-23) give the historical construction."""
+    (every run before 2026-09-23) give the historical construction.
+
+    ``zone_county_split`` (rung R1c) is deliberately not among them: the county split
+    copies the PARAMETERS, and the merged-proximal initial field stays on the unsplit
+    zone map in calibration and here alike (``calibrate_flow._ic_zone_map``)."""
     meta = meta or {}
     opts: dict = {}
     if meta.get("ic_merged_proximal"):
@@ -126,7 +130,25 @@ def input_options(meta: dict | None) -> dict:
         opts["dem_npz"] = meta.get("ground_elev_dem_npz") or "results/twin/basemap.npz"
     if meta.get("strict_coverage"):
         opts["strict_coverage"] = True
+    # opt-in 2026-10-14: the pump census this calibration used, when it was not the default
+    for key in ("pump_census", "pump_kwh"):
+        if meta.get(key):
+            opts[key] = meta[key]
     return opts
+
+
+def resolve_paths(paths: dict | None = None, pump_census: str | None = None,
+                  pump_kwh: str | None = None) -> dict:
+    """DEFAULT_PATHS overridden by a calibration's recorded pump census (``pump_census``,
+    ``pump_kwh`` from ``input_options``), then by explicit ``paths`` (a caller's CLI flags),
+    which win. ``None`` values never override."""
+    P = dict(DEFAULT_PATHS)
+    for key, value in (("pump_census", pump_census), ("pump_kwh", pump_kwh)):
+        if value is not None:
+            P[key] = value
+    if paths:
+        P.update({k: v for k, v in paths.items() if v is not None})
+    return P
 
 
 def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
@@ -136,6 +158,7 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                      ic_merged_proximal: bool = False, zone_boundaries: str = "205,182",
                      ground_elev: str = "wells", dem_npz: str = "results/twin/basemap.npz",
                      strict_coverage: bool = False,
+                     pump_census: str | None = None, pump_kwh: str | None = None,
                      ic_month0_filled: bool = False,
                      ic_layered_proximal: bool = False) -> TwinInputs:
     """Assemble the twin's inputs from the data cache. ``paths`` overrides DEFAULT_PATHS.
@@ -147,10 +170,10 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     ``--ground-elev`` and ``--strict-coverage``; ``ic_month0_filled`` makes
     ``initial_heads(0)`` use the back-filled month-0 heads, as such a calibration did.
     ``ic_layered_proximal`` is ``--ic-layered-proximal`` (with ``ic_merged_proximal``).
+    ``pump_census``/``pump_kwh`` are a calibration's recorded non-default census
+    (explicit ``paths`` still win, see ``resolve_paths``).
     Pass ``**input_options(meta)``."""
-    P = dict(DEFAULT_PATHS)
-    if paths:
-        P.update({k: v for k, v in paths.items() if v is not None})
+    P = resolve_paths(paths, pump_census, pump_kwh)
     for k, v in P.items():
         if not os.path.exists(v):
             raise FileNotFoundError(f"{k}: {v!r} does not exist -- see docs/DATA_FORMAT.md "

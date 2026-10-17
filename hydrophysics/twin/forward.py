@@ -66,7 +66,13 @@ from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
 from .flow import FlowModel
 from .inputs import TwinInputs, input_options, load_twin_inputs
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
-from .zones import collapse_zones, column_band_weights, fan_zones, zone_blend_weights
+from .zones import (
+    COUNTY_SUFFIX,
+    N_ZONES,
+    collapse_county_zones,
+    collapse_zones,
+    column_band_weights,
+)
 
 N_LAYERS = 4
 
@@ -166,6 +172,13 @@ def _members_from_gate_csv(path: str) -> dict:
                 "ic_layered_proximal", "proximal_layered"):
         if _cell(key) in ("True", "true", "1"):
             meta[key] = True
+    # --zone-county-split (rung R1c, 2026-10-15): the county map's identity travels in
+    # the CSV, so build_model rebuilds (and verifies) the same zones
+    if _cell("zone_county_split") in ("True", "true", "1"):
+        meta["zone_county_split"] = True
+        for key in ("zone_county_sha256", "zone_county_map"):
+            if _cell(key) not in ("", "None"):
+                meta[key] = _cell(key)
     if _cell("ground_elev") not in ("", "None", "wells"):
         meta["ground_elev"] = _cell("ground_elev")
         if _cell("ground_elev_dem_npz") not in ("", "None"):
@@ -206,30 +219,47 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
 
     ``scalars`` holds the driver parameters that live outside the model (``log_eta``,
     ``log_head_extra``, ``recharge_frac_logit``) as float64 tensors on ``device``.
-    ``zone_of_cell`` is always the three-zone map: a flow model fitted with the proximal
-    split (``zone_boundaries`` "P,D,S") is rebuilt on four zones, and its ids are collapsed
-    for the callers (the compaction column, scenario zones), which stay three-zone.
+    ``zone_of_cell`` is the column's zone map (``zone_county.column_zone_map``): the
+    three-zone map, since a flow model fitted with the proximal split (``zone_boundaries``
+    "P,D,S") is rebuilt on four zones and its ids are collapsed for the callers (the
+    compaction column, scenario zones), which stay three-zone. A ``--zone-county-split``
+    model (rung R1c; ``zone_county_split`` in the meta) is rebuilt on the county-split
+    zones, its county map verified against the recorded ``zone_county_sha256``, and the
+    callers get the six-zone map: ids 0-2 rest of the fan, 3-5 their Changhua copies
+    (``zones.fan_band_of`` gives the band, which is what scenario ``zones=`` select). A
+    theta and a meta that disagree on either split are refused.
     """
-    meta, th = member.meta, member.theta
+    from .zone_county import apply_county_ties, flow_zone_map, flow_zone_weights
+
+    meta = member.meta
+    # --county-tie: a tied Changhua copy is its parent (a no-op otherwise)
+    th = apply_county_ties(member.theta, meta)
     mode = meta.get("param_mode", "zonal")
     proximal_km = 205.0
     zone_of_cell = None
     zone_w = None
+    names: tuple[str, ...] = ()
+    county = bool(meta.get("zone_county_split"))
     if mode == "zonal":
         proximal_km, distal_km, split_km = _parse_zone_boundaries(
             meta.get("zone_boundaries", "205,182"), allow_split=True)
-        # with the opt-in proximal split the flow uses four zone ids; the returned
-        # zone_of_cell (column, scenarios, river split) is the three-zone collapse
-        zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km, distal_km=distal_km,
-                                 split_km=split_km)
         if (split_km is not None) != ("log_T_proximal_w" in th):
             raise ValueError(f"zone_boundaries {meta.get('zone_boundaries')!r} and the theta "
                              "disagree on the proximal split (log_T_proximal_w)")
+        if county != (f"log_T_proximal{COUNTY_SUFFIX}" in th):
+            raise ValueError(f"meta zone_county_split={county} and the theta disagree on the "
+                             f"county split (log_T_proximal{COUNTY_SUFFIX}): rebuilding it "
+                             "on other zones would be a different model")
+        # with the opt-in proximal split the flow uses four zone ids (and with the county
+        # split their Changhua copies); the returned zone_of_cell (column, scenarios) is
+        # the collapse of the proximal split, the county kept
+        zone_of_cell, names = flow_zone_map(grid, meta)
         if float(meta.get("zone_blend_km") or 0.0) > 0.0:
             # --zone-blend-km: the calibrated parameters are a per-cell mix across the
             # mid/distal line; rebuilding them as a step would be a different model
-            zone_w = zone_blend_weights(grid.centroids(), proximal_km, distal_km,
-                                        float(meta["zone_blend_km"]), split_km=split_km)
+            zone_w = flow_zone_weights(grid, meta, float(meta["zone_blend_km"]))
+    elif county:
+        raise ValueError(f"zone_county_split needs param_mode zonal, not {mode!r}")
     boundaries = None
     if meta.get("boundaries", "none") == "coast-apex":
         boundaries = fan_boundaries(grid, proximal_km=proximal_km)
@@ -243,6 +273,9 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         # second-round options (2026-09-23): absent keys are the historical river set
         skip = (boundaries.apex_idx if (meta.get("river_skip_apex") and boundaries is not None)
                 else None)
+        if county and (meta.get("river_c_split") or "group") == "zone":
+            raise ValueError("river_c_split zone does not split its river groups by county; "
+                             "a zone_county_split model cannot carry it")
         rs, sha = build_river_set(
             grid, shp=meta.get("river_shp"), groups=meta.get("river_set",
                                                              "choushui,wu,beigang"),
@@ -250,7 +283,8 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
             stage_depth=float(meta.get("river_stage_depth", 1.0)),
             rbot_depth=float(meta.get("river_rbot_depth", 3.0)),
             edge_buffer_m=meta.get("river_edge_buffer_m"),
-            zone_of_cell=None if zone_of_cell is None else collapse_zones(zone_of_cell),
+            zone_of_cell=(None if zone_of_cell is None or county
+                          else collapse_zones(zone_of_cell)),
             c_split=meta.get("river_c_split") or "group", exclude_idx=skip,
             season_csv=meta.get("river_stage_season"))
         if meta.get("river_groups") and list(rs.names) != list(meta["river_groups"]):
@@ -268,12 +302,10 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
     with torch.no_grad():
         if mode == "zonal":
             zt = zone_tensor(zone_of_cell, device, zone_w)
-            keys = ("log_T_proximal", "log_S_proximal", "log_T_mid", "log_S_mid",
-                    "log_T_distal", "log_S_distal", "log_L_mid", "log_L_distal",
-                    "log_T_proximal_w", "log_S_proximal_w",
-                    # --proximal-layered (2026-09-25): per-layer proximal T/S come in as
-                    # (L, 1) through t(); these learnable leakances replace the constant
-                    "log_L_proximal", "log_L_proximal_w")
+            # every zone's T, S and L, the proximal split's and the county split's copies
+            # included; --proximal-layered (2026-09-25) per-layer proximal T/S come in as
+            # (L, 1) through t(), and its learnable leakances replace the constant
+            keys = [f"{b}_{z}" for z in names for b in ("log_T", "log_S", "log_L")]
             theta_t = {k: t(th[k]) for k in keys if k in th}
             log_T, log_S, log_L = _expand_zonal(theta_t, zt, N_LAYERS)
             model.log_T.copy_(log_T)
@@ -335,7 +367,11 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
             pairwise_d2_km(grid, device=device),
             torch.tensor(math.log(float(th["spread_km"])), dtype=torch.float64, device=device))
     if zone_of_cell is not None:
-        zone_of_cell = collapse_zones(zone_of_cell)     # a no-op without the proximal split
+        if county:
+            # proximal_w (if any) back into proximal, the Changhua copies kept: ids 0-5
+            zone_of_cell = collapse_county_zones(zone_of_cell, len(names) // 2)
+        else:
+            zone_of_cell = collapse_zones(zone_of_cell)  # a no-op without the proximal split
     return model, scalars, zone_of_cell
 
 
@@ -691,6 +727,17 @@ class ZonalColumn(torch.nn.Module):
     def __init__(self, params: list[dict], zone_of_cell: np.ndarray, device=None,
                  zone_w: np.ndarray | None = None):
         super().__init__()
+        zarr = np.asarray(zone_of_cell)
+        if zone_w is None and zarr.size and int(zarr.max()) >= len(params):
+            # a cell whose zone has no parameter set would silently compact by zero
+            raise ValueError(f"the zone map has ids up to {int(zarr.max())} but the column "
+                             f"has {len(params)} parameter sets: a column with fewer zones "
+                             "than the flow model (e.g. three-zone on a --zone-county-split "
+                             "model) cannot honour its zonation; refit it with "
+                             "calibrate_coupled on that theta")
+        if zone_w is not None and np.asarray(zone_w).shape[0] != len(params):
+            raise ValueError(f"zone weights have {np.asarray(zone_w).shape[0]} rows but the "
+                             f"column has {len(params)} parameter sets")
         self.cols = torch.nn.ModuleList()
         for p in params:
             c = column_from_params(p, device)
@@ -760,11 +807,37 @@ def release_fast_startup(p: dict, tau_days: float | None) -> tuple[dict, list[in
     return out, changed
 
 
+def check_column_zonation(p: dict, zone_of_cell: np.ndarray,
+                          county_sha256: str | None = None, label: str = "") -> None:
+    """A zonal column JSON against the zone map it is about to run on: a county-split
+    column (``zone_county_split``, six parameter sets) needs the six-zone map of a
+    ``--zone-county-split`` flow model and the other way round, and when both record it
+    the county map's hash must agree. Refuses rather than run Changhua cells on another
+    zone's parameters."""
+    zarr = np.asarray(zone_of_cell)
+    col_county = bool(p.get("zone_county_split"))
+    map_county = bool(zarr.size) and int(zarr.max()) >= N_ZONES
+    n_cols = len(p.get("zonal") or [])
+    where = f"{label}: " if label else ""
+    if col_county != map_county:
+        raise ValueError(
+            f"{where}the column is {'county-split' if col_county else 'not county-split'} "
+            f"({n_cols} zones) but the flow model's zone map "
+            f"{'is' if map_county else 'is not'} (ids up to {int(zarr.max())}); a column "
+            "pairs with the flow model it was fitted on -- refit it with calibrate_coupled "
+            "on this theta")
+    sha = p.get("zone_county_sha256")
+    if col_county and county_sha256 and sha and str(sha) != str(county_sha256):
+        raise ValueError(f"{where}the column was fitted on county map {str(sha)[:12]}, the "
+                         f"flow model on {str(county_sha256)[:12]}")
+
+
 def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                     epochs: int = 2000, zone_of_cell: np.ndarray | None = None,
                     zone_weights=None, hpc0_fast_days: float | None = None,
                     blend_km: float | None = None,
-                    band_xy: np.ndarray | None = None) -> tuple[torch.nn.Module, dict]:
+                    band_xy: np.ndarray | None = None,
+                    county_sha256: str | None = None) -> tuple[torch.nn.Module, dict]:
     """The compaction column: read it from ``vep_json`` if that exists (a shared
     Stage-2 set, or a per-zone set from ``calibrate_coupled``), else fit the shared
     Stage-2 column on the MLCW sites (``explorer3d.fit_shared_vep``) and write it there.
@@ -777,7 +850,12 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
       and the returned params record it.
     - A banded column (``calibrate_coupled --configs banded``, 2026-09-29; ``banded`` in
       its JSON) is rebuilt from the band centres and kind it records on the cell
-      centroids ``band_xy`` (metres)."""
+      centroids ``band_xy`` (metres).
+    - A per-zone column is checked against ``zone_of_cell`` (``check_column_zonation``):
+      a county-split column (rung R1c) runs only on a county-split map, and an unsplit
+      one only on an unsplit map; ``county_sha256`` (the flow meta's
+      ``zone_county_sha256``) must match the column's when both are known. A banded
+      column is easting-only and refused on a county-split map."""
     if vep_json and os.path.exists(vep_json):
         with open(vep_json) as fh:
             p = json.load(fh)
@@ -798,6 +876,10 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 p["hpc0_released"] = {"tau_days_below": float(thr), "columns": [],
                                       "already_clean": True}
         if p.get("banded"):
+            zarr = None if zone_of_cell is None else np.asarray(zone_of_cell)
+            if zarr is not None and zarr.size and int(zarr.max()) >= N_ZONES:
+                raise ValueError(f"{vep_json}: a banded column varies with easting only and "
+                                 "cannot honour a --zone-county-split flow model's zones")
             if band_xy is None:
                 raise ValueError(f"{vep_json}: a banded column needs band_xy (the cell "
                                  "centroids) to rebuild its per-cell parameters")
@@ -810,6 +892,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
         if "zonal" in p:
             if zone_of_cell is None:
                 raise ValueError("a zonal column needs zone_of_cell")
+            check_column_zonation(p, zone_of_cell, county_sha256, label=vep_json)
             w_km = float(p.get("zone_blend_km") or 0.0)
             if blend_km is not None:
                 if abs(float(blend_km) - w_km) > 1e-9:
@@ -844,7 +927,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
 def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 2000,
                  zone_of_cell: np.ndarray | None = None, zone_weights=None,
                  hpc0_fast_days: float | None = None, blend_km: float | None = None,
-                 band_xy: np.ndarray | None = None
+                 band_xy: np.ndarray | None = None, county_sha256: str | None = None
                  ) -> list[tuple[str, torch.nn.Module, dict]]:
     """A comma-separated ``--vep-json`` -> ``[(label, column, params)]``, the rheology
     axis of the ensemble (2026-09-23). The creep time constant is not identifiable from
@@ -857,7 +940,7 @@ def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 200
         col, p = load_or_fit_vep(path, ddir, hf, device, epochs=epochs,
                                  zone_of_cell=zone_of_cell, zone_weights=zone_weights,
                                  hpc0_fast_days=hpc0_fast_days, blend_km=blend_km,
-                                 band_xy=band_xy)
+                                 band_xy=band_xy, county_sha256=county_sha256)
         tmax = p.get("tau_max_years")
         label = (f"tau{float(tmax):g}y" if tmax is not None
                  else os.path.basename(os.path.dirname(path)) or os.path.basename(path))
@@ -1312,17 +1395,24 @@ def main(argv=None) -> None:
 
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir) if cfg.data_dir and os.path.isdir(str(cfg.data_dir)) else None
-    from .zones import fan_zones as _fan_zones
+    from .zone_county import column_zone_map, column_zone_weights
 
-    # the column is three-zone even over a flow model with the proximal split
-    zb = _parse_zone_boundaries(meta.get("zone_boundaries", "205,182"), allow_split=True)[:2]
-    zoc = _fan_zones(inp.grid.centroids(), *zb)
+    # the column is three-zone even over a flow model with the proximal split; a
+    # --zone-county-split model's column has the Changhua copy of each zone (rung R1c).
+    # Every member must share that zonation, since one column serves them all.
+    county_keys = {(bool(m.meta.get("zone_county_split")), m.meta.get("zone_county_sha256"))
+                   for m in members}
+    if len(county_keys) > 1:
+        raise SystemExit(f"the members disagree on the county split {sorted(county_keys)}; "
+                         "one column cannot serve them all")
+    zoc = column_zone_map(inp.grid, meta)
     cent = inp.grid.centroids()
     columns = load_columns(args.vep_json, ddir, inp.hf, device, epochs=args.vep_epochs,
                            zone_of_cell=zoc,
-                           zone_weights=lambda km: zone_blend_weights(cent, *zb, km),
+                           zone_weights=column_zone_weights(inp.grid, meta),
                            hpc0_fast_days=args.column_hpc0_fast_days,
-                           blend_km=args.column_zone_blend_km, band_xy=cent)
+                           blend_km=args.column_zone_blend_km, band_xy=cent,
+                           county_sha256=meta.get("zone_county_sha256"))
     for rlabel, _, vep in columns:
         if vep.get("hpc0_released", {}).get("already_clean"):
             print(f"A1 fix [{rlabel}]: no column with tau < "
@@ -1349,7 +1439,9 @@ def main(argv=None) -> None:
             print(f"VEP column [{rlabel}]: per-zone (" + "; ".join(
                 f"{z}: Ske={math.exp(q['log_ske']):.2e} Skv={math.exp(q['log_skv']):.2e} "
                 f"tau={math.exp(q['log_tau']):.0f} d"
-                for z, q in zip(("prox", "mid", "dist"), vep["zonal"], strict=True))
+                for z, q in zip(("prox", "mid", "dist") if len(vep["zonal"]) == N_ZONES
+                                else vep.get("zone_names") or range(len(vep["zonal"])),
+                                vep["zonal"], strict=True))
                 + ")", flush=True)
         else:
             print(f"VEP column [{rlabel}]: Ske={math.exp(vep['log_ske']):.3e} "

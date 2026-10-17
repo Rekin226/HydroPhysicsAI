@@ -235,7 +235,7 @@ python -m hydrophysics.twin.viewer_app \
   --challenge results/twin/new_data_challenge/report.json \
   --coverage results/twin/coverage_datum_gate_innov/report.json \
   --prospective results/twin/prospective_2026-11/manifest.json \
-  --ring-holdout results/twin/ring_holdout/report.json \
+  --ring-holdout results/twin/ring_holdout_ref2023/report.json \
   --hybrid results/twin/hybrid_datum_gate_innov/report.json \
   --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
   --deep-piles results/twin/deep_pile_holdout/report.json \

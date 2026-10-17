@@ -39,7 +39,6 @@ import pandas as pd
 import torch
 
 from .calibrate_flow import (
-    _parse_zone_boundaries,
     temporal_verdict,  # noqa: F401  (re-exported for the gate)
 )
 from .forward import (
@@ -55,7 +54,7 @@ from .forward import (
     sw_hist,
 )
 from .scenario import PumpingScenario
-from .zones import zone_blend_weights
+from .zone_county import column_zone_weights
 
 REFERENCE_VEP = "results/twin_runs/stage3_spreadL_gate/coupled_leveling/vep_zonal_leveling.json"
 LEVELS = (1.0, 0.85, 0.7)
@@ -142,13 +141,14 @@ def policy_response(inp, member, vep_json: str | None = None, levels=LEVELS,
     vep_path = vep_json or REFERENCE_VEP
     # a column refitted with --zone-blend-km rebuilds its per-cell parameters from the
     # blend weights on the run's own zone lines
-    # the column is three-zone even over a flow model with the proximal split
-    zb = _parse_zone_boundaries(member.meta.get("zone_boundaries", "205,182"),
-                                allow_split=True)[:2]
+    # the column is three-zone even over a flow model with the proximal split; over a
+    # --zone-county-split model (rung R1c) zoc is the six-zone map, and load_or_fit_vep
+    # refuses a column that is not split the same way (the three-zone reference proxy is)
     cent = inp.grid.centroids()
     col, _ = load_or_fit_vep(vep_path, None, inp.hf, device, zone_of_cell=zoc,
-                             zone_weights=lambda km: zone_blend_weights(cent, *zb, km),
-                             band_xy=cent)
+                             zone_weights=column_zone_weights(inp.grid, member.meta),
+                             band_xy=cent,
+                             county_sha256=member.meta.get("zone_county_sha256"))
     eta_classes = member.meta.get("eta_classes")
     if eta_classes:
         E_hist = torch.tensor(np.stack([inp.E_by_class[c] for c in eta_classes]),
