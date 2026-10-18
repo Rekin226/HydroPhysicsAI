@@ -1,0 +1,5 @@
+# Design-time exploration scripts kept as they ran (provenance); style rules relaxed here only.
+extend = "../../../pyproject.toml"
+
+[lint]
+extend-ignore = ["E701", "E702", "E712", "E402", "B023"]
