@@ -184,7 +184,8 @@ def _members_from_gate_csv(path: str) -> dict:
         if _cell("ground_elev_dem_npz") not in ("", "None"):
             meta["ground_elev_dem_npz"] = _cell("ground_elev_dem_npz")
     for key in ("delay_storage", "rivers", "river_set", "sw_recharge", "delay_u0",
-                "aquitard_storage", "sw_components", "river_c_split"):
+                "aquitard_storage", "sw_components", "river_c_split", "extra_abstraction",
+                "extra_abstraction_sha256"):
         if _cell(key) not in ("", "None"):
             meta[key] = _cell(key)
     needs_recipe = (meta.get("rivers", "none") != "none"
@@ -209,7 +210,7 @@ def _members_from_gate_csv(path: str) -> dict:
                 raise ValueError(f"{path}: {key}={meta[key]!r} disagrees with {sib} "
                                  f"({sib_meta.get(key)!r}); they are not the same run")
         for key, v in sib_meta.items():
-            if key.startswith(("river", "dem_", "delay_", "sw_", "aquitard_")):
+            if key.startswith(("river", "dem_", "delay_", "sw_", "aquitard_", "extra_")):
                 meta.setdefault(key, v)
     return {"theta": theta, "meta": meta}
 
@@ -355,6 +356,10 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         scalars["log_sw_scale"] = sw_scale_tensor(th["log_sw_scale"], device=device)
         if meta.get("sw_layer") is not None:
             scalars["sw_layer"] = int(meta["sw_layer"])
+    if meta.get("extra_abstraction"):
+        # --extra-abstraction (rung R1e-pw): no parameter, only a marker so rollout refuses
+        # to run this model without the fixed abstraction it was calibrated with
+        scalars["extra_abstraction"] = str(meta["extra_abstraction"])
     for k in ("log_eta", "log_head_extra", "recharge_frac_logit", "pump_split_logit",
               "return_frac_logit"):
         if k in th:
@@ -380,7 +385,7 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
             pump_layer: int = 1, recharge_layer: int = 0,
             sw_field: torch.Tensor | None = None, u0: torch.Tensor | dict | None = None,
             return_state: bool = False, month0: int | None = None,
-            apex_from: torch.Tensor | None = None):
+            apex_from: torch.Tensor | None = None, q_extra: torch.Tensor | None = None):
     """Run the calibrated model over a forcing sequence -> heads ``(L, A, T+1)`` (float64,
     on the model's device). ``E`` and ``recharge_field`` are ``(A, T)``.
 
@@ -401,8 +406,21 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
     ``apex_from`` (2026-09-26, opt-in) prescribes the apex boundary head from that field
     instead of ``h0``. Without it every call re-pins the mountain front to its own starting
     field, so a restarted or nudged segment moves the boundary; ``--apex-hold calibrated``
-    passes the member's month-0 field so the boundary stays the one the fit saw."""
+    passes the member's month-0 field so the boundary stays the one the fit saw.
+
+    ``q_extra`` (2026-10-18, rung R1e-pw) is the fixed extra abstraction ``(L, A, T)``
+    m3/day of a model calibrated with ``--extra-abstraction`` (``extra_hist`` /
+    ``future_extra``); such a model refuses to run without it, like an sw model without
+    its canal field."""
     ext = {}
+    if "extra_abstraction" in scalars:
+        if q_extra is None:
+            raise ValueError("this model was calibrated with --extra-abstraction "
+                             f"({scalars['extra_abstraction']}): pass q_extra ((L, A, T) "
+                             "m3/day, forward.extra_hist / future_extra) to rollout")
+        if q_extra.shape[-1] != E.shape[-1]:
+            raise ValueError(f"q_extra has {q_extra.shape[-1]} months, E has {E.shape[-1]}")
+        ext["pumping"] = q_extra
     if "delay_Sd" in scalars:
         if u0 is None and "delay_du0" in scalars:
             u0 = h0.to(scalars["delay_du0"].device) + scalars["delay_du0"]
@@ -511,7 +529,12 @@ def future_forcing(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
 def attach_sw_recharge(inp: TwinInputs, meta: dict, log=print) -> None:
     """Load the canal deliveries a member was calibrated with into ``inp.sw_field`` (in
     place; no-op for a run without ``--sw-recharge``). Every caller of ``rollout`` that
-    rebuilds a member from its theta file needs this, or an sw model refuses to run."""
+    rebuilds a member from its theta file needs this, or an sw model refuses to run.
+
+    It also attaches the other recorded fixed forcings (2026-10-18): the county split of the
+    canal field (``sw_county_split``, with the calibration's verified county map) and the
+    fixed extra abstraction (``extra_abstraction`` into ``inp.extra_q``, its file hash
+    checked)."""
     if meta.get("sw_recharge") and getattr(inp, "sw_field", None) is None:
         from .inputs import load_sw_recharge
 
@@ -519,6 +542,49 @@ def attach_sw_recharge(inp: TwinInputs, meta: dict, log=print) -> None:
         inp.sw_field = load_sw_recharge(meta["sw_recharge"], inp.grid, inp.dates,
                                         components=comp)
         log(f"canal deliveries as calibrated: {meta['sw_recharge']} ({comp})")
+        if meta.get("sw_county_split"):
+            from .inputs import split_sw_by_county
+            from .zone_county import county_flags_from_meta
+
+            flags = county_flags_from_meta(inp.grid, meta)
+            if flags is None:
+                raise ValueError("sw_county_split needs the calibration's county map "
+                                 "(zone_county_split + zone_county_sha256 in the meta)")
+            inp.sw_field = split_sw_by_county(inp.sw_field, flags)
+            inp.sw_county_split = True
+            log(f"  canal fractions split by county: {inp.sw_field.shape[0]} components")
+    if meta.get("extra_abstraction") and getattr(inp, "extra_q", None) is None:
+        import hashlib
+
+        from .inputs import load_extra_abstraction
+
+        path = meta["extra_abstraction"]
+        with open(path, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        want = meta.get("extra_abstraction_sha256")
+        if want and sha != want:
+            raise ValueError(f"{path} has sha256 {sha[:12]}, the calibration recorded "
+                             f"{str(want)[:12]}: not the abstraction it was fitted with")
+        inp.extra_q = load_extra_abstraction(path, inp.grid, inp.dates)
+        log(f"fixed extra abstraction as calibrated: {path}")
+
+
+def extra_hist(inp: TwinInputs) -> torch.Tensor | None:
+    """The record's fixed extra abstraction aligned with ``recharge_field[:, 1:]``
+    (``(L, A, T-1)``), or ``None``."""
+    q = getattr(inp, "extra_q", None)
+    return None if q is None else torch.as_tensor(q, dtype=torch.float64)[..., 1:]
+
+
+def future_extra(inp: TwinInputs, horizon: int) -> torch.Tensor | None:
+    """The fixed extra abstraction past the record: its last month held (persistence, the
+    same rule ``load_extra_abstraction`` applies; no scenario touches it) ->
+    ``(L, A, horizon)``, or ``None``."""
+    q = getattr(inp, "extra_q", None)
+    if q is None:
+        return None
+    last = torch.as_tensor(q, dtype=torch.float64)[..., -1:]
+    return last.expand(*last.shape[:-1], int(horizon)).clone()
 
 
 def sw_hist(inp: TwinInputs) -> torch.Tensor | None:
@@ -599,7 +665,9 @@ def sw_substitution_energy(inp: TwinInputs, scenario: PumpingScenario, horizon: 
     if "log_eta" not in scalars:
         raise ValueError("sw_sub needs a member with a pumping conversion (log_eta)")
     sw = np.asarray(inp.sw_field)
-    delivered = sw[0] if sw.ndim == 3 else sw
+    # with --sw-county-split the delivered field is its Changhua and rest pair
+    delivered = ((sw[0] + sw[1]) if getattr(inp, "sw_county_split", False)
+                 else sw[0] if sw.ndim == 3 else sw)
     clim, fut_dates = climatology(delivered, inp.dates, horizon)
     lost = clim - scenario.apply_sw(clim, fut_dates, zone_of_cell=zone_of_cell)  # m/day
     vol = lost * float(inp.grid.dx) ** 2 * float(dt) * f                   # m3 per solver step
@@ -966,7 +1034,7 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
                           sw: torch.Tensor | None = None, return_state: bool = False,
                           return_u_path: bool = False, datum: np.ndarray | None = None,
                           apex_from: torch.Tensor | None = None,
-                          update_method: str = "field"):
+                          update_method: str = "field", q_extra: torch.Tensor | None = None):
     """Hindcast in segments of ``every`` months, nudging the state toward that month's
     observed IDW field by ``gain`` at each segment end (sequential assimilation through
     the record; ``datum``: see :func:`nudge_to_observations` -- it never touches ``h0``,
@@ -983,7 +1051,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
     T = E.shape[-1]
     if gain <= 0.0 or every <= 0:
         res = rollout(model, scalars, h0, E, R, inp.ground_elev, pump_layer, recharge_layer,
-                      sw_field=sw, return_state=return_state or return_u_path)
+                      sw_field=sw, return_state=return_state or return_u_path,
+                      q_extra=q_extra)
         if not return_u_path:
             return res
         heads, u = res
@@ -1002,7 +1071,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         seg, u = rollout(model, scalars, h, E[..., t:t + n], R[:, t:t + n], inp.ground_elev,
                          pump_layer, recharge_layer,
                          sw_field=None if sw is None else sw[..., t:t + n], u0=u,
-                         return_state=True, month0=(1 + t) % 12, apex_from=apex_from)
+                         return_state=True, month0=(1 + t) % 12, apex_from=apex_from,
+                         q_extra=None if q_extra is None else q_extra[..., t:t + n])
         if want_path:
             # seg is the solver's own (un-nudged) segment: its replay is the solver's u
             up = delay_state_path(model, scalars, seg, u0=u_in)
@@ -1061,6 +1131,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         E_hist = inp.E_total[:, 1:]
     r_hist = inp.recharge_field[:, 1:]
     sw_rec = sw_hist(inp)
+    q_rec = extra_hist(inp)
     h0 = inp.initial_heads(0, n_layers=N_LAYERS)
     rng = np.random.default_rng(seed)
     ic_noises = [None] + [rng.normal(0.0, ic_sigma, size=inp.obs_h.shape[0])
@@ -1113,11 +1184,11 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
             pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
             return_u_path=True, datum=datum,
-            apex_from=apex0, update_method=update_method) if dump_u else (*hindcast_with_nudging(
+            apex_from=apex0, update_method=update_method, q_extra=q_rec) if dump_u else (*hindcast_with_nudging(
                 model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
                 pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
                 return_state=True, datum=datum, apex_from=apex0,
-                update_method=update_method), None)
+                update_method=update_method, q_extra=q_rec), None)
         pred = h_hist[inp.obs_layer, inp.obs_idx, 1:].cpu().numpy()
         r2 = _r2(pred, obs_target)
         hindcast_r2.append(r2)
@@ -1152,7 +1223,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                        recharge_layer=recharge_layer,
                                        sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                        u0=u_end, return_state=True,
-                                       month0=fut_dates[0].month - 1, apex_from=apex0)
+                                       month0=fut_dates[0].month - 1, apex_from=apex0,
+                                       q_extra=future_extra(inp, horizon))
                 if dump_u:
                     # the hindcast path is the solver's own (un-nudged) replay, so it
                     # joins the projection's replay from the real u_end without a jump
@@ -1171,7 +1243,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                       pump_layer=pump_layer, recharge_layer=recharge_layer,
                                       sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                       u0=u_end, return_state=True,
-                                      month0=fut_dates[0].month - 1, apex_from=apex0)
+                                      month0=fut_dates[0].month - 1, apex_from=apex0,
+                                      q_extra=future_extra(inp, horizon))
                     heads_col = torch.cat([h_hist, h_fc[..., 1:]], dim=-1)
                 k_mem = mi * n_ic + ni
                 if mem_yr is not None:

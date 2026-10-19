@@ -70,6 +70,7 @@ from .forward import (
     attach_sw_recharge,
     blended_column,
     build_model,
+    extra_hist,
     load_members,
     rollout,
     sw_hist,
@@ -653,7 +654,8 @@ def main(argv=None) -> None:
     t0 = time.perf_counter()
     attach_sw_recharge(inp, member.meta)
     heads = rollout(model, scalars, inp.initial_heads(0), E, inp.recharge_field[:, 1:],
-                    inp.ground_elev, sw_field=sw_hist(inp)).cpu().numpy()  # (L, A, T)
+                    inp.ground_elev, sw_field=sw_hist(inp),
+                    q_extra=extra_hist(inp)).cpu().numpy()  # (L, A, T)
     print(f"hindcast heads in {time.perf_counter() - t0:.1f}s", flush=True)
     if zone_of_cell is None:
         zone_of_cell = fan_zones(inp.grid.centroids())

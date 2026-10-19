@@ -1348,6 +1348,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              fix_sw_scale: float | None = None, delay_u0: str = "eq",
              delay_layers: tuple[int, ...] | None = None,
              aquitard: str = "off", zone_w: np.ndarray | None = None,
+             extra_q: torch.Tensor | None = None,
              proximal_layered: bool = False, well_datum: str = "off",
              well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
              datum_mask: torch.Tensor | None = None,
@@ -1498,6 +1499,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         ground_elev = ground_elev.to(dtype=torch.float64, device=dev)
     if sw_field is not None:
         sw_field = sw_field.to(dtype=torch.float64, device=dev)
+    if extra_q is not None:
+        # --extra-abstraction: a fixed (L, A, T) m3/day abstraction, nothing fitted
+        extra_q = extra_q.to(dtype=torch.float64, device=dev)
     # The apex boundary holds this run's initial head; a fold's h0 is built from its
     # kept wells only, so this cannot leak a held-out well into the boundary.
     model.set_apex_heads(h0)
@@ -1744,7 +1748,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         return _rollout(
             model, log_T, log_S, log_L, h0, n_steps, **ext,
             recharge=None if use_recharge else recharge,
-            pumping=None,
+            pumping=extra_q,
             recharge_field=recharge_field if use_recharge else None,
             recharge_scale=theta.get("recharge_frac_logit"),
             recharge_layer=recharge_layer,
@@ -1897,7 +1901,8 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          ground_elev: torch.Tensor | None = None,
                          recharge_layer: int = 0, pump_layer: int = 1,
                          sw_field: torch.Tensor | None = None,
-                         sw_layer: int | None = None) -> torch.Tensor:
+                         sw_layer: int | None = None,
+                         extra_q: torch.Tensor | None = None) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
     reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
     ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
@@ -1944,6 +1949,7 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                        log_sw_scale=sw_scale_tensor(theta["log_sw_scale"]))
         return _rollout(model, log_T, log_S, log_L, h0, n_steps, **ext,
                         recharge=None if recharge_field is not None else recharge,
+                        pumping=extra_q,
                         recharge_field=recharge_field, recharge_scale=rfrac,
                         recharge_layer=recharge_layer,
                         E=E if log_eta is not None else None, log_eta=log_eta,
@@ -1975,7 +1981,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
                   E_full, recharge_full, ground_elev, recharge_layer: int = 0,
                   pump_layer: int = 1, sw_full: torch.Tensor | None = None,
                   sw_layer: int | None = None, rmse_k: float = 1.5,
-                  keep_arrays: bool = False, datum: np.ndarray | None = None) -> dict:
+                  keep_arrays: bool = False, datum: np.ndarray | None = None,
+                  extra_full: torch.Tensor | None = None) -> dict:
     """Score a free-running continuation over the months the fit never saw.
 
     ``datum`` (``(W,)`` m, ``--well-datum fit``): the per-well datum fitted on the fitted
@@ -2005,7 +2012,7 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
         h = _predict_homogeneous(model, fit, h0, T_full, recharge_field=recharge_full,
                                  E=E_full, ground_elev=ground_elev,
                                  recharge_layer=recharge_layer, pump_layer=pump_layer,
-                                 sw_field=sw_full, sw_layer=sw_layer)
+                                 sw_field=sw_full, sw_layer=sw_layer, extra_q=extra_full)
         pred = h[obs_layer.to(h.device), obs_idx.to(h.device), 1:].cpu().numpy()
     obs = obs_full.cpu().numpy()
     held = slice(T_fit, T_full)
@@ -2288,6 +2295,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 fix_sw_scale: float | None = None, delay_u0: str = "eq",
                 delay_layers: tuple[int, ...] | None = None,
                 aquitard: str = "off", zone_w: np.ndarray | None = None,
+                extra_q: torch.Tensor | None = None,
                 ic_zone_of_cell: np.ndarray | None = None,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
@@ -2414,7 +2422,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        well_datum_sd=well_datum_sd,
                        datum_mask=None if datum_mask is None else datum_mask[keep],
                        zonation=zonation, county_copy_sd=county_copy_sd,
-                       county_tie=county_tie)
+                       county_tie=county_tie, extra_q=extra_q)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -2430,7 +2438,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          recharge_field=recharge_field, E=E,
                                          ground_elev=ground_elev,
                                          recharge_layer=recharge_layer, pump_layer=pump_layer,
-                                         sw_field=sw_field, sw_layer=sw_layer)
+                                         sw_field=sw_field, sw_layer=sw_layer,
+                                         extra_q=extra_q)
             else:
                 h = m(h0_eval, recharge,
                      torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
@@ -3007,6 +3016,15 @@ def main(argv=None) -> None:
                          "surface_water.py v2) or 'both'")
     ap.add_argument("--fix-sw-scale", type=float, default=None,
                     help="hold the canal-recharge fraction at this value (diagnostic)")
+    ap.add_argument("--sw-county-split", action="store_true",
+                    help="(rung R1e-cn) give every --sw-components field one learned "
+                         "fraction for its Changhua cells and one for the rest; needs "
+                         "--zone-county-split, whose verified county map it uses")
+    ap.add_argument("--extra-abstraction", default=None,
+                    help="(rung R1e-pw) npz of a fixed abstraction per twin layer, cell and "
+                         "month (q_m3d, m3/day, positive = abstraction; e.g. the P6 public "
+                         "wells, dataprep_staging/i1/build_public_wells_model_npz.py); enters "
+                         "the rollout as static pumping, nothing fitted")
     ap.add_argument("--policy-response", action="store_true",
                     help="after the run, score the policy response (policy_gate.py: "
                          "irrigation x1/0.85/0.7 for 120 months, reference column as a "
@@ -3260,13 +3278,14 @@ def main(argv=None) -> None:
                                               args.et_npz, args.gw_stations,
                                               "2012-01-01", "2023-01-01")[:, 1:]
     sw_field = None
+    record_dates = pd.date_range("2012-01-01", "2023-01-01", freq="MS", inclusive="left")
+    if args.sw_county_split and not (args.sw_recharge and county_flags is not None):
+        raise SystemExit("--sw-county-split needs --sw-recharge and --zone-county-split")
     if args.sw_recharge:
-        from .inputs import load_sw_recharge
+        from .inputs import load_sw_recharge, split_sw_by_county
 
-        sw_field = load_sw_recharge(
-            args.sw_recharge, grid,
-            pd.date_range("2012-01-01", "2023-01-01", freq="MS", inclusive="left"),
-            components=args.sw_components)[..., 1:]
+        sw_field = load_sw_recharge(args.sw_recharge, grid, record_dates,
+                                    components=args.sw_components)[..., 1:]
         comp_mm = " + ".join(
             f"{k} {float(f.mean()) * 365.25 * 1000:.0f}"
             for k, f in zip(SW_COMPONENT_KEYS[args.sw_components],
@@ -3274,6 +3293,18 @@ def main(argv=None) -> None:
         print(f"surface-water forcing: {args.sw_recharge}, fan mean {comp_mm} mm/yr "
               f"(recharge fraction {'fixed ' + str(args.fix_sw_scale) if args.fix_sw_scale else 'learned'})",
               flush=True)
+        if args.sw_county_split:
+            sw_field = split_sw_by_county(sw_field, county_flags)
+            print(f"  --sw-county-split: {sw_field.shape[0]} components (each field's "
+                  "Changhua cells, then the rest), one fraction each", flush=True)
+    extra_q = None
+    if args.extra_abstraction:
+        from .inputs import load_extra_abstraction
+
+        extra_q = load_extra_abstraction(args.extra_abstraction, grid, record_dates)[..., 1:]
+        per_layer = (extra_q.sum(dim=1).mean(dim=-1) * 365.25 / 1e6).tolist()
+        print(f"extra abstraction (fixed): {args.extra_abstraction}, Mm3/yr per layer "
+              f"{[round(v, 2) for v in per_layer]} (record mean)", flush=True)
 
     # temporal gate: the fit sees the record minus its last --holdout-months
     T_full = obs_h.shape[1]
@@ -3368,7 +3399,7 @@ def main(argv=None) -> None:
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
-    E_full, recharge_full, sw_full = E, recharge_field, sw_field
+    E_full, recharge_full, sw_full, extra_full = E, recharge_field, sw_field, extra_q
     # --well-datum fit: only months actually observed within the fitted period inform a
     # datum -- a back-filled month copies a neighbouring value, for a late-starting well a
     # held-out one, which would leak held-out levels into d_i
@@ -3380,6 +3411,8 @@ def main(argv=None) -> None:
         recharge_field = recharge_field[:, :T_fit]
     if sw_field is not None:
         sw_field = sw_field[..., :T_fit]
+    if extra_q is not None:
+        extra_q = extra_q[..., :T_fit]
     cfg = _flow_cfg(args, grid.n_active, proximal_km, distal_km, split_km, zone_counts,
                     eta_class_names, git_commit, county_rec=county_rec)
     # --zone-county-split's fit options (none for a default run, whose calls are unchanged)
@@ -3401,7 +3434,7 @@ def main(argv=None) -> None:
                     sw_field=sw_field, sw_layer=args.sw_layer,
                     fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
                     delay_layers=delay_layers, aquitard=args.aquitard_storage,
-                    zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
+                    zone_w=zone_w, extra_q=extra_q, ic_zone_of_cell=ic_zone_of_cell,
                     proximal_layered=args.proximal_layered,
                     ic_layered=args.ic_layered_proximal,
                     well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
@@ -3447,7 +3480,7 @@ def main(argv=None) -> None:
                    aquitard=args.aquitard_storage, zone_w=zone_w,
                    proximal_layered=args.proximal_layered, well_datum=args.well_datum,
                    well_datum_sd=args.well_datum_sd, datum_mask=datum_mask,
-                   **county_fit_kw)
+                   extra_q=extra_q, **county_fit_kw)
     t_fit = time.perf_counter() - t0
     datum_np = datum_meta = None
     if args.well_datum == "fit":
@@ -3476,7 +3509,7 @@ def main(argv=None) -> None:
                                  recharge_layer=args.recharge_layer, pump_layer=args.pump_layer,
                                  sw_full=sw_full, sw_layer=args.sw_layer,
                                  rmse_k=args.temporal_rmse_k, keep_arrays=True,
-                                 datum=datum_np)
+                                 datum=datum_np, extra_full=extra_full)
         arrs = temporal.pop("arrays")
         # fair verdict (drift_diag.fair_temporal_verdict): a pure scoring addition beside
         # the legacy one -- per-well datum from the fitted months, raw (never back-filled)
@@ -3696,7 +3729,25 @@ def _input_opts_record(args) -> dict:
             **({"proximal_layered": True} if args.proximal_layered else {}),
             # opt-in 2026-10-14: a non-default pump census (the Changhua + Yunlin census) is
             # recorded so every consumer rebuilds the same forcing; written only when set
-            **_pump_paths_record(args)}
+            **_pump_paths_record(args),
+            # opt-in 2026-10-18 (rungs R1e-pw / R1e-cn): forward.attach_sw_recharge reads
+            # these back; written only when set
+            **_extra_forcing_record(args)}
+
+
+def _extra_forcing_record(args) -> dict:
+    """``extra_abstraction`` (path + file sha256) and ``sw_county_split`` for the meta, each
+    only when set."""
+    rec: dict = {}
+    if getattr(args, "extra_abstraction", None):
+        import hashlib
+
+        with open(args.extra_abstraction, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        rec.update(extra_abstraction=args.extra_abstraction, extra_abstraction_sha256=sha)
+    if getattr(args, "sw_county_split", False):
+        rec["sw_county_split"] = True
+    return rec
 
 
 def _pump_paths_record(args) -> dict:

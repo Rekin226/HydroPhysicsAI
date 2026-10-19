@@ -53,6 +53,12 @@ class TwinInputs:
     # --sw-components both; None unless a calibration used --sw-recharge and the caller
     # loaded it (load_sw_recharge / forward.attach_sw_recharge)
     sw_field: torch.Tensor | None = field(repr=False, default=None)
+    # --sw-county-split (rung R1e-cn): sw_field holds each component twice, Changhua cells
+    # then the rest ((2K, A, T), see split_sw_by_county), each with its own fraction
+    sw_county_split: bool = field(repr=False, default=False)
+    # (L, A, T) m3/day of fixed extra abstraction (--extra-abstraction, rung R1e-pw), or
+    # None; loaded by forward.attach_sw_recharge from the calibration's meta
+    extra_q: torch.Tensor | None = field(repr=False, default=None)
     # (A,) zone map when the calibration used --ic-merged-proximal: initial_heads then
     # replaces the proximal zone(s) with the merged-aquifer head, as calibrate_flow did
     ic_zone_of_cell: np.ndarray | None = field(repr=False, default=None)
@@ -290,3 +296,60 @@ def load_sw_recharge(path: str, grid: FanGrid, dates: pd.DatetimeIndex,
     if len(fields) == 1:
         return torch.tensor(fields[0][:, pos], dtype=torch.float64)
     return torch.tensor(np.stack([f[:, pos] for f in fields]), dtype=torch.float64)
+
+
+def split_sw_by_county(sw: torch.Tensor, changhua: np.ndarray) -> torch.Tensor:
+    """``--sw-county-split``: every surface-water component twice, its Changhua cells then the
+    rest -> ``(2K, A, T)`` in the order ``[c0 Changhua, c0 rest, c1 Changhua, c1 rest, ...]``,
+    so each county gets its own recharge fraction. The pair of a component sums back to it
+    exactly. ``sw`` is ``(A, T)`` or ``(K, A, T)``; ``changhua`` is ``(A,)`` bool."""
+    sw = sw if sw.dim() == 3 else sw.unsqueeze(0)
+    ch = torch.as_tensor(np.asarray(changhua, dtype=bool), device=sw.device)
+    if ch.shape != (sw.shape[1],):
+        raise ValueError(f"county flags {tuple(ch.shape)} do not match the field's "
+                         f"{sw.shape[1]} cells")
+    m = ch.to(sw.dtype)[:, None]
+    return torch.stack([part for comp in sw for part in (comp * m, comp * (1.0 - m))])
+
+
+EXTRA_KEYS = ("q_m3d", "dates", "dx", "n_active")
+
+
+def load_extra_abstraction(path: str, grid: FanGrid, dates: pd.DatetimeIndex,
+                           n_layers: int = 4) -> torch.Tensor:
+    """Fixed extra abstraction (``--extra-abstraction``, e.g. the P6 public-supply wells built
+    by ``dataprep_staging/i1/build_public_wells_model_npz.py``) aligned to ``dates`` ->
+    ``(n_layers, A, len(dates))`` float64 m3/day, positive = abstraction. It enters the
+    rollout as a static pumping term; nothing about it is fitted.
+
+    Months after the file's last month hold that month (persistence: the forcing is frozen
+    at the record's end, as every other forcing past the origin); a month before its first
+    is refused. Checked like ``load_sw_recharge``: spacing, active cells, layers, finite and
+    >= 0."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"--extra-abstraction {path!r} not found")
+    with np.load(path, allow_pickle=False) as z:
+        missing = [k for k in EXTRA_KEYS if k not in z]
+        if missing:
+            raise ValueError(f"{path}: missing key(s) {missing}; expected {EXTRA_KEYS}")
+        q = np.asarray(z["q_m3d"], dtype="float64")
+        f_dates = pd.DatetimeIndex(pd.to_datetime([str(d) for d in z["dates"]]))
+        dx, n_active = float(z["dx"]), int(z["n_active"])
+    if abs(dx - float(grid.dx)) > 1e-6 or n_active != grid.n_active:
+        raise ValueError(f"{path}: built for dx={dx:g} with {n_active} cells, the model "
+                         f"grid is dx={grid.dx:g} with {grid.n_active}")
+    if q.shape != (n_layers, grid.n_active, len(f_dates)):
+        raise ValueError(f"{path}: q_m3d has shape {q.shape}, expected "
+                         f"({n_layers}, {grid.n_active}, {len(f_dates)})")
+    if not np.isfinite(q).all() or (q < 0).any():
+        raise ValueError(f"{path}: q_m3d must be finite and >= 0")
+    want = pd.DatetimeIndex(dates).to_period("M")
+    have = f_dates.to_period("M")
+    if want.min() < have[0]:
+        raise ValueError(f"{path}: starts {have[0]}, the run needs {want.min()}")
+    pos = have.get_indexer(want)
+    pos = np.where((pos < 0) & (want > have[-1]), len(have) - 1, pos)
+    if (pos < 0).any():
+        raise ValueError(f"{path}: covers {have[0]}..{have[-1]} with gaps, missing "
+                         f"{list(want[pos < 0].astype(str))[:6]}")
+    return torch.tensor(q[:, :, pos], dtype=torch.float64)
