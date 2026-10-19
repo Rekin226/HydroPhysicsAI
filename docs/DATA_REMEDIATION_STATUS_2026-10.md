@@ -961,3 +961,92 @@ its verifier left two majors open.
 - Resources: CPU only through the shared slots; no GPU; 0 Claude API tokens; one approved
   download (S4b second frame); nothing staged or committed; no file under `hydrophysics/` or
   `tests/` changed.
+
+## Release b2 (2026-10-18): user rulings
+
+`results/dataprep/model_ready/release_20261012b2/` is `release_20261012b` with two user rulings
+applied. Release b's verifier had left two majors and three user decisions open. The user ruled
+on two of them. Release b is not modified.
+
+- **Ruling (a): W1 pre-origin stays included.** `surface_water_v4/preorigin/v2` stays in. This
+  is a ruling, not a gate pass. The basis given: the ladder rung R1b (R1 plus W1 canal
+  recharge) did not make heads worse in either county. Out-of-fold anomaly RMSE went from
+  1.290 m to 1.264 m in Changhua and from 1.848 m to 1.777 m in Yunlin, on R0's design-time
+  folds. The canal rungs R1b, R1d-sw and R1e-cn use this product. Context: this compares R1b
+  with R1. Against R0 (1.074 m), R1b still fails its own Changhua head gate. W1's supporting
+  head check still failed in Yunlin layer 1 (-0.0087) and was not re-scored.
+- **Ruling (b): pre-origin printed piles narrowed.** The pre-origin pile component now allows
+  only validator and after_the_fact_analysis, following the plan's S2 role ("never in a gate
+  or choice"). design_time_evidence and scoring_target are dropped. The builder now reads the
+  upstream table as validator instead of design_time_evidence. Both uses keep flags 0-6, so the
+  same 231 rows come through and the table is byte-identical to release b's. The full-variant
+  piles are unchanged.
+- **Where the rulings are recorded.** `RELEASE.json` (`user_rulings`, `open_user_decisions`),
+  `PRODUCT_CARD.md` (two new sections), and the notes, manifest parameters and
+  `validation.json` of `preorigin/surface_water` and `preorigin/piles_printed`. The definition
+  was declared before the first build: `preregistration/L3.release_20261012b2.definition.v1`
+  (sha256 68ca545c…). One build-time check was added: every read must use one of its
+  component's allowed uses. No threshold, gate, upstream version or product changed.
+- **What differs from release b.** 77 files in each release. 33 are byte-identical: every
+  table, csv and byte-copied array. 44 differ:
+  - `RELEASE.json` and `PRODUCT_CARD.md`: the rulings, the open decision, the new name.
+  - 18 `MANIFEST.json` and 18 `validation.json`: the release name, the code hashes of the new
+    package `dataprep_staging/l3_release_b2/` and the git commit at build time. Only the two
+    components above have content changes (uses, the read's use, notes, the ruling record).
+  - 6 re-packed npz files: equal to b's array by array; only the `release_component` key, which
+    holds the release name, differs.
+- **Rebuild check.** Two builds from scratch were identical, 77 of 77 files
+  (`REBUILD_CHECK.json`). The final tree equals build A.
+- **Verifier verdict: passed.** `l3_release_b2.verify check`: 18 manifests valid, every hash
+  reproduced, 306 guard probes with 0 mismatches. The shared checker passes all 18 manifests
+  (385 files re-hashed) in b2 and in b. The comparison with b (`l3_release_b2.regress`) passed:
+  no unexpected difference, and the pile component refuses design_time_evidence and
+  scoring_target. Inventory: 13 upstream versions included, 81 excluded, 0 unclassified.
+  Ledger: 171 new L3 rows, 0 conflicts. Unit tests: 11 passed; ruff clean.
+- **Not fixed by b2.** The guard still grants the old pile uses through release b,
+  `release_20261012` and `deep_benchmarks_printed/v2` itself; the narrowing exists only in b2.
+  Release b's other verifier minors stand (amendment 1 not auditable by diff; C0 and H2 pinned
+  to commit 709f660; two aborted-attempt logs with absolute paths under `results/`).
+- **Open user decision (c), not ruled on.** Which publication date counts for the 2022 pile
+  reports. b2 keeps release b's rule: the agency listing's publication month (發布年月). The
+  server copies of every 2022 report are dated 2023-05-11. Using that date would drop 53 more
+  pre-origin pile rows (data months 2022-04 to 2022-11, leaving 178 rows that end in 2021-11)
+  and 45 more second printings. That would need a new release.
+
+## Phase 1 ladder results (2026-10-19)
+
+Every rung was declared before its run (A1 harness, `results/dataprep/preregistration/I1.*`) and
+scored on R0's design-time folds. The four gates are fixed by R0:
+- k-fold out-of-fold R2 at least 0.633;
+- Changhua out-of-fold head-anomaly RMSE at most 1.074 m (74 wells);
+- Yunlin RMSE at most 1.893 m;
+- leveling column out-of-fold R2 at least 0.629.
+
+A pass would then need a fresh-partition confirmation. **No rung passed. R0 stays the deliverable.**
+
+| Rung | What it adds | k-fold R2 | Changhua RMSE (m) | Yunlin RMSE (m) | Leveling R2 | Gates failed |
+|---|---|---|---|---|---|---|
+| R0 | registered model | 0.643 | 1.074 | 1.856 | 0.649 | none (reference) |
+| R1 | Changhua + Chiayi pump census | 0.652 | 1.290 | 1.848 | 0.248 | Changhua, leveling |
+| R1b | R1 + canal recharge (W1 v4) | 0.642 | 1.264 | 1.777 | 0.335 | Changhua, leveling |
+| R1c | R1 + county-split mid zone and county column | 0.646 | 1.318 | 1.820 | 0.663 | Changhua |
+| R1d-dom | R1c without the domestic class | 0.622 | 1.398 | 1.820 | 0.678 | k-fold, Changhua |
+| R1d-sw | R1c + canal recharge | 0.613 | 1.381 | 1.760 | 0.684 | k-fold, Changhua |
+| R1e-pw | R1c + public-supply wells (P6 member, fixed) | 0.638 | 1.322 | 1.785 | 0.621 | Changhua, leveling |
+| R1e-cn | R1d-sw with canal fractions split by county | 0.597 | 1.419 | 1.756 | 0.641 | k-fold, Changhua |
+
+**What the ladder shows.**
+- **The census fixes the size of Changhua's seasonal swing.** The predicted-to-observed amplitude goes from R0's 0.39 to 1.07-1.40. R0 scores better only because a small prediction loses less when the correlation is low (about 0.45).
+- **Most of Changhua's misfit is year to year.** 85 % of the Changhua head-anomaly variance is interannual (Yunlin 58 %). The interannual error is 1.2-1.7 m2 against 0.3-0.7 m2 seasonal. No rung moved the interannual correlation above 0.52, except canal water alone (R1b, 0.63). The best lag is 0 or +1 month, so timing is not the cause.
+- **The public-supply wells barely change Changhua heads.** R1e-pw adds the 2011-2019 closure ramp (about 125 to 0 Mm3/yr, WRA) and the 129 pending Taiwan Water wells. The interannual correlation goes from 0.46 to 0.49, and the leveling column drops below its gate.
+- **The model wants no canal recharge in Changhua.** R1e-cn put both Changhua fractions (deliveries and percolation) at their 0.01 lower bound. The rest of the fan took 0.13 of deliveries. Canal recharge improves Yunlin heads (1.756 m, the best of any rung) but not Changhua.
+- **The domestic class is not the cause.** Removing it made Changhua worse (1.398 m).
+- **The county-split column is the one lasting gain.** It raises Changhua leveling R2 from 0.02 (R0) to 0.18-0.29 and the overall out-of-fold leveling R2 to 0.64-0.68.
+
+**Reading.** Every forcing available without new data has now been tried. None reproduces Changhua's year-to-year head changes; they change the amplitude, not the shape. What remains is either structural or needs data:
+- structural: how pumping is split across layers and how much returns to the shallow aquifer in Changhua, both still shared with Yunlin;
+- data: metered public-well volumes (request R-i), well screen depths, and the heads' own long-term drift.
+
+Code for R1e: branch `twin/phase1e-pw-canal` in the integration worktree (uncommitted;
+`results/twin_runs/par14/code.diff`, sha 184867d7). Batches 14 and 15 ran 2026-10-18 15:09 to
+2026-10-19 03:59 with no failed job.
