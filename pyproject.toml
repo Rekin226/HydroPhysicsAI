@@ -78,3 +78,9 @@ line-length = 100
 # (long pre-existing comment/data lines), and RUF unicode rules are off: the labels
 # intentionally use scientific characters (sigma, en-dash).
 select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+# The package suite lives in tests/. dataprep_staging/ carries its own tests, which run with
+# dataprep_staging on sys.path (python -m pytest dataprep_staging/<wp>/tests from the repo
+# root with PYTHONPATH=dataprep_staging) and need the gitignored results/ tree.
+testpaths = ["tests"]
