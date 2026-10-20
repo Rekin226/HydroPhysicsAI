@@ -544,6 +544,9 @@ def main(argv=None) -> None:
                     help="calibration target: the 14 MLCW rings (Stage-2 convention) or "
                          "the ~800 leveling benchmarks with site-grouped 5-fold scoring")
     ap.add_argument("--n-folds", type=int, default=5)
+    ap.add_argument("--seed", type=int, default=0,
+                    help="seed of the leveling site folds (default 0, every run before "
+                         "2026-10-19); a fresh-partition confirmation passes a new one")
     ap.add_argument("--tau-max-years", type=float, default=None,
                     help="ceiling on the viscous time constant (default: the record "
                          "length); the mid-zone column sits on that ceiling")
@@ -752,7 +755,7 @@ def main(argv=None) -> None:
         by_zone = None
         if args.target == "leveling":
             r2_loso, oof = kfold_sites(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
-                                       n_folds=args.n_folds, rezero=True,
+                                       n_folds=args.n_folds, seed=args.seed, rezero=True,
                                        make=warm if band_warm else None,
                                        n_zones=n_col_zones, return_preds=True)
             if county and config == "zonal":
@@ -807,6 +810,7 @@ def main(argv=None) -> None:
                        "tau_at_ceiling": at_ceil,
                        "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
+                       **({"fold_seed": args.seed} if args.seed else {}),
                        **({"r2_outoffold_by_zone": by_zone} if by_zone is not None else {}),
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)
         rows.append({"config": config, "target": args.target,
