@@ -2901,6 +2901,10 @@ def main(argv=None) -> None:
                          "which copies held-out heads of late-starting wells into the fit "
                          "target, climatology and initial condition; the initial "
                          "condition uses only the wells observed in month 0")
+    ap.add_argument("--day-weighted-months", action="store_true",
+                    help="monthly heads as the mean of daily means (default: the mean of all "
+                         "samples, which over-weights 10-minute days after the 2019-02-20 "
+                         "cadence switch by up to 1.7 m in a month)")
     ap.add_argument("--strict-coverage", action="store_true",
                     help="QC coverage as the fraction of calendar months observed in the "
                          "window, with leading/trailing gaps counted by the gap check "
@@ -3210,7 +3214,8 @@ def main(argv=None) -> None:
     stn = pd.read_parquet(args.stations)
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
-    hf = build_head_field(args.wells_dir, stn, strict_coverage=args.strict_coverage)
+    hf = build_head_field(args.wells_dir, stn, strict_coverage=args.strict_coverage,
+                          day_weighted=args.day_weighted_months)
     if args.strict_coverage:
         hf_legacy = build_head_field(args.wells_dir, stn)
         dropped = sorted(set(hf_legacy.sids) - set(hf.sids))
@@ -3727,6 +3732,8 @@ def _input_opts_record(args) -> dict:
             # opt-in 2026-09-25, written only when set so default outputs keep their columns
             **({"ic_layered_proximal": True} if args.ic_layered_proximal else {}),
             **({"proximal_layered": True} if args.proximal_layered else {}),
+            **({"day_weighted_months": True} if getattr(args, "day_weighted_months", False)
+               else {}),
             # opt-in 2026-10-14: a non-default pump census (the Changhua + Yunlin census) is
             # recorded so every consumer rebuilds the same forcing; written only when set
             **_pump_paths_record(args),

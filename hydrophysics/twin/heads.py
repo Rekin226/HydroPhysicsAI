@@ -75,7 +75,8 @@ def build_head_field(wells_dir: str, stations: pd.DataFrame,
                      t0: str = "2012-01-01", t1: str = "2023-01-01",
                      min_coverage: float = 0.80, max_gap_days: float = 180.0,
                      layers: tuple[str, ...] = DEFAULT_LAYERS,
-                     strict_coverage: bool = False) -> HeadField:
+                     strict_coverage: bool = False,
+                     day_weighted: bool = False) -> HeadField:
     """Assemble a QC'd monthly head field from cached per-well parquet files.
 
     Default QC (historical): coverage is ``len(s) / n_hours``, which 10-minute records
@@ -84,6 +85,12 @@ def build_head_field(wells_dir: str, stations: pd.DataFrame,
     ``strict_coverage=True`` (``--strict-coverage``, opt-in, 2026-09-23): coverage is the
     fraction of calendar months in ``[t0, t1)`` with at least one observation, and the gap
     check runs over the whole window, so leading and trailing gaps count.
+
+    Monthly value. Default (historical): the plain mean of every kept sample in the month,
+    which weights each day by its sample count, so in a month where logging switched from
+    hourly to 10-minute (2019-02-20) the late days count six times and the month shifts by up
+    to 1.7 m. ``day_weighted=True`` (``--day-weighted-months``, opt-in, 2026-10-20): the mean
+    of the daily means, every observed day weighted alike.
     """
     T0, T1 = pd.Timestamp(t0), pd.Timestamp(t1)
     n_hours = int((T1 - T0).total_seconds() // 3600)
@@ -122,7 +129,8 @@ def build_head_field(wells_dir: str, stations: pd.DataFrame,
             runs = (miss != miss.shift()).cumsum()[miss]
             if float(runs.value_counts().max()) / 24.0 > max_gap_days:
                 continue
-        keep_h.append(s.resample("ME").mean())
+        keep_h.append(s.resample("D").mean().resample("ME").mean() if day_weighted
+                      else s.resample("ME").mean())
         keep_xy.append(xy)
         keep_layer.append(code)
         keep_sid.append(sid)

@@ -169,7 +169,7 @@ def _members_from_gate_csv(path: str) -> dict:
         meta["zone_blend_km"] = float(_cell("zone_blend_km"))
     # opt-in input constructions (2026-09-23): they change h0 / ground_elev / the wells
     for key in ("ic_merged_proximal", "strict_coverage", "no_backfill",
-                "ic_layered_proximal", "proximal_layered"):
+                "ic_layered_proximal", "proximal_layered", "day_weighted_months"):
         if _cell(key) in ("True", "true", "1"):
             meta[key] = True
     # --zone-county-split (rung R1c, 2026-10-15): the county map's identity travels in

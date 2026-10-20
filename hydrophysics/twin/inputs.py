@@ -136,6 +136,9 @@ def input_options(meta: dict | None) -> dict:
         opts["dem_npz"] = meta.get("ground_elev_dem_npz") or "results/twin/basemap.npz"
     if meta.get("strict_coverage"):
         opts["strict_coverage"] = True
+    # opt-in 2026-10-20: monthly heads as the mean of daily means
+    if meta.get("day_weighted_months"):
+        opts["day_weighted_months"] = True
     # opt-in 2026-10-14: the pump census this calibration used, when it was not the default
     for key in ("pump_census", "pump_kwh"):
         if meta.get(key):
@@ -166,7 +169,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                      strict_coverage: bool = False,
                      pump_census: str | None = None, pump_kwh: str | None = None,
                      ic_month0_filled: bool = False,
-                     ic_layered_proximal: bool = False) -> TwinInputs:
+                     ic_layered_proximal: bool = False,
+                     day_weighted_months: bool = False) -> TwinInputs:
     """Assemble the twin's inputs from the data cache. ``paths`` overrides DEFAULT_PATHS.
     ``meter_filter``/``cap_duty`` are ``calibrate_flow``'s census-cleaning options and must
     match the calibration the parameters came from. ``backfill=False`` leaves
@@ -177,7 +181,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     ``initial_heads(0)`` use the back-filled month-0 heads, as such a calibration did.
     ``ic_layered_proximal`` is ``--ic-layered-proximal`` (with ``ic_merged_proximal``).
     ``pump_census``/``pump_kwh`` are a calibration's recorded non-default census
-    (explicit ``paths`` still win, see ``resolve_paths``).
+    (explicit ``paths`` still win, see ``resolve_paths``). ``day_weighted_months`` is
+    ``--day-weighted-months`` (monthly heads as the mean of daily means).
     Pass ``**input_options(meta)``."""
     P = resolve_paths(paths, pump_census, pump_kwh)
     for k, v in P.items():
@@ -189,7 +194,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     stn = pd.read_parquet(P["stations"])
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
-    hf = build_head_field(P["wells_dir"], stn, t0=t0, t1=t1, strict_coverage=strict_coverage)
+    hf = build_head_field(P["wells_dir"], stn, t0=t0, t1=t1, strict_coverage=strict_coverage,
+                          day_weighted=day_weighted_months)
 
     allowed = None
     if wells_from:
