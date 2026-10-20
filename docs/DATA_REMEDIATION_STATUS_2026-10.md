@@ -1050,3 +1050,39 @@ A pass would then need a fresh-partition confirmation. **No rung passed. R0 stay
 Code for R1e: branch `twin/phase1e-pw-canal` in the integration worktree (uncommitted;
 `results/twin_runs/par14/code.diff`, sha 184867d7). Batches 14 and 15 ran 2026-10-18 15:09 to
 2026-10-19 03:59 with no failed job.
+
+## Fresh-partition comparison under gate set G2 (2026-10-20)
+
+Declared before any fresh fold was run (`I1.G2.fresh_partition.v1`). Its gates were designed
+after the design-time results, so they apply only to a partition never scored before: well
+folds `--seed 2027 --fold-site-tol-m 200` and leveling site folds `--seed 2027`. The partition
+is fresh; the data are the same 2012-2022 wells and months. Batches 16-18 ran 2026-10-19 11:12
+to 2026-10-20 11:45 with no failed job. Scored by `dataprep_staging/i1/score_g2.py`
+(`results/dataprep/reports/I1_G2_fresh_partition/report.json`).
+
+| G2 gate (threshold against R0) | R0 | R1c | R1e-pw |
+|---|---|---|---|
+| k-fold R2 (>= R0 - 0.01) | 0.718 | 0.646 (fail) | 0.657 (fail) |
+| Changhua median correlation (>= R0 - 0.02) | 0.423 | 0.437 | 0.474 |
+| Yunlin median correlation (>= R0 - 0.02) | 0.738 | 0.735 | 0.769 |
+| Changhua county-mean anomaly RMSE, m (<= R0 x 1.02) | 0.515 | 0.643 (fail) | 0.657 (fail) |
+| Yunlin county-mean anomaly RMSE, m (<= R0 x 1.02) | 1.082 | 1.036 | 0.941 |
+| Leveling out-of-fold R2 (>= R0 - 0.02) | 0.647 | 0.661 | 0.619 (fail) |
+
+Reported, not gating: Changhua single-well RMSE 1.10 / 1.34 / 1.34 m; Changhua amplitude
+0.42 / 1.06 / 1.15; Changhua leveling R2 0.007 / 0.175 / 0.163.
+
+**Decision, by the declared rule: no rung passes.** The deliverable keeps R0's heads and takes
+its subsidence (the VEP column) from R1c. R1c's leveling R2 (0.661) beats R0's (0.647), and
+its Changhua leveling gain holds on fresh folds (0.175 against 0.007). Each output comes from
+its own consistent model: the column pairs with its own head field.
+
+**Notes.**
+- **The k-fold score depends on the partition.** R0 rises from 0.643 (design folds) to 0.718
+  here, while R1c stays at 0.646. Any single-partition k-fold comparison carries an
+  uncertainty of that size.
+- **Changhua stays unsolved in heads.** Every recipe with the census fits Changhua's
+  county-mean anomaly worse than R0.
+- **The public wells help Yunlin, not Changhua:** R1e-pw has the best Yunlin county-mean
+  RMSE (0.941 m) and correlation (0.769). R1e-pw stays diagnostic in any case (P6 is a
+  sensitivity member).
