@@ -1086,3 +1086,22 @@ its own consistent model: the column pairs with its own head field.
 - **The public wells help Yunlin, not Changhua:** R1e-pw has the best Yunlin county-mean
   RMSE (0.941 m) and correlation (0.769). R1e-pw stays diagnostic in any case (P6 is a
   sensitivity member).
+
+**User ruling (2026-10-21): the declared fallback is suspended; R0 stays the deliverable for
+heads and subsidence.** R1c's column fits the 2012-2022 leveling slightly better, but its
+forecast collapses after the origin:
+
+| | R0 | R1c | "no subsidence" |
+|---|---|---|---|
+| Fan-mean subsidence 2023-2032 | 2.88 cm | 0.13 cm | – |
+| Rest of the fan (mostly Yunlin), 2023-2032 | 2.91 cm | -1.59 cm (uplift) | – |
+| Measured deep piles 2024-25, RMSE | 1.27 cm | 3.55 cm | 3.53 cm |
+| Deep piles >= 200 m, R2 | 0.92 | -3.95 | -3.89 |
+
+The piles kept compressing 3-4 cm; R1c predicts what a zero forecast predicts. The composite
+would have shipped a subsidence forecast the measurements contradict.
+
+This is a disclosed deviation: it uses post-origin, report-only evidence (U7), after the G2
+scores were known (`results/dataprep/reports/I1_G2_fresh_partition/deviation.json`). Lesson for
+the next declaration: a column gate on hindcast leveling alone is not enough; it needs a
+forward-plausibility check, declared before it is scored.
