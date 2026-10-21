@@ -1105,3 +1105,49 @@ This is a disclosed deviation: it uses post-origin, report-only evidence (U7), a
 scores were known (`results/dataprep/reports/I1_G2_fresh_partition/deviation.json`). Lesson for
 the next declaration: a column gate on hindcast leveling alone is not enough; it needs a
 forward-plausibility check, declared before it is scored.
+
+**Consequence under U7.** The deep piles were used to choose between columns, so by the plan's
+own rule R0's 2023-26 subsidence scores (deep piles R2 0.92, RMSE 1.27 cm) are now
+selection-contaminated: they stay in the record but are no longer reported as skill. A
+subsidence skill claim needs a new registered window.
+
+## User rulings and registrations (2026-10-21)
+
+- **U4 and statistical layers.** U4 protects the physics model's frozen and prospective
+  forecasts. A separate statistical layer may use recorded post-origin drivers (manifest use
+  `statistical_layer_history`). This covers the registered hybrid test
+  `I1.hybrid_tf.prospective_2026-11.v1`.
+- **T3 registered** on that ruling: `X1.hybrid_tf_tpc.prospective_2026-11.v1`. It is the
+  hybrid layer with Taiwan Power county electricity (downscaled) as its electricity driver,
+  scored one month ahead on heads from 2026-11 to 2027-10 against the AR(1) layer. All 17 code
+  hashes were verified, and one frozen fit was made on heads 2012-02..2026-09 (parameters
+  sha256 2563512a). The design expects a narrow pass in Changhua only.
+- **water.gov.tw robots.txt.** It is ambiguous; the user ruled for the RFC 9309 reading, so
+  fetching was allowed. The Taiwan Water yearbooks and the measured Changhua public-supply
+  series (`public_supply_gw/v3`) stand.
+
+Record: `results/dataprep/rulings/user_rulings_2026-10-21.json`.
+
+## Rungs R4, R4p and Q0 (2026-10-22)
+
+Declared as `I1.R4Q0.v1` and `I1.R4p.v1` before they ran. All runs use the seed-2027 partition.
+Numbers: `results/dataprep/reports/I1_R4Q0/report.json`. **No rung passes; R0 stays the deliverable.**
+
+| | R0 | R1c (base) | R4 (shares learned) | R4p (shares measured) | Q0 (cleaned R0) |
+|---|---|---|---|---|---|
+| k-fold R2 | 0.718 | 0.646 | 0.622 | 0.615 | 0.648 |
+| Changhua correlation | 0.423 | 0.437 | 0.489 | 0.335 | 0.468 |
+| Changhua county-mean RMSE (m) | 0.515 | 0.643 | 0.731 | 0.697 | 0.531 |
+| Yunlin county-mean RMSE (m) | 1.082 | 1.036 | 1.012 | 1.047 | 0.980 |
+| Leveling R2 | 0.647 | 0.661 | 0.608 | **0.686** | 0.653 |
+| Temporal fair ratio (2020-22) | - | 1.085 | 1.108 | 1.082 | **1.066** |
+| 2023-25 county-mean subsidence, rest of fan (cm/yr) | +0.11 | -0.53 | -0.40 | -0.35 | +0.17 |
+| P2f Yunlin layer-1/2 ratio (observed 0.85, 0.52-0.95) | -0.02 | 0.02 | 0.20 | 1.01 | -0.01 |
+
+**Findings:**
+
+- **R4 fails all but one gate.** Its free fit sent 98.6 % of Changhua's pumping to aquifer 3, the opposite of the well census (84 % in aquifer 1). The optimiser uses depth to damp Changhua's response.
+- **R4p uses the measured shares.** It moves the layer response the right way (0.02 to 1.01) but overshoots. It also gives the best leveling of any rung, while Changhua's correlation falls.
+- **Q0 is a new baseline and not gated,** because its well set differs. It has the best temporal ratio and passes the plausibility check, and its Changhua single-well error is 1.008 m (R0 1.100).
+
+**The uplift is a column artefact.** Every rung built on R1c forecasts uplift in the rest of the fan after 2022; R0 and Q0 do not. All models' forecast heads recover alike after the 2020-21 drought. The difference is the 6-zone county-split VEP column that R1c introduced: it responds elastically to the head recovery, where R0's 3-zone column keeps compacting. Future rungs should keep the 3-zone column, or constrain the split column, before any subsidence claim.
