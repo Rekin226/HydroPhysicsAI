@@ -140,19 +140,22 @@ def input_options(meta: dict | None) -> dict:
     if meta.get("day_weighted_months"):
         opts["day_weighted_months"] = True
     # opt-in 2026-10-14: the pump census this calibration used, when it was not the default
-    for key in ("pump_census", "pump_kwh"):
+    for key in ("pump_census", "pump_kwh", "wells_dir", "stations"):
         if meta.get(key):
             opts[key] = meta[key]
     return opts
 
 
 def resolve_paths(paths: dict | None = None, pump_census: str | None = None,
-                  pump_kwh: str | None = None) -> dict:
+                  pump_kwh: str | None = None, wells_dir: str | None = None,
+                  stations: str | None = None) -> dict:
     """DEFAULT_PATHS overridden by a calibration's recorded pump census (``pump_census``,
-    ``pump_kwh`` from ``input_options``), then by explicit ``paths`` (a caller's CLI flags),
-    which win. ``None`` values never override."""
+    ``pump_kwh``) and head inputs (``wells_dir``, ``stations``, 2026-10-21) from
+    ``input_options``, then by explicit ``paths`` (a caller's CLI flags), which win.
+    ``None`` values never override."""
     P = dict(DEFAULT_PATHS)
-    for key, value in (("pump_census", pump_census), ("pump_kwh", pump_kwh)):
+    for key, value in (("pump_census", pump_census), ("pump_kwh", pump_kwh),
+                       ("wells_dir", wells_dir), ("stations", stations)):
         if value is not None:
             P[key] = value
     if paths:
@@ -168,6 +171,7 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                      ground_elev: str = "wells", dem_npz: str = "results/twin/basemap.npz",
                      strict_coverage: bool = False,
                      pump_census: str | None = None, pump_kwh: str | None = None,
+                     wells_dir: str | None = None, stations: str | None = None,
                      ic_month0_filled: bool = False,
                      ic_layered_proximal: bool = False,
                      day_weighted_months: bool = False) -> TwinInputs:
@@ -184,7 +188,7 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     (explicit ``paths`` still win, see ``resolve_paths``). ``day_weighted_months`` is
     ``--day-weighted-months`` (monthly heads as the mean of daily means).
     Pass ``**input_options(meta)``."""
-    P = resolve_paths(paths, pump_census, pump_kwh)
+    P = resolve_paths(paths, pump_census, pump_kwh, wells_dir, stations)
     for k, v in P.items():
         if not os.path.exists(v):
             raise FileNotFoundError(f"{k}: {v!r} does not exist -- see docs/DATA_FORMAT.md "

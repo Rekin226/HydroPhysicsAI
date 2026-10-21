@@ -365,6 +365,25 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         if k in th:
             scalars[k] = torch.tensor(np.asarray(th[k], dtype="float64"),
                                       dtype=torch.float64, device=device)
+    if "pump_layer_logits" in th:
+        # rung R4: layer shares of the pumped volume (Changhua's own copy with the county map
+        # the calibration recorded)
+        from .calibrate_flow import pump_layer_fractions
+        from .zone_county import county_flags_from_meta
+
+        lch = th.get("pump_layer_logits_ch")
+        flags = county_flags_from_meta(grid, meta) if lch is not None else None
+        if lch is not None and flags is None:
+            raise ValueError("pump_layer_logits_ch needs the calibration's county map")
+        scalars["pump_layer_frac"] = pump_layer_fractions(
+            torch.tensor(np.asarray(th["pump_layer_logits"], dtype="float64"), device=device),
+            None if lch is None else torch.tensor(np.asarray(lch, dtype="float64"),
+                                                  device=device),
+            None if flags is None else torch.as_tensor(np.asarray(flags, dtype=bool),
+                                                       device=device))
+    if "log_tau_ret" in th:
+        scalars["ret_tau"] = torch.exp(torch.tensor(float(th["log_tau_ret"]),
+                                                    dtype=torch.float64, device=device))
     if "spread_km" in th:
         from .spread import pairwise_d2_km, spread_matrix
 
@@ -435,6 +454,13 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
         ext["river_month0"] = int(month0)
     if "log_C_riv" in scalars:
         ext["log_C_riv"] = scalars["log_C_riv"]
+    if "pump_layer_frac" in scalars:
+        ext["pump_layer_frac"] = scalars["pump_layer_frac"]
+    if "ret_tau" in scalars:
+        # the lagged return flow's store travels in the state dict (key "ret")
+        ext["ret_tau"] = scalars["ret_tau"]
+        if u0 is not None and "u0" not in ext:
+            ext["u0"] = u0
     if "log_sw_scale" in scalars:
         if sw_field is None:
             raise ValueError("this model was calibrated with --sw-recharge: pass sw_field "

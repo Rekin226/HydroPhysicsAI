@@ -39,3 +39,17 @@ def test_resolve_paths_precedence():
     assert explicit["pump_census"] == "cli.parquet"
     assert explicit["pump_kwh"] == "k.parquet"
     assert explicit["polygon"] == DEFAULT_PATHS["polygon"]
+
+
+def test_non_default_head_inputs_round_trip_through_the_meta():
+    """2026-10-21: a cleaned wells directory and a repaired station table are recorded and
+    read back like the census, so every consumer rebuilds the same heads."""
+    args = SimpleNamespace(pump_census=DEFAULT_PATHS["pump_census"],
+                           pump_kwh=DEFAULT_PATHS["pump_kwh"],
+                           wells_dir="clean/wells", stations=DEFAULT_PATHS["stations"])
+    meta = _pump_paths_record(args)
+    assert meta == {"wells_dir": "clean/wells"}
+    opts = input_options(meta)
+    assert opts["wells_dir"] == "clean/wells" and "stations" not in opts
+    P = resolve_paths(None, None, None, opts["wells_dir"], None)
+    assert P["wells_dir"] == "clean/wells" and P["stations"] == DEFAULT_PATHS["stations"]

@@ -111,6 +111,11 @@ from .zones import (
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
 # is the brief's original wire-to-water-efficiency bound.
 RETURN_FRAC_MAX = 0.7      # irrigation return flow cannot exceed this share of pumping
+# --pump-layer-fractions (rung R4, opt-in 2026-10-21): epoch-0 shares of each cell's pumped
+# volume taken from twin layers 0-3 (mostly aquifer 2, as the historical single-layer split)
+PUMP_LAYER_INIT = (0.1, 0.7, 0.15, 0.05)
+# --return-lag: epoch-0 time constant (model steps of 30 days) of the lagged return flow
+RET_TAU_INIT_STEPS = 2.0
 
 
 def set_l_min(l_min: float | None) -> None:
@@ -157,7 +162,30 @@ BOUNDS = {
     # conductance to each of them (1/day, the log_L range)
     "log_Sa": (math.log(1e-5), math.log(0.3)),
     "log_G": (math.log(1e-8), math.log(1e-1)),
+    # --pump-layer-fractions / --pump-fractions-county (rung R4): softmax logits of the
+    # layer shares of pumped volume (fan-wide, and Changhua's own copy "_ch")
+    "pump_layer_logits": (-8.0, 8.0),
+    "pump_layer_logits_ch": (-8.0, 8.0),
+    # --return-lag: return flow reaches layer 0 through a first-order store with this time
+    # constant, in model steps (30 days): 3 days to a year
+    "log_tau_ret": (math.log(0.1), math.log(12.0)),
 }
+
+
+def pump_layer_fractions(logits: torch.Tensor, logits_ch: torch.Tensor | None = None,
+                         changhua: torch.Tensor | None = None) -> torch.Tensor:
+    """--pump-layer-fractions: the share of each cell's pumped volume taken from each layer,
+    a softmax of ``logits`` (L,) -> (L,); with Changhua's own copy ``logits_ch`` and the
+    county flags ``changhua`` (A,) -> (L, A). Every column sums to one, so the pumped volume
+    is unchanged and only where it is taken from moves."""
+    f = torch.softmax(logits.reshape(-1), dim=0)
+    if logits_ch is None:
+        return f
+    if changhua is None:
+        raise ValueError("a Changhua copy of the layer fractions needs the county flags")
+    fc = torch.softmax(logits_ch.reshape(-1), dim=0)
+    ch = changhua.to(device=f.device, dtype=f.dtype)
+    return f[:, None] * (1.0 - ch)[None, :] + fc[:, None] * ch[None, :]
 DELAY_SD_INIT = 1e-3
 DELAY_TAU_INIT_DAYS = 365.0
 DELAY_DU0_INIT_M = 1.0
@@ -525,6 +553,8 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              pump_split_logit: torch.Tensor | None = None,
              return_frac_logit: torch.Tensor | None = None,
              spread_W: torch.Tensor | None = None,
+             pump_layer_frac: torch.Tensor | None = None,
+             ret_tau: torch.Tensor | None = None,
              delay_Sd: torch.Tensor | None = None,
              delay_tau: torch.Tensor | None = None,
              u0: torch.Tensor | None = None,
@@ -638,6 +668,13 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     #  * the leakance floor is a BOUNDS change (``--l-min``), not a rollout term.
     pump_split_logit = _here(pump_split_logit)
     return_frac_logit = _here(return_frac_logit)
+    # rung R4 (opt-in 2026-10-21): ``pump_layer_frac`` (L,) or (L, A) shares of the pumped
+    # volume by layer, in place of pump_layer and pump_split_logit; ``ret_tau`` (steps) lags
+    # the return flow through a first-order store whose state travels with u0/return_state
+    # under the key "ret" (it starts at the first month's rate, i.e. at equilibrium)
+    pump_layer_frac = _here(pump_layer_frac)
+    ret_tau = _here(ret_tau)
+    ret_state = None
     if E is not None and spread_W is not None:
         # spatial spread of the stress (spread.py): the same energy, applied over a radius
         E = spread_energy(E, _here(spread_W))
@@ -661,6 +698,7 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     month0 = 1 if river_month0 is None else int(river_month0)
     ua0 = None
     if isinstance(u0, dict):
+        ret_state = _here(u0.get("ret"))
         u0, ua0 = u0.get("u"), u0.get("ua")
     extended = use_delay or use_riv or use_aqt
     if not extended:
@@ -762,7 +800,11 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
                 vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta,
                                                    head_extra=head_extra)  # m3 for the month
             rate = vol / model.dt                                        # m3/day
-            if pump_split_logit is not None and pump_layer != 0:
+            if pump_layer_frac is not None:
+                fr = pump_layer_frac if pump_layer_frac.dim() == 2 else pump_layer_frac[:, None]
+                for k in range(model.n_layers):
+                    layer_q[k] = layer_q[k] - fr[k] * rate
+            elif pump_split_logit is not None and pump_layer != 0:
                 f_shallow = torch.sigmoid(pump_split_logit)
                 layer_q[0] = layer_q[0] - f_shallow * rate
                 layer_q[pump_layer] = layer_q[pump_layer] - (1.0 - f_shallow) * rate
@@ -770,7 +812,13 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
                 layer_q[pump_layer] = layer_q[pump_layer] - rate
             if return_frac_logit is not None:
                 r_ret = RETURN_FRAC_MAX * torch.sigmoid(return_frac_logit)
-                layer_q[0] = layer_q[0] + r_ret * rate
+                if ret_tau is not None:
+                    a_ret = torch.exp(-1.0 / ret_tau)
+                    ret_state = rate if ret_state is None else a_ret * ret_state + (
+                        1.0 - a_ret) * rate
+                    layer_q[0] = layer_q[0] + r_ret * ret_state
+                else:
+                    layer_q[0] = layer_q[0] + r_ret * rate
         if use_sw:
             if sw_field.dim() == 3:
                 # several components (canal leakage, paddy percolation), one fraction each
@@ -801,6 +849,9 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     heads = torch.stack(out, dim=-1)
     if return_state:
         u_end = u if extended and use_delay else None
+        if ret_tau is not None:
+            return heads, {"u": u_end, "ua": ua if extended and use_aqt else None,
+                           "ret": ret_state}
         if extended and use_aqt:
             return heads, {"u": u_end, "ua": ua}
         return heads, u_end
@@ -1354,7 +1405,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              datum_mask: torch.Tensor | None = None,
              zonation: tuple[str, ...] | None = None,
              county_copy_sd: float | None = None,
-             county_tie: tuple[str, ...] = ()) -> dict:
+             county_tie: tuple[str, ...] = (),
+             pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
+             return_lag: bool = False,
+             changhua_cells: torch.Tensor | None = None,
+             fix_pump_layer_shares: tuple[float, ...] | None = None) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
 
     County-split options (``--zone-county-split`` only; both opt-in, both keep epoch 0 the
@@ -1593,6 +1648,29 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          learn_spread=learn_spread,
                                          delay_storage=delay_storage, n_riv=n_riv,
                                          use_sw=n_sw, delay_u0=delay_u0, aquitard=aquitard)
+    # rung R4 (opt-in 2026-10-21), appended after every other key so a run without them
+    # builds the historical dict
+    if pump_layer_fractions_on:
+        if not use_pumping:
+            raise ValueError("--pump-layer-fractions needs the pumping driver")
+        if pump_split:
+            raise ValueError("--pump-layer-fractions replaces --pump-split; pass one")
+        init = torch.log(torch.tensor(PUMP_LAYER_INIT[:model.n_layers], dtype=torch.float64,
+                                      device=dev))
+        theta["pump_layer_logits"] = nn.Parameter(init.clone())
+        if pump_fractions_county:
+            if changhua_cells is None:
+                raise ValueError("--pump-fractions-county needs --zone-county-split")
+            theta["pump_layer_logits_ch"] = nn.Parameter(init.clone())
+    elif pump_fractions_county:
+        raise ValueError("--pump-fractions-county needs --pump-layer-fractions")
+    if return_lag:
+        if not return_flow:
+            raise ValueError("--return-lag needs --return-flow")
+        theta["log_tau_ret"] = nn.Parameter(torch.tensor(math.log(RET_TAU_INIT_STEPS),
+                                                         dtype=torch.float64, device=dev))
+    ch_t = (None if changhua_cells is None
+            else torch.as_tensor(changhua_cells, dtype=torch.bool, device=dev))
     # --zone-county-split: each Changhua copy and its parent (empty otherwise)
     copy_parent = {k: k[: -len(COUNTY_SUFFIX)] for k in theta
                    if (_key_zone(k) or "").endswith(COUNTY_SUFFIX)
@@ -1706,6 +1784,18 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if use_sw and fix_sw_scale is not None:
         fixed["log_sw_scale"] = torch.full_like(theta.pop("log_sw_scale").detach(),
                                                 float(math.log(fix_sw_scale)))
+    if fix_pump_layer_shares is not None:
+        # rung R4p: the layer shares held at a measured prior (the X3 well-depth tables)
+        if "pump_layer_logits" not in theta or "pump_layer_logits_ch" in theta:
+            raise ValueError("--pump-layer-shares needs --pump-layer-fractions without "
+                             "--pump-fractions-county")
+        sh = torch.tensor([float(v) for v in fix_pump_layer_shares], dtype=torch.float64,
+                          device=dev)
+        if sh.numel() != model.n_layers or (sh <= 0).any() or abs(float(sh.sum()) - 1) > 1e-6:
+            raise ValueError(f"--pump-layer-shares needs {model.n_layers} positive shares "
+                             f"summing to 1, got {fix_pump_layer_shares}")
+        theta.pop("pump_layer_logits")
+        fixed["pump_layer_logits"] = torch.log(sh)
     free = list(theta.values())
     opt = torch.optim.Adam(free, lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -1761,6 +1851,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             log_C_apex=theta.get("log_C_apex"),
             pump_split_logit=theta.get("pump_split_logit"),
             return_frac_logit=theta.get("return_frac_logit"),
+            pump_layer_frac=(pump_layer_fractions(
+                theta.get("pump_layer_logits", fixed.get("pump_layer_logits")),
+                theta.get("pump_layer_logits_ch"), ch_t)
+                if "pump_layer_logits" in theta or "pump_layer_logits" in fixed else None),
+            ret_tau=(torch.exp(theta["log_tau_ret"]) if "log_tau_ret" in theta else None),
             spread_W=(spread_matrix(d2_km, theta["log_spread_km"])
                       if "log_spread_km" in theta else fixed_W),
         )
@@ -1843,6 +1938,12 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if "return_frac_logit" in theta_out:
         theta_out["return_frac"] = float(RETURN_FRAC_MAX
                                          / (1.0 + np.exp(-theta_out["return_frac_logit"])))
+    for k in ("pump_layer_logits", "pump_layer_logits_ch"):
+        if k in theta_out:
+            e = np.exp(np.asarray(theta_out[k], dtype="float64"))
+            theta_out[k.replace("logits", "shares")] = (e / e.sum()).tolist()
+    if "log_tau_ret" in theta_out:
+        theta_out["tau_ret_steps"] = float(np.exp(theta_out["log_tau_ret"]))
     if "log_spread_km" in theta_out:
         theta_out["spread_km"] = float(np.exp(theta_out["log_spread_km"]))
     elif spread_km is not None:
@@ -1902,7 +2003,8 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          recharge_layer: int = 0, pump_layer: int = 1,
                          sw_field: torch.Tensor | None = None,
                          sw_layer: int | None = None,
-                         extra_q: torch.Tensor | None = None) -> torch.Tensor:
+                         extra_q: torch.Tensor | None = None,
+                         changhua_cells: torch.Tensor | None = None) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
     reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
     ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
@@ -1928,6 +2030,16 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                  if "pump_split_logit" in theta else None)
         ret = (torch.tensor(theta["return_frac_logit"], dtype=torch.float64)
                if "return_frac_logit" in theta else None)
+        # rung R4: layer shares of the pumped volume and the return-flow lag
+        lfrac = None
+        if "pump_layer_logits" in theta:
+            lch = theta.get("pump_layer_logits_ch")
+            lfrac = pump_layer_fractions(
+                torch.tensor(theta["pump_layer_logits"], dtype=torch.float64),
+                None if lch is None else torch.tensor(lch, dtype=torch.float64),
+                None if changhua_cells is None else torch.as_tensor(changhua_cells))
+        rtau = (torch.exp(torch.tensor(theta["log_tau_ret"], dtype=torch.float64))
+                if "log_tau_ret" in theta else None)
         W = None
         if E is not None and "spread_km" in theta:
             W = spread_matrix(pairwise_d2_km(model.grid, device=model.log_T.device),
@@ -1956,7 +2068,8 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                         log_head_extra=log_head_extra,
                         ground_elev=ground_elev, pump_layer=pump_layer,
                         log_C_coast=model.log_C_coast, log_C_apex=model.log_C_apex,
-                        pump_split_logit=split, return_frac_logit=ret, spread_W=W)
+                        pump_split_logit=split, return_frac_logit=ret, spread_W=W,
+                        pump_layer_frac=lfrac, ret_tau=rtau)
 
 
 def _nanmean_rows(x: np.ndarray) -> np.ndarray:
@@ -1982,7 +2095,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
                   pump_layer: int = 1, sw_full: torch.Tensor | None = None,
                   sw_layer: int | None = None, rmse_k: float = 1.5,
                   keep_arrays: bool = False, datum: np.ndarray | None = None,
-                  extra_full: torch.Tensor | None = None) -> dict:
+                  extra_full: torch.Tensor | None = None,
+                  changhua_cells: torch.Tensor | None = None) -> dict:
     """Score a free-running continuation over the months the fit never saw.
 
     ``datum`` (``(W,)`` m, ``--well-datum fit``): the per-well datum fitted on the fitted
@@ -2012,7 +2126,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
         h = _predict_homogeneous(model, fit, h0, T_full, recharge_field=recharge_full,
                                  E=E_full, ground_elev=ground_elev,
                                  recharge_layer=recharge_layer, pump_layer=pump_layer,
-                                 sw_field=sw_full, sw_layer=sw_layer, extra_q=extra_full)
+                                 sw_field=sw_full, sw_layer=sw_layer, extra_q=extra_full,
+                                 changhua_cells=changhua_cells)
         pred = h[obs_layer.to(h.device), obs_idx.to(h.device), 1:].cpu().numpy()
     obs = obs_full.cpu().numpy()
     held = slice(T_fit, T_full)
@@ -2296,6 +2411,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 delay_layers: tuple[int, ...] | None = None,
                 aquitard: str = "off", zone_w: np.ndarray | None = None,
                 extra_q: torch.Tensor | None = None,
+                pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
+                return_lag: bool = False, changhua_cells: torch.Tensor | None = None,
+                fix_pump_layer_shares: tuple[float, ...] | None = None,
                 ic_zone_of_cell: np.ndarray | None = None,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
@@ -2422,7 +2540,11 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        well_datum_sd=well_datum_sd,
                        datum_mask=None if datum_mask is None else datum_mask[keep],
                        zonation=zonation, county_copy_sd=county_copy_sd,
-                       county_tie=county_tie, extra_q=extra_q)
+                       county_tie=county_tie, extra_q=extra_q,
+                       pump_layer_fractions_on=pump_layer_fractions_on,
+                       pump_fractions_county=pump_fractions_county, return_lag=return_lag,
+                       changhua_cells=changhua_cells,
+                       fix_pump_layer_shares=fix_pump_layer_shares)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -2439,7 +2561,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          ground_elev=ground_elev,
                                          recharge_layer=recharge_layer, pump_layer=pump_layer,
                                          sw_field=sw_field, sw_layer=sw_layer,
-                                         extra_q=extra_q)
+                                         extra_q=extra_q, changhua_cells=changhua_cells)
             else:
                 h = m(h0_eval, recharge,
                      torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
@@ -3020,6 +3142,19 @@ def main(argv=None) -> None:
                          "surface_water.py v2) or 'both'")
     ap.add_argument("--fix-sw-scale", type=float, default=None,
                     help="hold the canal-recharge fraction at this value (diagnostic)")
+    ap.add_argument("--pump-layer-fractions", action="store_true",
+                    help="(rung R4) learn the share of pumped volume taken from each twin "
+                         "layer (softmax over the layers, fan-wide), in place of "
+                         "--pump-split's shallow fraction")
+    ap.add_argument("--pump-fractions-county", action="store_true",
+                    help="(rung R4) give Changhua its own layer shares (needs "
+                         "--pump-layer-fractions and --zone-county-split)")
+    ap.add_argument("--pump-layer-shares", default=None,
+                    help="(rung R4p) hold the layer shares of --pump-layer-fractions at these "
+                         "comma-separated values, one per layer, summing to 1")
+    ap.add_argument("--return-lag", action="store_true",
+                    help="(rung R4) lag the return flow through a first-order store with a "
+                         "learned time constant (needs --return-flow)")
     ap.add_argument("--sw-county-split", action="store_true",
                     help="(rung R1e-cn) give every --sw-components field one learned "
                          "fraction for its Changhua cells and one for the rest; needs "
@@ -3423,6 +3558,19 @@ def main(argv=None) -> None:
     # --zone-county-split's fit options (none for a default run, whose calls are unchanged)
     county_fit_kw = ({"zonation": zonation, "county_copy_sd": args.county_copy_sd,
                       "county_tie": county_tie} if county_rec else {})
+    # rung R4's options (none for a default run, whose calls are unchanged)
+    r4_kw = {}
+    if (args.pump_layer_fractions or args.pump_fractions_county or args.return_lag
+            or args.pump_layer_shares):
+        if args.pump_fractions_county and county_flags is None:
+            raise SystemExit("--pump-fractions-county needs --zone-county-split")
+        r4_kw = {"pump_layer_fractions_on": args.pump_layer_fractions,
+                 "pump_fractions_county": args.pump_fractions_county,
+                 "return_lag": args.return_lag,
+                 "fix_pump_layer_shares": (None if not args.pump_layer_shares else tuple(
+                     float(v) for v in args.pump_layer_shares.split(","))),
+                 "changhua_cells": (None if county_flags is None
+                                    else torch.as_tensor(np.asarray(county_flags, dtype=bool)))}
     # one argument list for the sequential gate and a --only-fold job, so the two can
     # never drift apart
     kfold_kw = dict(n_layers=4, epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
@@ -3440,6 +3588,7 @@ def main(argv=None) -> None:
                     fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
                     delay_layers=delay_layers, aquitard=args.aquitard_storage,
                     zone_w=zone_w, extra_q=extra_q, ic_zone_of_cell=ic_zone_of_cell,
+                    **r4_kw,
                     proximal_layered=args.proximal_layered,
                     ic_layered=args.ic_layered_proximal,
                     well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
@@ -3485,7 +3634,7 @@ def main(argv=None) -> None:
                    aquitard=args.aquitard_storage, zone_w=zone_w,
                    proximal_layered=args.proximal_layered, well_datum=args.well_datum,
                    well_datum_sd=args.well_datum_sd, datum_mask=datum_mask,
-                   extra_q=extra_q, **county_fit_kw)
+                   extra_q=extra_q, **county_fit_kw, **r4_kw)
     t_fit = time.perf_counter() - t0
     datum_np = datum_meta = None
     if args.well_datum == "fit":
@@ -3514,7 +3663,8 @@ def main(argv=None) -> None:
                                  recharge_layer=args.recharge_layer, pump_layer=args.pump_layer,
                                  sw_full=sw_full, sw_layer=args.sw_layer,
                                  rmse_k=args.temporal_rmse_k, keep_arrays=True,
-                                 datum=datum_np, extra_full=extra_full)
+                                 datum=datum_np, extra_full=extra_full,
+                                 changhua_cells=r4_kw.get("changhua_cells"))
         arrs = temporal.pop("arrays")
         # fair verdict (drift_diag.fair_temporal_verdict): a pure scoring addition beside
         # the legacy one -- per-well datum from the fitted months, raw (never back-filled)
@@ -3762,9 +3912,15 @@ def _pump_paths_record(args) -> dict:
     (``inputs.input_options`` hands them back to ``load_twin_inputs``); none otherwise."""
     census = getattr(args, "pump_census", DEFAULT_PATHS["pump_census"])
     kwh = getattr(args, "pump_kwh", DEFAULT_PATHS["pump_kwh"])
-    if census == DEFAULT_PATHS["pump_census"] and kwh == DEFAULT_PATHS["pump_kwh"]:
-        return {}
-    return {"pump_census": census, "pump_kwh": kwh}
+    rec = ({} if census == DEFAULT_PATHS["pump_census"] and kwh == DEFAULT_PATHS["pump_kwh"]
+           else {"pump_census": census, "pump_kwh": kwh})
+    # 2026-10-21: a non-default head input (cleaned wells, repaired station coordinates) is
+    # recorded the same way, each only when set
+    for key, flag in (("wells_dir", "wells_dir"), ("stations", "stations")):
+        v = getattr(args, flag, DEFAULT_PATHS[key])
+        if v != DEFAULT_PATHS[key]:
+            rec[key] = v
+    return rec
 
 
 def _well_datum_record(datum_meta: dict | None) -> dict:
