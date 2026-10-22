@@ -1151,3 +1151,29 @@ Numbers: `results/dataprep/reports/I1_R4Q0/report.json`. **No rung passes; R0 st
 - **Q0 is a new baseline and not gated,** because its well set differs. It has the best temporal ratio and passes the plausibility check, and its Changhua single-well error is 1.008 m (R0 1.100).
 
 **The uplift is a column artefact.** Every rung built on R1c forecasts uplift in the rest of the fan after 2022; R0 and Q0 do not. All models' forecast heads recover alike after the 2020-21 drought. The difference is the 6-zone county-split VEP column that R1c introduced: it responds elastically to the head recovery, where R0's 3-zone column keeps compacting. Future rungs should keep the 3-zone column, or constrain the split column, before any subsidence claim.
+
+## Combined candidate R* (2026-10-22)
+
+Declared as `I1.Rstar.v1` before it ran. Recipe: Q0's cleaned inputs + the Changhua census +
+the measured layer shares (84/11/2.5/2.5 %) + lagged return flow + a learned Changhua
+pump-efficiency factor, with R0's 3-zone column. Seed-2027 partition. Numbers:
+`results/dataprep/reports/I1_Rstar/report.json`. **R* fails 5 of 7 gates; no seed-2029
+confirmation is run; R0 stays the deliverable.**
+
+| | Q0 | R* | gate | pass |
+|---|---|---|---|---|
+| k-fold R2 | 0.648 | 0.562 | >= 0.638 | no |
+| Changhua / Yunlin correlation | 0.468 / 0.740 | 0.454 / 0.692 | >= 0.448 / 0.720 | yes / no |
+| Changhua / Yunlin county-mean RMSE (m) | 0.531 / 0.980 | 0.855 / 1.111 | <= 0.542 / 1.000 | no / no |
+| Leveling R2 | 0.653 | 0.365 | >= 0.633 | no |
+| Temporal fair ratio (2020-22) | 1.066 | **1.053** (PASS) | <= 1.077 | yes |
+| 2023-25 subsidence, Changhua / rest (cm/yr) | +0.27 / +0.17 | +0.79 / +0.13 | >= 0 | yes |
+| P2f Yunlin layer-1/2 ratio (observed 0.85, 0.52-0.95) | -0.01 | 1.00 | inside | no |
+
+**Findings:**
+
+- **The efficiency factor went the wrong way: 1.55, not below 1.** Once 84 % of pumping is fixed in aquifer 1 with an almost instantaneous return (0.17 months), the fit raised Changhua's net abstraction. Changhua's simulated amplitude rose from 0.36 to 1.17 of observed, and its county-mean error from 0.53 to 0.85 m.
+- **So Changhua's half response is not an energy-to-volume (efficiency) effect.** The model cannot absorb it by scaling pumping.
+- **Leveling collapses** (0.65 to 0.37; Changhua -0.62), and the measured shares again overshoot the P2f layer response (1.00).
+- **The time direction is fine:** R* has the best temporal ratio of any rung and passes the plausibility check. The failure is in out-of-fold spatial skill.
+- **Next suspect, per the declared interpretation:** a source term the model does not hold. The most likely is canal water outside the Jiji supply (X4: W1 counts about 35 % of the Changhua irrigation office's water), which would add recharge and damp Changhua's response.
