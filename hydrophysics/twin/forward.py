@@ -384,6 +384,23 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
     if "log_tau_ret" in th:
         scalars["ret_tau"] = torch.exp(torch.tensor(float(th["log_tau_ret"]),
                                                     dtype=torch.float64, device=device))
+    if "log_eta_ratio_ch" in th:
+        # rung R*: Changhua's pump-efficiency factor, on the county map the calibration
+        # recorded (eta_county_*, or the county split's own map)
+        from .calibrate_flow import eta_by_cell
+        from .zone_county import county_flags_for_grid, county_flags_from_meta
+
+        if meta.get("eta_county_sha256"):
+            flags, _ = county_flags_for_grid(grid, meta.get("eta_county_map"),
+                                             expect_sha256=meta["eta_county_sha256"])
+        else:
+            flags = county_flags_from_meta(grid, meta)
+        if flags is None:
+            raise ValueError("log_eta_ratio_ch needs the calibration's county map")
+        scalars["log_eta"] = eta_by_cell(
+            scalars["log_eta"],
+            torch.tensor(float(th["log_eta_ratio_ch"]), dtype=torch.float64, device=device),
+            torch.as_tensor(np.asarray(flags, dtype=bool), device=device))
     if "spread_km" in th:
         from .spread import pairwise_d2_km, spread_matrix
 

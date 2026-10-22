@@ -169,7 +169,22 @@ BOUNDS = {
     # --return-lag: return flow reaches layer 0 through a first-order store with this time
     # constant, in model steps (30 days): 3 days to a year
     "log_tau_ret": (math.log(0.1), math.log(12.0)),
+    # --eta-county (rung R*): Changhua's pump efficiency as a factor on the fan-wide one,
+    # 0.2-2 (the heads respond about half as much there per unit electricity)
+    "log_eta_ratio_ch": (math.log(0.2), math.log(2.0)),
 }
+
+
+def eta_by_cell(log_eta: torch.Tensor, ratio_ch: torch.Tensor | None,
+                changhua: torch.Tensor | None) -> torch.Tensor:
+    """--eta-county: per-cell log efficiency, the fan-wide value plus Changhua's log factor
+    on Changhua cells; the scalar fan-wide value when there is no factor."""
+    if ratio_ch is None:
+        return log_eta
+    if changhua is None:
+        raise ValueError("--eta-county needs the county flags")
+    ch = changhua.to(device=log_eta.device, dtype=log_eta.dtype)
+    return log_eta.reshape(-1)[0] + ratio_ch.reshape(-1)[0] * ch
 
 
 def pump_layer_fractions(logits: torch.Tensor, logits_ch: torch.Tensor | None = None,
@@ -1409,7 +1424,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
              return_lag: bool = False,
              changhua_cells: torch.Tensor | None = None,
-             fix_pump_layer_shares: tuple[float, ...] | None = None) -> dict:
+             fix_pump_layer_shares: tuple[float, ...] | None = None,
+             eta_county: bool = False) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
 
     County-split options (``--zone-county-split`` only; both opt-in, both keep epoch 0 the
@@ -1669,6 +1685,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             raise ValueError("--return-lag needs --return-flow")
         theta["log_tau_ret"] = nn.Parameter(torch.tensor(math.log(RET_TAU_INIT_STEPS),
                                                          dtype=torch.float64, device=dev))
+    if eta_county:
+        if not use_pumping or changhua_cells is None:
+            raise ValueError("--eta-county needs the pumping driver and the county flags")
+        theta["log_eta_ratio_ch"] = nn.Parameter(torch.tensor(0.0, dtype=torch.float64,
+                                                              device=dev))
     ch_t = (None if changhua_cells is None
             else torch.as_tensor(changhua_cells, dtype=torch.bool, device=dev))
     # --zone-county-split: each Changhua copy and its parent (empty otherwise)
@@ -1843,7 +1864,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             recharge_scale=theta.get("recharge_frac_logit"),
             recharge_layer=recharge_layer,
             E=E if use_pumping else None,
-            log_eta=theta.get("log_eta", fixed.get("log_eta")),
+            log_eta=eta_by_cell(theta.get("log_eta", fixed.get("log_eta")),
+                                theta.get("log_eta_ratio_ch"), ch_t),
             log_head_extra=theta.get("log_head_extra", fixed.get("log_head_extra")),
             ground_elev=ground_elev,
             pump_layer=pump_layer,
@@ -1944,6 +1966,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             theta_out[k.replace("logits", "shares")] = (e / e.sum()).tolist()
     if "log_tau_ret" in theta_out:
         theta_out["tau_ret_steps"] = float(np.exp(theta_out["log_tau_ret"]))
+    if "log_eta_ratio_ch" in theta_out:
+        theta_out["eta_ratio_changhua"] = float(np.exp(theta_out["log_eta_ratio_ch"]))
     if "log_spread_km" in theta_out:
         theta_out["spread_km"] = float(np.exp(theta_out["log_spread_km"]))
     elif spread_km is not None:
@@ -2040,6 +2064,11 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                 None if changhua_cells is None else torch.as_tensor(changhua_cells))
         rtau = (torch.exp(torch.tensor(theta["log_tau_ret"], dtype=torch.float64))
                 if "log_tau_ret" in theta else None)
+        if log_eta is not None and "log_eta_ratio_ch" in theta:
+            log_eta = eta_by_cell(log_eta, torch.tensor(theta["log_eta_ratio_ch"],
+                                                        dtype=torch.float64),
+                                  None if changhua_cells is None
+                                  else torch.as_tensor(changhua_cells))
         W = None
         if E is not None and "spread_km" in theta:
             W = spread_matrix(pairwise_d2_km(model.grid, device=model.log_T.device),
@@ -2414,6 +2443,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
                 return_lag: bool = False, changhua_cells: torch.Tensor | None = None,
                 fix_pump_layer_shares: tuple[float, ...] | None = None,
+                eta_county: bool = False,
                 ic_zone_of_cell: np.ndarray | None = None,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
@@ -2544,7 +2574,7 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        pump_layer_fractions_on=pump_layer_fractions_on,
                        pump_fractions_county=pump_fractions_county, return_lag=return_lag,
                        changhua_cells=changhua_cells,
-                       fix_pump_layer_shares=fix_pump_layer_shares)
+                       fix_pump_layer_shares=fix_pump_layer_shares, eta_county=eta_county)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -3149,6 +3179,9 @@ def main(argv=None) -> None:
     ap.add_argument("--pump-fractions-county", action="store_true",
                     help="(rung R4) give Changhua its own layer shares (needs "
                          "--pump-layer-fractions and --zone-county-split)")
+    ap.add_argument("--eta-county", action="store_true",
+                    help="(rung R*) learn a Changhua factor on the pump efficiency (the "
+                         "fan-wide efficiency stays as given); uses the verified county map")
     ap.add_argument("--pump-layer-shares", default=None,
                     help="(rung R4p) hold the layer shares of --pump-layer-fractions at these "
                          "comma-separated values, one per layer, summing to 1")
@@ -3560,8 +3593,17 @@ def main(argv=None) -> None:
                       "county_tie": county_tie} if county_rec else {})
     # rung R4's options (none for a default run, whose calls are unchanged)
     r4_kw = {}
+    if args.eta_county and county_flags is None:
+        # --eta-county without --zone-county-split: the verified county map, recorded in the
+        # meta (eta_county_map / eta_county_sha256) so the forward twin rebuilds the flags
+        from .zone_county import DEFAULT_MAP, county_sha256, verify_county_cache
+        county_flags = verify_county_cache(grid, DEFAULT_MAP)
+        args.eta_county_map, args.eta_county_sha256 = DEFAULT_MAP, county_sha256(county_flags)
+    elif args.eta_county:
+        from .zone_county import DEFAULT_MAP, county_sha256
+        args.eta_county_map, args.eta_county_sha256 = DEFAULT_MAP, county_sha256(county_flags)
     if (args.pump_layer_fractions or args.pump_fractions_county or args.return_lag
-            or args.pump_layer_shares):
+            or args.pump_layer_shares or args.eta_county):
         if args.pump_fractions_county and county_flags is None:
             raise SystemExit("--pump-fractions-county needs --zone-county-split")
         r4_kw = {"pump_layer_fractions_on": args.pump_layer_fractions,
@@ -3569,6 +3611,7 @@ def main(argv=None) -> None:
                  "return_lag": args.return_lag,
                  "fix_pump_layer_shares": (None if not args.pump_layer_shares else tuple(
                      float(v) for v in args.pump_layer_shares.split(","))),
+                 "eta_county": args.eta_county,
                  "changhua_cells": (None if county_flags is None
                                     else torch.as_tensor(np.asarray(county_flags, dtype=bool)))}
     # one argument list for the sequential gate and a --only-fold job, so the two can
@@ -3904,6 +3947,8 @@ def _extra_forcing_record(args) -> dict:
         rec.update(extra_abstraction=args.extra_abstraction, extra_abstraction_sha256=sha)
     if getattr(args, "sw_county_split", False):
         rec["sw_county_split"] = True
+    if getattr(args, "eta_county_sha256", None):
+        rec.update(eta_county_map=args.eta_county_map, eta_county_sha256=args.eta_county_sha256)
     return rec
 
 
