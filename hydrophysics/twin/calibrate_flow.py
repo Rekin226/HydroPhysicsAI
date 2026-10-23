@@ -425,6 +425,28 @@ def prepare_series(s: np.ndarray, backfill: bool = True) -> np.ndarray:
     return pd.Series(s).interpolate(limit_direction="both").to_numpy()
 
 
+def mask_month_flags(spec: str | None, dates: pd.DatetimeIndex) -> np.ndarray | None:
+    """--mask-months START:END (YYYY-MM, inclusive): True for each month of ``dates`` inside
+    the window, or None when no window is given. The window must lie inside the record and
+    leave month 0 (the initial condition) unmasked."""
+    if not spec:
+        return None
+    try:
+        a, b = (pd.Period(v.strip(), freq="M") for v in spec.split(":"))
+    except ValueError as e:
+        raise ValueError(f"--mask-months {spec!r}: expected YYYY-MM:YYYY-MM") from e
+    if b < a:
+        raise ValueError(f"--mask-months {spec!r}: the end is before the start")
+    per = pd.DatetimeIndex(dates).to_period("M")
+    if a < per[0] or b > per[-1]:
+        raise ValueError(f"--mask-months {spec!r} lies outside the record "
+                         f"{per[0]}..{per[-1]}")
+    flags = np.asarray((per >= a) & (per <= b))
+    if flags[0]:
+        raise ValueError("--mask-months may not cover month 0 (the initial condition)")
+    return flags
+
+
 def _masked_mse(pred: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """Mean squared error over the ``mask``-ed entries only (``obs`` must be finite
     everywhere -- zero-filled where masked -- so no NaN reaches the gradient)."""
@@ -3053,6 +3075,11 @@ def main(argv=None) -> None:
                          "which copies held-out heads of late-starting wells into the fit "
                          "target, climatology and initial condition; the initial "
                          "condition uses only the wells observed in month 0")
+    ap.add_argument("--mask-months", default=None, metavar="START:END",
+                    help="(N1 masked refits) hide the observed heads of these months "
+                         "(YYYY-MM:YYYY-MM, inclusive) from the fit: NaN before and after "
+                         "back-fill, so they are masked out of the loss, the datum and every "
+                         "in-sample score; the well set is unchanged")
     ap.add_argument("--day-weighted-months", action="store_true",
                     help="monthly heads as the mean of daily means (default: the mean of all "
                          "samples, which over-weights 10-minute days after the 2019-02-20 "
@@ -3395,6 +3422,7 @@ def main(argv=None) -> None:
     if args.wells_from:
         allowed = set(pd.read_csv(args.wells_from, dtype={"sid": str})["sid"])
     idx, lay, series, xy_used, sids_used, raw_series = [], [], [], [], [], []
+    mask_m = mask_month_flags(args.mask_months, hf.dates)
     for w in range(len(hf)):
         if allowed is not None and str(hf.sids[w]) not in allowed:
             continue
@@ -3402,13 +3430,26 @@ def main(argv=None) -> None:
         if i is None:
             continue
         sids_used.append(str(hf.sids[w]))
-        raw_series.append(np.asarray(hf.heads[w], dtype="float64"))
-        s = prepare_series(hf.heads[w], backfill=not args.no_backfill)
+        raw = np.asarray(hf.heads[w], dtype="float64")
+        if mask_m is not None:
+            raw = raw.copy()
+            raw[mask_m] = np.nan
+            if not np.isfinite(raw).any():
+                raise SystemExit(f"--mask-months leaves well {hf.sids[w]} with no "
+                                 "observation")
+        raw_series.append(raw)
+        s = prepare_series(raw, backfill=not args.no_backfill)
+        if mask_m is not None:
+            s = s.copy()
+            s[mask_m] = np.nan
         idx.append(i)
         lay.append(max(int(hf.layers[w]) - 1, 0))
         series.append(s)
         xy_used.append(hf.xy[w])
     obs_h_full = np.stack(series)                                  # (W, 132), raw heads
+    if mask_m is not None:
+        print(f"--mask-months {args.mask_months}: {int(mask_m.sum())} months hidden from the "
+              f"fit at all {len(series)} wells", flush=True)
     obs_raw_full = np.stack(raw_series)          # (W, 132), NaN where never observed
     if args.no_backfill:
         print(f"--no-backfill: {int((~np.isfinite(obs_h_full)).sum())} never-observed "
@@ -3835,6 +3876,8 @@ def main(argv=None) -> None:
                   "temporal_rmse_k": args.temporal_rmse_k,
                   "no_backfill": bool(args.no_backfill),
                   **_input_opts_record(args),
+                  # opt-in 2026-10-22 (N1 masked refits): written only when set
+                  **({"mask_months": args.mask_months} if args.mask_months else {}),
                   # opt-in 2026-09-26: written only when set, so default meta is unchanged
                   **(datum_meta or {}),
                   # opt-in 2026-10-15 (rung R1c): the county split and its map's identity,
