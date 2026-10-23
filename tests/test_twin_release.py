@@ -155,26 +155,106 @@ def test_update_retains_previous_release_on_stale_or_failed_run(tmp_path):
     assert (root / "current.json").read_bytes() == before
 
 
-def test_update_requires_matching_observation_lineage(tmp_path):
+def accepted_update(tmp_path):
     obs = observation_file(tmp_path)
+    predictions, protocol_path, _, protocol = evaluation_files(tmp_path)
+    protocol.update(code_sha256="c" * 64, observations_sha256=sha256(obs))
+    protocol_path.write_text(json.dumps(protocol))
+    acceptance = tmp_path / "acceptance.json"
+    acceptance.write_text(json.dumps(evaluate(predictions, protocol_path)))
     data = payload()
     data["meta"].update(vintage="2026-09", yObs=2026, yTested=2026)
-    data["release"]["data_vintage"] = "2026-09"
+    data["release"].update(data_vintage="2026-09", code_sha256="c" * 64)
+    data["release"]["sources"].update({
+        "observations": {"sha256": sha256(obs)},
+        "validation_protocol": {"sha256": sha256(protocol_path)},
+        "validation_predictions": {"sha256": sha256(predictions)},
+    })
     source = page(tmp_path / "viewer.html", data)
     config = {"cwd": str(tmp_path), "release_root": "releases", "observations": obs.name,
               "page": source.name, "as_of": "2026-09-30",
-              "steps": [[sys.executable, "-c", "pass"]]}
+              "steps": [[sys.executable, "-c", "pass"]],
+              "acceptance_reports": [{"report": acceptance.name,
+                                      "protocol": protocol_path.name,
+                                      "predictions": predictions.name}]}
+    return config, data, source, acceptance, predictions, protocol_path
+
+
+def test_update_requires_matching_observation_lineage(tmp_path):
+    config, data, source, _, _, _ = accepted_update(tmp_path)
     status = tmp_path / "status.json"
+    invalid = copy.deepcopy(data)
+    del invalid["release"]["sources"]["observations"]
+    page(source, invalid)
     assert run(config, status)["state"] == "failed"
-    (tmp_path / "acceptance.json").write_text(json.dumps({"passed": True}))
-    config["acceptance_reports"] = ["acceptance.json"]
-    assert run(config, status)["state"] == "failed"
-    valid = copy.deepcopy(data)
-    valid["release"]["sources"]["observations"] = {"sha256": sha256(obs)}
-    page(source, valid)
+    page(source, data)
     assert run(config, status)["state"] == "published"
-    assert (tmp_path / "releases" / "current.json").exists()
-    current = (tmp_path / "releases" / "current.json").read_bytes()
-    (tmp_path / "acceptance.json").write_text(json.dumps({"passed": False}))
+    manifest = json.loads((tmp_path / "releases/current.json").read_text())
+    assert manifest["acceptance"][0]["task"] == "free-running-head-validation"
+    assert manifest["acceptance"][0]["model_sha256"] == "a" * 64
+
+
+@pytest.mark.parametrize("change", ["model", "code", "observations", "protocol", "period",
+                                    "predictions", "task", "boolean", "missing_bindings"])
+def test_update_rejects_unrelated_evidence_and_preserves_release(tmp_path, change):
+    config, data, source, acceptance, predictions, protocol_path = accepted_update(tmp_path)
+    status = tmp_path / "status.json"
+    assert run(config, status)["state"] == "published"
+    pointer = tmp_path / "releases/current.json"
+    before = pointer.read_bytes()
+    protocol = json.loads(protocol_path.read_text())
+    frame = pd.read_csv(predictions)
+    if change == "model":
+        protocol["model_sha256"] = "b" * 64
+        frame["model_sha256"] = "b" * 64
+    elif change in ("code", "observations"):
+        protocol[change + "_sha256"] = "b" * 64
+    elif change == "protocol":
+        protocol["max_rmse_ratio"] = .9
+    elif change == "period":
+        protocol["test_end"] = "2023-03-31"
+    elif change == "predictions":
+        frame["predicted_m"] += .02
+    elif change == "missing_bindings":
+        del data["release"]["sources"]["validation_protocol"]
+        page(source, data)
+    protocol_path.write_text(json.dumps(protocol))
+    frame.to_csv(predictions, index=False)
+    report = evaluate(predictions, protocol_path)
+    assert report["passed"]
+    if change == "task":
+        report["task"] = "unrelated-task"
+    elif change == "boolean":
+        report = {"passed": True}
+    acceptance.write_text(json.dumps(report))
     assert run(config, status)["state"] == "failed"
-    assert (tmp_path / "releases" / "current.json").read_bytes() == current
+    assert pointer.read_bytes() == before
+
+
+def test_update_rejects_legacy_boolean_report_path(tmp_path):
+    config, _, _, acceptance, _, _ = accepted_update(tmp_path)
+    acceptance.write_text(json.dumps({"passed": True}))
+    config["acceptance_reports"] = [acceptance.name]
+    assert run(config, tmp_path / "status.json")["state"] == "failed"
+    assert not (tmp_path / "releases/current.json").exists()
+
+
+def test_page_change_after_evidence_check_preserves_release(tmp_path, monkeypatch):
+    from hydrophysics.twin import update_cycle
+
+    config, data, source, _, _, _ = accepted_update(tmp_path)
+    status = tmp_path / "status.json"
+    assert run(config, status)["state"] == "published"
+    pointer = tmp_path / "releases/current.json"
+    before = pointer.read_bytes()
+    original = update_cycle.publish
+
+    def change_then_publish(page_path, root, **kwargs):
+        data["release"]["code_sha256"] = "b" * 64
+        page(source, data)
+        return original(page_path, root, **kwargs)
+
+    monkeypatch.setattr(update_cycle, "publish", change_then_publish)
+    result = run(config, status)
+    assert result["state"] == "failed" and "Page changed" in result["error"]
+    assert pointer.read_bytes() == before

@@ -127,6 +127,9 @@ def evaluate(path: str | Path, protocol_path: str | Path) -> dict:
               "coverage": coverage, "stations": len(station), "rows": len(frame),
               "protocol_sha256": sha256(protocol_path), "predictions_sha256": sha256(path),
               "model_sha256": protocol["model_sha256"], "period": [str(start), str(end)]}
+    # Optional for historical scoring, mandatory for an accepted update publication.
+    result["code_sha256"] = protocol.get("code_sha256")
+    result["observations_sha256"] = protocol.get("observations_sha256")
     return result
 
 

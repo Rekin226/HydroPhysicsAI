@@ -53,6 +53,12 @@ class TwinInputs:
     # --sw-components both; None unless a calibration used --sw-recharge and the caller
     # loaded it (load_sw_recharge / forward.attach_sw_recharge)
     sw_field: torch.Tensor | None = field(repr=False, default=None)
+    # --sw-county-split (rung R1e-cn): sw_field holds each component twice, Changhua cells
+    # then the rest ((2K, A, T), see split_sw_by_county), each with its own fraction
+    sw_county_split: bool = field(repr=False, default=False)
+    # (L, A, T) m3/day of fixed extra abstraction (--extra-abstraction, rung R1e-pw), or
+    # None; loaded by forward.attach_sw_recharge from the calibration's meta
+    extra_q: torch.Tensor | None = field(repr=False, default=None)
     # (A,) zone map when the calibration used --ic-merged-proximal: initial_heads then
     # replaces the proximal zone(s) with the merged-aquifer head, as calibrate_flow did
     ic_zone_of_cell: np.ndarray | None = field(repr=False, default=None)
@@ -108,7 +114,11 @@ class TwinInputs:
 def input_options(meta: dict | None) -> dict:
     """``load_twin_inputs`` keyword arguments for the opt-in input constructions a
     calibration recorded in its meta (``calibrate_flow._input_opts_record``). Absent keys
-    (every run before 2026-09-23) give the historical construction."""
+    (every run before 2026-09-23) give the historical construction.
+
+    ``zone_county_split`` (rung R1c) is deliberately not among them: the county split
+    copies the PARAMETERS, and the merged-proximal initial field stays on the unsplit
+    zone map in calibration and here alike (``calibrate_flow._ic_zone_map``)."""
     meta = meta or {}
     opts: dict = {}
     if meta.get("ic_merged_proximal"):
@@ -126,7 +136,31 @@ def input_options(meta: dict | None) -> dict:
         opts["dem_npz"] = meta.get("ground_elev_dem_npz") or "results/twin/basemap.npz"
     if meta.get("strict_coverage"):
         opts["strict_coverage"] = True
+    # opt-in 2026-10-20: monthly heads as the mean of daily means
+    if meta.get("day_weighted_months"):
+        opts["day_weighted_months"] = True
+    # opt-in 2026-10-14: the pump census this calibration used, when it was not the default
+    for key in ("pump_census", "pump_kwh", "wells_dir", "stations"):
+        if meta.get(key):
+            opts[key] = meta[key]
     return opts
+
+
+def resolve_paths(paths: dict | None = None, pump_census: str | None = None,
+                  pump_kwh: str | None = None, wells_dir: str | None = None,
+                  stations: str | None = None) -> dict:
+    """DEFAULT_PATHS overridden by a calibration's recorded pump census (``pump_census``,
+    ``pump_kwh``) and head inputs (``wells_dir``, ``stations``, 2026-10-21) from
+    ``input_options``, then by explicit ``paths`` (a caller's CLI flags), which win.
+    ``None`` values never override."""
+    P = dict(DEFAULT_PATHS)
+    for key, value in (("pump_census", pump_census), ("pump_kwh", pump_kwh),
+                       ("wells_dir", wells_dir), ("stations", stations)):
+        if value is not None:
+            P[key] = value
+    if paths:
+        P.update({k: v for k, v in paths.items() if v is not None})
+    return P
 
 
 def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
@@ -136,8 +170,11 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                      ic_merged_proximal: bool = False, zone_boundaries: str = "205,182",
                      ground_elev: str = "wells", dem_npz: str = "results/twin/basemap.npz",
                      strict_coverage: bool = False,
+                     pump_census: str | None = None, pump_kwh: str | None = None,
+                     wells_dir: str | None = None, stations: str | None = None,
                      ic_month0_filled: bool = False,
-                     ic_layered_proximal: bool = False) -> TwinInputs:
+                     ic_layered_proximal: bool = False,
+                     day_weighted_months: bool = False) -> TwinInputs:
     """Assemble the twin's inputs from the data cache. ``paths`` overrides DEFAULT_PATHS.
     ``meter_filter``/``cap_duty`` are ``calibrate_flow``'s census-cleaning options and must
     match the calibration the parameters came from. ``backfill=False`` leaves
@@ -147,10 +184,11 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     ``--ground-elev`` and ``--strict-coverage``; ``ic_month0_filled`` makes
     ``initial_heads(0)`` use the back-filled month-0 heads, as such a calibration did.
     ``ic_layered_proximal`` is ``--ic-layered-proximal`` (with ``ic_merged_proximal``).
+    ``pump_census``/``pump_kwh`` are a calibration's recorded non-default census
+    (explicit ``paths`` still win, see ``resolve_paths``). ``day_weighted_months`` is
+    ``--day-weighted-months`` (monthly heads as the mean of daily means).
     Pass ``**input_options(meta)``."""
-    P = dict(DEFAULT_PATHS)
-    if paths:
-        P.update({k: v for k, v in paths.items() if v is not None})
+    P = resolve_paths(paths, pump_census, pump_kwh, wells_dir, stations)
     for k, v in P.items():
         if not os.path.exists(v):
             raise FileNotFoundError(f"{k}: {v!r} does not exist -- see docs/DATA_FORMAT.md "
@@ -160,7 +198,8 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
     stn = pd.read_parquet(P["stations"])
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
-    hf = build_head_field(P["wells_dir"], stn, t0=t0, t1=t1, strict_coverage=strict_coverage)
+    hf = build_head_field(P["wells_dir"], stn, t0=t0, t1=t1, strict_coverage=strict_coverage,
+                          day_weighted=day_weighted_months)
 
     allowed = None
     if wells_from:
@@ -267,3 +306,60 @@ def load_sw_recharge(path: str, grid: FanGrid, dates: pd.DatetimeIndex,
     if len(fields) == 1:
         return torch.tensor(fields[0][:, pos], dtype=torch.float64)
     return torch.tensor(np.stack([f[:, pos] for f in fields]), dtype=torch.float64)
+
+
+def split_sw_by_county(sw: torch.Tensor, changhua: np.ndarray) -> torch.Tensor:
+    """``--sw-county-split``: every surface-water component twice, its Changhua cells then the
+    rest -> ``(2K, A, T)`` in the order ``[c0 Changhua, c0 rest, c1 Changhua, c1 rest, ...]``,
+    so each county gets its own recharge fraction. The pair of a component sums back to it
+    exactly. ``sw`` is ``(A, T)`` or ``(K, A, T)``; ``changhua`` is ``(A,)`` bool."""
+    sw = sw if sw.dim() == 3 else sw.unsqueeze(0)
+    ch = torch.as_tensor(np.asarray(changhua, dtype=bool), device=sw.device)
+    if ch.shape != (sw.shape[1],):
+        raise ValueError(f"county flags {tuple(ch.shape)} do not match the field's "
+                         f"{sw.shape[1]} cells")
+    m = ch.to(sw.dtype)[:, None]
+    return torch.stack([part for comp in sw for part in (comp * m, comp * (1.0 - m))])
+
+
+EXTRA_KEYS = ("q_m3d", "dates", "dx", "n_active")
+
+
+def load_extra_abstraction(path: str, grid: FanGrid, dates: pd.DatetimeIndex,
+                           n_layers: int = 4) -> torch.Tensor:
+    """Fixed extra abstraction (``--extra-abstraction``, e.g. the P6 public-supply wells built
+    by ``dataprep_staging/i1/build_public_wells_model_npz.py``) aligned to ``dates`` ->
+    ``(n_layers, A, len(dates))`` float64 m3/day, positive = abstraction. It enters the
+    rollout as a static pumping term; nothing about it is fitted.
+
+    Months after the file's last month hold that month (persistence: the forcing is frozen
+    at the record's end, as every other forcing past the origin); a month before its first
+    is refused. Checked like ``load_sw_recharge``: spacing, active cells, layers, finite and
+    >= 0."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"--extra-abstraction {path!r} not found")
+    with np.load(path, allow_pickle=False) as z:
+        missing = [k for k in EXTRA_KEYS if k not in z]
+        if missing:
+            raise ValueError(f"{path}: missing key(s) {missing}; expected {EXTRA_KEYS}")
+        q = np.asarray(z["q_m3d"], dtype="float64")
+        f_dates = pd.DatetimeIndex(pd.to_datetime([str(d) for d in z["dates"]]))
+        dx, n_active = float(z["dx"]), int(z["n_active"])
+    if abs(dx - float(grid.dx)) > 1e-6 or n_active != grid.n_active:
+        raise ValueError(f"{path}: built for dx={dx:g} with {n_active} cells, the model "
+                         f"grid is dx={grid.dx:g} with {grid.n_active}")
+    if q.shape != (n_layers, grid.n_active, len(f_dates)):
+        raise ValueError(f"{path}: q_m3d has shape {q.shape}, expected "
+                         f"({n_layers}, {grid.n_active}, {len(f_dates)})")
+    if not np.isfinite(q).all() or (q < 0).any():
+        raise ValueError(f"{path}: q_m3d must be finite and >= 0")
+    want = pd.DatetimeIndex(dates).to_period("M")
+    have = f_dates.to_period("M")
+    if want.min() < have[0]:
+        raise ValueError(f"{path}: starts {have[0]}, the run needs {want.min()}")
+    pos = have.get_indexer(want)
+    pos = np.where((pos < 0) & (want > have[-1]), len(have) - 1, pos)
+    if (pos < 0).any():
+        raise ValueError(f"{path}: covers {have[0]}..{have[-1]} with gaps, missing "
+                         f"{list(want[pos < 0].astype(str))[:6]}")
+    return torch.tensor(q[:, :, pos], dtype=torch.float64)

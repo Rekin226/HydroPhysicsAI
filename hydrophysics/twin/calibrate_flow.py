@@ -91,14 +91,19 @@ from .grid import build_grid
 from .kfold_scores import format_verdicts, kfold_anomaly_scores, per_well_metrics
 from .spread import SPREAD_KM_BOUNDS, pairwise_d2_km, spread_energy, spread_matrix
 from .zones import (
-    N_ZONES,
+    ALL_ZONE_NAMES,
+    COUNTY_SUFFIX,
     PROXIMAL,
     PROXIMAL_W,
+    PROXIMAL_ZONE_NAMES,
     ZONE_NAMES,
     ZONE_NAMES_SPLIT,
     collapse_zones,
+    county_split,
+    county_split_weights,
     fan_zones,
     zone_blend_weights,
+    zone_labels,
     zone_names,
 )
 
@@ -106,6 +111,11 @@ from .zones import (
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
 # is the brief's original wire-to-water-efficiency bound.
 RETURN_FRAC_MAX = 0.7      # irrigation return flow cannot exceed this share of pumping
+# --pump-layer-fractions (rung R4, opt-in 2026-10-21): epoch-0 shares of each cell's pumped
+# volume taken from twin layers 0-3 (mostly aquifer 2, as the historical single-layer split)
+PUMP_LAYER_INIT = (0.1, 0.7, 0.15, 0.05)
+# --return-lag: epoch-0 time constant (model steps of 30 days) of the lagged return flow
+RET_TAU_INIT_STEPS = 2.0
 
 
 def set_l_min(l_min: float | None) -> None:
@@ -152,7 +162,45 @@ BOUNDS = {
     # conductance to each of them (1/day, the log_L range)
     "log_Sa": (math.log(1e-5), math.log(0.3)),
     "log_G": (math.log(1e-8), math.log(1e-1)),
+    # --pump-layer-fractions / --pump-fractions-county (rung R4): softmax logits of the
+    # layer shares of pumped volume (fan-wide, and Changhua's own copy "_ch")
+    "pump_layer_logits": (-8.0, 8.0),
+    "pump_layer_logits_ch": (-8.0, 8.0),
+    # --return-lag: return flow reaches layer 0 through a first-order store with this time
+    # constant, in model steps (30 days): 3 days to a year
+    "log_tau_ret": (math.log(0.1), math.log(12.0)),
+    # --eta-county (rung R*): Changhua's pump efficiency as a factor on the fan-wide one,
+    # 0.2-2 (the heads respond about half as much there per unit electricity)
+    "log_eta_ratio_ch": (math.log(0.2), math.log(2.0)),
 }
+
+
+def eta_by_cell(log_eta: torch.Tensor, ratio_ch: torch.Tensor | None,
+                changhua: torch.Tensor | None) -> torch.Tensor:
+    """--eta-county: per-cell log efficiency, the fan-wide value plus Changhua's log factor
+    on Changhua cells; the scalar fan-wide value when there is no factor."""
+    if ratio_ch is None:
+        return log_eta
+    if changhua is None:
+        raise ValueError("--eta-county needs the county flags")
+    ch = changhua.to(device=log_eta.device, dtype=log_eta.dtype)
+    return log_eta.reshape(-1)[0] + ratio_ch.reshape(-1)[0] * ch
+
+
+def pump_layer_fractions(logits: torch.Tensor, logits_ch: torch.Tensor | None = None,
+                         changhua: torch.Tensor | None = None) -> torch.Tensor:
+    """--pump-layer-fractions: the share of each cell's pumped volume taken from each layer,
+    a softmax of ``logits`` (L,) -> (L,); with Changhua's own copy ``logits_ch`` and the
+    county flags ``changhua`` (A,) -> (L, A). Every column sums to one, so the pumped volume
+    is unchanged and only where it is taken from moves."""
+    f = torch.softmax(logits.reshape(-1), dim=0)
+    if logits_ch is None:
+        return f
+    if changhua is None:
+        raise ValueError("a Changhua copy of the layer fractions needs the county flags")
+    fc = torch.softmax(logits_ch.reshape(-1), dim=0)
+    ch = changhua.to(device=f.device, dtype=f.dtype)
+    return f[:, None] * (1.0 - ch)[None, :] + fc[:, None] * ch[None, :]
 DELAY_SD_INIT = 1e-3
 DELAY_TAU_INIT_DAYS = 365.0
 DELAY_DU0_INIT_M = 1.0
@@ -282,9 +330,11 @@ ZONE_LOWER_BOUNDS: dict[tuple[str, str], float] = {}
 def set_log_t_min_proximal(m2day: float | None) -> None:
     """``--log-t-min-proximal`` (m2/day): raise the proximal ``log_T`` floor above the
     global 10 m2/day of ``BOUNDS["log_T"]``, in both proximal parts when the zone is
-    split. The proximal gravel is the most transmissive part of the fan, and Liu et al.
-    (2002) measured 58 m2/day as the fan-wide minimum. ``None`` clears the override."""
-    for z in ("proximal", "proximal_w"):
+    split, and in their Changhua copies with ``--zone-county-split``
+    (``PROXIMAL_ZONE_NAMES``). The proximal gravel is the most transmissive part of the
+    fan, and Liu et al. (2002) measured 58 m2/day as the fan-wide minimum. ``None`` clears
+    the override."""
+    for z in PROXIMAL_ZONE_NAMES:
         ZONE_LOWER_BOUNDS.pop(("log_T", z), None)
     if m2day is None:
         return
@@ -293,7 +343,7 @@ def set_log_t_min_proximal(m2day: float | None) -> None:
     lo = max(math.log(float(m2day)), BOUNDS["log_T"][0])
     if lo >= BOUNDS["log_T"][1]:
         raise ValueError(f"--log-t-min-proximal {m2day} is not below the log_T ceiling")
-    for z in ("proximal", "proximal_w"):
+    for z in PROXIMAL_ZONE_NAMES:
         ZONE_LOWER_BOUNDS[("log_T", z)] = lo
 
 
@@ -305,6 +355,16 @@ def parse_delay_layers(text: str | None, n_layers: int = 4) -> tuple[int, ...] |
     if not out or min(out) < 0 or max(out) >= n_layers:
         raise ValueError(f"--delay-layers {text!r}: expected indices in 0..{n_layers - 1}")
     return out
+
+
+def _file_sha256(path: str) -> str:
+    """sha256 of an input file for the theta's provenance, "" if unreadable (never raises)."""
+    try:
+        import hashlib
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
 
 
 def _git_commit() -> str:
@@ -363,6 +423,28 @@ def prepare_series(s: np.ndarray, backfill: bool = True) -> np.ndarray:
     if not backfill or np.isfinite(s).all():
         return s.copy() if not backfill else s
     return pd.Series(s).interpolate(limit_direction="both").to_numpy()
+
+
+def mask_month_flags(spec: str | None, dates: pd.DatetimeIndex) -> np.ndarray | None:
+    """--mask-months START:END (YYYY-MM, inclusive): True for each month of ``dates`` inside
+    the window, or None when no window is given. The window must lie inside the record and
+    leave month 0 (the initial condition) unmasked."""
+    if not spec:
+        return None
+    try:
+        a, b = (pd.Period(v.strip(), freq="M") for v in spec.split(":"))
+    except ValueError as e:
+        raise ValueError(f"--mask-months {spec!r}: expected YYYY-MM:YYYY-MM") from e
+    if b < a:
+        raise ValueError(f"--mask-months {spec!r}: the end is before the start")
+    per = pd.DatetimeIndex(dates).to_period("M")
+    if a < per[0] or b > per[-1]:
+        raise ValueError(f"--mask-months {spec!r} lies outside the record "
+                         f"{per[0]}..{per[-1]}")
+    flags = np.asarray((per >= a) & (per <= b))
+    if flags[0]:
+        raise ValueError("--mask-months may not cover month 0 (the initial condition)")
+    return flags
 
 
 def _masked_mse(pred: torch.Tensor, obs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -483,7 +565,13 @@ def _merged_proximal_heads(grid, h0: torch.Tensor, xy: np.ndarray, h0_values: np
 
 def _ic_zone_map(grid, zone_boundaries: str | None) -> np.ndarray:
     """The zone map ``--ic-merged-proximal`` uses: the calibration's own boundaries (with
-    the optional proximal split), also for a non-zonal parameterisation."""
+    the optional proximal split), also for a non-zonal parameterisation.
+
+    Never split by county (``--zone-county-split``, rung R1c): the county split gives the
+    PARAMETERS a Changhua copy, and its copies start at their parents' values so that
+    epoch 0 is the unsplit model. Splitting the merged-aquifer initial heads by county
+    would change that start. ``calibrate_flow`` and ``inputs.load_twin_inputs`` both build
+    the initial field from this map, so they stay identical."""
     p, d, s = _parse_zone_boundaries(zone_boundaries or _DEFAULT_ZONE_BOUNDARIES,
                                      allow_split=True)
     return fan_zones(grid.centroids(), proximal_km=p, distal_km=d, split_km=s)
@@ -502,6 +590,8 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
              pump_split_logit: torch.Tensor | None = None,
              return_frac_logit: torch.Tensor | None = None,
              spread_W: torch.Tensor | None = None,
+             pump_layer_frac: torch.Tensor | None = None,
+             ret_tau: torch.Tensor | None = None,
              delay_Sd: torch.Tensor | None = None,
              delay_tau: torch.Tensor | None = None,
              u0: torch.Tensor | None = None,
@@ -615,6 +705,13 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     #  * the leakance floor is a BOUNDS change (``--l-min``), not a rollout term.
     pump_split_logit = _here(pump_split_logit)
     return_frac_logit = _here(return_frac_logit)
+    # rung R4 (opt-in 2026-10-21): ``pump_layer_frac`` (L,) or (L, A) shares of the pumped
+    # volume by layer, in place of pump_layer and pump_split_logit; ``ret_tau`` (steps) lags
+    # the return flow through a first-order store whose state travels with u0/return_state
+    # under the key "ret" (it starts at the first month's rate, i.e. at equilibrium)
+    pump_layer_frac = _here(pump_layer_frac)
+    ret_tau = _here(ret_tau)
+    ret_state = None
     if E is not None and spread_W is not None:
         # spatial spread of the stress (spread.py): the same energy, applied over a radius
         E = spread_energy(E, _here(spread_W))
@@ -638,6 +735,7 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     month0 = 1 if river_month0 is None else int(river_month0)
     ua0 = None
     if isinstance(u0, dict):
+        ret_state = _here(u0.get("ret"))
         u0, ua0 = u0.get("u"), u0.get("ua")
     extended = use_delay or use_riv or use_aqt
     if not extended:
@@ -739,7 +837,11 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
                 vol = pumping_mod.energy_to_volume(E[:, t], lift, log_eta,
                                                    head_extra=head_extra)  # m3 for the month
             rate = vol / model.dt                                        # m3/day
-            if pump_split_logit is not None and pump_layer != 0:
+            if pump_layer_frac is not None:
+                fr = pump_layer_frac if pump_layer_frac.dim() == 2 else pump_layer_frac[:, None]
+                for k in range(model.n_layers):
+                    layer_q[k] = layer_q[k] - fr[k] * rate
+            elif pump_split_logit is not None and pump_layer != 0:
                 f_shallow = torch.sigmoid(pump_split_logit)
                 layer_q[0] = layer_q[0] - f_shallow * rate
                 layer_q[pump_layer] = layer_q[pump_layer] - (1.0 - f_shallow) * rate
@@ -747,7 +849,13 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
                 layer_q[pump_layer] = layer_q[pump_layer] - rate
             if return_frac_logit is not None:
                 r_ret = RETURN_FRAC_MAX * torch.sigmoid(return_frac_logit)
-                layer_q[0] = layer_q[0] + r_ret * rate
+                if ret_tau is not None:
+                    a_ret = torch.exp(-1.0 / ret_tau)
+                    ret_state = rate if ret_state is None else a_ret * ret_state + (
+                        1.0 - a_ret) * rate
+                    layer_q[0] = layer_q[0] + r_ret * ret_state
+                else:
+                    layer_q[0] = layer_q[0] + r_ret * rate
         if use_sw:
             if sw_field.dim() == 3:
                 # several components (canal leakage, paddy percolation), one fraction each
@@ -778,6 +886,9 @@ def _rollout(model: FlowModel, log_T: torch.Tensor, log_S: torch.Tensor,
     heads = torch.stack(out, dim=-1)
     if return_state:
         u_end = u if extended and use_delay else None
+        if ret_tau is not None:
+            return heads, {"u": u_end, "ua": ua if extended and use_aqt else None,
+                           "ret": ret_state}
         if extended and use_aqt:
             return heads, {"u": u_end, "ua": ua}
         return heads, u_end
@@ -903,7 +1014,8 @@ def _expand_zonal_group(theta: dict, zone_t: torch.Tensor | None, n_rows: int,
             raise ValueError(f"zonal {bases} parameters need a zone assignment")
         out = []
         for base in bases:
-            names = ZONE_NAMES_SPLIT if f"{base}_proximal_w" in theta else ZONE_NAMES
+            names = zone_labels(f"{base}_proximal_w" in theta,
+                                f"{base}_proximal{COUNTY_SUFFIX}" in theta)
             cols = torch.cat([theta[f"{base}_{z}"].reshape(1, 1) for z in names], dim=1)
             out.append(_zone_gather(cols, zone_t).expand(n_rows, -1))
         return out
@@ -998,22 +1110,42 @@ def _make_homogeneous_params(model: FlowModel, use_pumping: bool = False,
                                  delay_u0=delay_u0, aquitard=aquitard)
 
 
+# longest first, so a suffix is never taken for a shorter zone name it happens to end with
+_ZONE_SUFFIXES = tuple(sorted(ALL_ZONE_NAMES, key=len, reverse=True))
+
+
+def _key_zone(name: str) -> str | None:
+    """The zone a theta key belongs to (``"log_T_mid_changhua"`` -> ``"mid_changhua"``),
+    or ``None`` for a global key."""
+    return next((z for z in _ZONE_SUFFIXES if name.endswith(f"_{z}")), None)
+
+
 def _base_param_name(name: str) -> str:
     """``"log_T_mid"`` -> ``"log_T"``. Zonal theta keys carry a zone suffix; BOUNDS and
-    _clamp_ are keyed on the bare physical name. Only the three known zone suffixes are
-    stripped, so ``log_eta`` and ``recharge_frac_logit`` survive untouched.
+    _clamp_ are keyed on the bare physical name. Only the known zone suffixes (the easting
+    zones, ``proximal_w`` and their ``_changhua`` copies) are stripped, so ``log_eta`` and
+    ``recharge_frac_logit`` survive untouched.
     """
-    for zone in ZONE_NAMES_SPLIT:
-        suffix = f"_{zone}"
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
+    zone = _key_zone(name)
+    return name if zone is None else name[: -len(zone) - 1]
 
 
 def _theta_zone_names(theta: dict) -> tuple[str, ...]:
-    """The zonation a zonal theta was built for: three zones, or four when it carries the
-    proximal split's ``log_T_proximal_w``."""
-    return ZONE_NAMES_SPLIT if "log_T_proximal_w" in theta else ZONE_NAMES
+    """The zonation a zonal theta was built for: three zones, four when it carries the
+    proximal split's ``log_T_proximal_w``, and each with its Changhua copy when it carries
+    the county split's ``log_T_proximal_changhua``."""
+    return zone_labels("log_T_proximal_w" in theta, f"log_T_proximal{COUNTY_SUFFIX}" in theta)
+
+
+def _add_county_copies(theta: dict, zones: tuple[str, ...]) -> dict:
+    """``--zone-county-split`` (rung R1c): an independent Changhua copy of every zonal
+    parameter of ``zones`` (``{key}_changhua``), starting at its parent's value so that
+    epoch 0 is the unsplit model. Appended after every other key, so the unsplit dict is
+    a prefix of the split one."""
+    parents = [k for k in theta if _key_zone(k) in zones]
+    for k in parents:
+        theta[f"{k}{COUNTY_SUFFIX}"] = nn.Parameter(theta[k].detach().clone())
+    return theta
 
 
 def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
@@ -1022,7 +1154,8 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
                        learn_spread: bool = False, delay_storage: str = "off",
                        n_riv: int = 0, use_sw: bool | int = False, delay_u0: str = "eq",
                        aquitard: str = "off", split: bool = False,
-                       proximal_layered: bool = False) -> dict[str, nn.Parameter]:
+                       proximal_layered: bool = False,
+                       county: bool = False) -> dict[str, nn.Parameter]:
     """Structural proximal/mid/distal parameters -- 26 free values for a 4-layer model
     with both drivers, against the homogeneous mode's 13 (spec §5).
 
@@ -1049,6 +1182,12 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     layer mean repeated, leakance at the BOUNDS ceiling the merged form pins), so epoch 0
     is the merged model; the keys and their order are otherwise unchanged, with the new
     leakances appended after ``log_L_distal`` and after the split's own entries.
+
+    ``county`` (opt-in, ``--zone-county-split``, rung R1c) gives every zonal parameter
+    above (and every zonal extension parameter) an independent Changhua copy,
+    ``{key}_changhua``, initialised at its parent's value (``_add_county_copies``), for the
+    zone ids ``zone_labels(split, county=True)``. The parameter count of the zonal part
+    doubles; the global drivers are shared.
     """
     log_T0 = model.log_T[:, :1].detach().clone()
     log_S0 = model.log_S[:, :1].detach().clone()
@@ -1101,9 +1240,12 @@ def _make_zonal_params(model: FlowModel, use_pumping: bool = False,
     if use_recharge:
         theta["recharge_frac_logit"] = nn.Parameter(
             torch.tensor(0.0, dtype=torch.float64, device=dev))
-    return _add_extension_params(theta, model, delay_storage, n_riv, use_sw, zonal=True,
-                                 delay_u0=delay_u0, aquitard=aquitard,
-                                 zones=ZONE_NAMES_SPLIT if split else ZONE_NAMES)
+    theta = _add_extension_params(theta, model, delay_storage, n_riv, use_sw, zonal=True,
+                                  delay_u0=delay_u0, aquitard=aquitard,
+                                  zones=ZONE_NAMES_SPLIT if split else ZONE_NAMES)
+    if county:
+        theta = _add_county_copies(theta, ZONE_NAMES_SPLIT if split else ZONE_NAMES)
+    return theta
 
 
 def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
@@ -1119,31 +1261,39 @@ def _expand_zonal(theta: dict[str, torch.Tensor], zone_t: torch.Tensor,
     proximal layers equilibrate instead of being independently fitted -- unless the theta
     is ``--proximal-layered``: then ``log_T_proximal[_w]``/``log_S_proximal[_w]`` are
     ``(L, 1)`` (``expand`` is a no-op) and ``log_L_proximal[_w]`` replaces the constant.
+
+    The columns follow ``_theta_zone_names`` (zone id ``i`` is column ``i``): the proximal
+    split appends ``proximal_w`` and the county split (``--zone-county-split``) appends the
+    Changhua copy of every zone, each with its parent's form.
     """
     dev = theta["log_T_mid"].device
-    prox_T = theta["log_T_proximal"].expand(n_layers, 1)
-    prox_S = theta["log_S_proximal"].expand(n_layers, 1)
-    split = "log_T_proximal_w" in theta
-    extra_T = [theta["log_T_proximal_w"].expand(n_layers, 1)] if split else []
-    extra_S = [theta["log_S_proximal_w"].expand(n_layers, 1)] if split else []
-    cols_T = torch.cat([prox_T, theta["log_T_mid"], theta["log_T_distal"], *extra_T], dim=1)
-    cols_S = torch.cat([prox_S, theta["log_S_mid"], theta["log_S_distal"], *extra_S], dim=1)
-    assert cols_T.shape == (n_layers, N_ZONES + int(split))
+    names = _theta_zone_names(theta)
+
+    def col(key: str, rows: int, default: torch.Tensor | None = None) -> torch.Tensor:
+        v = theta.get(key, default)
+        if v is None:
+            raise KeyError(f"zonal theta has no {key!r} (zones {names})")
+        return v if v.shape[0] == rows else v.expand(rows, 1)
+
+    cols_T = torch.cat([col(f"log_T_{z}", n_layers) for z in names], dim=1)
+    cols_S = torch.cat([col(f"log_S_{z}", n_layers) for z in names], dim=1)
+    assert cols_T.shape == (n_layers, len(names))
     log_T = _zone_gather(cols_T, zone_t)
     log_S = _zone_gather(cols_S, zone_t)
     log_L = None
     if n_layers > 1 and "log_L_mid" in theta:
-        prox_L = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
-                            dtype=torch.float64, device=dev)
-        prox_Lw = theta.get("log_L_proximal_w", prox_L)
-        prox_L = theta.get("log_L_proximal", prox_L)
-        cols_L = torch.cat([prox_L, theta["log_L_mid"], theta["log_L_distal"]]
-                           + ([prox_Lw] if split else []), dim=1)
+        # merged-aquifer zones (proximal form): the constant unless --proximal-layered
+        const = torch.full((n_layers - 1, 1), BOUNDS["log_L"][1],
+                           dtype=torch.float64, device=dev)
+        cols_L = torch.cat([col(f"log_L_{z}", n_layers - 1,
+                                const if z in PROXIMAL_ZONE_NAMES else None)
+                            for z in names], dim=1)
         log_L = _zone_gather(cols_L, zone_t)
     return log_T, log_S, log_L
 
 
-def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, dict[str, int]]]:
+def _zonal_bounds_hit(theta: dict[str, torch.Tensor], names: tuple[str, ...] | None = None
+                      ) -> dict[str, dict[str, dict[str, int]]]:
     """Clamp every zonal parameter into BOUNDS in place and report hits **per zone**,
     each as the ``{"lo", "hi", "n"}`` shape ``_clamp_`` returns.
 
@@ -1153,14 +1303,16 @@ def _zonal_bounds_hit(theta: dict[str, torch.Tensor]) -> dict[str, dict[str, dic
     operational bar. Ruling P1 further requires lo/hi to stay distinguished per zone:
     a pinned proximal log_T is only the documented failure if it is pinned LOW.
     """
-    names = _theta_zone_names(theta)
+    # ``names``: the fit's zonation (a --county-tie fit's free dict lacks the tied copies,
+    # so the zones cannot be read off it); a tied zone reports nothing
+    names = _theta_zone_names(theta) if names is None else tuple(names)
     report: dict[str, dict[str, dict[str, int]]] = {name: {} for name in names}
     report["global"] = {}
     for name, par in theta.items():
         base = _base_param_name(name)
         if base not in BOUNDS:
             continue                     # recharge_frac_logit: unconstrained by design
-        bucket = next((z for z in names if name.endswith(f"_{z}")), "global")
+        bucket = _key_zone(name) or "global"
         lo = ZONE_LOWER_BOUNDS.get((base, bucket))
         if lo is not None:               # --log-t-min-proximal: a raised per-zone floor
             with torch.no_grad():
@@ -1180,7 +1332,7 @@ def _extension_readouts(theta_out: dict) -> dict:
     """Physical-unit copies of the opt-in parameters for the theta file: ``Sd[_zone]``,
     ``tau_days[_zone]``, ``C_riv_m2day`` and ``sw_scale``."""
     out = {}
-    for suffix in [""] + [f"_{z}" for z in ZONE_NAMES_SPLIT]:
+    for suffix in [""] + [f"_{z}" for z in ALL_ZONE_NAMES]:
         if f"log_Sd{suffix}" in theta_out:
             out[f"Sd{suffix}"] = math.exp(_first(theta_out[f"log_Sd{suffix}"]))
             out[f"tau_days{suffix}"] = math.exp(_first(theta_out[f"log_tau{suffix}"]))
@@ -1205,7 +1357,7 @@ def _delay_diagnostics(theta_out: dict, dt: float, n_layers: int,
     ``delay_is_elastic`` when ``tau < 3 dt``: the bed is then extra elastic storage, not
     a slow release, and the fit has used it to get round the S ceiling."""
     out: dict = {}
-    zoned = [f"_{z}" for z in ZONE_NAMES_SPLIT if f"log_S_{z}" in theta_out]
+    zoned = [f"_{z}" for z in ALL_ZONE_NAMES if f"log_S_{z}" in theta_out]
     for suffix in (zoned or [""]):
         dsuf = suffix if f"log_Sd{suffix}" in theta_out else ""
         if f"log_Sd{dsuf}" not in theta_out or f"log_S{suffix}" not in theta_out:
@@ -1284,10 +1436,46 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              fix_sw_scale: float | None = None, delay_u0: str = "eq",
              delay_layers: tuple[int, ...] | None = None,
              aquitard: str = "off", zone_w: np.ndarray | None = None,
+             extra_q: torch.Tensor | None = None,
              proximal_layered: bool = False, well_datum: str = "off",
              well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
-             datum_mask: torch.Tensor | None = None) -> dict:
+             datum_mask: torch.Tensor | None = None,
+             zonation: tuple[str, ...] | None = None,
+             county_copy_sd: float | None = None,
+             county_tie: tuple[str, ...] = (),
+             pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
+             return_lag: bool = False,
+             changhua_cells: torch.Tensor | None = None,
+             fix_pump_layer_shares: tuple[float, ...] | None = None,
+             eta_county: bool = False) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    County-split options (``--zone-county-split`` only; both opt-in, both keep epoch 0 the
+    unsplit model):
+
+    - ``county_tie`` (``--county-tie``): base zone names (``"proximal"``, ``"distal"``,
+      ...) whose Changhua copies are NOT free: each copy is its parent parameter (the
+      zone is shared by both counties, the R1c sparsity fallback). The copies still come
+      back in ``theta`` (equal to their parents), so every consumer rebuilds the same
+      zones; ``n_params`` counts the free parameters only.
+    - ``county_copy_sd`` (``--county-copy-sd``): a Gaussian prior of sd ``s`` (log
+      units) on every free copy's departure from its parent, a hierarchical shrinkage
+      toward the unsplit model: ``loss += sigma2 / N * sum_k ((theta_k^ch - theta_k) /
+      s)^2`` with ``N`` the loss's observed cells and ``sigma2`` the current data loss
+      (detached) -- the MAP of the Gaussian posterior under that residual variance, at
+      its nominal weight (autocorrelated residuals make the data term count for less
+      than ``N`` independent ones, so the prior is no weaker than nominal). Zero at
+      epoch 0, where every copy equals its parent.
+    - ``init_scatter`` draws once per PARENT parameter, and each copy takes its parent's
+      draw, so a scattered start is still the scattered unsplit model.
+
+    ``zonation`` (zonal only; ``zones.zone_labels``) names the zone ids of
+    ``zone_of_cell`` in order. ``None`` (default) is the historical inference: three
+    zones, or four when any cell carries ``PROXIMAL_W``. A county-split map
+    (``--zone-county-split``, rung R1c: ids ``z + n_base`` for Changhua cells) must pass
+    ``zone_labels(split, county=True)``; every zonal parameter then gets a Changhua copy
+    starting at its parent's value (``_make_zonal_params``), so epoch 0 is the unsplit
+    model.
 
     ``well_datum="fit"`` (``--well-datum fit``, opt-in 2026-09-26; homogeneous/zonal):
     each well of ``obs_h`` carries a datum ``d_i`` in the observation operator,
@@ -1404,6 +1592,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         ground_elev = ground_elev.to(dtype=torch.float64, device=dev)
     if sw_field is not None:
         sw_field = sw_field.to(dtype=torch.float64, device=dev)
+    if extra_q is not None:
+        # --extra-abstraction: a fixed (L, A, T) m3/day abstraction, nothing fitted
+        extra_q = extra_q.to(dtype=torch.float64, device=dev)
     # The apex boundary holds this run's initial head; a fold's h0 is built from its
     # kept wells only, so this cannot leak a held-out well into the boundary.
     model.set_apex_heads(h0)
@@ -1465,9 +1656,18 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 "active cells"
             )
         zone_t = torch.tensor(zone_arr, dtype=torch.long, device=dev)
-        # the opt-in proximal split: ids 0-3, one more merged-aquifer zone
-        split = bool((zone_arr == PROXIMAL_W).any())
-        n_z = N_ZONES + int(split)
+        if zonation is None:
+            # the opt-in proximal split: ids 0-3, one more merged-aquifer zone
+            zonation = zone_labels(bool((zone_arr == PROXIMAL_W).any()))
+        zonation = tuple(zonation)
+        split = "proximal_w" in zonation
+        county = f"proximal{COUNTY_SUFFIX}" in zonation
+        if zonation != zone_labels(split, county):
+            raise ValueError(f"zonation {zonation} is not one of zones.zone_labels()")
+        n_z = len(zonation)
+        if zone_arr.size and (zone_arr.min() < 0 or zone_arr.max() >= n_z):
+            raise ValueError(f"zone_of_cell ids {int(zone_arr.min())}..{int(zone_arr.max())} "
+                             f"fall outside the {n_z} zones of {zonation}")
         if zone_w is not None:
             zone_t = zone_tensor(None, dev, zone_w)
             if tuple(zone_t.shape) != (n_z, A):
@@ -1478,7 +1678,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                    learn_spread=learn_spread, delay_storage=delay_storage,
                                    n_riv=n_riv, use_sw=n_sw, delay_u0=delay_u0,
                                    aquitard=aquitard, split=split,
-                                   proximal_layered=proximal_layered)
+                                   proximal_layered=proximal_layered, county=county)
     else:
         theta = _make_homogeneous_params(model, use_pumping=use_pumping,
                                          use_recharge=use_recharge, n_eta=n_eta,
@@ -1486,6 +1686,48 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          learn_spread=learn_spread,
                                          delay_storage=delay_storage, n_riv=n_riv,
                                          use_sw=n_sw, delay_u0=delay_u0, aquitard=aquitard)
+    # rung R4 (opt-in 2026-10-21), appended after every other key so a run without them
+    # builds the historical dict
+    if pump_layer_fractions_on:
+        if not use_pumping:
+            raise ValueError("--pump-layer-fractions needs the pumping driver")
+        if pump_split:
+            raise ValueError("--pump-layer-fractions replaces --pump-split; pass one")
+        init = torch.log(torch.tensor(PUMP_LAYER_INIT[:model.n_layers], dtype=torch.float64,
+                                      device=dev))
+        theta["pump_layer_logits"] = nn.Parameter(init.clone())
+        if pump_fractions_county:
+            if changhua_cells is None:
+                raise ValueError("--pump-fractions-county needs --zone-county-split")
+            theta["pump_layer_logits_ch"] = nn.Parameter(init.clone())
+    elif pump_fractions_county:
+        raise ValueError("--pump-fractions-county needs --pump-layer-fractions")
+    if return_lag:
+        if not return_flow:
+            raise ValueError("--return-lag needs --return-flow")
+        theta["log_tau_ret"] = nn.Parameter(torch.tensor(math.log(RET_TAU_INIT_STEPS),
+                                                         dtype=torch.float64, device=dev))
+    if eta_county:
+        if not use_pumping or changhua_cells is None:
+            raise ValueError("--eta-county needs the pumping driver and the county flags")
+        theta["log_eta_ratio_ch"] = nn.Parameter(torch.tensor(0.0, dtype=torch.float64,
+                                                              device=dev))
+    ch_t = (None if changhua_cells is None
+            else torch.as_tensor(changhua_cells, dtype=torch.bool, device=dev))
+    # --zone-county-split: each Changhua copy and its parent (empty otherwise)
+    copy_parent = {k: k[: -len(COUNTY_SUFFIX)] for k in theta
+                   if (_key_zone(k) or "").endswith(COUNTY_SUFFIX)
+                   and k[: -len(COUNTY_SUFFIX)] in theta}
+    tie_zones = {f"{z}{COUNTY_SUFFIX}" for z in county_tie}
+    if (county_tie or county_copy_sd is not None) and not copy_parent:
+        raise ValueError("county_tie / county_copy_sd need a county-split zonation")
+    if county_tie:
+        unknown = sorted(set(county_tie) - {z for z in (zonation or ())
+                                            if not z.endswith(COUNTY_SUFFIX)})
+        if unknown:
+            raise ValueError(f"county_tie {unknown} are not base zones of {zonation}")
+    if county_copy_sd is not None and not float(county_copy_sd) > 0.0:
+        raise ValueError(f"county_copy_sd must be > 0, got {county_copy_sd!r}")
     # spatial spread of the pumping stress: fixed radius, learned radius, or none
     d2_km = (pairwise_d2_km(model.grid, device=dev)
              if use_pumping and (learn_spread or spread_km is not None) else None)
@@ -1494,11 +1736,31 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                if d2_km is not None and not learn_spread else None)
     if init_scatter > 0.0:
         g = torch.Generator().manual_seed(int(seed) if seed is not None else 0)
+        draws: dict[str, torch.Tensor] = {}
         with torch.no_grad():
             for name, par in theta.items():
                 if name.endswith("_logit"):
                     continue   # unconstrained scalars; scatter would just re-centre them
-                par.add_(torch.randn(par.shape, generator=g) * init_scatter)
+                parent = copy_parent.get(name)
+                if parent is not None and parent in draws:
+                    # a county copy takes its parent's draw (copies come after every
+                    # parent, so the parents' draws are the unsplit run's)
+                    par.add_(draws[parent])
+                    continue
+                draws[name] = torch.randn(par.shape, generator=g) * init_scatter
+                par.add_(draws[name])
+    # --county-tie: the tied copies leave the free set and follow their parents
+    tied = {c: p for c, p in copy_parent.items() if c in theta and _key_zone(c) in tie_zones}
+    key_order = list(theta)
+    for c in tied:
+        theta.pop(c)
+    free_copies = [(c, p) for c, p in copy_parent.items() if c in theta]
+
+    def _view() -> dict:
+        """theta with every tied copy filled in from its parent (the rollout's view)."""
+        if not tied:
+            return theta
+        return {**theta, **{c: theta[p] for c, p in tied.items()}}
     def _loss(pred: torch.Tensor) -> torch.Tensor:
         """``"level"``: plain MSE on heads (every gate before 2026-09-18). ``"anomaly"``:
         MSE on each well's departures from its own mean over the fitted months, plus
@@ -1565,13 +1827,35 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if use_sw and fix_sw_scale is not None:
         fixed["log_sw_scale"] = torch.full_like(theta.pop("log_sw_scale").detach(),
                                                 float(math.log(fix_sw_scale)))
+    if fix_pump_layer_shares is not None:
+        # rung R4p: the layer shares held at a measured prior (the X3 well-depth tables)
+        if "pump_layer_logits" not in theta or "pump_layer_logits_ch" in theta:
+            raise ValueError("--pump-layer-shares needs --pump-layer-fractions without "
+                             "--pump-fractions-county")
+        sh = torch.tensor([float(v) for v in fix_pump_layer_shares], dtype=torch.float64,
+                          device=dev)
+        if sh.numel() != model.n_layers or (sh <= 0).any() or abs(float(sh.sum()) - 1) > 1e-6:
+            raise ValueError(f"--pump-layer-shares needs {model.n_layers} positive shares "
+                             f"summing to 1, got {fix_pump_layer_shares}")
+        theta.pop("pump_layer_logits")
+        fixed["pump_layer_logits"] = torch.log(sh)
     free = list(theta.values())
     opt = torch.optim.Adam(free, lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     loss = torch.tensor(float("nan"))
     hits: dict[str, int] = {}
 
+    n_loss_cells = (obs_mask.sum().to(torch.float64) if masked
+                    else torch.tensor(float(obs_h.numel()), dtype=torch.float64))
+
+    def _copy_prior(data_loss: torch.Tensor) -> torch.Tensor:
+        """``--county-copy-sd``: the copies' Gaussian shrinkage toward their parents."""
+        dev2 = sum(((theta[c] - theta[p]) ** 2).sum() for c, p in free_copies)
+        s2 = data_loss.detach() / n_loss_cells.to(data_loss.device)
+        return s2 * dev2 / float(county_copy_sd) ** 2
+
     def _forward() -> torch.Tensor:
+        theta = _view()
         if zone_t is not None:
             log_T, log_S, log_L = _expand_zonal(theta, zone_t, model.n_layers)
         else:
@@ -1597,12 +1881,13 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         return _rollout(
             model, log_T, log_S, log_L, h0, n_steps, **ext,
             recharge=None if use_recharge else recharge,
-            pumping=None,
+            pumping=extra_q,
             recharge_field=recharge_field if use_recharge else None,
             recharge_scale=theta.get("recharge_frac_logit"),
             recharge_layer=recharge_layer,
             E=E if use_pumping else None,
-            log_eta=theta.get("log_eta", fixed.get("log_eta")),
+            log_eta=eta_by_cell(theta.get("log_eta", fixed.get("log_eta")),
+                                theta.get("log_eta_ratio_ch"), ch_t),
             log_head_extra=theta.get("log_head_extra", fixed.get("log_head_extra")),
             ground_elev=ground_elev,
             pump_layer=pump_layer,
@@ -1610,6 +1895,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             log_C_apex=theta.get("log_C_apex"),
             pump_split_logit=theta.get("pump_split_logit"),
             return_frac_logit=theta.get("return_frac_logit"),
+            pump_layer_frac=(pump_layer_fractions(
+                theta.get("pump_layer_logits", fixed.get("pump_layer_logits")),
+                theta.get("pump_layer_logits_ch"), ch_t)
+                if "pump_layer_logits" in theta or "pump_layer_logits" in fixed else None),
+            ret_tau=(torch.exp(theta["log_tau_ret"]) if "log_tau_ret" in theta else None),
             spread_W=(spread_matrix(d2_km, theta["log_spread_km"])
                       if "log_spread_km" in theta else fixed_W),
         )
@@ -1620,6 +1910,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
         loss = _loss_datum(pred) if use_datum else _loss(pred)
+        if county_copy_sd is not None and free_copies:
+            loss = loss + _copy_prior(loss)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(free, 1.0)
         opt.step()
@@ -1635,13 +1927,14 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             r2_trace.append((_ep + 1, _r))
             print(f"      epoch {_ep + 1:4d}: loss={float(loss.detach()):.4g} "
                   f"in-sample R2={_r:+.4f}", flush=True)
-        hits = (_zonal_bounds_hit(theta) if zone_t is not None
+        hits = (_zonal_bounds_hit(theta, zonation) if zone_t is not None
                 else _clamp_({k: v for k, v in theta.items() if k in BOUNDS}))
     with torch.no_grad():
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
+        theta_v = _view()
         if zone_t is not None:
-            zT, zS, zL = _expand_zonal(theta, zone_t, model.n_layers)
+            zT, zS, zL = _expand_zonal(theta_v, zone_t, model.n_layers)
             model.log_T.copy_(zT)
             model.log_S.copy_(zS)
             if zL is not None and model.n_layers > 1:
@@ -1654,14 +1947,14 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
         if model.has_boundaries and "log_C_coast" in theta:
             model.log_C_coast.copy_(theta["log_C_coast"])
             model.log_C_apex.copy_(theta["log_C_apex"])
-        d_Sd, d_tau = _expand_zonal_delay(theta, zone_t, model.n_layers, A,
+        d_Sd, d_tau = _expand_zonal_delay(theta_v, zone_t, model.n_layers, A,
                                           layers=delay_layers)
         if d_Sd is not None:
             model.delay_log_Sd = d_Sd.detach().clone()
             model.delay_log_tau = d_tau.detach().clone()
-            du0 = _expand_delay_du0(theta, zone_t, model.n_layers, A)
+            du0 = _expand_delay_du0(theta_v, zone_t, model.n_layers, A)
             model.delay_log_du0 = None if du0 is None else torch.log(du0).detach().clone()
-        a_Sa, a_G = _expand_aqt(theta, zone_t, model.n_layers, A)
+        a_Sa, a_G = _expand_aqt(theta_v, zone_t, model.n_layers, A)
         if a_Sa is not None:
             model.aqt_log_Sa = a_Sa.detach().clone()
             model.aqt_log_G = a_G.detach().clone()
@@ -1669,7 +1962,10 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             model.fit_log_C_riv = theta["log_C_riv"].detach().clone()
     n_params = sum(p.numel() for p in free)
     theta_out = {}
-    for k, v in list(theta.items()) + list(fixed.items()):
+    # every key in its creation order, the tied copies (= their parents) included
+    theta_v = _view()
+    ordered = [(k, theta_v[k]) for k in key_order if k in theta_v]
+    for k, v in ordered + list(fixed.items()):
         theta_out[k] = (float(v.detach().cpu()) if v.dim() == 0
                         else v.detach().clone().squeeze(-1).cpu().numpy().tolist())
     if "log_eta" in theta_out:
@@ -1686,6 +1982,14 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     if "return_frac_logit" in theta_out:
         theta_out["return_frac"] = float(RETURN_FRAC_MAX
                                          / (1.0 + np.exp(-theta_out["return_frac_logit"])))
+    for k in ("pump_layer_logits", "pump_layer_logits_ch"):
+        if k in theta_out:
+            e = np.exp(np.asarray(theta_out[k], dtype="float64"))
+            theta_out[k.replace("logits", "shares")] = (e / e.sum()).tolist()
+    if "log_tau_ret" in theta_out:
+        theta_out["tau_ret_steps"] = float(np.exp(theta_out["log_tau_ret"]))
+    if "log_eta_ratio_ch" in theta_out:
+        theta_out["eta_ratio_changhua"] = float(np.exp(theta_out["log_eta_ratio_ch"]))
     if "log_spread_km" in theta_out:
         theta_out["spread_km"] = float(np.exp(theta_out["log_spread_km"]))
     elif spread_km is not None:
@@ -1705,6 +2009,12 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
            "r2": _r2(pred.cpu().numpy(), obs_h.cpu().numpy()), "n_params": n_params,
            "param_mode": param_mode, "theta": theta_out, "r2_trace": r2_trace,
            "fixed": sorted(fixed), "loss_mode": loss_mode}
+    if tied:
+        out["county_tied"] = sorted(tied)
+    if county_copy_sd is not None and free_copies:
+        with torch.no_grad():
+            out["county_copy_departure"] = {
+                c: float((theta[c] - theta[p]).abs().max()) for c, p in free_copies}
     if use_datum:
         # the MAP datum at the FINAL parameters (the loop's last one lags a step)
         d, kappa, s2, n = _profile_well_datum(pred, obs_z, d_mask, well_datum_sd)
@@ -1738,7 +2048,9 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                          ground_elev: torch.Tensor | None = None,
                          recharge_layer: int = 0, pump_layer: int = 1,
                          sw_field: torch.Tensor | None = None,
-                         sw_layer: int | None = None) -> torch.Tensor:
+                         sw_layer: int | None = None,
+                         extra_q: torch.Tensor | None = None,
+                         changhua_cells: torch.Tensor | None = None) -> torch.Tensor:
     """Re-run the rollout for evaluation (e.g. at wells held out of a k-fold's fit),
     reusing ``model``'s own calibrated per-cell log_T/log_S/log_L. This serves BOTH
     ``homogeneous`` and ``zonal``: both copy their expanded field back into the model, so
@@ -1764,6 +2076,21 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                  if "pump_split_logit" in theta else None)
         ret = (torch.tensor(theta["return_frac_logit"], dtype=torch.float64)
                if "return_frac_logit" in theta else None)
+        # rung R4: layer shares of the pumped volume and the return-flow lag
+        lfrac = None
+        if "pump_layer_logits" in theta:
+            lch = theta.get("pump_layer_logits_ch")
+            lfrac = pump_layer_fractions(
+                torch.tensor(theta["pump_layer_logits"], dtype=torch.float64),
+                None if lch is None else torch.tensor(lch, dtype=torch.float64),
+                None if changhua_cells is None else torch.as_tensor(changhua_cells))
+        rtau = (torch.exp(torch.tensor(theta["log_tau_ret"], dtype=torch.float64))
+                if "log_tau_ret" in theta else None)
+        if log_eta is not None and "log_eta_ratio_ch" in theta:
+            log_eta = eta_by_cell(log_eta, torch.tensor(theta["log_eta_ratio_ch"],
+                                                        dtype=torch.float64),
+                                  None if changhua_cells is None
+                                  else torch.as_tensor(changhua_cells))
         W = None
         if E is not None and "spread_km" in theta:
             W = spread_matrix(pairwise_d2_km(model.grid, device=model.log_T.device),
@@ -1785,13 +2112,15 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                        log_sw_scale=sw_scale_tensor(theta["log_sw_scale"]))
         return _rollout(model, log_T, log_S, log_L, h0, n_steps, **ext,
                         recharge=None if recharge_field is not None else recharge,
+                        pumping=extra_q,
                         recharge_field=recharge_field, recharge_scale=rfrac,
                         recharge_layer=recharge_layer,
                         E=E if log_eta is not None else None, log_eta=log_eta,
                         log_head_extra=log_head_extra,
                         ground_elev=ground_elev, pump_layer=pump_layer,
                         log_C_coast=model.log_C_coast, log_C_apex=model.log_C_apex,
-                        pump_split_logit=split, return_frac_logit=ret, spread_W=W)
+                        pump_split_logit=split, return_frac_logit=ret, spread_W=W,
+                        pump_layer_frac=lfrac, ret_tau=rtau)
 
 
 def _nanmean_rows(x: np.ndarray) -> np.ndarray:
@@ -1816,7 +2145,9 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
                   E_full, recharge_full, ground_elev, recharge_layer: int = 0,
                   pump_layer: int = 1, sw_full: torch.Tensor | None = None,
                   sw_layer: int | None = None, rmse_k: float = 1.5,
-                  keep_arrays: bool = False, datum: np.ndarray | None = None) -> dict:
+                  keep_arrays: bool = False, datum: np.ndarray | None = None,
+                  extra_full: torch.Tensor | None = None,
+                  changhua_cells: torch.Tensor | None = None) -> dict:
     """Score a free-running continuation over the months the fit never saw.
 
     ``datum`` (``(W,)`` m, ``--well-datum fit``): the per-well datum fitted on the fitted
@@ -1846,7 +2177,8 @@ def temporal_gate(model: FlowModel, fit: dict, h0: torch.Tensor, obs_full: torch
         h = _predict_homogeneous(model, fit, h0, T_full, recharge_field=recharge_full,
                                  E=E_full, ground_elev=ground_elev,
                                  recharge_layer=recharge_layer, pump_layer=pump_layer,
-                                 sw_field=sw_full, sw_layer=sw_layer)
+                                 sw_field=sw_full, sw_layer=sw_layer, extra_q=extra_full,
+                                 changhua_cells=changhua_cells)
         pred = h[obs_layer.to(h.device), obs_idx.to(h.device), 1:].cpu().numpy()
     obs = obs_full.cpu().numpy()
     held = slice(T_fit, T_full)
@@ -1984,16 +2316,122 @@ def _site_labels(well_xy: np.ndarray, decimals: int = 1) -> np.ndarray:
     return np.unique(key, axis=0, return_inverse=True)[1]
 
 
+def _site_labels_tol(well_xy: np.ndarray, tol_m: float) -> np.ndarray:
+    """Integer physical-site id per well entry: wells chained within ``tol_m`` metres of
+    each other (single linkage) share a site, so the screens of one nest drilled a few
+    tens of metres apart (e.g. the 西港 nest, ~17 m) are one site. ``tol_m <= 0`` is
+    :func:`_site_labels`."""
+    if not tol_m > 0.0:
+        return _site_labels(well_xy)
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
+
+    xy = np.asarray(well_xy, dtype="float64").reshape(-1, 2)
+    pairs = cKDTree(xy).query_pairs(float(tol_m), output_type="ndarray")
+    n = xy.shape[0]
+    adj = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n)) \
+        if len(pairs) else coo_matrix((n, n))
+    _, lab = connected_components(adj, directed=False)
+    # relabel by first appearance in well order, so ids are deterministic
+    _, first = np.unique(lab, return_index=True)
+    order = np.argsort(np.argsort(first))
+    return order[lab]
+
+
+def _fold_groups(well_xy: np.ndarray | None, site_tol_m: float = 0.0) -> np.ndarray | None:
+    """The k-fold grouping: exact co-location by default (the partition every gate since
+    2026-08-27 used), physical sites within ``site_tol_m`` metres with
+    ``--fold-site-tol-m``."""
+    if well_xy is None:
+        return None
+    return _site_labels_tol(well_xy, site_tol_m) if site_tol_m > 0.0 else _site_labels(well_xy)
+
+
+SUPPORT_SITE_TOL_M = 200.0
+SUPPORT_MIN_SITES = 3
+
+
+def zone_support(zone_of_cell: np.ndarray, obs_idx: np.ndarray, obs_layer: np.ndarray,
+                 well_xy: np.ndarray | None, zonation: tuple[str, ...],
+                 folds: list[np.ndarray] | None = None, n_layers: int = 4,
+                 site_tol_m: float = SUPPORT_SITE_TOL_M,
+                 min_sites: int = SUPPORT_MIN_SITES) -> dict:
+    """What constrains each zone's parameters (``--zone-county-split``'s report): per zone
+    the calibration wells, their count per model layer and their physical sites (wells
+    within ``site_tol_m`` m are one site); per k-fold the zones left with no training
+    well, and the held-out wells that share a physical site with a TRAINING well of the
+    same zone (a nest split across folds: the zone's parameters then come from the held-out
+    well's own borehole siblings). ``thin`` lists the zones with fewer than ``min_sites``
+    sites in the calibration set or in some fold's training set."""
+    zone_of_cell = np.asarray(zone_of_cell).reshape(-1)
+    obs_idx = np.asarray(obs_idx).reshape(-1)
+    obs_layer = np.asarray(obs_layer).reshape(-1)
+    zw = zone_of_cell[obs_idx]
+    site = (_site_labels_tol(well_xy, site_tol_m) if well_xy is not None
+            else np.arange(len(obs_idx)))
+    zones: dict = {}
+    for i, name in enumerate(zonation):
+        sel = zw == i
+        zones[name] = {"cells": int((zone_of_cell == i).sum()), "wells": int(sel.sum()),
+                       "wells_per_layer": [int((sel & (obs_layer == k)).sum())
+                                           for k in range(n_layers)],
+                       "sites": int(len(np.unique(site[sel])))}
+    per_fold = []
+    thin = {name for name, z in zones.items() if z["sites"] < min_sites}
+    for f, held in enumerate(folds or []):
+        held = np.asarray(held, dtype="int64")
+        keep = np.setdiff1d(np.arange(len(obs_idx)), held)
+        no_train, shared, train_sites = [], {}, {}
+        for i, name in enumerate(zonation):
+            k_sel = keep[zw[keep] == i]
+            h_sel = held[zw[held] == i]
+            n_sites = int(len(np.unique(site[k_sel])))
+            train_sites[name] = n_sites
+            if zones[name]["wells"] and not k_sel.size:
+                no_train.append(name)
+            if n_sites < min_sites and zones[name]["wells"]:
+                thin.add(name)
+            ts = set(site[k_sel].tolist())
+            n_sh = int(sum(1 for j in h_sel if site[j] in ts))
+            if n_sh:
+                shared[name] = n_sh
+        per_fold.append({"fold": f, "zones_without_training_well": no_train,
+                         "held_sharing_site_with_training_same_zone": shared,
+                         "training_sites": train_sites})
+    return {"site_tol_m": float(site_tol_m), "min_sites": int(min_sites), "zones": zones,
+            "per_fold": per_fold, "thin": sorted(thin, key=list(zonation).index)}
+
+
+def format_zone_support(sup: dict) -> list[str]:
+    """``zone_support`` as log lines (one per zone, one per fold, then the warning)."""
+    lines = [f"zone support (sites = wells within {sup['site_tol_m']:g} m):"]
+    for name, z in sup["zones"].items():
+        lines.append(f"  {name:22s} cells {z['cells']:5d}  wells {z['wells']:3d} "
+                     f"(L1-L4 {z['wells_per_layer']})  sites {z['sites']:3d}")
+    for f in sup["per_fold"]:
+        lines.append(f"  fold {f['fold']}: no training well in "
+                     f"{f['zones_without_training_well'] or 'none'}; held-out wells sharing a "
+                     f"site with a training well of their zone "
+                     f"{f['held_sharing_site_with_training_same_zone'] or 'none'}")
+    if sup["thin"]:
+        lines.append(f"  WARNING thin zones (< {sup['min_sites']} sites in the calibration "
+                     f"set or a fold's training set): {sup['thin']} -- their parameters "
+                     "are weakly identified; consider --county-tie or --county-copy-sd")
+    return lines
+
+
 def _colocation_rate(folds: list[np.ndarray], well_xy: np.ndarray | None,
-                     n: int) -> float:
-    """Fraction of held-out entries sitting at zero distance from a *training* entry.
+                     n: int, site: np.ndarray | None = None) -> float:
+    """Fraction of held-out entries sitting at zero distance from a *training* entry
+    (``site``: other site labels, e.g. ``--fold-site-tol-m``'s physical sites).
 
     This is the number that would have caught the 2026-08-27 leak on sight, so the gate
     reports it permanently rather than leaving it to be rediscovered.
     """
     if well_xy is None:
         return float("nan")
-    site = _site_labels(well_xy)
+    site = _site_labels(well_xy) if site is None else np.asarray(site)
     leaked = held_total = 0
     for held in folds:
         held = np.asarray(held)
@@ -2023,13 +2461,27 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 fix_sw_scale: float | None = None, delay_u0: str = "eq",
                 delay_layers: tuple[int, ...] | None = None,
                 aquitard: str = "off", zone_w: np.ndarray | None = None,
+                extra_q: torch.Tensor | None = None,
+                pump_layer_fractions_on: bool = False, pump_fractions_county: bool = False,
+                return_lag: bool = False, changhua_cells: torch.Tensor | None = None,
+                fix_pump_layer_shares: tuple[float, ...] | None = None,
+                eta_county: bool = False,
                 ic_zone_of_cell: np.ndarray | None = None,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
                 well_datum_sd: float = WELL_DATUM_SD_DEFAULT,
                 datum_mask: torch.Tensor | None = None, only_fold: int | None = None,
-                sids: list[str] | None = None) -> dict:
+                sids: list[str] | None = None,
+                zonation: tuple[str, ...] | None = None,
+                county_copy_sd: float | None = None,
+                county_tie: tuple[str, ...] = (),
+                site_tol_m: float = 0.0) -> dict:
     """K-fold cross-validation over wells (Ruling 2: k-fold, never leave-one-out).
+
+    ``site_tol_m`` (``--fold-site-tol-m``, opt-in 2026-10-17): group the folds by physical
+    site (wells within that many metres, ``_site_labels_tol``) instead of by exact
+    co-location; 0 keeps the historical partition. ``county_copy_sd``/``county_tie`` pass
+    through to ``fit_flow``.
 
     ``only_fold`` (``--only-fold K``, 2026-09-26): run fold ``K`` (0-based) of the same
     seeded partition and skip the others; ``per_fold`` then holds that one fold and the
@@ -2052,7 +2504,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     (``(W, T)``, the months that inform a datum; ``fit_flow``) is sliced to the fold.
 
     ``rivers`` is ``(RiverSet, layer, mode)`` or ``None``; it is attached to every fold's
-    model. ``delay_storage``/``sw_field``/``fix_sw_scale`` pass through to ``fit_flow``.
+    model. ``delay_storage``/``sw_field``/``fix_sw_scale`` pass through to ``fit_flow``,
+    as does ``zonation`` (the county split's zone names, ``--zone-county-split``).
 
     Wells are split into ``n_folds`` folds; for each fold the model is refit on the
     other 9/10 of the wells and scored on the held-out fold. The IDW baseline
@@ -2081,12 +2534,13 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # Grouped by physical site when coordinates are available (2026-08-27 retraction):
     # co-located screens must never straddle a fold boundary, or the IDW baseline reads
     # the held-out well's own borehole instead of interpolating to it.
-    groups = _site_labels(well_xy) if well_xy is not None else None
+    groups = _fold_groups(well_xy, site_tol_m)
     if groups is None:
         print("    WARNING: no well_xy, so folds are UNGROUPED -- co-located screens may "
               "straddle folds and the IDW baseline may peek. Pass well_xy.", flush=True)
     folds = _kfold_indices(W, n_folds, seed=seed, groups=groups)
-    coloc = _colocation_rate(folds, well_xy, W)
+    coloc = _colocation_rate(folds, well_xy, W,
+                             site=groups if site_tol_m > 0.0 else None)
     # Per-entry dump (2026-08-29): the headline gate is one pooled R2, which cannot answer
     # whether the physics model degrades more or less gracefully than IDW as held-out sites
     # get isolated. That question is most of the argument for building a physics model at
@@ -2098,7 +2552,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                else grid.centroids()[obs_idx.cpu().numpy()])
     if well_xy is not None:
         n_sites = len(np.unique(groups))
-        print(f"    folds grouped by site: {W} entries over {n_sites} physical sites, "
+        print("    folds grouped by site"
+              + (f" (within {site_tol_m:g} m)" if site_tol_m > 0.0 else "")
+              + f": {W} entries over {n_sites} physical sites, "
               f"held-out/training co-location rate = {coloc:.3f}", flush=True)
     per_fold = []
     for f, held in enumerate(folds):
@@ -2134,7 +2590,13 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        delay_layers=delay_layers, aquitard=aquitard, zone_w=zone_w,
                        proximal_layered=proximal_layered, well_datum=well_datum,
                        well_datum_sd=well_datum_sd,
-                       datum_mask=None if datum_mask is None else datum_mask[keep])
+                       datum_mask=None if datum_mask is None else datum_mask[keep],
+                       zonation=zonation, county_copy_sd=county_copy_sd,
+                       county_tie=county_tie, extra_q=extra_q,
+                       pump_layer_fractions_on=pump_layer_fractions_on,
+                       pump_fractions_county=pump_fractions_county, return_lag=return_lag,
+                       changhua_cells=changhua_cells,
+                       fix_pump_layer_shares=fix_pump_layer_shares, eta_county=eta_county)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -2150,7 +2612,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                                          recharge_field=recharge_field, E=E,
                                          ground_elev=ground_elev,
                                          recharge_layer=recharge_layer, pump_layer=pump_layer,
-                                         sw_field=sw_field, sw_layer=sw_layer)
+                                         sw_field=sw_field, sw_layer=sw_layer,
+                                         extra_q=extra_q, changhua_cells=changhua_cells)
             else:
                 h = m(h0_eval, recharge,
                      torch.zeros(n_layers, n_active, n_steps, dtype=torch.float64,
@@ -2331,6 +2794,18 @@ def _load_pumping_kwh(grid, pump_census_path: str, pump_kwh_path: str,
     return torch.tensor(E, dtype=torch.float64)
 
 
+def monthly_mean_rate(daily: pd.DataFrame, min_fraction: float = 0.8) -> pd.DataFrame:
+    """Calendar-month mean of the finite daily values, masked (NaN) where fewer than
+    ``min_fraction`` of the month's days are finite. The vendor cache has no missing days,
+    so this leaves it unchanged; the CODIS rebuild (``twin.cwa_rain``) leaves gaps missing
+    and a month seen on a few days must not pass as that month's rate. A NaN gauge-month is
+    down-weighted by the IDW instead of counting as 0 mm."""
+    grouped = daily.resample("ME")
+    mean, count = grouped.mean(), grouped.count()
+    days = mean.index.days_in_month.to_numpy()[:, None]
+    return mean.where(count.to_numpy() >= min_fraction * days)
+
+
 def _load_recharge_field(grid, rf_timeseries_path: str, rf_stations_path: str,
                          et_npz_path: str, gw_stations_path: str,
                          t0: str, t1: str) -> torch.Tensor:
@@ -2356,7 +2831,7 @@ def _load_recharge_field(grid, rf_timeseries_path: str, rf_stations_path: str,
     rf = pd.read_csv(rf_timeseries_path)
     rf["date time"] = pd.to_datetime(rf["date time"])
     rf = rf.set_index("date time")
-    rf_monthly = rf.resample("ME").mean().reindex(months)     # mean daily mm rate/month
+    rf_monthly = monthly_mean_rate(rf).reindex(months)        # mean daily mm rate/month
     rf_stn = pd.read_csv(rf_stations_path).set_index("rf_id")
     rf_xy = rf_stn.loc[rf_monthly.columns, ["TM_X97", "TM_Y97"]].to_numpy(dtype="float64")
 
@@ -2503,6 +2978,36 @@ def main(argv=None) -> None:
                          "'205,182,S' (S > 205): split the proximal zone at easting S km "
                          "into 'proximal' (east) and 'proximal_w' (205..S), each one "
                          "merged aquifer (+2 parameters)")
+    ap.add_argument("--zone-county-split", action="store_true",
+                    help="--param-mode zonal (rung R1c, 2026-10-15): every zone's parameters "
+                         "(log T, log S, leakance and every zonal extension) get an "
+                         "independent Changhua copy for the Changhua cells of the county map "
+                         "(hydrophysics.twin.zone_county: centroid in the 彰化縣 polygon, "
+                         "or nearest to it off the coast; map v2). The copies "
+                         "start at their parents' values, so epoch 0 is the unsplit model. "
+                         "Recorded in meta (zone_county_split, zone_county_sha256), so every "
+                         "consumer rebuilds the same zone map; the zonal column refitted by "
+                         "calibrate_coupled is split the same way. Initial heads stay "
+                         "unsplit")
+    ap.add_argument("--county-tie", default=None, metavar="ZONES",
+                    help="--zone-county-split: comma-separated base zones (e.g. "
+                         "'proximal,distal') whose Changhua copies are tied to their parents "
+                         "instead of fitted (the zone stays shared by both counties: the "
+                         "sparsity fallback for zones with too few wells on one side). The "
+                         "theta still carries the copies, equal to their parents")
+    ap.add_argument("--county-copy-sd", type=float, default=None, metavar="S",
+                    help="--zone-county-split: Gaussian prior of sd S (log units) on every "
+                         "free Changhua copy's departure from its parent (hierarchical "
+                         "shrinkage toward the unsplit model; zero at epoch 0). Default: "
+                         "independent copies")
+    ap.add_argument("--fold-site-tol-m", type=float, default=0.0, metavar="M",
+                    help="group the k-fold partition by physical site (wells within M m, "
+                         "single linkage) instead of exact co-location; 0 (default) keeps "
+                         "the historical partition every gate since 2026-08-27 used")
+    ap.add_argument("--zone-county-map", default=None, metavar="NPZ",
+                    help="the county map --zone-county-split uses (default "
+                         "results/dataprep/zone_county_map/v2/zone_county_map.npz); it is "
+                         "rebuilt from the county polygons and must match")
     ap.add_argument("--log-t-min-proximal", type=float, default=None,
                     help="--param-mode zonal: raise the proximal log_T floor to this many "
                          "m2/day (both proximal parts when split). Default: the global "
@@ -2570,6 +3075,15 @@ def main(argv=None) -> None:
                          "which copies held-out heads of late-starting wells into the fit "
                          "target, climatology and initial condition; the initial "
                          "condition uses only the wells observed in month 0")
+    ap.add_argument("--mask-months", default=None, metavar="START:END",
+                    help="(N1 masked refits) hide the observed heads of these months "
+                         "(YYYY-MM:YYYY-MM, inclusive) from the fit: NaN before and after "
+                         "back-fill, so they are masked out of the loss, the datum and every "
+                         "in-sample score; the well set is unchanged")
+    ap.add_argument("--day-weighted-months", action="store_true",
+                    help="monthly heads as the mean of daily means (default: the mean of all "
+                         "samples, which over-weights 10-minute days after the 2019-02-20 "
+                         "cadence switch by up to 1.7 m in a month)")
     ap.add_argument("--strict-coverage", action="store_true",
                     help="QC coverage as the fraction of calendar months observed in the "
                          "window, with leading/trailing gaps counted by the gap check "
@@ -2685,6 +3199,31 @@ def main(argv=None) -> None:
                          "surface_water.py v2) or 'both'")
     ap.add_argument("--fix-sw-scale", type=float, default=None,
                     help="hold the canal-recharge fraction at this value (diagnostic)")
+    ap.add_argument("--pump-layer-fractions", action="store_true",
+                    help="(rung R4) learn the share of pumped volume taken from each twin "
+                         "layer (softmax over the layers, fan-wide), in place of "
+                         "--pump-split's shallow fraction")
+    ap.add_argument("--pump-fractions-county", action="store_true",
+                    help="(rung R4) give Changhua its own layer shares (needs "
+                         "--pump-layer-fractions and --zone-county-split)")
+    ap.add_argument("--eta-county", action="store_true",
+                    help="(rung R*) learn a Changhua factor on the pump efficiency (the "
+                         "fan-wide efficiency stays as given); uses the verified county map")
+    ap.add_argument("--pump-layer-shares", default=None,
+                    help="(rung R4p) hold the layer shares of --pump-layer-fractions at these "
+                         "comma-separated values, one per layer, summing to 1")
+    ap.add_argument("--return-lag", action="store_true",
+                    help="(rung R4) lag the return flow through a first-order store with a "
+                         "learned time constant (needs --return-flow)")
+    ap.add_argument("--sw-county-split", action="store_true",
+                    help="(rung R1e-cn) give every --sw-components field one learned "
+                         "fraction for its Changhua cells and one for the rest; needs "
+                         "--zone-county-split, whose verified county map it uses")
+    ap.add_argument("--extra-abstraction", default=None,
+                    help="(rung R1e-pw) npz of a fixed abstraction per twin layer, cell and "
+                         "month (q_m3d, m3/day, positive = abstraction; e.g. the P6 public "
+                         "wells, dataprep_staging/i1/build_public_wells_model_npz.py); enters "
+                         "the rollout as static pumping, nothing fitted")
     ap.add_argument("--policy-response", action="store_true",
                     help="after the run, score the policy response (policy_gate.py: "
                          "irrigation x1/0.85/0.7 for 120 months, reference column as a "
@@ -2755,6 +3294,25 @@ def main(argv=None) -> None:
         raise SystemExit("--proximal-layered needs --param-mode zonal")
     if args.ic_layered_proximal and not args.ic_merged_proximal:
         raise SystemExit("--ic-layered-proximal refines --ic-merged-proximal; pass both")
+    if args.zone_county_map is not None and not args.zone_county_split:
+        raise SystemExit("--zone-county-map is read by --zone-county-split only")
+    if (args.county_tie is not None or args.county_copy_sd is not None) \
+            and not args.zone_county_split:
+        raise SystemExit("--county-tie / --county-copy-sd refine --zone-county-split")
+    if args.county_copy_sd is not None and not args.county_copy_sd > 0.0:
+        raise SystemExit("--county-copy-sd must be > 0")
+    if args.fold_site_tol_m < 0.0:
+        raise SystemExit("--fold-site-tol-m must be >= 0")
+    if args.zone_county_split:
+        if args.param_mode != "zonal":
+            raise SystemExit("--zone-county-split splits the zones of --param-mode zonal")
+        if args.river_c_split == "zone":
+            raise SystemExit("--river-c-split zone does not split its river groups by county; "
+                             "it cannot be combined with --zone-county-split")
+        if args.policy_response:
+            raise SystemExit("--policy-response scores with the three-zone reference column, "
+                             "which cannot honour --zone-county-split; run policy_gate with "
+                             "a column refitted by calibrate_coupled on this theta instead")
     if args.well_datum != "off" and args.param_mode == "percell":
         raise SystemExit("--well-datum fit needs --param-mode homogeneous or zonal")
     if args.well_datum != "off" and not args.well_datum_sd > 0.0:
@@ -2786,13 +3344,46 @@ def main(argv=None) -> None:
     grid = build_grid(args.polygon, dx=args.dx)
 
     zone_of_cell = zone_counts = proximal_km = distal_km = split_km = None
+    zonation = county_flags = county_rec = None
+    county_tie: tuple[str, ...] = ()
     if args.param_mode == "zonal":
         proximal_km, distal_km, split_km = _parse_zone_boundaries(args.zone_boundaries,
                                                                   allow_split=True)
         zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km,
                                  distal_km=distal_km, split_km=split_km)
+        zonation = zone_labels(split_km is not None)
+        if args.zone_county_split:
+            # rung R1c: the cached county map must equal a rebuild from the polygons
+            from .zone_county import DEFAULT_MAP, county_meta, verify_county_cache
+
+            cmap = args.zone_county_map or DEFAULT_MAP
+            try:
+                county_flags = verify_county_cache(grid, cmap)
+            except (OSError, ValueError) as exc:
+                raise SystemExit(f"--zone-county-split: {exc}") from exc
+            county_rec = county_meta(cmap, county_flags)
+            zone_of_cell = county_split(zone_of_cell, county_flags, len(zonation))
+            zonation = zone_labels(split_km is not None, county=True)
+            if args.county_tie:
+                county_tie = tuple(z.strip() for z in args.county_tie.split(",") if z.strip())
+                base = zone_labels(split_km is not None)
+                bad = [z for z in county_tie if z not in base]
+                if bad or len(set(county_tie)) != len(county_tie):
+                    raise SystemExit(f"--county-tie {args.county_tie!r}: zones must be distinct "
+                                     f"names from {base}")
+                # recorded in the zonation's order, so equal ties give equal metas
+                county_tie = tuple(z for z in base if z in county_tie)
+                county_rec["zone_county_tied"] = list(county_tie)
+            if args.county_copy_sd is not None:
+                county_rec["zone_county_copy_sd"] = float(args.county_copy_sd)
+            print(f"--zone-county-split: {county_rec['zone_county_n_changhua']} Changhua "
+                  f"cells of {grid.n_active} ({cmap}, sha256 "
+                  f"{county_rec['zone_county_sha256'][:12]})"
+                  + (f"; tied (shared) zones {list(county_tie)}" if county_tie else "")
+                  + (f"; copy prior sd {args.county_copy_sd:g}"
+                     if args.county_copy_sd is not None else ""), flush=True)
         zone_counts = {name: int((zone_of_cell == i).sum())
-                       for i, name in enumerate(zone_names(3 if split_km is None else 4))}
+                       for i, name in enumerate(zonation)}
         print(f"zones: proximal/mid at {proximal_km:.0f} km, mid/distal at "
               f"{distal_km:.0f} km"
               + (f", proximal split at {split_km:g} km" if split_km is not None else "")
@@ -2809,6 +3400,8 @@ def main(argv=None) -> None:
             raise SystemExit("--zone-blend-km needs --param-mode zonal")
         zone_w = zone_blend_weights(grid.centroids(), proximal_km, distal_km,
                                     args.zone_blend_km, split_km=split_km)
+        if county_flags is not None:
+            zone_w = county_split_weights(zone_w, county_flags)
         print(f"zone blend: mid/distal mixed over {args.zone_blend_km:g} km; cells with "
               f"both weights > 5%: {int(((zone_w[1] > 0.05) & (zone_w[2] > 0.05)).sum())}",
               flush=True)
@@ -2816,7 +3409,8 @@ def main(argv=None) -> None:
     stn = pd.read_parquet(args.stations)
     stn = stn[stn.GroundwaterZoneIdentifier == 50].copy()
     stn["sid"] = stn["sid"].astype(str)
-    hf = build_head_field(args.wells_dir, stn, strict_coverage=args.strict_coverage)
+    hf = build_head_field(args.wells_dir, stn, strict_coverage=args.strict_coverage,
+                          day_weighted=args.day_weighted_months)
     if args.strict_coverage:
         hf_legacy = build_head_field(args.wells_dir, stn)
         dropped = sorted(set(hf_legacy.sids) - set(hf.sids))
@@ -2828,6 +3422,7 @@ def main(argv=None) -> None:
     if args.wells_from:
         allowed = set(pd.read_csv(args.wells_from, dtype={"sid": str})["sid"])
     idx, lay, series, xy_used, sids_used, raw_series = [], [], [], [], [], []
+    mask_m = mask_month_flags(args.mask_months, hf.dates)
     for w in range(len(hf)):
         if allowed is not None and str(hf.sids[w]) not in allowed:
             continue
@@ -2835,13 +3430,26 @@ def main(argv=None) -> None:
         if i is None:
             continue
         sids_used.append(str(hf.sids[w]))
-        raw_series.append(np.asarray(hf.heads[w], dtype="float64"))
-        s = prepare_series(hf.heads[w], backfill=not args.no_backfill)
+        raw = np.asarray(hf.heads[w], dtype="float64")
+        if mask_m is not None:
+            raw = raw.copy()
+            raw[mask_m] = np.nan
+            if not np.isfinite(raw).any():
+                raise SystemExit(f"--mask-months leaves well {hf.sids[w]} with no "
+                                 "observation")
+        raw_series.append(raw)
+        s = prepare_series(raw, backfill=not args.no_backfill)
+        if mask_m is not None:
+            s = s.copy()
+            s[mask_m] = np.nan
         idx.append(i)
         lay.append(max(int(hf.layers[w]) - 1, 0))
         series.append(s)
         xy_used.append(hf.xy[w])
     obs_h_full = np.stack(series)                                  # (W, 132), raw heads
+    if mask_m is not None:
+        print(f"--mask-months {args.mask_months}: {int(mask_m.sum())} months hidden from the "
+              f"fit at all {len(series)} wells", flush=True)
     obs_raw_full = np.stack(raw_series)          # (W, 132), NaN where never observed
     if args.no_backfill:
         print(f"--no-backfill: {int((~np.isfinite(obs_h_full)).sum())} never-observed "
@@ -2884,13 +3492,14 @@ def main(argv=None) -> None:
                                               args.et_npz, args.gw_stations,
                                               "2012-01-01", "2023-01-01")[:, 1:]
     sw_field = None
+    record_dates = pd.date_range("2012-01-01", "2023-01-01", freq="MS", inclusive="left")
+    if args.sw_county_split and not (args.sw_recharge and county_flags is not None):
+        raise SystemExit("--sw-county-split needs --sw-recharge and --zone-county-split")
     if args.sw_recharge:
-        from .inputs import load_sw_recharge
+        from .inputs import load_sw_recharge, split_sw_by_county
 
-        sw_field = load_sw_recharge(
-            args.sw_recharge, grid,
-            pd.date_range("2012-01-01", "2023-01-01", freq="MS", inclusive="left"),
-            components=args.sw_components)[..., 1:]
+        sw_field = load_sw_recharge(args.sw_recharge, grid, record_dates,
+                                    components=args.sw_components)[..., 1:]
         comp_mm = " + ".join(
             f"{k} {float(f.mean()) * 365.25 * 1000:.0f}"
             for k, f in zip(SW_COMPONENT_KEYS[args.sw_components],
@@ -2898,6 +3507,18 @@ def main(argv=None) -> None:
         print(f"surface-water forcing: {args.sw_recharge}, fan mean {comp_mm} mm/yr "
               f"(recharge fraction {'fixed ' + str(args.fix_sw_scale) if args.fix_sw_scale else 'learned'})",
               flush=True)
+        if args.sw_county_split:
+            sw_field = split_sw_by_county(sw_field, county_flags)
+            print(f"  --sw-county-split: {sw_field.shape[0]} components (each field's "
+                  "Changhua cells, then the rest), one fraction each", flush=True)
+    extra_q = None
+    if args.extra_abstraction:
+        from .inputs import load_extra_abstraction
+
+        extra_q = load_extra_abstraction(args.extra_abstraction, grid, record_dates)[..., 1:]
+        per_layer = (extra_q.sum(dim=1).mean(dim=-1) * 365.25 / 1e6).tolist()
+        print(f"extra abstraction (fixed): {args.extra_abstraction}, Mm3/yr per layer "
+              f"{[round(v, 2) for v in per_layer]} (record mean)", flush=True)
 
     # temporal gate: the fit sees the record minus its last --holdout-months
     T_full = obs_h.shape[1]
@@ -2956,7 +3577,11 @@ def main(argv=None) -> None:
                                        stage_depth=args.river_stage_depth,
                                        rbot_depth=args.river_rbot_depth,
                                        edge_buffer_m=args.river_edge_buffer_m,
+                                       # a county-split map is never collapsed here:
+                                       # --river-c-split zone is refused with it, and
+                                       # forward.build_model passes None the same way
                                        zone_of_cell=(None if zone_of_cell is None
+                                                     or county_rec is not None
                                                      else collapse_zones(zone_of_cell)),
                                        c_split=args.river_c_split, exclude_idx=skip,
                                        season_csv=args.river_stage_season)
@@ -2988,7 +3613,7 @@ def main(argv=None) -> None:
     git_commit = _git_commit()
     _reset_cg_stats()
     t0 = time.perf_counter()
-    E_full, recharge_full, sw_full = E, recharge_field, sw_field
+    E_full, recharge_full, sw_full, extra_full = E, recharge_field, sw_field, extra_q
     # --well-datum fit: only months actually observed within the fitted period inform a
     # datum -- a back-filled month copies a neighbouring value, for a late-starting well a
     # held-out one, which would leak held-out levels into d_i
@@ -3000,8 +3625,36 @@ def main(argv=None) -> None:
         recharge_field = recharge_field[:, :T_fit]
     if sw_field is not None:
         sw_field = sw_field[..., :T_fit]
+    if extra_q is not None:
+        extra_q = extra_q[..., :T_fit]
     cfg = _flow_cfg(args, grid.n_active, proximal_km, distal_km, split_km, zone_counts,
-                    eta_class_names, git_commit)
+                    eta_class_names, git_commit, county_rec=county_rec)
+    # --zone-county-split's fit options (none for a default run, whose calls are unchanged)
+    county_fit_kw = ({"zonation": zonation, "county_copy_sd": args.county_copy_sd,
+                      "county_tie": county_tie} if county_rec else {})
+    # rung R4's options (none for a default run, whose calls are unchanged)
+    r4_kw = {}
+    if args.eta_county and county_flags is None:
+        # --eta-county without --zone-county-split: the verified county map, recorded in the
+        # meta (eta_county_map / eta_county_sha256) so the forward twin rebuilds the flags
+        from .zone_county import DEFAULT_MAP, county_sha256, verify_county_cache
+        county_flags = verify_county_cache(grid, DEFAULT_MAP)
+        args.eta_county_map, args.eta_county_sha256 = DEFAULT_MAP, county_sha256(county_flags)
+    elif args.eta_county:
+        from .zone_county import DEFAULT_MAP, county_sha256
+        args.eta_county_map, args.eta_county_sha256 = DEFAULT_MAP, county_sha256(county_flags)
+    if (args.pump_layer_fractions or args.pump_fractions_county or args.return_lag
+            or args.pump_layer_shares or args.eta_county):
+        if args.pump_fractions_county and county_flags is None:
+            raise SystemExit("--pump-fractions-county needs --zone-county-split")
+        r4_kw = {"pump_layer_fractions_on": args.pump_layer_fractions,
+                 "pump_fractions_county": args.pump_fractions_county,
+                 "return_lag": args.return_lag,
+                 "fix_pump_layer_shares": (None if not args.pump_layer_shares else tuple(
+                     float(v) for v in args.pump_layer_shares.split(","))),
+                 "eta_county": args.eta_county,
+                 "changhua_cells": (None if county_flags is None
+                                    else torch.as_tensor(np.asarray(county_flags, dtype=bool)))}
     # one argument list for the sequential gate and a --only-fold job, so the two can
     # never drift apart
     kfold_kw = dict(n_layers=4, epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
@@ -3018,11 +3671,24 @@ def main(argv=None) -> None:
                     sw_field=sw_field, sw_layer=args.sw_layer,
                     fix_sw_scale=args.fix_sw_scale, delay_u0=args.delay_u0,
                     delay_layers=delay_layers, aquitard=args.aquitard_storage,
-                    zone_w=zone_w, ic_zone_of_cell=ic_zone_of_cell,
+                    zone_w=zone_w, extra_q=extra_q, ic_zone_of_cell=ic_zone_of_cell,
+                    **r4_kw,
                     proximal_layered=args.proximal_layered,
                     ic_layered=args.ic_layered_proximal,
                     well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
-                    datum_mask=datum_mask, sids=sids_used)
+                    datum_mask=datum_mask, sids=sids_used,
+                    **county_fit_kw,
+                    **({"site_tol_m": args.fold_site_tol_m}
+                       if args.fold_site_tol_m > 0.0 else {}))
+    if county_rec is not None:
+        # what constrains each zone (and its Changhua copy), on this run's own partition
+        sup = zone_support(zone_of_cell, np.asarray(idx), obs_layer_np, well_xy, zonation,
+                           folds=_kfold_indices(len(idx), args.n_folds, seed=args.seed,
+                                                groups=_fold_groups(well_xy,
+                                                                    args.fold_site_tol_m)))
+        for line in format_zone_support(sup):
+            print(line, flush=True)
+        cfg["zone_county_support"] = sup
     if args.only_fold is not None:
         # parallel k-fold: this fold only, no full fit (merge_folds pools the fold files)
         t0 = time.perf_counter()
@@ -3051,7 +3717,8 @@ def main(argv=None) -> None:
                    delay_u0=args.delay_u0, delay_layers=delay_layers,
                    aquitard=args.aquitard_storage, zone_w=zone_w,
                    proximal_layered=args.proximal_layered, well_datum=args.well_datum,
-                   well_datum_sd=args.well_datum_sd, datum_mask=datum_mask)
+                   well_datum_sd=args.well_datum_sd, datum_mask=datum_mask,
+                   extra_q=extra_q, **county_fit_kw, **r4_kw)
     t_fit = time.perf_counter() - t0
     datum_np = datum_meta = None
     if args.well_datum == "fit":
@@ -3080,7 +3747,8 @@ def main(argv=None) -> None:
                                  recharge_layer=args.recharge_layer, pump_layer=args.pump_layer,
                                  sw_full=sw_full, sw_layer=args.sw_layer,
                                  rmse_k=args.temporal_rmse_k, keep_arrays=True,
-                                 datum=datum_np)
+                                 datum=datum_np, extra_full=extra_full,
+                                 changhua_cells=r4_kw.get("changhua_cells"))
         arrs = temporal.pop("arrays")
         # fair verdict (drift_diag.fair_temporal_verdict): a pure scoring addition beside
         # the legacy one -- per-well datum from the fitted months, raw (never back-filled)
@@ -3179,6 +3847,8 @@ def main(argv=None) -> None:
                      if args.log_t_min_proximal is not None else {}),
                   "pump_layer": args.pump_layer, "recharge_layer": args.recharge_layer,
                   "epochs": args.epochs, "git_commit": git_commit, "r2_insample": ins["r2"],
+                  "rf_timeseries": args.rf_timeseries,
+                  "rf_timeseries_sha256": _file_sha256(args.rf_timeseries),
                   "bounds_hit": ins["bounds_hit"], "n_wells": int(obs_h.shape[0]),
                   "meter_filter": args.meter_filter, "cap_duty": args.cap_duty,
                   "eta_classes": eta_class_names, "fix_eta": args.fix_eta,
@@ -3206,8 +3876,20 @@ def main(argv=None) -> None:
                   "temporal_rmse_k": args.temporal_rmse_k,
                   "no_backfill": bool(args.no_backfill),
                   **_input_opts_record(args),
+                  # opt-in 2026-10-22 (N1 masked refits): written only when set
+                  **({"mask_months": args.mask_months} if args.mask_months else {}),
                   # opt-in 2026-09-26: written only when set, so default meta is unchanged
-                  **(datum_meta or {})})
+                  **(datum_meta or {}),
+                  # opt-in 2026-10-15 (rung R1c): the county split and its map's identity,
+                  # which forward.build_model and every zone consumer verify
+                  **(county_rec or {}),
+                  **({"zone_county_support": cfg["zone_county_support"]}
+                     if "zone_county_support" in cfg else {}),
+                  **({"county_copy_departure": ins["county_copy_departure"]}
+                     if "county_copy_departure" in ins else {}),
+                  # opt-in 2026-10-17: a physical-site fold grouping (absent by default)
+                  **({"fold_site_tol_m": float(args.fold_site_tol_m)}
+                     if args.fold_site_tol_m > 0.0 else {})})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -3285,7 +3967,48 @@ def _input_opts_record(args) -> dict:
             **({"ground_elev_dem_npz": args.dem_npz} if args.ground_elev == "dem" else {}),
             # opt-in 2026-09-25, written only when set so default outputs keep their columns
             **({"ic_layered_proximal": True} if args.ic_layered_proximal else {}),
-            **({"proximal_layered": True} if args.proximal_layered else {})}
+            **({"proximal_layered": True} if args.proximal_layered else {}),
+            **({"day_weighted_months": True} if getattr(args, "day_weighted_months", False)
+               else {}),
+            # opt-in 2026-10-14: a non-default pump census (the Changhua + Yunlin census) is
+            # recorded so every consumer rebuilds the same forcing; written only when set
+            **_pump_paths_record(args),
+            # opt-in 2026-10-18 (rungs R1e-pw / R1e-cn): forward.attach_sw_recharge reads
+            # these back; written only when set
+            **_extra_forcing_record(args)}
+
+
+def _extra_forcing_record(args) -> dict:
+    """``extra_abstraction`` (path + file sha256) and ``sw_county_split`` for the meta, each
+    only when set."""
+    rec: dict = {}
+    if getattr(args, "extra_abstraction", None):
+        import hashlib
+
+        with open(args.extra_abstraction, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        rec.update(extra_abstraction=args.extra_abstraction, extra_abstraction_sha256=sha)
+    if getattr(args, "sw_county_split", False):
+        rec["sw_county_split"] = True
+    if getattr(args, "eta_county_sha256", None):
+        rec.update(eta_county_map=args.eta_county_map, eta_county_sha256=args.eta_county_sha256)
+    return rec
+
+
+def _pump_paths_record(args) -> dict:
+    """``pump_census``/``pump_kwh`` for the meta when either differs from the default census
+    (``inputs.input_options`` hands them back to ``load_twin_inputs``); none otherwise."""
+    census = getattr(args, "pump_census", DEFAULT_PATHS["pump_census"])
+    kwh = getattr(args, "pump_kwh", DEFAULT_PATHS["pump_kwh"])
+    rec = ({} if census == DEFAULT_PATHS["pump_census"] and kwh == DEFAULT_PATHS["pump_kwh"]
+           else {"pump_census": census, "pump_kwh": kwh})
+    # 2026-10-21: a non-default head input (cleaned wells, repaired station coordinates) is
+    # recorded the same way, each only when set
+    for key, flag in (("wells_dir", "wells_dir"), ("stations", "stations")):
+        v = getattr(args, flag, DEFAULT_PATHS[key])
+        if v != DEFAULT_PATHS[key]:
+            rec[key] = v
+    return rec
 
 
 def _well_datum_record(datum_meta: dict | None) -> dict:
@@ -3311,10 +4034,24 @@ FOLD_SCALAR_KEYS = ("fold", "n_held", "fit_loss", "r2_kfold", "r2_idw", "bounds_
                     "fold_time_s")
 
 
+# --zone-county-split's options: in the recipe only when the split is on, so a default
+# run's recipe (and merge_folds' comparison of it) is unchanged
+COUNTY_ARGS = ("zone_county_split", "zone_county_map", "county_tie", "county_copy_sd")
+# opt-in options kept out of the recipe at their default, so a default run's recipe is
+# unchanged by their addition
+OPTIN_ARG_DEFAULTS = {"fold_site_tol_m": 0.0}
+# stage3_flow.csv columns of a county-split run (absent otherwise)
+COUNTY_CFG_KEYS = ("zone_county_split", "zone_county_map", "zone_county_sha256")
+
+
 def _flow_cfg(args, n_cells: int, proximal_km, distal_km, split_km, zone_counts,
-              eta_class_names, git_commit: str) -> dict:
-    """The run-configuration columns of ``stage3_flow.csv`` (neither fit nor gate)."""
+              eta_class_names, git_commit: str, county_rec: dict | None = None) -> dict:
+    """The run-configuration columns of ``stage3_flow.csv`` (neither fit nor gate).
+    ``county_rec`` (``zone_county.county_meta``, ``--zone-county-split``) adds the county
+    split and its map's hash, which ``merge_folds`` then requires to agree between the
+    full fit and every fold."""
     zonal = args.param_mode == "zonal"
+    county = bool(getattr(args, "zone_county_split", False))
     return {"n_cells": n_cells, "dx": args.dx, "param_mode": args.param_mode,
             "zone_proximal_km": proximal_km if zonal else "",
             "zone_distal_km": distal_km if zonal else "",
@@ -3343,7 +4080,9 @@ def _flow_cfg(args, n_cells: int, proximal_km, distal_km, split_km, zone_counts,
             # every CLI option that shapes a fit (merge_folds requires it identical in
             # the full fit and every fold); not a CSV column
             "recipe": {k: v for k, v in sorted(vars(args).items())
-                       if k not in RECIPE_FREE_ARGS}}
+                       if k not in RECIPE_FREE_ARGS and (county or k not in COUNTY_ARGS)
+                       and not (k in OPTIN_ARG_DEFAULTS and v == OPTIN_ARG_DEFAULTS[k])},
+            **{k: county_rec[k] for k in COUNTY_CFG_KEYS if county_rec}}
 
 
 def _flow_fit_cols(ins: dict, temporal: dict | None, datum_meta: dict | None) -> dict:
@@ -3366,6 +4105,8 @@ def flow_csv_row(cfg: dict, fit: dict, gate: dict, cg: tuple, t_fit: float,
             **{k: cfg[k] for k in ("param_mode", "zone_proximal_km", "zone_distal_km",
                                    "zone_split_km", "log_t_min_proximal", "zone_blend_km",
                                    "zone_cell_counts")},
+            # --zone-county-split only (rung R1c); a default row keeps its columns
+            **{k: cfg[k] for k in COUNTY_CFG_KEYS if k in cfg},
             "n_params": fit["n_params"],
             **{k: cfg[k] for k in ("forcing", "boundaries", "meter_filter", "eta_classes",
                                    "fix_eta", "fix_head_extra", "pump_split", "return_flow",

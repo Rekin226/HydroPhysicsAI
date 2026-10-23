@@ -7,9 +7,11 @@
 [![Stack](https://img.shields.io/badge/stack-PyTorch%20%7C%20PhysicsNeMo%20%7C%20CUDA-76b900.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Project state](docs/superpowers/STATE.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
+[Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
 
-**Current status (September 2026):** the frozen forecast fails the newer groundwater
+**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence test (2023-25 rings and GNSS) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. The September status follows.
+
+**Status in September 2026:** the frozen forecast fails the newer groundwater
 challenge. An observation-update defect is corrected in an opt-in method, but the
 physical forecasts still lose to simple short-term baselines. Policy and subsidence
 projections remain research scenarios. See the [latest experiment findings](docs/TWIN_ASSIMILATION.md)
@@ -80,7 +82,7 @@ is the next thing to change.
 
 | | test | result |
 |---|---|---|
-| **Held-out years** | fit 2012–2019, free-run 2020–2022, 147 wells, after each well's fitted-period datum; must come within 1.25x of climatology plus trend and match its shape | **PASS**, ratio 1.11, shape R² +0.45 vs +0.36 |
+| **Held-out years** | fit 2012–2019, free-run 2020–2022, 147 wells, after each well's fitted-period datum; a non-inferiority test: must come within 1.25x of climatology plus trend and within 0.05 of its shape R² | **PASS on non-inferiority only**: 1.81 m against 1.64 m for climatology plus trend (ratio 1.11; the model is worse), shape R² +0.45 against +0.55 for climatology plus trend (+0.36 for plain climatology) |
 | **Unseen wells, head changes** | 5 site-grouped folds, each series de-meaned, against inverse-distance interpolation | FAIL, R² +0.34 vs +0.61 (the previous model: −1.43) |
 | **Unseen wells, absolute level** | same folds, raw heads | FAIL, R² +0.64 vs +0.70 (the previous model passed, +0.80) |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.652** out of fold |
@@ -122,7 +124,7 @@ The calibration uses real observations on the 2,144 km² fan, aggregated monthly
 |---|---|---|
 | Water Resources Agency monitoring wells | 174 wells, 4 aquifers, hourly | heads: calibration target and assimilation |
 | Taiwan Power Company pump census + electricity | 116,769 pumps, 26 M meter-months | abstraction forcing |
-| Rain gauges + ERA5 ET₀ | 26 gauges, daily | recharge |
+| Rain gauges (CWA CODIS, rebuilt 2012–2026) + ERA5 ET₀ | 26 gauges, daily | recharge |
 | Leveling benchmarks | 798 sites, 7,539 surveys | subsidence calibration and validation |
 | Multi-layer compaction wells | 14 sites | independent compaction check |
 | NLSC tile service | orthophoto and topographic base, 252 tiles at zoom 13 | the ground the viewer recognises |
@@ -201,7 +203,7 @@ the page uses the full 36-run fields; otherwise it builds the result from the pe
 response basis and prints that fast estimate's error. Tabs hold township small multiples
 (low-confidence townships flagged from the leveling support), the THSR profile, a
 cross-section, pinned-policy comparison and "where the model is trusted". The 3D exploded
-block is a drawer, opened automatically on desktop and on demand on mobile. A five-step story mode guides first-time
+block is a drawer, closed until opened (the bundled renderer is only evaluated then). A five-step story mode guides first-time
 readers, and the page offers EN/中文, keyboard control, table views and CSV/PNG export.
 The known limits from `docs/superpowers/STATE.md` are named next to the numbers they
 qualify. Rail and river lines are OpenStreetMap traces (`python -m hydrophysics.twin.app.geo`,

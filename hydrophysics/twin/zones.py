@@ -33,23 +33,106 @@ ZONE_NAMES = ("proximal", "mid", "distal")
 # for every consumer that only knows three zones. ``collapse_zones`` maps it back.
 PROXIMAL_W = 3
 ZONE_NAMES_SPLIT = ZONE_NAMES + ("proximal_w",)
+# Opt-in county split (``--zone-county-split``, rung R1c, 2026-10-15): every zone gets a
+# Changhua copy. With ``n_base`` easting zones (3, or 4 with the proximal split) a Changhua
+# cell of zone ``z`` gets id ``z + n_base``, so the rest-of-fan ids keep their meaning, and
+# the names are the base names followed by the same names with this suffix.
+COUNTY_SUFFIX = "_changhua"
+
+
+def county_zone_names(names: tuple[str, ...]) -> tuple[str, ...]:
+    """``names`` followed by their Changhua copies (``proximal`` -> ``proximal_changhua``)."""
+    return tuple(names) + tuple(f"{z}{COUNTY_SUFFIX}" for z in names)
+
+
+ALL_ZONE_NAMES = county_zone_names(ZONE_NAMES_SPLIT)
+# the zones with the proximal (merged-aquifer) form and the raised log_T floor
+PROXIMAL_ZONE_NAMES = ("proximal", "proximal_w", f"proximal{COUNTY_SUFFIX}",
+                       f"proximal_w{COUNTY_SUFFIX}")
+
+
+def zone_labels(split: bool = False, county: bool = False) -> tuple[str, ...]:
+    """The ordered zone names of a zonation: the three easting zones, ``proximal_w`` with
+    the proximal split, then the Changhua copy of each with the county split. Zone id
+    ``i`` is ``zone_labels(...)[i]``."""
+    base = ZONE_NAMES_SPLIT if split else ZONE_NAMES
+    return county_zone_names(base) if county else base
 
 
 def zone_names(n_zones: int = N_ZONES) -> tuple[str, ...]:
-    """The zone names of an ``n_zones`` zonation (3, or 4 with the proximal split)."""
-    if n_zones == N_ZONES:
-        return ZONE_NAMES
-    if n_zones == len(ZONE_NAMES_SPLIT):
-        return ZONE_NAMES_SPLIT
-    raise ValueError(f"only 3 or 4 fan zones are supported, got {n_zones}")
+    """The zone names of an ``n_zones`` zonation: 3, 4 with the proximal split, 6 or 8
+    with the county split on top."""
+    for split in (False, True):
+        for county in (False, True):
+            names = zone_labels(split, county)
+            if n_zones == len(names):
+                return names
+    raise ValueError(f"only 3, 4, 6 or 8 fan zones are supported, got {n_zones}")
 
 
 def collapse_zones(zone: np.ndarray) -> np.ndarray:
     """A zone-id array with the proximal split -> the three-zone ids (``proximal_w`` goes
     back into ``proximal``). The compaction column, scenario zones and river conductance
-    split stay three-zone, and this is how they get their ids."""
+    split stay three-zone, and this is how they get their ids. A county-split map is
+    collapsed by :func:`collapse_county_zones` instead (its id 3 is not ``proximal_w``)."""
     z = np.asarray(zone)
     return np.where(z == PROXIMAL_W, PROXIMAL, z).astype(z.dtype, copy=False)
+
+
+def county_split(zone: np.ndarray, changhua: np.ndarray, n_base: int) -> np.ndarray:
+    """``--zone-county-split``: easting zone ids ``0..n_base-1`` -> the Changhua cells'
+    ids moved to ``id + n_base``. ``changhua`` is the per-cell county flag
+    (``zone_county``)."""
+    z = np.asarray(zone, dtype="int64")
+    ch = np.asarray(changhua).astype(bool)
+    if z.shape != ch.shape:
+        raise ValueError(f"zone {z.shape} and county flag {ch.shape} differ in shape")
+    if z.size and (z.min() < 0 or z.max() >= int(n_base)):
+        raise ValueError(f"zone ids must lie in 0..{int(n_base) - 1} before the county split")
+    return np.where(ch, z + int(n_base), z).astype("int64")
+
+
+def split_county(zone: np.ndarray, n_base: int) -> tuple[np.ndarray, np.ndarray]:
+    """Inverse of :func:`county_split` -> ``(easting zone ids, Changhua flag)``."""
+    z = np.asarray(zone, dtype="int64")
+    if z.size and (z.min() < 0 or z.max() >= 2 * int(n_base)):
+        raise ValueError(f"county-split zone ids must lie in 0..{2 * int(n_base) - 1}")
+    ch = z >= int(n_base)
+    return np.where(ch, z - int(n_base), z), ch
+
+
+def collapse_county_zones(zone: np.ndarray, n_base: int) -> np.ndarray:
+    """A county-split flow zone map -> the column's map: :func:`collapse_zones` on the
+    easting ids (``proximal_w`` back into ``proximal``) with the county kept, i.e. ids
+    0-2 for the rest of the fan and 3-5 for their Changhua copies
+    (``zone_labels(county=True)``)."""
+    base, ch = split_county(zone, n_base)
+    return county_split(collapse_zones(base), ch, N_ZONES)
+
+
+def county_split_weights(w: np.ndarray, changhua: np.ndarray) -> np.ndarray:
+    """``(n, A)`` zone weights (``zone_blend_weights``) -> ``(2n, A)``: a Changhua cell's
+    weights move to the Changhua copies of its zones. Columns still sum to 1, and one-hot
+    weights stay the one-hot of :func:`county_split`."""
+    w = np.asarray(w, dtype="float64")
+    ch = np.asarray(changhua).astype(bool).reshape(-1)
+    if w.ndim != 2 or w.shape[1] != ch.shape[0]:
+        raise ValueError(f"weights {w.shape} do not match {ch.shape[0]} cells")
+    c = ch.astype("float64")[None, :]
+    return np.concatenate([w * (1.0 - c), w * c], axis=0)
+
+
+def fan_band_of(zone: np.ndarray) -> np.ndarray:
+    """The proximal/mid/distal band (ids 0-2) of a column or scenario zone map: the
+    three-zone map unchanged; the four-zone map's ``proximal_w`` (3) and the county map's
+    Changhua copies (3-5) back onto their band (``id % 3``). Scenario ``zones=`` select a
+    band, which is a place on the fan, not a parameter set."""
+    z = np.asarray(zone, dtype="int64")
+    if z.size and (z.min() < 0 or z.max() >= 2 * N_ZONES):
+        raise ValueError(f"a column/scenario zone map has ids 0..{2 * N_ZONES - 1}, got "
+                         f"{int(z.min())}..{int(z.max())}: collapse a county-split flow map "
+                         "first (collapse_county_zones)")
+    return z % N_ZONES
 
 
 def fan_zones(xy: np.ndarray,

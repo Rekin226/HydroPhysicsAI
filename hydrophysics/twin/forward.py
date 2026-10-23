@@ -10,12 +10,10 @@ What one run does, in order:
 1. **Hindcast** the observed record (2012-2022) with the calibrated flow model, from the
    IDW initial head field, under the recorded electricity and recharge -- the same
    rollout the Stage-3 gate scored, so the run carries its own in-sample skill.
-2. **Restart from observations.** At the forecast origin (the last observed month) the
-   model state is nudged toward the IDW field of that month's observed heads,
-   ``h = h_model + gain * (h_obs - h_model)`` per layer, in layers that have wells. This
-   is the assimilation step the architecture names as its second layer: the forecast
-   starts from what was measured, not from wherever the hindcast drifted to. ``gain=1``
-   is a full re-initialisation; ``gain=0`` is a free run.
+2. **Restart from observations.** At the forecast origin (the last observed month),
+   spread the differences between observed and sampled modeled heads, after removing
+   fixed well offsets. Perfect observations preserve the state. ``gain=0`` is a free
+   run; ``--update-method field`` reproduces the historical IDW-field replacement.
 3. **Run forward** for ``horizon`` months under assumed forcing: month-of-year climatology
    of the recorded electricity per policy class and of the recharge, with the scenario's
    multipliers applied (``scenario.PumpingScenario``). Pumping still feeds back on head
@@ -64,11 +62,17 @@ from .calibrate_flow import (
     well_datum_vector,
     zone_tensor,
 )
-from .compaction import VEPColumn, column_param_sets
+from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
 from .flow import FlowModel
 from .inputs import TwinInputs, input_options, load_twin_inputs
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
-from .zones import collapse_zones, column_band_weights, fan_zones, zone_blend_weights
+from .zones import (
+    COUNTY_SUFFIX,
+    N_ZONES,
+    collapse_county_zones,
+    collapse_zones,
+    column_band_weights,
+)
 
 N_LAYERS = 4
 
@@ -165,15 +169,23 @@ def _members_from_gate_csv(path: str) -> dict:
         meta["zone_blend_km"] = float(_cell("zone_blend_km"))
     # opt-in input constructions (2026-09-23): they change h0 / ground_elev / the wells
     for key in ("ic_merged_proximal", "strict_coverage", "no_backfill",
-                "ic_layered_proximal", "proximal_layered"):
+                "ic_layered_proximal", "proximal_layered", "day_weighted_months"):
         if _cell(key) in ("True", "true", "1"):
             meta[key] = True
+    # --zone-county-split (rung R1c, 2026-10-15): the county map's identity travels in
+    # the CSV, so build_model rebuilds (and verifies) the same zones
+    if _cell("zone_county_split") in ("True", "true", "1"):
+        meta["zone_county_split"] = True
+        for key in ("zone_county_sha256", "zone_county_map"):
+            if _cell(key) not in ("", "None"):
+                meta[key] = _cell(key)
     if _cell("ground_elev") not in ("", "None", "wells"):
         meta["ground_elev"] = _cell("ground_elev")
         if _cell("ground_elev_dem_npz") not in ("", "None"):
             meta["ground_elev_dem_npz"] = _cell("ground_elev_dem_npz")
     for key in ("delay_storage", "rivers", "river_set", "sw_recharge", "delay_u0",
-                "aquitard_storage", "sw_components", "river_c_split"):
+                "aquitard_storage", "sw_components", "river_c_split", "extra_abstraction",
+                "extra_abstraction_sha256"):
         if _cell(key) not in ("", "None"):
             meta[key] = _cell(key)
     needs_recipe = (meta.get("rivers", "none") != "none"
@@ -198,7 +210,7 @@ def _members_from_gate_csv(path: str) -> dict:
                 raise ValueError(f"{path}: {key}={meta[key]!r} disagrees with {sib} "
                                  f"({sib_meta.get(key)!r}); they are not the same run")
         for key, v in sib_meta.items():
-            if key.startswith(("river", "dem_", "delay_", "sw_", "aquitard_")):
+            if key.startswith(("river", "dem_", "delay_", "sw_", "aquitard_", "extra_")):
                 meta.setdefault(key, v)
     return {"theta": theta, "meta": meta}
 
@@ -208,30 +220,47 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
 
     ``scalars`` holds the driver parameters that live outside the model (``log_eta``,
     ``log_head_extra``, ``recharge_frac_logit``) as float64 tensors on ``device``.
-    ``zone_of_cell`` is always the three-zone map: a flow model fitted with the proximal
-    split (``zone_boundaries`` "P,D,S") is rebuilt on four zones, and its ids are collapsed
-    for the callers (the compaction column, scenario zones), which stay three-zone.
+    ``zone_of_cell`` is the column's zone map (``zone_county.column_zone_map``): the
+    three-zone map, since a flow model fitted with the proximal split (``zone_boundaries``
+    "P,D,S") is rebuilt on four zones and its ids are collapsed for the callers (the
+    compaction column, scenario zones), which stay three-zone. A ``--zone-county-split``
+    model (rung R1c; ``zone_county_split`` in the meta) is rebuilt on the county-split
+    zones, its county map verified against the recorded ``zone_county_sha256``, and the
+    callers get the six-zone map: ids 0-2 rest of the fan, 3-5 their Changhua copies
+    (``zones.fan_band_of`` gives the band, which is what scenario ``zones=`` select). A
+    theta and a meta that disagree on either split are refused.
     """
-    meta, th = member.meta, member.theta
+    from .zone_county import apply_county_ties, flow_zone_map, flow_zone_weights
+
+    meta = member.meta
+    # --county-tie: a tied Changhua copy is its parent (a no-op otherwise)
+    th = apply_county_ties(member.theta, meta)
     mode = meta.get("param_mode", "zonal")
     proximal_km = 205.0
     zone_of_cell = None
     zone_w = None
+    names: tuple[str, ...] = ()
+    county = bool(meta.get("zone_county_split"))
     if mode == "zonal":
         proximal_km, distal_km, split_km = _parse_zone_boundaries(
             meta.get("zone_boundaries", "205,182"), allow_split=True)
-        # with the opt-in proximal split the flow uses four zone ids; the returned
-        # zone_of_cell (column, scenarios, river split) is the three-zone collapse
-        zone_of_cell = fan_zones(grid.centroids(), proximal_km=proximal_km, distal_km=distal_km,
-                                 split_km=split_km)
         if (split_km is not None) != ("log_T_proximal_w" in th):
             raise ValueError(f"zone_boundaries {meta.get('zone_boundaries')!r} and the theta "
                              "disagree on the proximal split (log_T_proximal_w)")
+        if county != (f"log_T_proximal{COUNTY_SUFFIX}" in th):
+            raise ValueError(f"meta zone_county_split={county} and the theta disagree on the "
+                             f"county split (log_T_proximal{COUNTY_SUFFIX}): rebuilding it "
+                             "on other zones would be a different model")
+        # with the opt-in proximal split the flow uses four zone ids (and with the county
+        # split their Changhua copies); the returned zone_of_cell (column, scenarios) is
+        # the collapse of the proximal split, the county kept
+        zone_of_cell, names = flow_zone_map(grid, meta)
         if float(meta.get("zone_blend_km") or 0.0) > 0.0:
             # --zone-blend-km: the calibrated parameters are a per-cell mix across the
             # mid/distal line; rebuilding them as a step would be a different model
-            zone_w = zone_blend_weights(grid.centroids(), proximal_km, distal_km,
-                                        float(meta["zone_blend_km"]), split_km=split_km)
+            zone_w = flow_zone_weights(grid, meta, float(meta["zone_blend_km"]))
+    elif county:
+        raise ValueError(f"zone_county_split needs param_mode zonal, not {mode!r}")
     boundaries = None
     if meta.get("boundaries", "none") == "coast-apex":
         boundaries = fan_boundaries(grid, proximal_km=proximal_km)
@@ -245,6 +274,9 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         # second-round options (2026-09-23): absent keys are the historical river set
         skip = (boundaries.apex_idx if (meta.get("river_skip_apex") and boundaries is not None)
                 else None)
+        if county and (meta.get("river_c_split") or "group") == "zone":
+            raise ValueError("river_c_split zone does not split its river groups by county; "
+                             "a zone_county_split model cannot carry it")
         rs, sha = build_river_set(
             grid, shp=meta.get("river_shp"), groups=meta.get("river_set",
                                                              "choushui,wu,beigang"),
@@ -252,7 +284,8 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
             stage_depth=float(meta.get("river_stage_depth", 1.0)),
             rbot_depth=float(meta.get("river_rbot_depth", 3.0)),
             edge_buffer_m=meta.get("river_edge_buffer_m"),
-            zone_of_cell=None if zone_of_cell is None else collapse_zones(zone_of_cell),
+            zone_of_cell=(None if zone_of_cell is None or county
+                          else collapse_zones(zone_of_cell)),
             c_split=meta.get("river_c_split") or "group", exclude_idx=skip,
             season_csv=meta.get("river_stage_season"))
         if meta.get("river_groups") and list(rs.names) != list(meta["river_groups"]):
@@ -270,12 +303,10 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
     with torch.no_grad():
         if mode == "zonal":
             zt = zone_tensor(zone_of_cell, device, zone_w)
-            keys = ("log_T_proximal", "log_S_proximal", "log_T_mid", "log_S_mid",
-                    "log_T_distal", "log_S_distal", "log_L_mid", "log_L_distal",
-                    "log_T_proximal_w", "log_S_proximal_w",
-                    # --proximal-layered (2026-09-25): per-layer proximal T/S come in as
-                    # (L, 1) through t(); these learnable leakances replace the constant
-                    "log_L_proximal", "log_L_proximal_w")
+            # every zone's T, S and L, the proximal split's and the county split's copies
+            # included; --proximal-layered (2026-09-25) per-layer proximal T/S come in as
+            # (L, 1) through t(), and its learnable leakances replace the constant
+            keys = [f"{b}_{z}" for z in names for b in ("log_T", "log_S", "log_L")]
             theta_t = {k: t(th[k]) for k in keys if k in th}
             log_T, log_S, log_L = _expand_zonal(theta_t, zt, N_LAYERS)
             model.log_T.copy_(log_T)
@@ -325,11 +356,51 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         scalars["log_sw_scale"] = sw_scale_tensor(th["log_sw_scale"], device=device)
         if meta.get("sw_layer") is not None:
             scalars["sw_layer"] = int(meta["sw_layer"])
+    if meta.get("extra_abstraction"):
+        # --extra-abstraction (rung R1e-pw): no parameter, only a marker so rollout refuses
+        # to run this model without the fixed abstraction it was calibrated with
+        scalars["extra_abstraction"] = str(meta["extra_abstraction"])
     for k in ("log_eta", "log_head_extra", "recharge_frac_logit", "pump_split_logit",
               "return_frac_logit"):
         if k in th:
             scalars[k] = torch.tensor(np.asarray(th[k], dtype="float64"),
                                       dtype=torch.float64, device=device)
+    if "pump_layer_logits" in th:
+        # rung R4: layer shares of the pumped volume (Changhua's own copy with the county map
+        # the calibration recorded)
+        from .calibrate_flow import pump_layer_fractions
+        from .zone_county import county_flags_from_meta
+
+        lch = th.get("pump_layer_logits_ch")
+        flags = county_flags_from_meta(grid, meta) if lch is not None else None
+        if lch is not None and flags is None:
+            raise ValueError("pump_layer_logits_ch needs the calibration's county map")
+        scalars["pump_layer_frac"] = pump_layer_fractions(
+            torch.tensor(np.asarray(th["pump_layer_logits"], dtype="float64"), device=device),
+            None if lch is None else torch.tensor(np.asarray(lch, dtype="float64"),
+                                                  device=device),
+            None if flags is None else torch.as_tensor(np.asarray(flags, dtype=bool),
+                                                       device=device))
+    if "log_tau_ret" in th:
+        scalars["ret_tau"] = torch.exp(torch.tensor(float(th["log_tau_ret"]),
+                                                    dtype=torch.float64, device=device))
+    if "log_eta_ratio_ch" in th:
+        # rung R*: Changhua's pump-efficiency factor, on the county map the calibration
+        # recorded (eta_county_*, or the county split's own map)
+        from .calibrate_flow import eta_by_cell
+        from .zone_county import county_flags_for_grid, county_flags_from_meta
+
+        if meta.get("eta_county_sha256"):
+            flags, _ = county_flags_for_grid(grid, meta.get("eta_county_map"),
+                                             expect_sha256=meta["eta_county_sha256"])
+        else:
+            flags = county_flags_from_meta(grid, meta)
+        if flags is None:
+            raise ValueError("log_eta_ratio_ch needs the calibration's county map")
+        scalars["log_eta"] = eta_by_cell(
+            scalars["log_eta"],
+            torch.tensor(float(th["log_eta_ratio_ch"]), dtype=torch.float64, device=device),
+            torch.as_tensor(np.asarray(flags, dtype=bool), device=device))
     if "spread_km" in th:
         from .spread import pairwise_d2_km, spread_matrix
 
@@ -337,7 +408,11 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
             pairwise_d2_km(grid, device=device),
             torch.tensor(math.log(float(th["spread_km"])), dtype=torch.float64, device=device))
     if zone_of_cell is not None:
-        zone_of_cell = collapse_zones(zone_of_cell)     # a no-op without the proximal split
+        if county:
+            # proximal_w (if any) back into proximal, the Changhua copies kept: ids 0-5
+            zone_of_cell = collapse_county_zones(zone_of_cell, len(names) // 2)
+        else:
+            zone_of_cell = collapse_zones(zone_of_cell)  # a no-op without the proximal split
     return model, scalars, zone_of_cell
 
 
@@ -346,7 +421,7 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
             pump_layer: int = 1, recharge_layer: int = 0,
             sw_field: torch.Tensor | None = None, u0: torch.Tensor | dict | None = None,
             return_state: bool = False, month0: int | None = None,
-            apex_from: torch.Tensor | None = None):
+            apex_from: torch.Tensor | None = None, q_extra: torch.Tensor | None = None):
     """Run the calibrated model over a forcing sequence -> heads ``(L, A, T+1)`` (float64,
     on the model's device). ``E`` and ``recharge_field`` are ``(A, T)``.
 
@@ -367,8 +442,21 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
     ``apex_from`` (2026-09-26, opt-in) prescribes the apex boundary head from that field
     instead of ``h0``. Without it every call re-pins the mountain front to its own starting
     field, so a restarted or nudged segment moves the boundary; ``--apex-hold calibrated``
-    passes the member's month-0 field so the boundary stays the one the fit saw."""
+    passes the member's month-0 field so the boundary stays the one the fit saw.
+
+    ``q_extra`` (2026-10-18, rung R1e-pw) is the fixed extra abstraction ``(L, A, T)``
+    m3/day of a model calibrated with ``--extra-abstraction`` (``extra_hist`` /
+    ``future_extra``); such a model refuses to run without it, like an sw model without
+    its canal field."""
     ext = {}
+    if "extra_abstraction" in scalars:
+        if q_extra is None:
+            raise ValueError("this model was calibrated with --extra-abstraction "
+                             f"({scalars['extra_abstraction']}): pass q_extra ((L, A, T) "
+                             "m3/day, forward.extra_hist / future_extra) to rollout")
+        if q_extra.shape[-1] != E.shape[-1]:
+            raise ValueError(f"q_extra has {q_extra.shape[-1]} months, E has {E.shape[-1]}")
+        ext["pumping"] = q_extra
     if "delay_Sd" in scalars:
         if u0 is None and "delay_du0" in scalars:
             u0 = h0.to(scalars["delay_du0"].device) + scalars["delay_du0"]
@@ -383,6 +471,13 @@ def rollout(model: FlowModel, scalars: dict, h0: torch.Tensor, E: torch.Tensor,
         ext["river_month0"] = int(month0)
     if "log_C_riv" in scalars:
         ext["log_C_riv"] = scalars["log_C_riv"]
+    if "pump_layer_frac" in scalars:
+        ext["pump_layer_frac"] = scalars["pump_layer_frac"]
+    if "ret_tau" in scalars:
+        # the lagged return flow's store travels in the state dict (key "ret")
+        ext["ret_tau"] = scalars["ret_tau"]
+        if u0 is not None and "u0" not in ext:
+            ext["u0"] = u0
     if "log_sw_scale" in scalars:
         if sw_field is None:
             raise ValueError("this model was calibrated with --sw-recharge: pass sw_field "
@@ -477,7 +572,12 @@ def future_forcing(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
 def attach_sw_recharge(inp: TwinInputs, meta: dict, log=print) -> None:
     """Load the canal deliveries a member was calibrated with into ``inp.sw_field`` (in
     place; no-op for a run without ``--sw-recharge``). Every caller of ``rollout`` that
-    rebuilds a member from its theta file needs this, or an sw model refuses to run."""
+    rebuilds a member from its theta file needs this, or an sw model refuses to run.
+
+    It also attaches the other recorded fixed forcings (2026-10-18): the county split of the
+    canal field (``sw_county_split``, with the calibration's verified county map) and the
+    fixed extra abstraction (``extra_abstraction`` into ``inp.extra_q``, its file hash
+    checked)."""
     if meta.get("sw_recharge") and getattr(inp, "sw_field", None) is None:
         from .inputs import load_sw_recharge
 
@@ -485,6 +585,49 @@ def attach_sw_recharge(inp: TwinInputs, meta: dict, log=print) -> None:
         inp.sw_field = load_sw_recharge(meta["sw_recharge"], inp.grid, inp.dates,
                                         components=comp)
         log(f"canal deliveries as calibrated: {meta['sw_recharge']} ({comp})")
+        if meta.get("sw_county_split"):
+            from .inputs import split_sw_by_county
+            from .zone_county import county_flags_from_meta
+
+            flags = county_flags_from_meta(inp.grid, meta)
+            if flags is None:
+                raise ValueError("sw_county_split needs the calibration's county map "
+                                 "(zone_county_split + zone_county_sha256 in the meta)")
+            inp.sw_field = split_sw_by_county(inp.sw_field, flags)
+            inp.sw_county_split = True
+            log(f"  canal fractions split by county: {inp.sw_field.shape[0]} components")
+    if meta.get("extra_abstraction") and getattr(inp, "extra_q", None) is None:
+        import hashlib
+
+        from .inputs import load_extra_abstraction
+
+        path = meta["extra_abstraction"]
+        with open(path, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        want = meta.get("extra_abstraction_sha256")
+        if want and sha != want:
+            raise ValueError(f"{path} has sha256 {sha[:12]}, the calibration recorded "
+                             f"{str(want)[:12]}: not the abstraction it was fitted with")
+        inp.extra_q = load_extra_abstraction(path, inp.grid, inp.dates)
+        log(f"fixed extra abstraction as calibrated: {path}")
+
+
+def extra_hist(inp: TwinInputs) -> torch.Tensor | None:
+    """The record's fixed extra abstraction aligned with ``recharge_field[:, 1:]``
+    (``(L, A, T-1)``), or ``None``."""
+    q = getattr(inp, "extra_q", None)
+    return None if q is None else torch.as_tensor(q, dtype=torch.float64)[..., 1:]
+
+
+def future_extra(inp: TwinInputs, horizon: int) -> torch.Tensor | None:
+    """The fixed extra abstraction past the record: its last month held (persistence, the
+    same rule ``load_extra_abstraction`` applies; no scenario touches it) ->
+    ``(L, A, horizon)``, or ``None``."""
+    q = getattr(inp, "extra_q", None)
+    if q is None:
+        return None
+    last = torch.as_tensor(q, dtype=torch.float64)[..., -1:]
+    return last.expand(*last.shape[:-1], int(horizon)).clone()
 
 
 def sw_hist(inp: TwinInputs) -> torch.Tensor | None:
@@ -565,7 +708,9 @@ def sw_substitution_energy(inp: TwinInputs, scenario: PumpingScenario, horizon: 
     if "log_eta" not in scalars:
         raise ValueError("sw_sub needs a member with a pumping conversion (log_eta)")
     sw = np.asarray(inp.sw_field)
-    delivered = sw[0] if sw.ndim == 3 else sw
+    # with --sw-county-split the delivered field is its Changhua and rest pair
+    delivered = ((sw[0] + sw[1]) if getattr(inp, "sw_county_split", False)
+                 else sw[0] if sw.ndim == 3 else sw)
     clim, fut_dates = climatology(delivered, inp.dates, horizon)
     lost = clim - scenario.apply_sw(clim, fut_dates, zone_of_cell=zone_of_cell)  # m/day
     vol = lost * float(inp.grid.dx) ** 2 * float(dt) * f                   # m3 per solver step
@@ -673,6 +818,18 @@ def nudge_to_observations(inp: TwinInputs, h_model: torch.Tensor, month: int,
 # ---------------------------------------------------------------------------------------
 # compaction
 # ---------------------------------------------------------------------------------------
+def column_from_params(p: dict, device=None) -> VEPColumn:
+    """One ``VEPColumn`` from a column JSON's parameter dict: the historical four VEP
+    keys, plus the aquitard term when the dict carries its keys (``calibrate_coupled
+    --creep aquitard``, 2026-10-11)."""
+    creep = "aquitard" if all(k in p for k in AQUITARD_KEYS) else "vep"
+    c = VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=creep)
+    with torch.no_grad():
+        for k in c.param_keys():
+            getattr(c, k).fill_(float(p[k]))
+    return c
+
+
 class ZonalColumn(torch.nn.Module):
     """One VEP parameter set per fan zone (``calibrate_coupled --configs zonal``), applied
     cell by cell through ``zone_of_cell``. Same call signature as ``VEPColumn`` on the
@@ -681,12 +838,20 @@ class ZonalColumn(torch.nn.Module):
     def __init__(self, params: list[dict], zone_of_cell: np.ndarray, device=None,
                  zone_w: np.ndarray | None = None):
         super().__init__()
+        zarr = np.asarray(zone_of_cell)
+        if zone_w is None and zarr.size and int(zarr.max()) >= len(params):
+            # a cell whose zone has no parameter set would silently compact by zero
+            raise ValueError(f"the zone map has ids up to {int(zarr.max())} but the column "
+                             f"has {len(params)} parameter sets: a column with fewer zones "
+                             "than the flow model (e.g. three-zone on a --zone-county-split "
+                             "model) cannot honour its zonation; refit it with "
+                             "calibrate_coupled on that theta")
+        if zone_w is not None and np.asarray(zone_w).shape[0] != len(params):
+            raise ValueError(f"zone weights have {np.asarray(zone_w).shape[0]} rows but the "
+                             f"column has {len(params)} parameter sets")
         self.cols = torch.nn.ModuleList()
         for p in params:
-            c = VEPColumn(n_sites=1, dt_days=30.0, device=device)
-            with torch.no_grad():
-                for k in ("log_ske", "log_skv", "log_tau", "h_pc0"):
-                    getattr(c, k).fill_(float(p[k]))
+            c = column_from_params(p, device)
             self.cols.append(c)
         self.register_buffer("zone", torch.as_tensor(zone_of_cell, dtype=torch.long,
                                                      device=device))
@@ -753,11 +918,37 @@ def release_fast_startup(p: dict, tau_days: float | None) -> tuple[dict, list[in
     return out, changed
 
 
+def check_column_zonation(p: dict, zone_of_cell: np.ndarray,
+                          county_sha256: str | None = None, label: str = "") -> None:
+    """A zonal column JSON against the zone map it is about to run on: a county-split
+    column (``zone_county_split``, six parameter sets) needs the six-zone map of a
+    ``--zone-county-split`` flow model and the other way round, and when both record it
+    the county map's hash must agree. Refuses rather than run Changhua cells on another
+    zone's parameters."""
+    zarr = np.asarray(zone_of_cell)
+    col_county = bool(p.get("zone_county_split"))
+    map_county = bool(zarr.size) and int(zarr.max()) >= N_ZONES
+    n_cols = len(p.get("zonal") or [])
+    where = f"{label}: " if label else ""
+    if col_county != map_county:
+        raise ValueError(
+            f"{where}the column is {'county-split' if col_county else 'not county-split'} "
+            f"({n_cols} zones) but the flow model's zone map "
+            f"{'is' if map_county else 'is not'} (ids up to {int(zarr.max())}); a column "
+            "pairs with the flow model it was fitted on -- refit it with calibrate_coupled "
+            "on this theta")
+    sha = p.get("zone_county_sha256")
+    if col_county and county_sha256 and sha and str(sha) != str(county_sha256):
+        raise ValueError(f"{where}the column was fitted on county map {str(sha)[:12]}, the "
+                         f"flow model on {str(county_sha256)[:12]}")
+
+
 def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                     epochs: int = 2000, zone_of_cell: np.ndarray | None = None,
                     zone_weights=None, hpc0_fast_days: float | None = None,
                     blend_km: float | None = None,
-                    band_xy: np.ndarray | None = None) -> tuple[torch.nn.Module, dict]:
+                    band_xy: np.ndarray | None = None,
+                    county_sha256: str | None = None) -> tuple[torch.nn.Module, dict]:
     """The compaction column: read it from ``vep_json`` if that exists (a shared
     Stage-2 set, or a per-zone set from ``calibrate_coupled``), else fit the shared
     Stage-2 column on the MLCW sites (``explorer3d.fit_shared_vep``) and write it there.
@@ -770,7 +961,12 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
       and the returned params record it.
     - A banded column (``calibrate_coupled --configs banded``, 2026-09-29; ``banded`` in
       its JSON) is rebuilt from the band centres and kind it records on the cell
-      centroids ``band_xy`` (metres)."""
+      centroids ``band_xy`` (metres).
+    - A per-zone column is checked against ``zone_of_cell`` (``check_column_zonation``):
+      a county-split column (rung R1c) runs only on a county-split map, and an unsplit
+      one only on an unsplit map; ``county_sha256`` (the flow meta's
+      ``zone_county_sha256``) must match the column's when both are known. A banded
+      column is easting-only and refused on a county-split map."""
     if vep_json and os.path.exists(vep_json):
         with open(vep_json) as fh:
             p = json.load(fh)
@@ -791,6 +987,10 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 p["hpc0_released"] = {"tau_days_below": float(thr), "columns": [],
                                       "already_clean": True}
         if p.get("banded"):
+            zarr = None if zone_of_cell is None else np.asarray(zone_of_cell)
+            if zarr is not None and zarr.size and int(zarr.max()) >= N_ZONES:
+                raise ValueError(f"{vep_json}: a banded column varies with easting only and "
+                                 "cannot honour a --zone-county-split flow model's zones")
             if band_xy is None:
                 raise ValueError(f"{vep_json}: a banded column needs band_xy (the cell "
                                  "centroids) to rebuild its per-cell parameters")
@@ -803,6 +1003,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
         if "zonal" in p:
             if zone_of_cell is None:
                 raise ValueError("a zonal column needs zone_of_cell")
+            check_column_zonation(p, zone_of_cell, county_sha256, label=vep_json)
             w_km = float(p.get("zone_blend_km") or 0.0)
             if blend_km is not None:
                 if abs(float(blend_km) - w_km) > 1e-9:
@@ -816,10 +1017,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 zw = zone_weights(w_km)
             return ZonalColumn(p["zonal"], zone_of_cell, device=device,
                                zone_w=zw).to(device), p
-        col = VEPColumn(n_sites=1, dt_days=30.0, device=device)
-        with torch.no_grad():
-            for k in ("log_ske", "log_skv", "log_tau", "h_pc0"):
-                getattr(col, k).fill_(float(p[k]))
+        col = column_from_params(p, device)
         return col.to(device), p
     if ddir is None:
         raise SystemExit("no --vep-json to load and no data dir to fit one from")
@@ -840,7 +1038,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
 def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 2000,
                  zone_of_cell: np.ndarray | None = None, zone_weights=None,
                  hpc0_fast_days: float | None = None, blend_km: float | None = None,
-                 band_xy: np.ndarray | None = None
+                 band_xy: np.ndarray | None = None, county_sha256: str | None = None
                  ) -> list[tuple[str, torch.nn.Module, dict]]:
     """A comma-separated ``--vep-json`` -> ``[(label, column, params)]``, the rheology
     axis of the ensemble (2026-09-23). The creep time constant is not identifiable from
@@ -853,7 +1051,7 @@ def load_columns(vep_jsons: str, ddir: str | None, hf, device, epochs: int = 200
         col, p = load_or_fit_vep(path, ddir, hf, device, epochs=epochs,
                                  zone_of_cell=zone_of_cell, zone_weights=zone_weights,
                                  hpc0_fast_days=hpc0_fast_days, blend_km=blend_km,
-                                 band_xy=band_xy)
+                                 band_xy=band_xy, county_sha256=county_sha256)
         tmax = p.get("tau_max_years")
         label = (f"tau{float(tmax):g}y" if tmax is not None
                  else os.path.basename(os.path.dirname(path)) or os.path.basename(path))
@@ -878,7 +1076,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
                           pump_layer: int = 1, recharge_layer: int = 0,
                           sw: torch.Tensor | None = None, return_state: bool = False,
                           return_u_path: bool = False, datum: np.ndarray | None = None,
-                          apex_from: torch.Tensor | None = None):
+                          apex_from: torch.Tensor | None = None,
+                          update_method: str = "field", q_extra: torch.Tensor | None = None):
     """Hindcast in segments of ``every`` months, nudging the state toward that month's
     observed IDW field by ``gain`` at each segment end (sequential assimilation through
     the record; ``datum``: see :func:`nudge_to_observations` -- it never touches ``h0``,
@@ -895,7 +1094,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
     T = E.shape[-1]
     if gain <= 0.0 or every <= 0:
         res = rollout(model, scalars, h0, E, R, inp.ground_elev, pump_layer, recharge_layer,
-                      sw_field=sw, return_state=return_state or return_u_path)
+                      sw_field=sw, return_state=return_state or return_u_path,
+                      q_extra=q_extra)
         if not return_u_path:
             return res
         heads, u = res
@@ -914,7 +1114,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         seg, u = rollout(model, scalars, h, E[..., t:t + n], R[:, t:t + n], inp.ground_elev,
                          pump_layer, recharge_layer,
                          sw_field=None if sw is None else sw[..., t:t + n], u0=u,
-                         return_state=True, month0=(1 + t) % 12, apex_from=apex_from)
+                         return_state=True, month0=(1 + t) % 12, apex_from=apex_from,
+                         q_extra=None if q_extra is None else q_extra[..., t:t + n])
         if want_path:
             # seg is the solver's own (un-nudged) segment: its replay is the solver's u
             up = delay_state_path(model, scalars, seg, u0=u_in)
@@ -922,7 +1123,8 @@ def hindcast_with_nudging(model: FlowModel, scalars: dict, inp: TwinInputs, h0: 
         out.append(seg[..., 1:])
         t += n
         # month index t in the record (E is the record from month 1 on)
-        h = nudge_to_observations(inp, seg[..., -1], t, gain, datum=datum)
+        h = nudge_to_observations(inp, seg[..., -1], t, gain, datum=datum,
+                                  method=update_method)
         if t < T:
             out[-1] = torch.cat([seg[..., 1:-1], h[..., None]], dim=-1)
     heads = torch.cat(out, dim=-1)
@@ -937,8 +1139,10 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         log=print, hindcast_gain: float = 0.0, hindcast_every: int = 0,
         dump_delay_state: bool = False, restart_taper_km: float | None = None,
         column_heads: str = "restart", save_members: str | None = None,
-        apex_hold: str = "restart") -> dict:
-    """Run every member through every scenario. Opt-in fixes (2026-09-23), defaults off:
+        apex_hold: str = "restart", update_method: str = "innovation") -> dict:
+    """Run every member through every scenario, using innovation updates by default.
+
+    ``update_method="field"`` preserves historical IDW updates. Other opt-in fixes:
 
     - ``restart_taper_km`` tapers the origin restart by distance to the wells (A2,
       :func:`nudge_to_observations`).
@@ -951,6 +1155,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
       layer-2 head (``members_yearly`` in the result; ``main`` writes the sidecar
       ``<out>.members.npz``).
     """
+    if update_method not in ("field", "innovation"):
+        raise ValueError("update_method must be 'field' or 'innovation'")
     if column_heads not in ("restart", "free"):
         raise ValueError(f"column_heads must be 'restart' or 'free', got {column_heads!r}")
     # ``col`` is one column or the rheology axis ``[(label, column), ...]``: every flow
@@ -968,6 +1174,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         E_hist = inp.E_total[:, 1:]
     r_hist = inp.recharge_field[:, 1:]
     sw_rec = sw_hist(inp)
+    q_rec = extra_hist(inp)
     h0 = inp.initial_heads(0, n_layers=N_LAYERS)
     rng = np.random.default_rng(seed)
     ic_noises = [None] + [rng.normal(0.0, ic_sigma, size=inp.obs_h.shape[0])
@@ -1020,10 +1227,11 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
             pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
             return_u_path=True, datum=datum,
-            apex_from=apex0) if dump_u else (*hindcast_with_nudging(
+            apex_from=apex0, update_method=update_method, q_extra=q_rec) if dump_u else (*hindcast_with_nudging(
                 model, scalars, inp, h0, E_hist, r_hist, hindcast_gain, hindcast_every,
                 pump_layer=pump_layer, recharge_layer=recharge_layer, sw=sw_rec,
-                return_state=True, datum=datum, apex_from=apex0), None)
+                return_state=True, datum=datum, apex_from=apex0,
+                update_method=update_method, q_extra=q_rec), None)
         pred = h_hist[inp.obs_layer, inp.obs_idx, 1:].cpu().numpy()
         r2 = _r2(pred, obs_target)
         hindcast_r2.append(r2)
@@ -1032,7 +1240,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         h_end = h_hist[..., -1]
         for ni, noise in enumerate(ic_noises):
             h_start = nudge_to_observations(inp, h_end, origin, gain, noise=noise,
-                                            taper_km=restart_taper_km, datum=datum)
+                                            taper_km=restart_taper_km, datum=datum,
+                                            method=update_method)
             h_col0 = None
             if column_heads == "free":
                 # the model's own end state, plus only the initial-field perturbation this
@@ -1041,7 +1250,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                 if noise is not None:
                     h_col0 = h_end + (h_start - nudge_to_observations(
                         inp, h_end, origin, gain, noise=None, taper_km=restart_taper_km,
-                        datum=datum))
+                        datum=datum, method=update_method))
             for si, (scen, rain) in enumerate(scenarios):
                 E_fut, r_fut, fut_dates = future_forcing(inp, scen, horizon, rain_scale=rain,
                                                          zone_of_cell=zone_of_cell,
@@ -1057,7 +1266,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                        recharge_layer=recharge_layer,
                                        sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                        u0=u_end, return_state=True,
-                                       month0=fut_dates[0].month - 1, apex_from=apex0)
+                                       month0=fut_dates[0].month - 1, apex_from=apex0,
+                                       q_extra=future_extra(inp, horizon))
                 if dump_u:
                     # the hindcast path is the solver's own (un-nudged) replay, so it
                     # joins the projection's replay from the real u_end without a jump
@@ -1076,7 +1286,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                       pump_layer=pump_layer, recharge_layer=recharge_layer,
                                       sw_field=future_sw(inp, scen, horizon, zone_of_cell),
                                       u0=u_end, return_state=True,
-                                      month0=fut_dates[0].month - 1, apex_from=apex0)
+                                      month0=fut_dates[0].month - 1, apex_from=apex0,
+                                      q_extra=future_extra(inp, horizon))
                     heads_col = torch.cat([h_hist, h_fc[..., 1:]], dim=-1)
                 k_mem = mi * n_ic + ni
                 if mem_yr is not None:
@@ -1117,6 +1328,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             "heads_std": heads_std.astype("float32"), "subs_mean": subs_mean.astype("float32"),
             "subs_std": subs_std.astype("float32"),
             "rheology_labels": [c[0] for c in cols],
+            "update_method": update_method,
             "subs_mean_by_rheology": (subs_sum / n_mem).astype("float32"),
             "scenarios": [s.describe() for s, _ in scenarios],
             "scenario_names": [s.name for s, _ in scenarios],
@@ -1188,11 +1400,11 @@ def main(argv=None) -> None:
                          "(no change) is always run first.")
     ap.add_argument("--horizon", type=int, default=120, help="months past the record")
     ap.add_argument("--gain", type=float, default=1.0,
-                    help="observation nudging gain at the forecast origin (1 = restart "
-                         "from the observed field, 0 = free run)")
+                    help="observation nudging gain at the forecast origin (1 = full "
+                         "correction under --update-method, 0 = free run)")
     ap.add_argument("--hindcast-gain", type=float, default=0.0,
                     help="sequential assimilation through the record: nudge the state "
-                         "toward the observed field by this gain every --hindcast-every "
+                         "using --update-method by this gain every --hindcast-every "
                          "months (0 = plain hindcast, the default). The hindcast R2 "
                          "printed per member is then an assimilated score, not a "
                          "free-running one. WARNING (2026-09-19): the compaction column "
@@ -1227,18 +1439,19 @@ def main(argv=None) -> None:
                          "CAVEAT: the column is still driven by the aquifer heads; the "
                          "bed's drainage is clay compaction the column also represents, "
                          "so do not add the two")
-    # --- opt-in artefact fixes (2026-09-23); every default reproduces the runs before ---
+    # Historical artifact options plus the explicit observation-update choice.
     ap.add_argument("--apex-hold", choices=("restart", "calibrated"), default="restart",
                     help="apex (mountain-front) boundary head in restarted/nudged segments "
                          "and the projection: 'restart' re-pins it to each segment's "
                          "starting field (the behaviour before 2026-09-26); "
                          "'calibrated' keeps the month-0 field the calibration used")
     ap.add_argument("--restart-taper-km", type=float, default=None,
-                    help="A2: taper the origin restart by exp(-(d/R)^2), where d is the "
-                         "distance to the nearest well of the same layer with a head in "
-                         "the origin month. Without it, the restart replaces whole layers "
-                         "with the IDW field, and the unmeasured proximal layers 3-4 take "
-                         "heads from distant wells")
+                    help="observation-update radius in km; innovation defaults to 5 km. "
+                         "For legacy field updates, None leaves the IDW replacement "
+                         "untapered and a supplied radius applies exp(-(d/R)^2)")
+    ap.add_argument("--update-method", choices=("innovation", "field"), default="innovation",
+                    help="observation update: innovation (default) preserves a state that "
+                         "matches wells; field reproduces historical IDW-field updates")
     ap.add_argument("--column-heads", choices=("restart", "free"), default="restart",
                     help="A2: which projection drives the compaction column. 'restart' "
                          "(default) uses the restarted heads that are also displayed. "
@@ -1298,17 +1511,24 @@ def main(argv=None) -> None:
 
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir) if cfg.data_dir and os.path.isdir(str(cfg.data_dir)) else None
-    from .zones import fan_zones as _fan_zones
+    from .zone_county import column_zone_map, column_zone_weights
 
-    # the column is three-zone even over a flow model with the proximal split
-    zb = _parse_zone_boundaries(meta.get("zone_boundaries", "205,182"), allow_split=True)[:2]
-    zoc = _fan_zones(inp.grid.centroids(), *zb)
+    # the column is three-zone even over a flow model with the proximal split; a
+    # --zone-county-split model's column has the Changhua copy of each zone (rung R1c).
+    # Every member must share that zonation, since one column serves them all.
+    county_keys = {(bool(m.meta.get("zone_county_split")), m.meta.get("zone_county_sha256"))
+                   for m in members}
+    if len(county_keys) > 1:
+        raise SystemExit(f"the members disagree on the county split {sorted(county_keys)}; "
+                         "one column cannot serve them all")
+    zoc = column_zone_map(inp.grid, meta)
     cent = inp.grid.centroids()
     columns = load_columns(args.vep_json, ddir, inp.hf, device, epochs=args.vep_epochs,
                            zone_of_cell=zoc,
-                           zone_weights=lambda km: zone_blend_weights(cent, *zb, km),
+                           zone_weights=column_zone_weights(inp.grid, meta),
                            hpc0_fast_days=args.column_hpc0_fast_days,
-                           blend_km=args.column_zone_blend_km, band_xy=cent)
+                           blend_km=args.column_zone_blend_km, band_xy=cent,
+                           county_sha256=meta.get("zone_county_sha256"))
     for rlabel, _, vep in columns:
         if vep.get("hpc0_released", {}).get("already_clean"):
             print(f"A1 fix [{rlabel}]: no column with tau < "
@@ -1335,7 +1555,9 @@ def main(argv=None) -> None:
             print(f"VEP column [{rlabel}]: per-zone (" + "; ".join(
                 f"{z}: Ske={math.exp(q['log_ske']):.2e} Skv={math.exp(q['log_skv']):.2e} "
                 f"tau={math.exp(q['log_tau']):.0f} d"
-                for z, q in zip(("prox", "mid", "dist"), vep["zonal"], strict=True))
+                for z, q in zip(("prox", "mid", "dist") if len(vep["zonal"]) == N_ZONES
+                                else vep.get("zone_names") or range(len(vep["zonal"])),
+                                vep["zonal"], strict=True))
                 + ")", flush=True)
         else:
             print(f"VEP column [{rlabel}]: Ske={math.exp(vep['log_ske']):.3e} "
@@ -1349,7 +1571,7 @@ def main(argv=None) -> None:
               recharge_layer=args.recharge_layer, hindcast_gain=args.hindcast_gain,
               hindcast_every=args.hindcast_every, dump_delay_state=args.dump_delay_state,
               restart_taper_km=args.restart_taper_km, column_heads=args.column_heads,
-              apex_hold=args.apex_hold,
+              apex_hold=args.apex_hold, update_method=args.update_method,
               save_members=args.save_members)
     print(f"ran {res['n_members']} members x {len(scenarios)} scenarios x "
           f"{len(res['dates'])} months in {time.perf_counter() - t0:.1f}s", flush=True)
@@ -1407,6 +1629,7 @@ def main(argv=None) -> None:
         # which artefact fixes (2026-09-23) this run used; the app reads it
         forward_options=json.dumps({
             "restart_taper_km": args.restart_taper_km, "column_heads": args.column_heads,
+            "update_method": args.update_method,
             **({"apex_hold": args.apex_hold} if args.apex_hold != "restart" else {}),
             "column_hpc0_fast_days": args.column_hpc0_fast_days,
             "hpc0_released": [c[2].get("hpc0_released") for c in columns],

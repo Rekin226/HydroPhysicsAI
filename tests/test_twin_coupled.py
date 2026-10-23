@@ -53,6 +53,7 @@ def test_shapes_and_sign():
     assert subs[:, -1].mean() > 0
 
 
+@pytest.mark.filterwarnings("error:_cg did not converge")
 def test_gradient_reaches_flow_parameters():
     """A subsidence-only loss must produce non-zero grads on log_T / log_S / log_L.
 

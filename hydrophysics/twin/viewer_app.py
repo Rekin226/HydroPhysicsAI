@@ -247,6 +247,18 @@ def _geometry(fw) -> SimpleNamespace:
         g.gate_all = json.loads(str(fw["gate"]))
     g.zb = [float(v) for v in str(g.gate_all.get("zone_boundaries", "205,182")).split(",")]
     g.zone = fan_zones(g.cent, proximal_km=g.zb[0], distal_km=g.zb[1])
+    # the column's zones (where its parameters jump): the bands, and with a
+    # --zone-county-split model (rung R1c) also the county line, from the calibration's
+    # own verified county map. g.zone stays the band map the page draws.
+    g.zone_col = g.zone
+    if g.gate_all.get("zone_county_split"):
+        from .grid import FanGrid
+        from .zone_county import county_flags_from_meta
+        from .zones import county_split
+
+        ch = county_flags_from_meta(FanGrid(nx=g.nx, ny=g.ny, dx=g.dx, x0=g.x0, y0=g.y0,
+                                            mask=g.mask), g.gate_all)
+        g.zone_col = county_split(g.zone, ch, len(ZONE_NAMES))
     return g
 
 
@@ -666,8 +678,10 @@ def _hsr_block(hsr_csv, hsr_stations_csv, g) -> dict | None:
                                  "ch": round(float(ch[int(d.argmin())]), 2)})
     step = float(np.median(np.diff(ch))) if len(ch) > 1 else 0.25
     # where the rail's gradient reads cells on both sides of a zone line, the gradient is
-    # the model's parameter boundary; the rail tile leaves those points out
-    mixed = prep.zone_mixed(idx[ok], w[ok], g.zone, step, HSR_REACH_KM)
+    # the model's parameter boundary; the rail tile leaves those points out (the county
+    # line too, for a --zone-county-split model: g.zone_col)
+    mixed = prep.zone_mixed(idx[ok], w[ok], getattr(g, "zone_col", g.zone), step,
+                            HSR_REACH_KM)
     return {"ch": np.round(ch, 3).tolist(),
             "x": np.round((h.x_twd97.to_numpy() - g.x0) / 1000.0, 3).tolist(),
             "y": np.round((h.y_twd97.to_numpy() - g.y0) / 1000.0, 3).tolist(),
@@ -1136,6 +1150,13 @@ def _modelcard(fw, g, f, forward_npz, chain, column, temporal, spread_km, public
         "n_wells": ga.get("n_wells"),
         "git_commit": ga.get("git_commit"), "temporal_gate": ga.get("temporal_gate"),
         "zone_boundaries": g.zb, "bounds_at": n_at, "bounds_tracked": n_tr,
+        # --zone-county-split (rung R1c): Changhua has its own parameters (absent for an
+        # unsplit model, whose card is unchanged)
+        **({"zone_county_split": True,
+            "zone_county_n_changhua": ga.get("zone_county_n_changhua"),
+            "zone_county_tied": ga.get("zone_county_tied") or [],
+            "zone_county_copy_sd": ga.get("zone_county_copy_sd")}
+           if ga.get("zone_county_split") else {}),
         "spread_at_bound": bool(bh.get("global", {}).get("log_spread_km", {}).get("hi", 0)),
         "n_members": int(fw["n_members"]) if "n_members" in fw.files else None,
         "hindcast_r2": [round(float(v), 4) for v in fw["hindcast_r2"]]
@@ -1167,7 +1188,12 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           prev_temporal: str | None = DEFAULT_PREV_TEMPORAL,
           rescore_csv: str | None = DEFAULT_RESCORE,
           three: str = "inline", public: bool = True, max_bytes: int | None = None,
-          observations_csv: str | None = None, challenge_json: str | None = None) -> dict:
+          observations_csv: str | None = None, challenge_json: str | None = None,
+          validation_protocol: str | None = None,
+          validation_predictions: str | None = None,
+          coverage_json: str | None = None, prospective_json: str | None = None,
+          ring_holdout_json: str | None = None, hybrid_json: str | None = None,
+          hybrid_registration: str | None = None, deep_piles_json: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1303,6 +1329,13 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                   "stations", "scored_months", "forecast_origin", "end_exclusive",
                   "prospective_validation", "causal_policy_validation", "qc")
         modelcard["new_data_challenge"] = {k: challenge[k] for k in fields}
+    for key, block in (("coverage", _coverage_block(coverage_json, forward_npz)),
+                       ("prospective", _prospective_block(prospective_json, forward_npz)),
+                       ("ring_holdout", _ring_holdout_block(ring_holdout_json)),
+                       ("hybrid", _hybrid_block(hybrid_json, forward_npz, hybrid_registration)),
+                       ("deep_piles", _deep_pile_block(deep_piles_json, forward_npz))):
+        if block is not None:
+            modelcard[key] = block
     if rheo_npz == "auto":
         rheo_npz = forward_npz if len(f.rheo_labels) > 1 else None
     rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
@@ -1366,7 +1399,14 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     payload["release"] = provenance({
         "forward": forward_npz, "basis": basis_npz, "theta": theta_json,
         "observations": observations_csv,
-        "new_data_challenge": challenge_json,
+        "validation_protocol": validation_protocol,
+        "validation_predictions": validation_predictions,
+        "new_data_challenge": challenge_json, "coverage": coverage_json,
+        "prospective": prospective_json,
+        "ring_holdout": ring_holdout_json if ring_holdout_json and os.path.exists(
+            ring_holdout_json) else None,
+        "hybrid": hybrid_json, "hybrid_registration": hybrid_registration,
+        "deep_piles": deep_piles_json if deep_piles_json and os.path.exists(deep_piles_json) else None,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1400,6 +1440,113 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     return payload
 
 
+def _read_report(path: str | None, forward_npz: str | None = None, what: str = "report"):
+    """A JSON evidence report; None when no path is given. A report that names the forward
+    run it scored (``model_sha256``) must name this one."""
+    if not path:
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    if forward_npz is not None and report.get("model_sha256") not in (None, sha256(forward_npz)):
+        raise ValueError(f"The {what} does not match the supplied forward run")
+    return report
+
+
+def _coverage_block(path: str | None, forward_npz: str | None) -> dict | None:
+    """What twin.coverage found: how often the 90 % band of the runs held the observations.
+
+    Only the numbers the page quotes are kept; the page prints them, it computes nothing."""
+    report = _read_report(path, forward_npz, "coverage report")
+    if report is None:
+        return None
+    metrics = report["metrics"]
+    ens, comb = metrics["model_ensemble"], metrics["model_combined"]
+    return {"picp_90": float(ens["picp_90"]), "inflation_90": float(ens["inflation_90"]),
+            "combined_picp_90": float(comb["picp_90"]), "stations": int(report["stations"]),
+            "scored_months": int(report["scored_months"]),
+            "forecast_origin": report.get("forecast_origin"),
+            "end_exclusive": report.get("end_exclusive"),
+            "prospective_validation": bool(report.get("prospective_validation", False))}
+
+
+def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:
+    """twin.prospective's manifest, with the test window from protocol.json beside it."""
+    manifest = _read_report(path, forward_npz, "prospective manifest")
+    if manifest is None:
+        return None
+    out = {"registered_on": manifest["registered_on"], "stations": int(manifest["stations"]),
+           "test_start": None, "test_end": None, "result": "pending"}
+    protocol = os.path.join(os.path.dirname(path), "protocol.json")
+    if os.path.exists(protocol):
+        with open(protocol) as handle:
+            proto = json.load(handle)
+        out["test_start"], out["test_end"] = proto.get("test_start"), proto.get("test_end")
+    return out
+
+
+def _hybrid_block(path: str | None, forward_npz: str | None,
+                  registration: str | None) -> dict | None:
+    """twin.hybrid's retrospective score (sha-checked against the forward run) and, when
+    given, the manifest of its prospective registration (hashed on its own parameters)."""
+    report = _read_report(path, forward_npz, "hybrid report")
+    if report is None:
+        return None
+    m, r = report["metrics"], report["rmse_ratio_vs_clim"]
+    out = {"rmse_stat": m["stat"]["rmse_m"], "rmse_clim": m["clim"]["rmse_m"],
+           "rmse_model": m["model_datum"]["rmse_m"], "ratio_stat": r["stat"],
+           "ratio_phys": r["phys"], "ratio_mix": r["mix"],
+           "per_year": {y: {"stat": v["stat"], "clim": v["clim"], "model": v["model_datum"]}
+                        for y, v in report["per_year_rmse_m"].items()},
+           "picp_90_stat": report["interval_90_coverage_with_fitted_anomaly_sd"]["stat"],
+           "stations": int(report["stations"]), "scored_months": int(report["scored_months"]),
+           "forecast_origin": report["forecast_origin"], "end_exclusive": report["end_exclusive"],
+           "registration": None}
+    if registration and os.path.exists(registration):
+        with open(registration) as handle:
+            manifest = json.load(handle)
+        reg = {"registered_on": manifest["registered_on"], "stations": int(manifest["stations"]),
+               "test_start": None, "test_end": None}
+        protocol = os.path.join(os.path.dirname(registration), "protocol.json")
+        if os.path.exists(protocol):
+            with open(protocol) as handle:
+                proto = json.load(handle)
+            reg["test_start"], reg["test_end"] = proto.get("test_start"), proto.get("test_end")
+        out["registration"] = reg
+    return out
+
+
+def _ring_holdout_block(path: str | None) -> dict | None:
+    """twin.ring_holdout's report; absent file or no path means no line on the page."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    rings = report["rings"]
+    return {"rings": {"n_sites": int(rings["n_sites"]), "cum": rings["cum"],
+                      "rate": rings.get("rate")},
+            "gnss": report.get("gnss"), "window": report.get("window"),
+            # present when the cumulative is not referenced across the rings' 2022 gap
+            "max_ref_age_days": report.get("max_ref_age_days"),
+            "independence": [str(x) for x in report.get("independence", [])]}
+
+
+def _deep_pile_block(path: str | None, forward_npz: str | None) -> dict | None:
+    """twin.deep_pile_holdout's report (sha-checked against the forward run): the frozen
+    column against the deep benchmarks printed in the WRA monthly reports."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    if forward_npz and report.get("forward_sha256") != sha256(forward_npz):
+        raise ValueError("Deep-pile report does not match the supplied forward run")
+    sc = report["scores"]
+    return {"n_sites": int(sc["n_sites"]), "window": sc["window"], "cum": sc["cum"],
+            "cum_deep": sc.get("cum_deep"), "after_feeds": sc.get("after_feeds"),
+            "n_verified_values": int(report.get("n_verified_values", 0)),
+            "n_values": int(report.get("n_values", 0)),
+            "independence": [str(x) for x in report.get("independence", [])]}
+
+
 def _render(payload: dict, three: str, log=print) -> str:
     with open(TEMPLATE, encoding="utf-8") as fh:
         page = fh.read()
@@ -1411,7 +1558,9 @@ def _render(payload: dict, three: str, log=print) -> str:
         src = os.environ.get("TWIN_THREE_JS", THREE_LOCAL)
         if os.path.exists(src):
             with open(src, encoding="utf-8") as fh:
-                inline = "<script>" + fh.read() + "</script>"
+                # evaluated by the page when the 3D drawer first opens, not on load
+                inline = ('<script type="text/plain" id="three-src">'
+                          + fh.read().replace("</script", "<\\/script") + "</script>")
         else:
             raise FileNotFoundError(f"Offline renderer missing: {src}; use --three none "
                                     "for a 2D-only page or explicitly choose --three cdn")
@@ -1599,6 +1748,20 @@ def main(argv=None) -> None:
     ap.add_argument("--three", choices=("cdn", "inline", "none"), default="inline")
     ap.add_argument("--observations", help="QC observation CSV already identified by the forward run")
     ap.add_argument("--challenge", help="Frozen-model new-data challenge report, shown as aggregates")
+    ap.add_argument("--validation-protocol", help="Protocol bound to the update acceptance report")
+    ap.add_argument("--validation-predictions", help="Predictions bound to update acceptance")
+    ap.add_argument("--coverage", help="twin.coverage report.json: how often the 90 %% band "
+                                       "of the runs held the observations")
+    ap.add_argument("--prospective", help="twin.prospective manifest.json (protocol.json "
+                                          "beside it gives the test window)")
+    ap.add_argument("--ring-holdout", help="twin.ring_holdout report.json; the line is "
+                                           "omitted when the file does not exist")
+    ap.add_argument("--hybrid", help="twin.hybrid score report.json (statistical layer on "
+                                     "the frozen run; must match --forward)")
+    ap.add_argument("--hybrid-registration", help="twin.hybrid register manifest.json")
+    ap.add_argument("--deep-piles", help="twin.deep_pile_holdout report.json (frozen column "
+                                         "against the printed deep benchmarks; must match "
+                                         "--forward); omitted when the file does not exist")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1618,7 +1781,13 @@ def main(argv=None) -> None:
           rheo_column_csv=opt(args.rheo_column_csv), prev_dir=opt(args.prev_dir),
           prev_temporal=opt(args.prev_temporal), rescore_csv=opt(args.rescore_csv),
           three=args.three, public=not args.private, observations_csv=args.observations,
+          validation_protocol=args.validation_protocol,
+          validation_predictions=args.validation_predictions,
           challenge_json=args.challenge,
+          coverage_json=args.coverage,
+          prospective_json=args.prospective, ring_holdout_json=args.ring_holdout,
+          hybrid_json=opt(args.hybrid), hybrid_registration=opt(args.hybrid_registration),
+          deep_piles_json=opt(args.deep_piles),
           log=lambda s: print(s, flush=True))
 
 

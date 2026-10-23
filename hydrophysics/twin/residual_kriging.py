@@ -297,7 +297,7 @@ def fold_model_heads(run_dir: str, device: str = "cpu", log=print) -> dict:
 
     from .forward import N_LAYERS, build_model, hindcast_with_nudging, load_members, sw_hist
     from .inputs import input_options, load_twin_inputs
-    from .zones import fan_zones
+    from .zone_county import flow_zone_map
 
     torch.set_grad_enabled(False)
     theta_p = os.path.join(run_dir, "stage3_theta.json")
@@ -335,13 +335,14 @@ def fold_model_heads(run_dir: str, device: str = "cpu", log=print) -> dict:
         check[f] = float(np.nanmax(np.abs(heads[f][pe["entry"][sel]] - pe["pred"][sel])))
         log(f"  fold {f}: hindcast {time.perf_counter() - t0:.1f}s, rebuilt vs dumped "
             f"held-out prediction max |diff| {check[f]:.2e} m")
-    zb = [float(v) for v in str(meta.get("zone_boundaries", "205,182")).split(",")]
     cell_xy = inp.grid.centroids()[inp.obs_idx]
-    zone = fan_zones(cell_xy, proximal_km=zb[0], distal_km=zb[1],
-                     split_km=zb[2] if len(zb) > 2 else None)
+    # the calibration's own zones at the wells' cells: the proximal split, and with
+    # --zone-county-split (rung R1c) the Changhua copies, verified against the meta
+    zone_all, znames = flow_zone_map(inp.grid, meta)
+    zone = zone_all[inp.obs_idx]
     return {"model": heads, "obs": obs, "cell_xy": cell_xy, "layer": inp.obs_layer,
-            "zone": zone, "sids": np.asarray(inp.sids), "fold_of": fold_of,
-            "check": check, "per_entry": pe}
+            "zone": zone, "n_zones": np.int64(len(znames)), "sids": np.asarray(inp.sids),
+            "fold_of": fold_of, "check": check, "per_entry": pe}
 
 
 def evaluate(fm: dict, kriging: bool = True, power: float = IDW_POWER) -> dict:
@@ -644,7 +645,8 @@ def main(argv=None) -> None:
                             check_json=json.dumps(fm["check"]),
                             **{f"pe_{k}": v for k, v in fm["per_entry"].items()})
     pe = fm["per_entry"]
-    znames = _zn(int(fm["zone"].max()) + 1 if fm["zone"].max() >= 3 else 3)
+    znames = (_zn(int(fm["n_zones"])) if "n_zones" in fm      # caches before R1c lack it
+              else _zn(int(fm["zone"].max()) + 1 if fm["zone"].max() >= 3 else 3))
     zone_e = fm["zone"][pe["entry"]]
     wells, groups = diagnose(pe, zone_e, znames)
     wells.insert(1, "sid", fm["sids"][pe["entry"]])

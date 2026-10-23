@@ -18,6 +18,10 @@ Configurations (the ablation the design spec asked for):
 - ``weighted`` -- one global set plus learnable softmax weights over the four aquifers, so
                  the data say which layers drive compaction (``CoupledTwin.driver=weighted``).
 - ``zonal``    -- one parameter set per fan zone (proximal/mid/distal), layer-mean head.
+                 Over a ``--zone-county-split`` flow model (rung R1c) every zone has a
+                 Changhua copy, so the column has six parameter sets and the Changhua
+                 leveling benchmarks and rings get their own (the JSON records
+                 ``zone_county_split`` and the county map's hash).
 - ``banded``   -- (opt-in, 2026-09-29) one parameter set per band along the down-fan
                  (easting) axis, ``--n-bands`` bands mixed per cell by hat weights, with a
                  smoothness penalty ``--band-lambda`` on neighbouring bands. It targets the
@@ -60,24 +64,25 @@ from ..config import Config
 from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
 from .calibrate_flow import set_compile_matvec
-from .compaction import VEPColumn, column_param_sets
+from .compaction import AQUITARD_BOUNDS, CREEP_MODES, VEPColumn, column_param_sets
 from .forward import (
     N_LAYERS,
     attach_sw_recharge,
     blended_column,
     build_model,
+    extra_hist,
     load_members,
     rollout,
     sw_hist,
 )
 from .inputs import input_options, load_twin_inputs
+from .zone_county import column_zone_names, column_zone_weights
 from .zones import (
     BAND_KINDS,
     N_ZONES,
     band_centres_km,
     band_weights,
     fan_zones,
-    zone_blend_weights,
 )
 
 TAU_MAX_YEARS: float | None = None      # set by --tau-max-years; None = the record length
@@ -100,6 +105,9 @@ BAND_KIND: str = "hat"
 # screened behaviour); "cell" also caps slow bands next to fast ones so that no hat cell
 # has tau < D with h_pc0 > 0 (``_guard_hpc0_banded``)
 BAND_HPC0_GUARD: str = "band"
+# --creep (opt-in, 2026-10-11): "aquitard" adds compaction.aquitard_compaction's delayed
+# drainage term to every column (shared and zonal configs); "vep" is the historical column
+CREEP: str = "vep"
 
 
 def column_constraints() -> dict:
@@ -140,6 +148,9 @@ def _clamp_column(col: VEPColumn, T: int) -> None:
             col.log_ske.copy_(torch.minimum(col.log_ske,
                                             col.log_skv + math.log(float(SKE_SKV_MAX))))
         col.log_tau.clamp_(min=math.log(tau_min), max=math.log(tau_max))
+        if col.creep == "aquitard":
+            for k, (lo, hi) in AQUITARD_BOUNDS.items():
+                getattr(col, k).clamp_(min=lo, max=hi)
 
 
 class _WeightedColumn(nn.Module):
@@ -298,14 +309,18 @@ def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -
     return model(drv)
 
 
-def _make(config: str, device) -> nn.Module:
+def _make(config: str, device, n_zones: int = N_ZONES) -> nn.Module:
+    """A fresh column of ``config``; ``n_zones`` is the zonal config's number of parameter
+    sets (3, or 6 over a ``--zone-county-split`` flow model)."""
+    if CREEP != "vep" and config not in ("shared", "zonal"):
+        raise ValueError(f"--creep {CREEP} is implemented for the shared and zonal configs only")
     if config == "shared":
-        return VEPColumn(n_sites=1, dt_days=30.0, device=device).to(device)
+        return VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP).to(device)
     if config == "weighted":
         return _WeightedColumn(N_LAYERS, device=device).to(device)
     if config == "zonal":
-        return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device)
-                              for _ in range(N_ZONES)]).to(device)
+        return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP)
+                              for _ in range(int(n_zones))]).to(device)
     if config == "banded":
         return _BandedColumns(N_BANDS, BAND_LAMBDA, device=device, kind=BAND_KIND).to(device)
     raise ValueError(config)
@@ -389,22 +404,92 @@ def _rezero(pred: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def kfold_sites(config: str, H, OBS, M, Z, epochs, lr, device, n_folds: int = 5,
-                seed: int = 0, rezero: bool = True, make=None) -> float:
+                seed: int = 0, rezero: bool = True, make=None,
+                n_zones: int = N_ZONES, return_preds: bool = False):
     """Site-grouped k-fold R2. ``make(keep)`` (optional) returns the fold's starting
     model from the kept sites only (the banded column's zonal warm start); by default
-    each fold starts from ``_make(config)``."""
+    each fold starts from ``_make(config, n_zones=n_zones)``. ``return_preds``: also the
+    out-of-fold predictions, ``(r2, preds)``."""
     n = H.shape[0]
     order = np.random.default_rng(seed).permutation(n)
     folds = np.array_split(order, n_folds)
     preds = torch.zeros_like(OBS)
     for held in folds:
         keep = np.setdiff1d(np.arange(n), held)
-        model = _make(config, device) if make is None else make(keep)
+        model = _make(config, device, n_zones) if make is None else make(keep)
         _fit(model, H[keep], OBS[keep], M[keep], Z[keep], epochs, lr, rezero=rezero)
         with torch.no_grad():
             p = _predict(model, H[held], Z[held])
             preds[held] = _rezero(p, M[held]) if rezero else p
-    return _r2(preds.cpu().numpy(), OBS.cpu().numpy(), M.cpu().numpy().astype(bool))
+    r2 = _r2(preds.cpu().numpy(), OBS.cpu().numpy(), M.cpu().numpy().astype(bool))
+    return (r2, preds) if return_preds else r2
+
+
+def oof_by_zone(preds: np.ndarray, obs: np.ndarray, mask: np.ndarray, zone: np.ndarray,
+                names: tuple[str, ...]) -> dict:
+    """Out-of-fold leveling scores per column zone and per county (a ``--zone-county-split``
+    report beside the pooled gate R2, which Yunlin's larger signal dominates): benchmarks,
+    R2 and RMSE (m) of the masked entries. ``zone`` is each benchmark's zone id (the
+    weights' argmax for blended zones)."""
+    zone = np.asarray(zone)
+    if zone.ndim == 2:
+        zone = zone.argmax(axis=1)
+    mask = np.asarray(mask).astype(bool)
+
+    def score(sel: np.ndarray) -> dict:
+        m = mask & sel[:, None]
+        if not m.any():
+            return {"benchmarks": int(sel.sum()), "r2": None, "rmse_m": None}
+        return {"benchmarks": int(sel.sum()), "r2": _r2(preds, obs, m),
+                "rmse_m": float(np.sqrt(((preds[m] - obs[m]) ** 2).mean()))}
+
+    out = {name: score(zone == i) for i, name in enumerate(names)}
+    ch = np.array([names[int(z)].endswith("_changhua") for z in zone], dtype=bool)
+    out["county:changhua"] = score(ch)
+    out["county:rest"] = score(~ch)
+    return out
+
+
+def county_split_ids(zone: np.ndarray, changhua: np.ndarray,
+                     names: tuple[str, ...]) -> tuple[np.ndarray, tuple[str, ...]]:
+    """Zone ids and names of an UNSPLIT column re-labelled by county, for the report only:
+    ``zone`` (or blend weights, by argmax) plus ``len(names)`` where ``changhua``, and the
+    names of the split column (``mid`` -> ``mid_changhua``), so an unsplit model's
+    out-of-fold leveling scores line up with a ``--zone-county-split`` model's."""
+    zone = np.asarray(zone)
+    if zone.ndim == 2:
+        zone = zone.argmax(axis=1)
+    ch = np.asarray(changhua, dtype=bool)
+    if ch.shape != zone.shape:
+        raise ValueError(f"county flags {ch.shape} do not match the zone ids {zone.shape}")
+    n = len(names)
+    return (zone.astype(np.int64) + n * ch.astype(np.int64),
+            tuple(names) + tuple(f"{z}_changhua" for z in names))
+
+
+def county_report_unsplit(ddir: str, inp, heads: np.ndarray, zone: np.ndarray,
+                          names: tuple[str, ...], preds: np.ndarray, obs: np.ndarray,
+                          mask: np.ndarray) -> dict | None:
+    """Per-county out-of-fold leveling scores of a column fitted WITHOUT the county split
+    (rung R1c's like-for-like baseline: the same seeded folds, scored per county and
+    zone with the default county map). Report only: never changes the fit, and a missing
+    county map skips the report instead of failing the run."""
+    from .zone_county import DEFAULT_MAP, county_flags_for_grid
+
+    try:
+        flags, source = county_flags_for_grid(inp.grid, DEFAULT_MAP)
+    except Exception as exc:  # noqa: BLE001 - a report must not fail a column fit
+        print(f"    county report skipped: {exc}", flush=True)
+        return None
+    # each benchmark's cell: the zone map replaced by the cell index (as the banded
+    # column does), rows in the same order as the fit's
+    cells = np.asarray(leveling_rows(ddir, inp, heads,
+                                     np.arange(inp.grid.n_active))[3]).astype(np.int64)
+    ids, split_names = county_split_ids(zone, np.asarray(flags, dtype=bool)[cells], names)
+    rep = oof_by_zone(preds, obs, mask, ids, split_names)
+    rep["county_map"] = source
+    rep["report_only"] = "unsplit column scored per county; not a gate"
+    return rep
 
 
 def _r2(p: np.ndarray, o: np.ndarray, m: np.ndarray) -> float:
@@ -412,12 +497,12 @@ def _r2(p: np.ndarray, o: np.ndarray, m: np.ndarray) -> float:
     return 1.0 - float(((o - p) ** 2).sum()) / max(float(((o - o.mean()) ** 2).sum()), 1e-12)
 
 
-def loso(config: str, H, OBS, M, Z, epochs, lr, device) -> float:
+def loso(config: str, H, OBS, M, Z, epochs, lr, device, n_zones: int = N_ZONES) -> float:
     preds = torch.zeros_like(OBS)                 # on OBS's device; numpy only at the end
     n = H.shape[0]
     for held in range(n):
         keep = [i for i in range(n) if i != held]
-        model = _make(config, device)
+        model = _make(config, device, n_zones)
         _fit(model, H[keep], OBS[keep], M[keep], Z[keep] if Z is not None else None, epochs, lr)
         with torch.no_grad():
             preds[held] = _predict(model, H[held:held + 1], Z[held:held + 1])[0]
@@ -426,8 +511,7 @@ def loso(config: str, H, OBS, M, Z, epochs, lr, device) -> float:
 
 def column_json(model: nn.Module) -> dict:
     def one(c: VEPColumn) -> dict:
-        return {k: float(getattr(c, k).detach().cpu().reshape(-1)[0])
-                for k in ("log_ske", "log_skv", "log_tau", "h_pc0")}
+        return {k: float(getattr(c, k).detach().cpu().reshape(-1)[0]) for k in c.param_keys()}
     if isinstance(model, _WeightedColumn):
         return {**one(model.col), "layer_weights": model.weights().tolist()}
     if isinstance(model, _BandedColumns):
@@ -460,6 +544,9 @@ def main(argv=None) -> None:
                     help="calibration target: the 14 MLCW rings (Stage-2 convention) or "
                          "the ~800 leveling benchmarks with site-grouped 5-fold scoring")
     ap.add_argument("--n-folds", type=int, default=5)
+    ap.add_argument("--seed", type=int, default=0,
+                    help="seed of the leveling site folds (default 0, every run before "
+                         "2026-10-19); a fresh-partition confirmation passes a new one")
     ap.add_argument("--tau-max-years", type=float, default=None,
                     help="ceiling on the viscous time constant (default: the record "
                          "length); the mid-zone column sits on that ceiling")
@@ -508,6 +595,11 @@ def main(argv=None) -> None:
     ap.add_argument("--band-range-km", default=None,
                     help="banded config: 'lo,hi' easting of the first and last band "
                          "centre, km (default: the westmost and eastmost cells)")
+    ap.add_argument("--creep", choices=CREEP_MODES, default="vep",
+                    help="column rheology: 'vep' (historical) or 'aquitard', which adds the "
+                         "delayed-drainage term (compaction.aquitard_compaction) whose rate "
+                         "depends on the head level; shared and zonal configs. Recorded as "
+                         "'creep' in the column JSON, which twin.forward reads")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -519,7 +611,8 @@ def main(argv=None) -> None:
 
     set_compile_matvec(args.compile_matvec)
     global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
-    global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD
+    global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD, CREEP
+    CREEP = args.creep
     N_BANDS, BAND_LAMBDA = int(args.n_bands), float(args.band_lambda)
     BAND_KIND, BAND_HPC0_GUARD = args.band_kind, args.band_hpc0_guard
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
@@ -545,6 +638,12 @@ def main(argv=None) -> None:
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir)
     member = load_members([args.theta])[0]
+    county = bool(member.meta.get("zone_county_split"))
+    if county and "banded" in configs:
+        # bands vary with easting only; they would hand Changhua the rest of the fan's
+        # column, which is what the county split exists to test
+        raise SystemExit("--configs banded cannot honour the theta's --zone-county-split "
+                         "(its bands follow easting only); use shared/weighted/zonal")
     inp = load_twin_inputs(dx=args.dx, meter_filter=member.meta.get("meter_filter", "none"),
                            cap_duty=float(member.meta.get("cap_duty", 1.0)),
                            **input_options(member.meta))
@@ -558,21 +657,29 @@ def main(argv=None) -> None:
     t0 = time.perf_counter()
     attach_sw_recharge(inp, member.meta)
     heads = rollout(model, scalars, inp.initial_heads(0), E, inp.recharge_field[:, 1:],
-                    inp.ground_elev, sw_field=sw_hist(inp)).cpu().numpy()  # (L, A, T)
+                    inp.ground_elev, sw_field=sw_hist(inp),
+                    q_extra=extra_hist(inp)).cpu().numpy()  # (L, A, T)
     print(f"hindcast heads in {time.perf_counter() - t0:.1f}s", flush=True)
     if zone_of_cell is None:
         zone_of_cell = fan_zones(inp.grid.centroids())
-    # per-cell zone rows: the zone id, or with --zone-blend-km the (A, N_ZONES) weights
+    # the column's zones: three, or with the flow model's --zone-county-split the
+    # Changhua copy of each (build_model returns that map, verified against the meta)
+    col_names = column_zone_names(member.meta)
+    n_col_zones = len(col_names)
+    if int(np.max(zone_of_cell)) >= n_col_zones:
+        raise SystemExit(f"zone map ids up to {int(np.max(zone_of_cell))} exceed the column's "
+                         f"{n_col_zones} zones {col_names}")
+    if county:
+        print(f"--zone-county-split theta: the zonal column has {n_col_zones} zones "
+              f"{col_names}", flush=True)
+    # per-cell zone rows: the zone id, or with --zone-blend-km the (A, n_zones) weights
     zone_rows = zone_of_cell
     if args.zone_blend_km and args.zone_blend_km > 0.0:
-        from .calibrate_flow import _parse_zone_boundaries
-
-        # the column is three-zone even over a flow model with the proximal split
-        zb = _parse_zone_boundaries(member.meta.get("zone_boundaries", "205,182"),
-                                    allow_split=True)[:2]
-        zone_rows = zone_blend_weights(inp.grid.centroids(), *zb, args.zone_blend_km).T
+        # the column is three-zone even over a flow model with the proximal split (and
+        # split by county with the county split)
+        zone_rows = column_zone_weights(inp.grid, member.meta)(args.zone_blend_km).T
         print(f"column zones blended over {args.zone_blend_km:g} km across the "
-              f"{zb[1]:g} km line", flush=True)
+              f"mid/distal line", flush=True)
     ztype = torch.float32 if np.asarray(zone_rows).dtype.kind == "f" else torch.long
 
     Hr, OBSr, Mr, Zr, names_r = site_rows(ddir, inp, heads, zone_rows)
@@ -639,23 +746,41 @@ def main(argv=None) -> None:
         t0 = time.perf_counter()
         Zt, Zr, zone_all, ztype = by_config.get(config, by_config[None])
         band_warm = config == "banded" and args.band_init == "zonal"
-        model_c = warm() if band_warm else _make(config, device)
+        model_c = warm() if band_warm else _make(config, device, n_col_zones)
         loss = _fit(model_c, Ht, Ot, Mt, Zt, args.epochs, args.lr, rezero=rezero)
         with torch.no_grad():
             p_ins = _predict(model_c, Ht, Zt)
             p_ins = _rezero(p_ins, Mt) if rezero else p_ins
             ins = _r2(p_ins.cpu().numpy(), OBS, M.astype(bool))
+        by_zone = None
         if args.target == "leveling":
-            r2_loso = kfold_sites(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
-                                  n_folds=args.n_folds, rezero=True,
-                                  make=warm if band_warm else None)
+            r2_loso, oof = kfold_sites(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
+                                       n_folds=args.n_folds, seed=args.seed, rezero=True,
+                                       make=warm if band_warm else None,
+                                       n_zones=n_col_zones, return_preds=True)
+            if county and config == "zonal":
+                # reported beside the pooled gate R2, never a gate of its own; the rings
+                # (independent check) cover mid_changhua only
+                by_zone = oof_by_zone(oof.cpu().numpy(), OBS, M, Zt.cpu().numpy(),
+                                      col_names)
+            elif config == "zonal":
+                # an unsplit column's like-for-like baseline for R1c: same seeded folds,
+                # scored per county with the default county map (report only)
+                by_zone = county_report_unsplit(ddir, inp, heads, Zt.cpu().numpy(), col_names,
+                                                oof.cpu().numpy(), OBS, M)
+            for zn, sc in (by_zone or {}).items():
+                if isinstance(sc, dict):
+                    print(f"    out-of-fold {zn:22s} n={sc['benchmarks']:4d}  R2 "
+                          + (f"{sc['r2']:+.3f}  RMSE {100 * sc['rmse_m']:.1f} cm"
+                             if sc["r2"] is not None else "n/a"), flush=True)
             # the rings become the independent check
             Hrt = torch.tensor(Hr, dtype=torch.float32, device=device)
             Zrt = torch.tensor(Zr, dtype=ztype, device=device)
             with torch.no_grad():
                 rings_r2 = _r2(_predict(model_c, Hrt, Zrt).cpu().numpy(), OBSr, Mr.astype(bool))
         else:
-            r2_loso = loso(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device)
+            r2_loso = loso(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
+                           n_zones=n_col_zones)
             rings_r2 = float("nan")
         with torch.no_grad():
             field = np.concatenate([_predict(model_c, heads_all[i:i + 512], zone_all[i:i + 512])
@@ -669,10 +794,15 @@ def main(argv=None) -> None:
                   "identifiable; run twin.forward with columns fitted under two ceilings "
                   "(--vep-json a.json,b.json) to carry the rheology spread", flush=True)
         with open(os.path.join(args.out, f"vep_{config}_{args.target}.json"), "w") as fh:
-            json.dump({**params, "config": config, "driver": "flow-model heads",
+            json.dump({**params, "config": config, "creep": CREEP, "driver": "flow-model heads",
                        "target": args.target, "tau_max_years": args.tau_max_years,
                        **({"zone_blend_km": float(args.zone_blend_km)}
                           if config == "zonal" and args.zone_blend_km else {}),
+                       # rung R1c: the column's county split, checked by every consumer
+                       **({"zone_county_split": True, "zone_names": list(col_names),
+                           "zone_county_sha256": member.meta.get("zone_county_sha256"),
+                           "zone_county_map": member.meta.get("zone_county_map")}
+                          if config == "zonal" and county else {}),
                        **(band_info if config == "banded" else {}),
                        "hpc0_guard_days": args.hpc0_guard_days,
                        **column_constraints(),
@@ -680,6 +810,8 @@ def main(argv=None) -> None:
                        "tau_at_ceiling": at_ceil,
                        "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
+                       **({"fold_seed": args.seed} if args.seed else {}),
+                       **({"r2_outoffold_by_zone": by_zone} if by_zone is not None else {}),
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)
         rows.append({"config": config, "target": args.target,
                      "n_params": sum(p.numel() for p in model_c.parameters()),

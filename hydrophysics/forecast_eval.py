@@ -38,7 +38,7 @@ def _aggregate(rows: dict[str, dict]) -> dict[str, float]:
         # conventional companion to NSE/RMSE.
         "r2_median": (df["kge_r"] ** 2).median(),
         "rmse_median": df["rmse"].median(),
-        "n_wells": int(df["kge"].notna().sum()),
+        "n_wells": int(df["rmse"].notna().sum()),
     }
 
 
@@ -60,6 +60,7 @@ def horizon_table(
         taus = np.where(mask)[0]
         taus = taus[(taus - h >= 0) & (taus < T)]
         m_rows, p_rows, c_rows = {}, {}, {}
+        n_observed = n_forecast = n_scored = 0
         for i, wid in enumerate(data.well_ids):
             tau = taus
             t0 = tau - h
@@ -67,13 +68,21 @@ def horizon_table(
             fc = pred_cube[i, t0, h - 1]
             persist = level[i, t0]
             climf = clim[i, tau]
-            ok = np.isfinite(obs)
+            observed = np.isfinite(obs)
+            available = observed & np.isfinite(fc)
+            ok = available & np.isfinite(persist) & np.isfinite(climf)
+            n_observed += int(observed.sum())
+            n_forecast += int(available.sum())
+            n_scored += int(ok.sum())
             m_rows[wid] = _score_series(obs[ok], fc[ok])
             p_rows[wid] = _score_series(obs[ok], persist[ok])
             c_rows[wid] = _score_series(obs[ok], climf[ok])
-        records.append({"horizon_d": h, "model": "forecast_lstm", **_aggregate(m_rows)})
-        records.append({"horizon_d": h, "model": "persistence", **_aggregate(p_rows)})
-        records.append({"horizon_d": h, "model": "climatology", **_aggregate(c_rows)})
+        support = {"n_observations": n_observed, "n_forecasts": n_forecast,
+                   "n_scored": n_scored,
+                   "forecast_availability": n_forecast / n_observed if n_observed else np.nan}
+        for name, rows in (("forecast_lstm", m_rows), ("persistence", p_rows),
+                           ("climatology", c_rows)):
+            records.append({"horizon_d": h, "model": name, **_aggregate(rows), **support})
     return pd.DataFrame.from_records(records).set_index(["horizon_d", "model"])
 
 
@@ -123,11 +132,17 @@ def probabilistic_horizon_table(
         t0 = taus - h
         m_crps, m_cov, m_sharp, p_crps, p_cov = [], [], [], [], []
         m_kge, m_rmse = {}, {}
+        n_observed = n_forecast = n_scored = 0
         for i, wid in enumerate(data.well_ids):
             obs = level[i, taus]
             mu = mean_cube[i, t0, h - 1]
             sig = sigma_cube[i, t0, h - 1]
-            ok = np.isfinite(obs) & np.isfinite(mu) & np.isfinite(sig)
+            observed = np.isfinite(obs)
+            available = observed & np.isfinite(mu) & np.isfinite(sig) & (sig > 0)
+            ok = available & np.isfinite(level[i, t0]) & np.isfinite(p_sigma[h][i])
+            n_observed += int(observed.sum())
+            n_forecast += int(available.sum())
+            n_scored += int(ok.sum())
             o, mu, sig = obs[ok], mu[ok], sig[ok]
             if o.size == 0:
                 continue
@@ -141,14 +156,17 @@ def probabilistic_horizon_table(
             pmu = level[i, t0][ok]
             p_crps.append(_crps_gaussian(o, pmu, np.full_like(o, ps)).mean())
             p_cov.append(np.mean(np.abs(o - pmu) <= z * ps))
-        records.append({"horizon_d": h, "model": "forecast_lstm",
+        support = {"n_observations": n_observed, "n_forecasts": n_forecast,
+                   "n_scored": n_scored,
+                   "forecast_availability": n_forecast / n_observed if n_observed else np.nan}
+        records.append({"horizon_d": h, "model": "forecast_lstm", **support,
                         "crps_median": float(np.median(m_crps)),
                         "picp90": float(np.mean(m_cov)),
                         "sharpness90": float(np.median(m_sharp)),
                         "kge_median": float(np.median(list(m_kge.values()))),
                         "rmse_median": float(np.median(list(m_rmse.values()))),
                         "n_wells": len(m_crps)})
-        records.append({"horizon_d": h, "model": "persistence_gauss",
+        records.append({"horizon_d": h, "model": "persistence_gauss", **support,
                         "crps_median": float(np.median(p_crps)),
                         "picp90": float(np.mean(p_cov)),
                         "sharpness90": float("nan"), "kge_median": float("nan"),

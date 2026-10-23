@@ -1,4 +1,4 @@
-"""GlobalForecastLSTM: operational multi-horizon groundwater forecasting (Task B).
+"""GlobalForecastLSTM: conditional multi-horizon groundwater forecasting (Task B).
 
 Unlike the simulation-mode models (free-running hindcast), this is a FORECASTER: at an
 origin day t0 it predicts the level at t0+1 .. t0+H using observed levels up to t0 (data
@@ -11,7 +11,8 @@ Design (see docs/superpowers/specs/2026-06-08-groundwater-forecasting-design.md)
     network is well-agnostic and assimilates the current state directly.
   - Head: a small MLP over [encoder state, static attributes, future forcing] predicts the
     H-step anomaly relative to y[t0]. Future forcing (rain/upstream/season over the
-    horizon) is the perfect-forcing assumption, standard for forecast skill assessment.
+    horizon) is supplied explicitly. Perfect-forcing experiments must be distinguished
+    from forecasts using only forcing available at issuance.
   - Target/loss: per-well-normalized MSE on the anomaly, so every well weighs equally.
 
 This class is self-contained and does NOT implement the simulation-mode GroundwaterModel
@@ -92,12 +93,13 @@ class GlobalForecastLSTM:
         cos = np.broadcast_to(cos, (W, T)).astype("float32")
         return level, rain, ups, sin, cos
 
-    def _build_samples(self, data: GWData, origin_ok: np.ndarray):
+    def _build_samples(self, data: GWData, origin_ok: np.ndarray, *, training: bool = True):
         """Cut (encoder, future-forcing, target) windows for every valid (well, origin).
 
         origin_ok: (W, T) bool -- True where day t may serve as a forecast origin under
-        the period rule (training vs all). A valid origin also needs a full finite
-        lookback and a full finite horizon span. Returns torch tensors + index arrays.
+        the period rule. Training requires the entire supervised window to belong
+        to that period. Inference needs only observed history, never future targets.
+        Both require a time axis covering the supplied future forcing horizon.
         """
         L, H = self.L, self.H
         level, rain, ups, sin, cos = self._channels(data)
@@ -112,7 +114,10 @@ class GlobalForecastLSTM:
                 lo, hi = t0 - L + 1, t0 + H        # span [lo, t0] + (t0, t0+H]
                 if not origin_ok[i, t0]:
                     continue
-                if not finite[i, lo:hi + 1].all():
+                if not finite[i, lo:t0 + 1].all():
+                    continue
+                if training and (not origin_ok[i, lo:hi + 1].all()
+                                 or not finite[i, t0 + 1:hi + 1].all()):
                     continue
                 y0 = level[i, t0]
                 enc = np.stack([
@@ -126,23 +131,23 @@ class GlobalForecastLSTM:
                     (ups[i, t0 + 1:hi + 1] - s["ups_mu"]) / s["ups_sd"],
                     sin[i, t0 + 1:hi + 1], cos[i, t0 + 1:hi + 1],
                 ], axis=-1)                          # (H, FUT_FEATURES)
-                tgt = (level[i, t0 + 1:hi + 1] - y0) / sd   # (H,) normalized anomaly
                 enc_list.append(enc)
                 fut_list.append(fut)
-                tgt_list.append(tgt)
+                if training:
+                    tgt_list.append((level[i, t0 + 1:hi + 1] - y0) / sd)
                 wi.append(i)
                 t0i.append(t0)
 
-        if not enc_list:
+        if not enc_list and training:
             raise RuntimeError("no valid forecast windows (check lookback/horizon vs data)")
         # Kept on CPU; minibatches are streamed to the GPU in fit/_predict so GPU memory
         # is bounded by one batch, not the whole sample set (lets big configs train on a
         # small card without OOM).
-        enc = torch.from_numpy(np.asarray(enc_list, dtype="float32"))
-        fut = torch.from_numpy(np.asarray(fut_list, dtype="float32"))
-        tgt = torch.from_numpy(np.asarray(tgt_list, dtype="float32"))
-        wi = np.asarray(wi)
-        t0i = np.asarray(t0i)
+        enc = torch.from_numpy(np.asarray(enc_list, dtype="float32").reshape(-1, L, ENC_FEATURES))
+        fut = torch.from_numpy(np.asarray(fut_list, dtype="float32").reshape(-1, H, FUT_FEATURES))
+        tgt = torch.from_numpy(np.asarray(tgt_list, dtype="float32")) if training else None
+        wi = np.asarray(wi, dtype=int)
+        t0i = np.asarray(t0i, dtype=int)
         stat = torch.from_numpy(s["stat_n"][wi])
         return enc, fut, stat, tgt, wi, t0i
 
@@ -196,7 +201,8 @@ class GlobalForecastLSTM:
         """Return (mean_cube, sigma_cube) of absolute levels, each (W, T, H).
 
         [i, t0, h-1] = forecast of the level at t0+h. sigma_cube is None unless the model
-        is probabilistic. NaN where the origin lacks a full finite lookback/horizon span;
+        is probabilistic. NaN where the origin lacks a full finite lookback or the
+        supplied time axis does not include the full forcing horizon;
         origins are not restricted to a period -- the eval harness picks target days.
         """
         if self.net is None:
@@ -207,7 +213,9 @@ class GlobalForecastLSTM:
         mean_cube = np.full(shape, np.nan, dtype="float32")
         sigma_cube = np.full(shape, np.nan, dtype="float32") if self.probabilistic else None
         origin_ok = np.ones(data.target.shape, dtype=bool)
-        enc, fut, stat_t, _, wi, t0i = self._build_samples(data, origin_ok)
+        enc, fut, stat_t, _, wi, t0i = self._build_samples(data, origin_ok, training=False)
+        if not len(wi):
+            return mean_cube, sigma_cube
         self.net.eval()
         dev = self.device
         means, sigmas = [], []
@@ -232,7 +240,14 @@ class GlobalForecastLSTM:
         return mean_cube, sigma_cube
 
     def forecast(self, data: GWData) -> np.ndarray:
-        """Point forecast (W, T, H): [i, t0, h-1] = predicted level at t0+h."""
+        """Point forecast (W, T, H): [i, t0, h-1] = predicted level at t0+h.
+
+        For live use, include H future dates and forcing values in ``data`` with
+        future target heads set to NaN. Forcing is an explicit condition, not a
+        weather forecast produced by this model. The historical zero-fill policy
+        for missing forcing is retained; callers must document supplied/imputed
+        forcing and its availability at issuance.
+        """
         return self._predict(data)[0]
 
     def forecast_dist(self, data: GWData) -> tuple[np.ndarray, np.ndarray]:

@@ -115,6 +115,34 @@ for the next investigation; they do not uniquely identify a missing physical pro
 The source-substituted weather arm cannot settle the role of actual gauge rainfall.
 The failed forecast-skill status remains appropriate.
 
+## Rainfall from the CWA archive
+
+The calibration rainfall is rebuilt from CWA CODIS (the vendor cache zero-filled gaps and
+ended in 2022; `docs/TWIN_EVIDENCE_2026-10.md` section 11). Each gauge is a chain of station
+IDs from the CWA inventory (`cwa_rain.CHAINS`); the fetch is idempotent and keeps raw
+responses with hashes, the build leaves missing days empty and compares with the vendor file:
+
+```bash
+python -m hydrophysics.twin.cwa_rain fetch --raw data_fetch_api/new_measurements/cwa_codis_rain/raw \
+    --refresh-year 2026        # re-fetch the growing current year
+python -m hydrophysics.twin.cwa_rain build --raw data_fetch_api/new_measurements/cwa_codis_rain/raw \
+    --cache chou-shui-data/data/rf_timeseries_vendor_2012_2022.csv \
+    --out-csv data_fetch_api/new_measurements/cwa_codis_rain/rf_timeseries_codis.csv \
+    --report results/twin/cwa_rain/report.json
+```
+
+Install the built file as `chou-shui-data/data/rf_timeseries.csv` (with its `_source.csv`)
+only after reading the comparison. A recalibration on new rainfall is the whole chain:
+`results/twin_runs/par8/jobs.sh` holds the deliverable's recipe (full fit + 5 parallel folds
+under MPS, `merge_folds`, posterior, two leveling columns, forward with `--update-method
+innovation`, response basis, then challenge/coverage/hybrid/deep-pile/ring tools), started
+with `tmux new -d -s hydro-par8 "bash results/twin_runs/par8/controller.sh"`. The October
+2026 rerun (`stage3_datum_gate_cwa`, `datum_gate_cwa.npz`, `results/twin/*_cwa/`) scored
+within noise of the registered model on every test (evidence section 11), so the page above
+is still built from `datum_gate_innov`, to which the prospective registrations are bound.
+Do not commit mid-batch from the checkout the jobs run in: the fold files record `HEAD`,
+and `merge_folds` logs (no longer refuses) a commit-only difference.
+
 ## Fetching dated observations
 
 Configure `WISENVR_BASE_URL`, `WISENVR_USERNAME`, `WISENVR_PASSWORD` and, when the
@@ -205,10 +233,51 @@ python -m hydrophysics.twin.viewer_app \
   --basis results/twin_forward/response_basis_datum.npz \
   --basemap results/twin/basemap.npz \
   --challenge results/twin/new_data_challenge/report.json \
+  --coverage results/twin/coverage_datum_gate_innov/report.json \
+  --prospective results/twin/prospective_2026-11/manifest.json \
+  --ring-holdout results/twin/ring_holdout_ref2023/report.json \
+  --hybrid results/twin/hybrid_datum_gate_innov/report.json \
+  --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
+  --deep-piles results/twin/deep_pile_holdout/report.json \
   --out results/twin/twin_app.html
 python -m hydrophysics.twin.release inspect results/twin/twin_app.html
 python -m hydrophysics.twin.browser_check \
   --page results/twin/twin_app.html --out results/twin/browser_acceptance
+```
+
+The statistical layer (`twin.hybrid`, climatology plus the decayed last-observed anomaly)
+is scored on the same acquisitions as the challenge and registered prospectively beside
+the physics; both registrations are scored by `twin.prospective score` after the window:
+
+```bash
+python -m hydrophysics.twin.hybrid score --forward results/twin_forward/datum_gate_innov.npz \
+  --stations AMP_V2/data/fan_stations.parquet --historical-wells AMP_V2/data/wells \
+  --new-wells data_fetch_api/new_measurements/heads_202210_202610 --end 2026-09-01 \
+  --out results/twin/hybrid_datum_gate_innov
+python -m hydrophysics.twin.hybrid register ... --test-start 2026-11-01 --test-end 2027-10-31 \
+  --retrospective results/twin/hybrid_datum_gate_innov/report.json \
+  --out results/twin/prospective_2026-11_hybrid
+python -m hydrophysics.twin.prospective score --registration results/twin/prospective_2026-11_hybrid \
+  --new-wells <acquisitions through 2027-10> --out results/twin/prospective_2026-11_hybrid/score
+```
+
+The deep-benchmark line comes from the WRA monthly reports: `twin.report_extract`
+transcribes table 3 of each PDF twice with the Claude API (needs `ANTHROPIC_API_KEY`;
+`.env` is gitignored) and checks the numbers against each other, against the reports'
+own trailing-year arithmetic and against the open-data hourly feed; `twin.deep_pile_holdout`
+reconstructs each pile's cumulative compression and scores the frozen column against it:
+
+```bash
+set -a; . ./.env; set +a
+python -m hydrophysics.twin.report_extract \
+  --reports data_fetch_api/new_measurements/wra_monthly_reports \
+  --feed <open-data 58339 JSON dumps> --out results/twin/report_extract/deep_piles
+python -m hydrophysics.twin.deep_pile_holdout \
+  --piles results/twin/report_extract/deep_piles/deep_piles.csv \
+  --sites chou-shui-data/data/subsidence/deep_pile_sites.csv \
+  --forward results/twin_forward/datum_gate_innov.npz \
+  --members results/twin_forward/datum_gate_innov.members.npz \
+  --out results/twin/deep_pile_holdout
 ```
 
 The default includes the licensed Three.js renderer. The public payload contains
@@ -239,10 +308,39 @@ lock prevents overlapping updates. Nonzero exits, timeouts, stale observations, 
 acceptance reports and mismatched observation lineage retain the previous release.
 
 Configuration fields are `cwd`, `release_root`, `observations`, `page`, `steps`
-(non-empty list of command argument lists), `acceptance_reports` (non-empty list of JSON
-reports with `passed: true`), and optional `fetch`, `timeout_seconds`, `max_age_days` and
+(non-empty list of command argument lists), `acceptance_reports` (the artifact bindings
+below), and optional `fetch`, `timeout_seconds`, `max_age_days` and
 `as_of`. Relative data paths resolve against `cwd`. Commands inherit environment
 credentials; their arguments and output are not copied into status files.
+
+As of October 7, a boolean passing report alone is rejected. Each acceptance entry
+must identify all three local files:
+
+```json
+{"report": "acceptance.json", "protocol": "protocol.json", "predictions": "predictions.csv"}
+```
+
+The runner recomputes `validation.evaluate(predictions, protocol)` and requires an
+exact match to the report. It currently supports only `free-running-head-validation`;
+this is not a subsidence or policy-effect gate. The protocol must additionally
+identify `code_sha256` and `observations_sha256` for publication. Its `model_sha256`
+must equal the rendered page's forward-artifact hash. Historical evaluation can
+still run without these extra fields, but cannot approve an update.
+
+Render with `--validation-protocol protocol.json --validation-predictions predictions.csv`
+so the page's source manifest binds the exact protocol (including task period and
+criteria) and predictions. Only hashes/names are embedded; the prediction table is
+not published. Code, forward run, observation batch, protocol and prediction hashes
+must all match the recomputed report. The accepted manifest retains the report hash,
+task, period and input identities. Changed evidence, a changed observation file or a
+page modified between checking and publishing retains the previous release.
+
+These checks establish artifact consistency and repeatable scoring. They do not
+attest that a manually declared registration date is genuine, that the holdout was
+unused, or that measured interventions establish causality. Preserve independently
+timestamped prediction issuance and source availability for prospective evaluation.
+The standalone `release publish` command remains a local **research-artifact**
+publisher; it does not run or claim observational acceptance.
 
 The simulation producer must store `observations_sha256` in its forward NPZ. The viewer
 accepts `--observations` only when that hash matches, and the update runner also checks

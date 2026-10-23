@@ -148,6 +148,30 @@ def test_end_to_end_run_returns_mean_and_spread_per_scenario(tmp_path):
     assert len(res["rows"]) == 2 * 4
 
 
+@pytest.mark.parametrize("method", ["innovation", "field"])
+def test_forward_routes_update_method_through_hindcast_restart_and_noise(tmp_path, monkeypatch,
+                                                                       method):
+    from hydrophysics.twin import forward
+
+    inp = _inputs()
+    p, _ = _theta_file(tmp_path)
+    calls = []
+    original = forward.nudge_to_observations
+
+    def record(*args, **kwargs):
+        calls.append(kwargs.get("method"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(forward, "nudge_to_observations", record)
+    result = run(inp, load_members([p]), [(parse_scenario("base:irrigation=1")[0], 1.)],
+                 horizon=1, gain=1., ic_members=1, ic_sigma=.1, seed=0,
+                 col=VEPColumn(n_sites=1, dt_days=30.), device="cpu", log=lambda *_: None,
+                 hindcast_gain=.5, hindcast_every=6, column_heads="free", update_method=method)
+    assert len(calls) >= 4
+    assert set(calls) == {method}
+    assert result["update_method"] == method
+
+
 def test_forward_figure_builds_from_a_run_npz(tmp_path):
     """The viewer's forward mode: one dropdown entry per scenario, a slider through the
     projection, and the gate verdict in the title."""

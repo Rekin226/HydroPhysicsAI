@@ -175,7 +175,7 @@ class _ImplicitSolve(torch.autograd.Function):
     def backward(ctx, grad_y):
         y, *params = ctx.saved_tensors
         with torch.no_grad():
-            lam = ctx.solve(grad_y)          # M is symmetric, so M^T == M
+            lam = ctx.solve(grad_y, adjoint=True)  # M is symmetric, so M^T == M
 
         detached = [p.detach().requires_grad_(True) for p in params]
         with torch.enable_grad():
@@ -202,15 +202,15 @@ class _ImplicitSolve(torch.autograd.Function):
 
 def _warm_started_solver(matvec, diag, x0):
     """Bind ``x0`` (and the operator's diagonal, for Jacobi preconditioning) now, rather
-    than via a lambda default-arg trick, so the returned closure always warm-starts from
-    the head at the time it was created, not whatever the loop variable holds when the
-    closure is later invoked (e.g. by ``_ImplicitSolve.backward`` for the adjoint solve,
-    well after the forward loop ends).
+    than via a lambda default-arg trick, so forward solves use the head from the
+    time the closure was created. Adjoint solves start at zero: their right-hand
+    sides have a different scale and physical meaning from forward heads.
     """
     x0 = x0.detach()
 
-    def solve(rhs):
-        return _cg(matvec, rhs, diag=diag, x0=x0)
+    def solve(rhs, *, adjoint=False):
+        # Forward heads have different units/scale from the adjoint right-hand side.
+        return _cg(matvec, rhs, diag=diag, x0=None if adjoint else x0)
 
     return solve
 
@@ -248,9 +248,11 @@ def _cg(matvec, b, diag=None, x0=None, tol=_CG_TOL, maxiter=_CG_MAXITER):
        the recurrence's own belief about convergence cannot be trusted even right when
        the loop exits.
     """
+    b_norm = (b * b).sum().sqrt()
+    if b_norm == 0:
+        return torch.zeros_like(b)
     x = torch.zeros_like(b) if x0 is None else x0.clone()
     r = b - matvec(x)
-    b_norm = (b * b).sum().sqrt().clamp(min=1e-30)
     relres = (r * r).sum().sqrt() / b_norm
 
     def precondition(v):

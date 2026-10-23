@@ -16,7 +16,9 @@ sequential gate would have spent).
 
 It refuses rather than guesses: a missing fold, folds of different partitions (n_folds,
 seed, wells) or a fold run with a configuration different from the full fit's
-(``stage3_flow.csv`` would describe a recipe no fold used) is an error. ``cg_nonconverged``
+(``stage3_flow.csv`` would describe a recipe no fold used) is an error. The recorded
+``git_commit`` is provenance, not configuration: when it is the only difference (a commit
+made while the jobs were queued) the merge logs it and proceeds. ``cg_nonconverged``
 is the sum and ``cg_worst_residual`` the maximum over the fit and the folds, as the
 sequential counter accumulates them.
 """
@@ -74,8 +76,13 @@ def merge(run_dir: str, log=print) -> dict:
         if f["cfg"] != fs["cfg"]:
             diff = sorted(key for key in set(f["cfg"]) | set(fs["cfg"])
                           if f["cfg"].get(key) != fs["cfg"].get(key))
-            raise ValueError(f"fold {k} ran a different configuration from the full fit "
-                             f"({FIT_SUMMARY}): {diff}")
+            if diff != ["git_commit"]:
+                raise ValueError(f"fold {k} ran a different configuration from the full fit "
+                                 f"({FIT_SUMMARY}): {diff}")
+            # provenance only: a commit made while the jobs were queued moves HEAD without
+            # changing what they ran (every real setting above is equal) -- say so, go on
+            log(f"fold {k}: git_commit {f['cfg']['git_commit']!r} differs from the full "
+                f"fit's {fs['cfg']['git_commit']!r} (configuration otherwise identical)")
     if ref["sids"] != fs["sids"]:
         raise ValueError("the folds and the full fit used different wells")
     wells_csv = os.path.join(run_dir, "stage3_wells.csv")

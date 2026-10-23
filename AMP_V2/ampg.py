@@ -33,8 +33,12 @@ diagnostic of transmissivity and storage -- exploited later, not here.
 from __future__ import annotations
 
 import numpy as np
-from gafd import instantaneous_mean
 from scipy.signal import find_peaks
+
+if __package__:
+    from .gafd import instantaneous_mean
+else:
+    from gafd import instantaneous_mean
 
 # Exact astronomical / thermal constituents (cycles per day) used for attribution.
 CONSTITUENTS = {
@@ -57,7 +61,8 @@ def detect_lines(x: np.ndarray, fs: float, f_lo: float = 0.02, f_hi: float = 6.0
     band = (fr >= f_lo) & (fr <= f_hi)
     A, fr = A[band], fr[band]
     import pandas as pd
-    floor = pd.Series(A).rolling(floor_win, center=True, min_periods=200).median().to_numpy()
+    min_periods = min(200, max(3, floor_win // 2))
+    floor = pd.Series(A).rolling(floor_win, center=True, min_periods=min_periods).median().to_numpy()
     floor = np.maximum(floor, 1e-12)
     idx, _ = find_peaks(A / floor, height=snr, distance=max(2, floor_win // 10))
     out = [{"f": float(fr[i]), "amp": float(A[i]), "snr": float(A[i] / floor[i])} for i in idx]
@@ -148,7 +153,8 @@ def classify(lines: list[dict], f_tol: float = 0.01) -> dict:
     return out
 
 
-def ampg(x: np.ndarray, fs: float, bw: float = 0.02, snr: float = 8.0) -> dict:
+def ampg(x: np.ndarray, fs: float, bw: float = 0.02, snr: float = 8.0,
+         floor_win: int = 2001) -> dict:
     """Full AMP-G signature of one record.
 
     Returns time series (same length as ``x``):
@@ -160,7 +166,7 @@ def ampg(x: np.ndarray, fs: float, bw: float = 0.02, snr: float = 8.0) -> dict:
       ``amp_total``  RMS over fundamental + harmonics (all pumping-attributed diurnal power)
     plus the classification and the detected line list.
     """
-    lines = detect_lines(x, fs, snr=snr)
+    lines = detect_lines(x, fs, snr=snr, floor_win=floor_win)
     cls = classify(lines)
     zeros = np.zeros(x.size)
     if cls["fundamental"] is None:
@@ -181,7 +187,8 @@ def ampg(x: np.ndarray, fs: float, bw: float = 0.02, snr: float = 8.0) -> dict:
     ns = np.array([1] + [h["n"] for h in cls["harmonics"]], dtype="float64")
     ladder = np.array([cls["fundamental"]["amp"]] + [h["amp"] for h in cls["harmonics"]])
     duty_fit, alpha = fit_duty_response(ladder, ns)
-    duty_eff = duty_fit if np.isfinite(duty_fit) else np.nanmedian(duty)
+    fallback = np.nanmedian(duty) if np.isfinite(duty).any() else np.nan
+    duty_eff = duty_fit if np.isfinite(duty_fit) else fallback
     volume = a1 * (duty_eff if np.isfinite(duty_eff) else 0.5)
 
     return {"found": True, "lines": lines, "classes": cls,

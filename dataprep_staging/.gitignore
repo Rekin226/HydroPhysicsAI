@@ -1,0 +1,63 @@
+# Code only. Real data never lives here (CLAUDE.md Rule 1): products go to results/dataprep/,
+# downloads to data_fetch_api/new_measurements/ (both gitignored). Repair round 2026-10-12:
+# also block every text/geo/office data format a download or product could take. Code here
+# needs none of them; a genuinely needed config file must be added with `git add -f` after
+# the Rule 1 secrets scan.
+*.parquet
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.nc
+*.tif
+*.tiff
+*.zip
+*.gz
+*.bz2
+*.xz
+*.7z
+*.tar
+*.rar
+*.pdf
+*.csv
+*.tsv
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.json
+*.geojson
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.kml
+*.kmz
+*.xml
+*.html
+*.htm
+*.txt
+*.log
+*.out
+*.err
+*.xlsx
+*.xls
+*.ods
+*.docx
+*.doc
+*.tenv3
+*.dat
+*.bin
+*.mat
+*.feather
+*.arrow
+*.sqlite
+*.db
+.env
+*.env
+*.local.md
+__pycache__/

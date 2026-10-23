@@ -70,6 +70,9 @@ hydrophysics = ["sample_data/**/*.csv", "twin/app/template.html", "twin/app/geod
 
 [tool.ruff]
 line-length = 100
+# dataprep_staging/ is excluded: its scripts are hash-bound inputs of registered tests
+# (results/dataprep/preregistration/*.json), so lint fixes would break their verification.
+extend-exclude = ["dataprep_staging"]
 
 [tool.ruff.lint]
 # Default error classes (E4/E7/E9, F) plus import sorting (I), bugbear (B), pyupgrade
@@ -78,3 +81,12 @@ line-length = 100
 # (long pre-existing comment/data lines), and RUF unicode rules are off: the labels
 # intentionally use scientific characters (sigma, en-dash).
 select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+# The package suite lives in tests/. dataprep_staging/ carries its own tests, which run with
+# dataprep_staging on sys.path (python -m pytest dataprep_staging/<wp>/tests from the repo
+# root with PYTHONPATH=dataprep_staging) and need the gitignored results/ tree.
+testpaths = ["tests"]
+# AMP_V2/ is a top-level directory without __init__.py; plain `pytest` (as CI runs it)
+# does not put the repository root on sys.path otherwise.
+pythonpath = ["."]

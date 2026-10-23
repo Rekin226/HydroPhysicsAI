@@ -80,3 +80,7 @@ data_fetch_api/
 
 # Private app builds embed observed well and leveling series: never commit
 *.local.html
+
+# local secrets (API keys); never commit
+.env
+.env.*
