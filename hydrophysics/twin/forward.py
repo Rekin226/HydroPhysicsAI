@@ -1003,6 +1003,13 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
         if "zonal" in p:
             if zone_of_cell is None:
                 raise ValueError("a zonal column needs zone_of_cell")
+            if p.get("column_zones_collapsed"):
+                # calibrate_coupled --column-zones 3: one three-zone column over a
+                # county-split flow model; its cells take their zone's unsplit id
+                zone_of_cell = np.asarray(zone_of_cell) % N_ZONES
+                if float(p.get("zone_blend_km") or 0.0) > 0.0 or blend_km:
+                    raise ValueError(f"{vep_json}: a collapsed three-zone column is not "
+                                     "supported with a zone blend")
             check_column_zonation(p, zone_of_cell, county_sha256, label=vep_json)
             w_km = float(p.get("zone_blend_km") or 0.0)
             if blend_km is not None:
