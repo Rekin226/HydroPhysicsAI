@@ -502,3 +502,57 @@ They need a new registration before they can run.
   - The column was calibrated on leveling under these same damped heads, so its compressibility may partly make up for it.
   - Whether avoided subsidence is understated is therefore not settled by this test.
 - No test here scores the subsidence side of the policy response. G4 has no complete 2022 spring, and the 2023-26 pile record is selection-contaminated.
+
+## 13. Policy-response tests of heads and subsidence, and the page labels (2026-10-23)
+
+Two registrations, each written before its data were read:
+- `N1.policy_response.v1` (sha `6c3a4e0c`): steps A-C below;
+- `N1.changhua_fix.v1` (sha `be85ab6b`): two Changhua fixes, step B's one exploratory follow-up.
+
+Every test was scored once, after `prereg3.assert_can_score`. Scripts are in
+`dataprep_staging/n1_policy/`; results are in `results/dataprep/reports/N1_policy/`, with
+every attempt listed in its `SUMMARY.md`, failures and engineering re-runs included.
+Yunlin is scored on R0. Changhua is scored on the R1c census flow with a three-zone leveling
+column, because R0 carries no Changhua pumping.
+
+**Step A, model-only (spends no data).**
+- A leveling-fitted column compensates for damped heads fan-wide (0.93 at twice the damping), not zone by zone.
+- The 2030 lever ranking is robust. The 2026 ranking fails the registered rule on a near-tie between "other" and "industry".
+- Hot spots are fragile.
+
+**Step B, 2007-10 leveling dose-response across places** (subsidence per pumping exposure, fixed effects for benchmark and campaign, 5 km block bootstrap).
+- **Yunlin: inconclusive.** Observed +0.66 against R0's +0.26 cm/yr per GWh/yr. The model's own three-campaign estimates range from -0.23 to 1.26, so the method cannot separate the two.
+- **Changhua: inconsistent.** Observed -0.50 against the census model's +0.80, below every model-world window. Entry and exit pumps explain only 24 % of the exposure variation.
+- The 2010-12 leveling is unspent: its pre-declared power rule failed.
+
+**Step C, masked 2016-18 refits.** Heads are masked, and the column is refitted with the May 2016-18 surveys withheld. Earlier looks touch this window, so it is labelled design-time.
+
+| | M vs no change (CL) | M vs reference-year pumping (ZR) | observed on modelled slope |
+|---|---|---|---|
+| heads, Yunlin (75 wells) | model better, 1.38 vs 2.21 m | model better (2.29 m) | 1.21 (1.06-1.36) |
+| heads, Changhua (59 wells) | model better, 1.07 vs 1.19 m | model better (1.21 m) | 0.85 (0.63-1.05) |
+| subsidence partition, Yunlin (355 benchmarks) | baseline better, 1.88 vs 1.00 cm | baseline better (1.08 cm) | 0.22 (0.17-0.27) |
+| subsidence partition, Changhua (255 benchmarks) | baseline better, 0.64 vs 0.58 cm | model better (0.71 cm) | 0.40 (0.30-0.49) |
+
+The subsidence partition is the May 2015-19 increments minus their mean.
+
+**Changhua fixes, scored beside the R1c reference.**
+- **F1, a 10-year floor on the column's viscous time constant.** It failed its design gate: rest-of-fan out-of-fold leveling R² was 0.601 against a floor of 0.655. As registered, it was not scored and not repaired.
+- **F2, a paddy-weighted irrigation return flow** (`--return-rice-share`, learned slope 1.84). It passed its gates but changed nothing:
+  - heads are indistinguishable from R1c (ratio 1.002);
+  - leveling is slightly worse (ratio 1.014).
+
+**Reading.**
+- **Heads:** the head response to a pumping change is supported in both counties. This is the second out-of-sample window after G1 (section 12).
+- **Subsidence, 1-3-year size: not supported.**
+  - Year to year in 2016-18, the observed swings do not follow the columns, and a constant rate fits better.
+  - Across places in 2007-10, Yunlin sank more than modelled, though inconclusively.
+  - The two tests measure different things and disagree in direction, so the size is labelled "not supported", not "overstated".
+  - The long-run cumulative subsidence is what the column is fitted to.
+- **Changhua levers: not supported.** The deliverable has no Changhua pumping. The census model's response failed step B, and neither fix closed the gap. Step B's exploratory follow-up is spent, so no further Changhua fix may be scored on the 2007-10 or 2016-18 data.
+
+**Page labels.** `twin.viewer_app --policy-response
+results/dataprep/reports/N1_policy/page_labels.json` puts these verdicts on the model card
+and a one-line caveat under the levers, in both languages. The page was rebuilt from the
+same hashed inputs as the October 11 page (`results/twin/twin_app_20261023.html`). It passes
+`release inspect` and `browser_check`.

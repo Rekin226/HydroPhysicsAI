@@ -1193,7 +1193,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           validation_predictions: str | None = None,
           coverage_json: str | None = None, prospective_json: str | None = None,
           ring_holdout_json: str | None = None, hybrid_json: str | None = None,
-          hybrid_registration: str | None = None, deep_piles_json: str | None = None) -> dict:
+          hybrid_registration: str | None = None, deep_piles_json: str | None = None,
+          policy_response_json: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1333,7 +1334,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                        ("prospective", _prospective_block(prospective_json, forward_npz)),
                        ("ring_holdout", _ring_holdout_block(ring_holdout_json)),
                        ("hybrid", _hybrid_block(hybrid_json, forward_npz, hybrid_registration)),
-                       ("deep_piles", _deep_pile_block(deep_piles_json, forward_npz))):
+                       ("deep_piles", _deep_pile_block(deep_piles_json, forward_npz)),
+                       ("policy_response", _policy_response_block(policy_response_json))):
         if block is not None:
             modelcard[key] = block
     if rheo_npz == "auto":
@@ -1407,6 +1409,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
             ring_holdout_json) else None,
         "hybrid": hybrid_json, "hybrid_registration": hybrid_registration,
         "deep_piles": deep_piles_json if deep_piles_json and os.path.exists(deep_piles_json) else None,
+        "policy_response": policy_response_json,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1528,6 +1531,24 @@ def _ring_holdout_block(path: str | None) -> dict | None:
             # present when the cumulative is not referenced across the rings' 2022 gap
             "max_ref_age_days": report.get("max_ref_age_days"),
             "independence": [str(x) for x in report.get("independence", [])]}
+
+
+def _policy_response_block(path: str | None) -> dict | None:
+    """The registered N1 policy-response verdicts (page_labels.json of
+    dataprep_staging/n1_policy): per county, the masked-refit head and subsidence response
+    against the zero-change and reference-year baselines, and the Changhua status."""
+    if not path:
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    keep = ("rmse_model_m", "rmse_cl_m", "rms_model_cm", "rms_cl_cm", "verdict_cl",
+            "verdict_zr", "slope_obs_on_model", "slope_ci")
+    return {"window": report["window"],
+            **{kind: {county: {k: row[k] for k in keep if k in row}
+                      for county, row in report[kind].items()}
+               for kind in ("heads", "subsidence")},
+            "changhua": report["changhua"],
+            "registrations": sorted(report["registrations"])}
 
 
 def _deep_pile_block(path: str | None, forward_npz: str | None) -> dict | None:
@@ -1762,6 +1783,8 @@ def main(argv=None) -> None:
     ap.add_argument("--deep-piles", help="twin.deep_pile_holdout report.json (frozen column "
                                          "against the printed deep benchmarks; must match "
                                          "--forward); omitted when the file does not exist")
+    ap.add_argument("--policy-response", help="n1_policy page_labels.json: the registered "
+                                              "policy-response verdicts per county")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -1788,6 +1811,7 @@ def main(argv=None) -> None:
           prospective_json=args.prospective, ring_holdout_json=args.ring_holdout,
           hybrid_json=opt(args.hybrid), hybrid_registration=opt(args.hybrid_registration),
           deep_piles_json=opt(args.deep_piles),
+          policy_response_json=opt(args.policy_response),
           log=lambda s: print(s, flush=True))
 
 
