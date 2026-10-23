@@ -33,6 +33,15 @@ Choushui alluvial fan, Taiwan, and the tests that decide whether it can be trust
 3. Policy result: irrigation -30 % avoids 0.94 cm and retiring aquaculture 1.31 cm of
    fan-mean subsidence by 2032 (baseline 2.9 cm); robust to the creep ceiling (0.3 cm),
    but the timing (rebound vs slowed creep) is not testable on the 2012-2022 record.
+   Registered tests scope it (`docs/TWIN_EVIDENCE_2026-10.md` sections 12-13, N1). The head
+   response to pumping changes is supported, on the 2015 drought (G1) and on a design-time
+   2016-18 masked refit, with the modelled response too small in Yunlin. In this model the
+   avoided subsidence is an elastic response that arrives within about a year; its 1-3-year
+   size is not supported by the registered tests, and whether a cut changes long-run sinking
+   is untested. The Changhua levers are not supported. The tests scored
+   `stage3_datum_gate_cwa` (Changhua on the census model R1c), the CWA-rainfall
+   recalibration that section 11 found within noise of the registered run; a post-hoc,
+   model-only comparison (not a test) puts their policy responses within 2-4 % fan-wide.
 
 ## Evidence in the repo
 

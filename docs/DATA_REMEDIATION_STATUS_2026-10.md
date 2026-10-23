@@ -139,8 +139,10 @@ after-the-fact are marked as such.
   survive inside P4m. P1 became a census validator and P3 an out-of-sample methods test, so
   neither ships a prior.
 - **Code location (D12).** Code lives in `dataprep_staging/`, not `results/dataprep/_staging_code/`.
-  It is not committed, so every manifest's `git_commit` is empty and provenance rests on sha256
-  hashes.
+  When the Phase 0 products were built it was not committed: their manifests record the
+  repository commit of the day (709f660 for the N1 inputs) with each staging file marked
+  `git_state: untracked`, so provenance rests on sha256 hashes. `dataprep_staging/` has since
+  been committed (68ee347, 2026-10-18; 949 files at the PR head).
 - **Ledger.** One fragment per WP (`ledger/rows/<WP>.csv`, with columns `wp` and `note` added). L3
   reassembled `data_roles.csv` (16,161 rows, 0 conflicts). This report added 16 rows; all 16,177
   rows have 0 conflicts. `data_roles.csv` has not been reassembled since.
@@ -492,8 +494,9 @@ Evidence: `results/dataprep/reports/PHASE0_STATUS_evidence/checker_2026-10-17.{j
 
 **Provenance and housekeeping**
 
-18. `dataprep_staging/`, the plan and the audit are uncommitted, and so are three code lines in
-    worktrees (pump paths, county zones, the ring_holdout reference fix).
+18. *(Resolved.)* `dataprep_staging/`, the plan and the audit were committed in 68ee347; the
+    three worktree code lines (pump paths, county zones, the ring_holdout reference fix) in
+    8d51b46.
 19. Four staging files and the plan's Appendix A contain a local home path or user name.
 20. Disk to recover by hand:
     - about 1.2 GB in a P40 staging directory (deletion was refused by the session's permission
@@ -533,7 +536,7 @@ Status marks: **[done]**, **[running]**, **[open]**, **[decision]** (needs the u
 **Step 2. Code window** (no GPU job running; every change bit-identical when its option is
 absent)
 
-1. [open] **Merge the three uncommitted code lines** onto one branch from 709f660:
+1. [done, commit 8d51b46] **Merge the three uncommitted code lines** onto one branch from 709f660:
    - the pump-path hooks (branch `twin/phase1-changhua-census`);
    - the county zones (branch `twin/phase1c-county-zones`; 12 twin modules, `zone_county.py`,
      2 tests);
@@ -546,7 +549,9 @@ absent)
    - run the Rule 1 scan;
    - commit only when the user asks.
 
-   From then on every rung records a git commit instead of a `code.diff` hash.
+   From then on every rung records a git commit instead of a `code.diff` hash. *(Not followed:
+   batches 14-25 still recorded a `code.diff`, and par23-25 no `code.base`; see "N1
+   policy-response tests" below for the reconstructed commits.)*
 2. [open] **Port the staging library to `hydrophysics/dataprep/`.**
    - Modules: `common/` (manifest, guard, uses, flags, ledger, source, check, paths, hashing) and
      `harness/` (scorers, coverage3, prereg3, gaps_guarded, placebos, units), with their tests
@@ -587,7 +592,7 @@ absent)
      comparing it with the stage-3 construction on I1's own pre-origin burn-in.
    - **`--well-set`** (does not exist yet): H3 `recovered_wells/v3`, rung R5 only, with a
      per-segment datum member. It needs a waiver first (plan acceptance failed).
-   - **`--mask-months START:END`** (in no code line yet): for N1 G1/C3 (masked 2015, 2020 and 2021
+   - **`--mask-months START:END`** (done, commit d3b365d): for N1 G1/C3 (masked 2015, 2020 and 2021
      refits) and the fresh 2016-18 block.
    - **Coordinate fix.** `heads._station_xy` reads H1a's repair table (swapped "y x" stations; the
      9 stations at "0 0" stay missing). This gives a new well set, so a new baseline.
@@ -1047,8 +1052,8 @@ A pass would then need a fresh-partition confirmation. **No rung passed. R0 stay
 - structural: how pumping is split across layers and how much returns to the shallow aquifer in Changhua, both still shared with Yunlin;
 - data: metered public-well volumes (request R-i), well screen depths, and the heads' own long-term drift.
 
-Code for R1e: branch `twin/phase1e-pw-canal` in the integration worktree (uncommitted;
-`results/twin_runs/par14/code.diff`, sha 184867d7). Batches 14 and 15 ran 2026-10-18 15:09 to
+Code for R1e: commit d32768c on the PR branch (at run time the uncommitted branch
+`twin/phase1e-pw-canal`; `results/twin_runs/par14/code.diff`, sha 184867d7). Batches 14 and 15 ran 2026-10-18 15:09 to
 2026-10-19 03:59 with no failed job.
 
 ## Fresh-partition comparison under gate set G2 (2026-10-20)
@@ -1097,6 +1102,12 @@ forecast collapses after the origin:
 | Rest of the fan (mostly Yunlin), 2023-2032 | 2.91 cm | -1.59 cm (uplift) | – |
 | Measured deep piles 2024-25, RMSE | 1.27 cm | 3.55 cm | 3.53 cm |
 | Deep piles >= 200 m, R2 | 0.92 | -3.95 | -3.89 |
+
+The R0 column of this table is the registered page run (`datum_gate_innov`, leveling column;
+the sources are listed in `deviation.json`), not `stage3_datum_gate_cwa`, which gives 2.86 cm
+and a deep-pile RMSE of 1.30 cm. 2.88 cm is the page's basis (December 2022 to December
+2032, the leveling column's 36 runs); evidence section 1 explains the forward summary's
+3.03 cm.
 
 The piles kept compressing 3-4 cm; R1c predicts what a zero forecast predicts. The composite
 would have shipped a subsidence forecast the measurements contradict.
@@ -1191,4 +1202,107 @@ Registration `N1.phase12_response.v1`. Each test was scored once. Numbers:
   - Reported, not gating: the response slope is 2.13, the damping seen out of sample.
 - **G3: not run.** R0 has no canal-delivery term.
 - **G4: not evaluable.** No sensor has all five Jan-May 2022 months. `g4/erratum.json` corrects the written verdict.
-- **Code.** `--mask-months` is on branch `twin/n1-mask-months` (uncommitted); the frozen diff is `results/twin_runs/par23/code.diff`.
+- **Code.** `--mask-months` is commit d3b365d on the PR branch (at run time the uncommitted branch `twin/n1-mask-months`); the frozen diff is `results/twin_runs/par23/code.diff`.
+
+## N1 policy-response tests (2026-10-23)
+
+Registrations `N1.policy_response.v1` (sha 6c3a4e0c, steps A-C) and `N1.changhua_fix.v1`
+(sha be85ab6b, fixes F1 and F2, step B's one exploratory follow-up). Each test was scored
+once. The full write-up is in `docs/TWIN_EVIDENCE_2026-10.md`, section 13. Every attempt,
+including the engineering re-runs, is listed in `results/dataprep/reports/N1_policy/SUMMARY.md`.
+`SUMMARY.md` is a result file and is left as written. The declared secondaries and step A
+corrections it omits are below and in evidence section 13; the code provenance is in
+[`N1_CODE_PROVENANCE_2026-10.md`](N1_CODE_PROVENANCE_2026-10.md).
+
+- **Models.** Yunlin is scored on R0 (`stage3_datum_gate_cwa`). Changhua is scored on R1c with a three-zone leveling column, because R0 has no Changhua pumping. The page's levers come from the registered run `datum_gate_innov` (theta `stage3_datum_gate`), which section 11 of the evidence doc found within noise of R0.
+- **Heads: supported in both counties** on masked 2016-18 refits (a design-time window). Yunlin: RMSE 1.38 m against 2.21 (no change) and 2.29 m (reference-year pumping); observed-on-modelled slope 1.21 (1.06-1.36), so the modelled response is too small. Changhua (R1c): 1.07 against 1.19 and 1.21 m; slope 0.85 (0.63-1.05).
+- **Subsidence, 1-3-year size: not supported.** On 2016-18 a constant rate partitions the leveling better than the columns (slopes 0.22 and 0.40). In 2007-10, across places, Yunlin sank more than modelled (observed +0.66 against +0.26 cm/yr per GWh/yr, inconclusive). The two disagree in direction, so the label is "not supported", with no direction attached. The column is fitted to the cumulative leveling record, not to a policy difference. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.
+- **Changhua levers: not supported.** Step B: observed -0.50 against the census model's +0.80 cm/yr per GWh/yr, below every model-world window. F1 failed its design gate (rest-of-fan out-of-fold leveling R2 0.601 < 0.655) and was not scored. F2 changed nothing (heads ratio 1.002 against R1c, leveling 1.014). No further Changhua fix may be scored on 2007-10 or 2016-18.
+- **Step A.** A1 (on R0 and R1c): the leveling-fitted column compensates fan-wide (0.93 at k = 2) but not by zone (proximal Yunlin 0.75, mid Changhua 0.77). A2 was computed on the superseded `response_basis.npz` (2026-09-20, `2f21f81`), not on the page's or R0's basis, so its "ranking robust" is withdrawn as a statement about the page; A2's result is left as written. A2b (post hoc, model-only, not a test; below) shows what holds on the page's basis.
+- **2010-12 leveling judge unit: not spent** (its pre-declared power rule failed for Changhua: share positive 0.889 against 0.95). It is unspent only by `looks.jsonl`, which never names it, and it is not a clean judge (science-16 of the 2026-10-24 gap audit):
+  - the W3 looks of 2026-10-12 read leveling displacement 2011-01..2021-12 at the 1030 active-cell benchmarks, which overlap its 2011-12 surveys;
+  - step B's 2008-10 campaigns include the May 2010 survey;
+  - step B's one exploratory follow-up is spent (`N1.changhua_fix.v1`), so a Yunlin 2010-12 test would be a second follow-up, which the registered attempt policy forbids unless the user amends it; and it has no power check;
+  - the R0 column is fitted on leveling from 2012.
+
+**Declared secondaries** (reported, never gating; full table in evidence section 13):
+
+| secondary | Yunlin | Changhua |
+|---|---|---|
+| step B, E10 coefficient, observed / model (cm/yr per GWh/yr) | +0.045 / +0.221 | -0.221 / +0.165 |
+| step B, model hindcast fixed-effects E3 | +0.141 | +0.004 |
+| step C, heads scored with the other county's model: ratio to CL, slope | 0.64, 1.16 (R1c) | 0.955, 0.77 (R0) |
+| step C, leveling scored with the other county's model: ratio to CL, slope | 2.47, 0.18 (R1c) | 1.29, 0.10 (R0) |
+| pooled observed-on-modelled slopes | declared, not computed | declared, not computed |
+
+**Post-hoc model-only checks (2026-10-24).** Each is post hoc, model-only and not a test:
+model outputs only, no observation read, nothing scored, no registration. Files:
+`results/dataprep/reports/N1_gaps_2026-10-24/science-{04,05,10,13}/`; full write-up in
+evidence section 13 ("Post-hoc model-only checks").
+- **A2b** (`science-04/`; post hoc, model-only, not a test): the A2 procedure rerun unchanged reproduces `step_a/a2.json` exactly on A2's own basis. On the page's basis, the page payload and R0's basis the cm lever ranking holds in 100 % of draws at both starts (industry above other); the per-100-GWh/yr ranking is a non-robust near-tie (2.84-3.10 cm per 100 GWh/yr on the page, order kept in 3 % of draws on the page payload, 10-21 % on the raw bases); the irrigation lever's top-decile hot spots are fragile (Jaccard 5th percentile 0.00, median 0.71-0.72).
+- **Transfer** (`science-05/transfer_innov_vs_cwa.json`; post hoc, model-only, not a test): the page's model and R0 avoid 0.942 and 0.958 cm (cut30) and 1.306 and 1.261 cm (retire_aqua) fan-mean by 2032, within 2-4 %; cell correlation 0.9999 and 0.9996.
+- **Hot-spot stability** (`science-10/hotspot_stability.json`; post hoc, model-only, not a test): the cut30 leader Baozhong leads in 83 % of the page's runs, 72 % of R0's and 57 % of the A2b draws; retire_aqua's Taixi in 61 %, 83 % and 100 %. Neither is stable by the file's rule.
+- **Elastic split** (`science-13/`; post hoc, model-only, not a test): under mean forcing on ensemble-mean heads no cell falls below its preconsolidation head after Jan 2026, so the avoided subsidence is all elastic (inelastic 0.000 cm) and 98-99 % of it arrives by Dec 2026. A dry year below the 0.24 m margin (5th percentile) is not in the runs.
+- **Page labels from them**: `dataprep_staging/n1_policy/page_posthoc.py` copies these numbers into `page_posthoc.json` (same directory, written once), which `viewer_app --posthoc` (off by default) puts on the page, refused unless it names the page's forward run and basis.
+- `science-15/` holds a draft registration only; it is not cited and nothing in it is registered.
+
+**Re-running cited results: not from the sibling worktrees.** No cited result may be re-run
+from the worktrees `HydroPhysicsAI-integration`, `-phase1`, `-phase1c`, `-r4p` or `-rstar`.
+`integration` (branch `twin/r4-layer-allocation`), `phase1` and `phase1c` hold uncommitted
+edits to twin modules (3, 2 and 12 files under `hydrophysics/twin/`, plus an untracked
+module in `phase1c`) that match no recorded batch, except that `phase1` equals par9's diff;
+`r4p` and `rstar` are clean but checked out at older commits (`5f44cd2`, `a3d6eed`) without
+the later fixes. Re-run from the PR branch, or from a batch's recorded commit plus its
+`code.diff` as tabled below. Archiving or removing those worktrees is the user's decision.
+
+**Code for the N1 batches.** The batches recorded a diff without a base commit. The bases,
+reconstructed by comparing each recorded diff restricted to `hydrophysics/` with a commit
+diff:
+
+| batch | used by | recorded `code.diff` | equivalent commits | on the PR branch |
+|---|---|---|---|---|
+| par23 | G1 refit (`_m15`) | af53ef55 | ccb6ff2..d3b365d | yes |
+| par24 | step C refits and columns; step A1 and step B runs | 2618484a | c48e858..294ed2e | no (`twin/n1-policy-response`) |
+| par25 | F1, F2 | 277d6a50 | c48e858..8a96b21 | no (`twin/n1-changhua-fix`) |
+
+`--withhold-surveys`, `--column-zones 3` and `--return-rice-share` are therefore not on the PR
+branch yet. Merging those two branches is a decision for the user. The scorers' usage lines
+say `py.sh -I`, which drops `PYTHONPATH`; run them through `par24/py.sh` or `par25/py.sh`
+without `-I`. The G1 and G4 scorers are not hash-bound by `N1.phase12_response.v1`. They
+were written after it and are tied to the looks only by their file times and commit ba76923
+(evidence section 12).
+
+**Phase 1 rungs: which code reproduces them.** From the batch records and a reconstruction
+of each recorded diff on its base:
+
+| rung | batch | code record | reproducible from |
+|---|---|---|---|
+| R1 | par9 | base 709f660 + `code.diff` (sha c5abcfc0; no `code.diff.sha256`) | only that diff on 709f660. 8d51b46 refactored the code, and 69 lines of `calibrate_flow.py` differ. The phase1 worktree still holds the diff uncommitted |
+| R1b | par10 | none (`py.sh` points at the phase1 worktree) | presumably par9's diff; unverified |
+| R1c | par11 | base 709f660 + `code.diff` (308d2ce0) | 8d51b46: zero differing lines in `calibrate_flow`, `forward`, `inputs`, `zones`, `calibrate_coupled`, `scenario`, `uncertainty`, `policy_gate` and `residual_kriging`. `mechanism`, `ring_holdout` and `viewer_app` differ but no fit uses them. `zone_county.py` was untracked at run time and is not recorded (`code.status` lists it as untracked; `code.diff` omits it), so this is partly verified (see `TWIN_THETA_PROVENANCE_2026-10.md`) |
+| R1d-dom, R1d-sw | par12, par13 | `jobs.sh` names 8d51b46; no `code.status` | 8d51b46, if the tree was clean |
+| R1e-pw, R1e-cn | par14, par15 | base 8d51b46 + `code.diff` (184867d7) | d32768c (equal on `hydrophysics/`) |
+
+R1c's theta (`stage3_datum_gate_ccz`) is a registered input of N1 steps A-C. Removing the
+phase1 worktree would lose the only copy of R1's code outside `par9/code.diff`, so ask the
+user first.
+
+**Release-b2 products behind the cited tests.** Each manifest records commit 709f660. Its
+code hashes compared with the PR head:
+
+| product | used by | code files equal at the PR head |
+|---|---|---|
+| `heads/L1_clean/v3` | G1, step C heads (observations) | 48 of 48 |
+| `pump_electricity/preorigin/v3` | `N1.policy_response.v1` input (step B exposure) | 15 of 16; `hydrophysics/twin/scenario.py` matches 709f660, not the PR head |
+| `deep_benchmarks_printed/v2` | G4 | 13 of 13 |
+| `surface_water_v4/preorigin/v2` | `N1.phase12_response.v1` input (G3, not run) | 15 of 15 |
+| `n1_policy/rice_intensity/v1` | F2 | built by `n1_policy/build_rice_intensity.py`, hash-bound by `N1.changhua_fix.v1` and equal at the PR head |
+
+All N1 and I1 code hashes match the PR head. Some older Phase 0 registrations do not,
+because their code was edited after they were registered (H1a, H2, H3, the L3 b and b2
+definitions, P2abc, S1a, S2, S3, S5, W3). That is expected, but it means the registered
+versions exist only as their hashes and as archived copies. The b2 release definition
+(`L3.release_20261012b2.definition.v1`) depends on
+`results/dataprep/reports/H2_evidence/code_as_registered/015c1980819a/config.py`, a
+gitignored copy outside git. Whether to commit a sanitised copy under a new path, after the
+Rule 1 scan, is open for the user.

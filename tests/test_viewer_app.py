@@ -1062,3 +1062,389 @@ def test_three_is_shipped_unevaluated_and_the_page_has_one_dictionary():
     en, zh = template.split("const T = {")[1].split("\nzh: {")
     key = re.compile(r'(?<![\w"])([A-Za-z0-9_]+):\s*"')
     assert set(key.findall(en)) == set(key.findall(zh.split("\n}};")[0]))
+
+
+# ---------------------------------------------------------------------------------------
+# policy-response labels (review 2026-10-24): page_labels v2 names the model of every N1
+# row; the page says the Changhua head result is the census model's, flags the design-time
+# window and never counts another model's row; the deep-pile line is report-only (U7); the
+# policy gate is a model-internal sanity check; the levers act on Yunlin pumping only when
+# the model carries none in Changhua; flipped verdicts change the text. The text checks run
+# the page in headless Chromium (Playwright) and skip without it.
+# ---------------------------------------------------------------------------------------
+from types import SimpleNamespace  # noqa: E402
+
+from dataprep_staging.n1_policy import page_labels_v2 as PL2  # noqa: E402
+
+R0 = "results/twin_runs/stage3_datum_gate_m1618/stage3_theta.json"
+R1C = "results/twin_runs/stage3_datum_gate_ccz_m1618/stage3_theta.json"
+
+
+def _head(model_better=True):
+    v = "model_better" if model_better else "baseline_better"
+    return {"rmse_model_m": 1.38, "rmse_cl_m": 2.21, "rmse_zr_m": 2.29, "n_wells": 75,
+            "verdict_cl": v, "verdict_zr": v, "slope_obs_on_model": 1.21,
+            "slope_ci": [1.06, 1.36]}
+
+
+def _lev(model_better=False):
+    v = "model_better" if model_better else "baseline_better"
+    return {"rms_model_cm": 1.88, "rms_cl_cm": 1.0, "rms_zr_cm": 1.08, "n_benchmarks": 355,
+            "verdict_cl": v, "verdict_zr": v, "slope_obs_on_model": 0.22,
+            "slope_ci": [0.17, 0.27]}
+
+
+def _v1(ch_heads_ok=True, subs_ok=False) -> dict:
+    return {"product": "n1_policy/page_labels", "version": "v1",
+            "window": "2016-01..2018-12 (masked refits; design-time window)",
+            "heads": {"yunlin": _head(), "changhua": _head(ch_heads_ok)},
+            "subsidence": {"yunlin": _lev(subs_ok), "changhua": _lev(subs_ok)},
+            "changhua": {"status": "not_supported", "dose_obs_cm_per_gwh": -0.5,
+                         "dose_model_cm_per_gwh": 0.8, "dose_verdict": "inconsistent",
+                         "fixes": {"F1": "failed_design_gate",
+                                   "F2": "heads vs R1c indistinguishable"}},
+            "registrations": {"N1.policy_response.v1": "a" * 64}, "inputs": {}}
+
+
+def _cmp(rm, rb, verdict="model_better", ratio=0.96, ci=(-0.1, -0.0002)):
+    return {"n_wells": 59, "rmse_model": rm, "rmse_base": rb, "ratio": ratio, "ci": list(ci),
+            "verdict": verdict}
+
+
+def _step_c(models=(R0, R1C)):
+    row = {"M_vs_CL": _cmp(1.13, 1.19), "M_vs_ZR": _cmp(1.13, 1.20),
+           "slope_obs_on_M": {"slope": 0.77, "ci": [0.51, 1.05]}}
+    tests = {}
+    for county, m in zip(("yunlin", "changhua"), models, strict=True):
+        for kind in ("heads", "lev"):
+            tests[f"N1P.C_{kind}_{county}"] = {"model": [m, m.replace("stage3_theta", "col")]}
+    return {"tests": tests,
+            "secondary_cross_county": {"changhua_scored_with_yunlin_model": {"heads": row}}}
+
+
+def _step_b():
+    def t(v, o, m):
+        return {"verdict": v, "beta_obs_cm_per_GWh": o, "beta_model_cm_per_GWh": m,
+                "ratio_ci": [0.2, 2.2], "model": {"model": {"theta": "t", "column": "c"}}}
+    return {"tests": {"N1P.B_dose_yunlin": t("inconclusive", 0.66, 0.26),
+                      "N1P.B_dose_changhua": t("inconsistent", -0.5, 0.8)}}
+
+
+# --- page_labels v2 ---------------------------------------------------------------------
+def test_v2_names_the_model_of_every_row_and_keeps_every_v1_value():
+    v1 = _v1()
+    v2 = PL2.build_v2(v1, _step_b(), _step_c())
+    assert v2["version"] == "v2" and v2["design_time"] is True
+    assert v2["heads"]["yunlin"]["model"]["id"] == "R0-m1618"
+    assert v2["heads"]["yunlin"]["model"]["deliverable_recipe"] is True
+    assert v2["heads"]["changhua"]["model"]["id"] == "R1c-m1618"
+    assert v2["subsidence"]["changhua"]["model"]["deliverable_recipe"] is False
+    for kind in ("heads", "subsidence"):
+        for county, row in v1[kind].items():
+            assert {k: v2[kind][county][k] for k in row} == row
+    sec = v2["secondary"]["changhua_heads_deliverable_recipe"]
+    assert sec["ratio_cl"] == 0.96 and sec["ci_cl"][1] == -0.0002
+    assert v2["step_b"]["yunlin"]["verdict"] == "inconclusive"
+    assert v1["version"] == "v1" and "model" not in v1["heads"]["yunlin"]   # not mutated
+
+
+def test_v2_refuses_an_unknown_model_and_a_status_it_cannot_derive():
+    with pytest.raises(ValueError, match="unknown model"):
+        PL2.build_v2(_v1(), _step_b(), _step_c(models=("results/x/stage3_theta.json", R1C)))
+    v1 = _v1()
+    v1["changhua"]["dose_verdict"] = "consistent"       # would derive "supported"
+    with pytest.raises(ValueError, match="derived Changhua status"):
+        PL2.build_v2(v1, _step_b(), _step_c())
+    assert PL2.changhua_status("inconsistent", {"F2": "model_better vs R1c"}) == "supported"
+
+
+# --- viewer blocks ----------------------------------------------------------------------
+def test_v1_labels_give_the_v1_block_and_v2_adds_the_models(tmp_path):
+    p1, p2 = tmp_path / "v1.json", tmp_path / "v2.json"
+    p1.write_text(json.dumps(_v1()))
+    p2.write_text(json.dumps(PL2.build_v2(_v1(), _step_b(), _step_c())))
+    b1, b2 = va._policy_response_block(str(p1)), va._policy_response_block(str(p2))
+    assert "model" not in b1["heads"]["changhua"] and "rmse_zr_m" not in b1["heads"]["yunlin"]
+    assert set(b1) == {"window", "heads", "subsidence", "changhua", "registrations"}
+    assert b2["heads"]["changhua"]["model"]["id"] == "R1c-m1618"
+    assert b2["design_time"] is True and "secondary" in b2 and "step_b" in b2
+
+
+def test_deep_piles_used_for_selection_are_report_only(tmp_path):
+    rep = {"scores": {"n_sites": 4, "window": ["2024-01", "2025-12"], "cum": {}},
+           "independence": ["(i) four piles only",
+                            "(ii) rings hosted; the deep piles themselves were never used in "
+                            "calibration or selection"]}
+    path = tmp_path / "piles.json"
+    path.write_text(json.dumps(rep))
+    b = va._deep_pile_block(str(path), None)
+    assert b["selection"] == {"date": "2026-10-21", "ruling": "U7", "report_only": True}
+    assert b["independence"][0] == "(i) four piles only"
+    assert "never used" not in b["independence"][1] and "(U7)" in b["independence"][1]
+    assert b["independence_superseded"] == [1]
+    assert "never used" in json.loads(path.read_text())["independence"][1]   # report untouched
+    rep["scores"]["window"] = ["2026-11", "2027-10"]                          # a fresh window
+    path.write_text(json.dumps(rep))
+    assert "selection" not in va._deep_pile_block(str(path), None)
+
+
+def test_pumping_block_finds_no_changhua_pumping_in_a_yunlin_only_run():
+    E = np.zeros((5, 24))
+    E[3:] = 1e6                                    # cells 3-4: Yunlin townships
+    inp = SimpleNamespace(dates=pd.date_range("2012-01", periods=24, freq="MS"),
+                          E_by_class={"irrigation": E})
+    town = np.array([0, 0, 0, 1, 2])
+    b = va._pumping_block(inp, {}, town, log=lambda s: None)
+    assert b["changhua"] is False and b["pooled_gwh"] == 0.0 and b["in_grid_gwh"] == 24.0
+    E[0] = 1e6
+    assert va._pumping_block(inp, {}, town, log=lambda s: None)["changhua"] is True
+    own = va._pumping_block(inp, {"pump_census": "census.parquet"}, town, log=lambda s: None)
+    assert own["changhua"] is None and own["source"] == "own census"
+    assert va._pumping_block(None, {}, town) is None
+
+
+def test_template_has_the_policy_label_keys_in_both_languages():
+    with open(va.TEMPLATE, encoding="utf-8") as fh:
+        t = fh.read()
+    for key in ("evc_pile_ro", "pr_design", "prm_r1c", "pr_not_beats", "evc_pr_subs_ok",
+                "levers_sub_np", "pol_caveat_ch_np", "pooled_np", "hl_yun", "tt_n1_heads",
+                "evc_pr_heads_size", "pol_caveat_hg", "hl_hot", "rank_gwh_tie", "cv9_t_split",
+                "cv9_b_split", "cv9_pol", "cv9_lift"):
+        assert t.count(f"  {key}: ") + t.count(f" {key}: ") >= 2, key
+    assert "Policy-response check" not in t
+    assert "long-run trend" not in t and "長期趨勢" not in t and "overstat" not in t
+    # the Yunlin headline figure names its cell set (named townships, not the county mask)
+    yun = [ln for ln in t.splitlines() if ln.lstrip().startswith("hl_yun: ")]
+    assert len(yun) == 2 and all("{n}" in ln for ln in yun)
+    assert "named Yunlin townships" in yun[0] and "已命名鄉鎮" in yun[1]
+
+
+# --- the rendered text (headless Chromium) ----------------------------------------------
+def _browser():
+    sync = pytest.importorskip("playwright.sync_api")
+    pw = sync.sync_playwright().start()
+    try:
+        browser = pw.chromium.launch(**va_exe())
+    except Exception as e:  # noqa: BLE001
+        pw.stop()
+        pytest.skip(f"no Chromium for Playwright: {type(e).__name__}")
+    return pw, browser
+
+
+def va_exe() -> dict:
+    from hydrophysics.twin.browser_check import _exe
+
+    return _exe()
+
+
+def _page_text(tmp_path, labels: dict, js: str):
+    path = tmp_path / "labels.json"
+    path.write_text(json.dumps(labels))
+    _, out, _ = _build(tmp_path, policy_response_json=str(path))
+    pw, browser = _browser()
+    try:
+        page = browser.new_page()
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        return page.evaluate(js)
+    finally:
+        browser.close()
+        pw.stop()
+
+
+LINES = "() => policyResponseLines(D.modelcard.policy_response).map(x => x[1])"
+
+
+def test_page_names_the_census_model_and_the_design_time_window(tmp_path, quiet):
+    v2 = PL2.build_v2(_v1(), _step_b(), _step_c())
+    js = ("() => { D.modelcard.pumping = {changhua: false}; const rows = testRows(); "
+          "return {lines: policyResponseLines(D.modelcard.policy_response).map(x => x[1]), "
+          "n1: rows.filter(r => r.count !== undefined).map(r => [r.test, r.verdict, r.count]), "
+          "counts: testCounts(), lev: tr('levers_sub_np', {rec: 'x'}), "
+          "cav: (polCaveat(), document.getElementById('polCaveat').textContent)}; }")
+    got = _page_text(tmp_path, v2, js)
+    heads_y, heads_c, size, subs, ch = got["lines"]
+    assert "Yunlin" in heads_y and "design-time window" in heads_y and "R0 recipe" in heads_y
+    # both head-response slopes, the Changhua one named by its model
+    assert "1.21 (1.06–1.36" in size and "census model" in size and "No correction" in size
+    assert "census model" in heads_c and "not the one shown" in heads_c
+    assert "marginal" in heads_c and "0.96" in heads_c          # the declared secondary
+    assert "not supported" in subs and "census model" in subs and "the other way" in subs
+    assert "no Changhua pumping" in ch
+    # the census model's rows are shown but never counted as this model's tests
+    assert [c for _, _, c in got["n1"]] == [True, False, True, False]
+    assert all("not counted" in t for t, _, c in got["n1"] if not c)
+    assert "not available in this model" in got["cav"]
+    # neutral subsidence wording, and the Yunlin head-gain caveat
+    assert "elastic response that arrives within about a year" in got["cav"]
+    assert "long-run sinking is untested" in got["cav"] and "likely understated" in got["cav"]
+    assert not any("long-run trend" in x for x in [got["cav"], *got["lines"]])
+
+
+def test_flipped_verdicts_change_the_policy_text(tmp_path, quiet):
+    v2 = PL2.build_v2(_v1(ch_heads_ok=False, subs_ok=True), _step_b(), _step_c())
+    lines = _page_text(tmp_path, v2, LINES)
+    assert "does not beat both simple baselines" in lines[1]
+    assert "does not beat" not in lines[0]
+    assert any("1–3-year response beats both simple baselines" in s for s in lines)
+    assert not any("is not supported. On the" in s for s in lines)
+
+
+def test_policy_gate_is_neutral_and_piles_are_report_only(tmp_path, quiet):
+    js = ("() => { D.modelcard.policy = 'PASS'; D.modelcard.deep_piles = {n_sites: 4, "
+          "window: ['2024-01', '2025-12'], n_verified_values: 1, cum: {model: {rmse: 1.2}, "
+          "base_continue: {rmse: 1.1}}, selection: {date: '2026-10-21', ruling: 'U7'}}; "
+          "const before = testCounts(); "
+          "const row = testRows().find(r => r.test.startsWith('Policy direction')); "
+          "return {row: row && [row.verdict, row.mine], pile: pileLine(), before}; }")
+    got = _page_text(tmp_path, _v1(), js)
+    assert got["row"] == [None, "PASS"]
+    assert got["pile"].startswith("Report-only, not independent skill")
+
+
+# ---------------------------------------------------------------------------------------
+# post-hoc, model-only labels (page_posthoc.json, 2026-10-24): off by default, bound to the
+# forward run and basis, and every line says "post hoc, model-only, not a test"
+# ---------------------------------------------------------------------------------------
+from dataprep_staging.n1_policy import page_posthoc as PP  # noqa: E402
+
+
+def _posthoc(fw_sha: str, bs_sha: str, **kw) -> dict:
+    run = {"n": 36, "share_same_leader": 30 / 36, "share_same_top3_set": 1.0,
+           "share_leader_in_top3": 1.0, "leader_counts": {"Baozhong": 30, "Beigang": 6}}
+    out = {"status": PP.STATUS, "forward_sha256": fw_sha, "basis_sha256": bs_sha,
+           "hotspot": {"cut30": {"start": 2026, "horizon_year": 2032,
+                                 "headline": ["Baozhong", "Beigang", "Dongshi"],
+                                 "runs": run, "r0_runs": {"n": 36, "share_same_leader": 26 / 36},
+                                 "draws": {"n": 500, "share_same_leader": 0.568},
+                                 "stable": False}},
+           "per_gwh": {"starts": {"2026": {"lo": 2.84, "hi": 3.10, "share_order_kept": 0.032,
+                                           "cm_share_order_kept": 1.0},
+                                  "2030": {"lo": 2.84, "hi": 3.10, "share_order_kept": 0.03,
+                                           "cm_share_order_kept": 1.0}},
+                       "ranking_survives": False},
+           "elastic": {"start": 2026, "horizon_year": 2032,
+                       "policies": {"cut30": {"total_cm": 0.942, "elastic_cm": 0.942,
+                                              "inelastic_cm": 0.0}},
+                       "cells_below_preconsolidation_after_2026_01": 0, "margin_p5_m": 0.243,
+                       "lift": {"policy": "cut30", "lifted": "2030-01", "at_year": 2032,
+                                "left_cm": 0.0}}}
+    out.update(kw)
+    return out
+
+
+def test_posthoc_block_is_off_by_default_and_bound_to_its_run(tmp_path, quiet):
+    fw, bs, _ = _write_inputs(tmp_path)
+    from hydrophysics.twin.release import sha256
+
+    good = tmp_path / "posthoc.json"
+    good.write_text(json.dumps(_posthoc(sha256(fw), sha256(bs))))
+    assert va._posthoc_block(None, str(fw), str(bs)) is None
+    b = va._posthoc_block(str(good), str(fw), str(bs))
+    assert b["status"] == "post hoc, model-only, not a test"
+    assert set(b) == {"status", "hotspot", "per_gwh", "elastic"}
+    for bad in (_posthoc("0" * 64, sha256(bs)), _posthoc(sha256(fw), "0" * 64),
+                _posthoc(sha256(fw), sha256(bs), status="a test")):
+        good.write_text(json.dumps(bad))
+        with pytest.raises(ValueError):
+            va._posthoc_block(str(good), str(fw), str(bs))
+    # the CLI leaves it off unless --posthoc is given
+    out = tmp_path / "cli.html"
+    va.main(["--forward", str(fw), "--basis", str(bs), "--out", str(out),
+             "--townships", "none", "--basemap", "none", "--leveling", "none", "--wells",
+             "none", "--temporal", "none", "--column-csv", "none", "--hsr", "none",
+             "--alt-forward", "none", "--rheo-forward", "none"])
+    d = _payload(out)
+    assert "posthoc" not in d["modelcard"] and "posthoc" not in d["release"]["sources"]
+
+
+def test_page_posthoc_copies_the_checks_and_refuses_mixed_models():
+    fwd, basis = "f" * 64, "b" * 64
+    inputs = {"provenance": {"inputs": [{"path": PP.FORWARD, "sha256": fwd},
+              {"path": "results/twin_forward/response_basis_innov.npz", "sha256": basis}]}}
+    draws = {"cut30": {"headline_towns_unperturbed": ["A", "B", "C"],
+                       "share_draws_same_leader": 0.5, "share_draws_same_top3_set": 0.6,
+                       "leader_counts": {"A": 250, "D": 250}}}
+    lev = {"per_100gwh": {"value": {"irrigation": 2.8, "other": 3.1}, "lever_order": ["other"],
+                          "share_tau_1": 0.03, "ranking_survives": False},
+           "cm_ranking_detail": {"share_tau_1": 1.0, "ranking_survives": True},
+           "headline_townships_basis": draws}
+    split = {"policies": {"cut30": {"by_year": {
+        "2026": {"page_total": {"fan": 0.9}},
+        "2032": {"page_total": {"fan": 1.0}, "B_direct_on_mean_heads": {
+            "elastic": {"fan": 1.0}, "inelastic": {"fan": 0.0}}}},
+        "C_lift_after_2029": {"avoided_left_dec2032": {"fan": 0.0}}}}}
+    margin = {"p5": 0.24, "min": 0.03}
+    docs = {"a2b_page_payload": {"starts": {"2026": lev, "2030": lev},
+                                 "provenance": {"draws_per_start": 500,
+                                                "page": {"sha256": "p" * 64}}},
+            "a2b_innov": {"basis_sha256": basis},
+            "transfer": {**inputs, "horizon": "2032-12", "ensemble": {
+                k: {"fan_mean_cm": [1, 1], "cell_pearson_r": 1, "top_decile_cell_jaccard": 1}
+                for k in ("cut30", "retire_aqua")}},
+            "hotspot": {"solved": {"cut30": {
+                "page_headline": ["A", "B", "C"], "page_margins": {"lead_minus_second_cm": 0.02},
+                "innov_runs": {"n": 36, "share_same_leader": 0.8, "share_same_top3_set": 1.0,
+                               "share_leader_in_ref_top3": 1.0, "leader_counts": {"A": 29}},
+                "cwa_runs": {"n": 36, "share_same_leader": 0.7, "share_same_top3_set": 1.0},
+                "cwa_ensemble_headline": ["B", "A", "C"],
+                "proposed_label": {"leader_stable": False, "rule": "r"}}}},
+            "elastic_split": split,
+            "elastic_context": {**inputs, "scenarios": {
+                "baseline": {"cells_below_preconsolidation_after_2026_01": 0,
+                             "head_margin_above_preconsolidation_m": margin}}}}
+    out = PP.build(docs)
+    assert out["status"] == "post hoc, model-only, not a test"
+    assert (out["forward_sha256"], out["basis_sha256"]) == (fwd, basis)
+    assert out["hotspot"]["cut30"]["draws"] == {"n": 500, "share_same_leader": 0.5,
+                                                "share_same_top3_set": 0.6}
+    assert out["per_gwh"]["ranking_survives"] is False and out["per_gwh"]["cm_ranking_survives"]
+    assert out["per_gwh"]["starts"]["2026"]["lo"] == 2.8
+    e = out["elastic"]
+    assert e["policies"]["cut30"]["inelastic_cm"] == 0.0
+    assert e["policies"]["cut30"]["share_by_first_dec"] == pytest.approx(0.9)
+    assert e["lift"]["left_cm"] == 0.0 and e["cells_below_preconsolidation_after_2026_01"] == 0
+    docs["a2b_innov"] = {"basis_sha256": "c" * 64}           # a different basis: refused
+    with pytest.raises(ValueError):
+        PP.build(docs)
+
+
+def test_page_shows_the_posthoc_labels_only_when_given(tmp_path, quiet):
+    fw, bs, _ = _write_inputs(tmp_path)
+    from hydrophysics.twin.release import sha256
+
+    ph = tmp_path / "posthoc.json"
+    ph.write_text(json.dumps(_posthoc(sha256(fw), sha256(bs))))
+    opts = dict(leveling="none", wells="none", temporal_npz=None, column_csv=None,
+                hsr_csv=None, rivers_csv=None, theta_json=None, alt_npz=None,
+                rheo_npz=None, log=lambda s: None, townships_csv=None)
+    pages = {}
+    for key, path in (("with", str(ph)), ("without", None)):
+        out = tmp_path / f"page_{key}.html"
+        va.build(str(fw), str(bs), str(out), posthoc_json=path, **opts)
+        pages[key] = out
+    js = ("() => { D.towns = [{en: 'Baozhong', zh: 'A'}, {en: 'Beigang', zh: 'B'}, "
+          "{en: 'Dongshi', zh: 'C'}]; P = {src: 'solved', solved: "
+          "D.solved.findIndex(x => x.name === 'cut30')}; S.year = M.years.indexOf(2032); "
+          "S.rank = 'gwh'; renderRank(); "
+          "return {hot: hotWords([0, 1, 2]), order: hotWords([1, 0, 2]), "
+          "gwh: document.getElementById('rankNote').textContent, "
+          "cv: caveats().map(c => c[0] + c[1]).join(' | ')}; }")
+    pw, browser = _browser()
+    try:
+        got = {}
+        for key, out in pages.items():
+            page = browser.new_page()
+            page.goto(out.as_uri())
+            page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+            got[key] = page.evaluate(js)
+    finally:
+        browser.close()
+        pw.stop()
+    w, wo = got["with"], got["without"]
+    assert "post hoc, model-only, not a test" in w["hot"] and "leads in only 83%" in w["hot"]
+    assert "as a group, not an order" in w["hot"] and w["order"] == ""
+    assert "near-tie (2.84–3.10 cm)" in w["gwh"] and "3% for 2026 starts" in w["gwh"]
+    assert "not a test" in w["cv"] and "all elastic" in w["cv"] and "not separate" not in w["cv"]
+    assert "long-run sinking is untested" in w["cv"]
+    assert wo["hot"] == "" and "near-tie" not in wo["gwh"] and "all elastic" not in wo["cv"]

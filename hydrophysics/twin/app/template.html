@@ -567,6 +567,8 @@ function tr(k, v) {
 }
 const TN = i => LANG === "zh" ? D.towns[i].zh : D.towns[i].en;
 const TNB = i => D.towns[i].pooled ? TN(i) : `${D.towns[i].zh} ${D.towns[i].en}`;
+// the forward run carries no pumping in the pooled (Changhua) panel: its lever effects there are spillover
+const NOCHP = () => { const p = D.modelcard.pumping; return !!p && p.changhua === false; };
 const CN = k => LANG === "zh" ? D.classes[k].zh : D.classes[k].en;
 const lc = s => s.replace(/^[A-Z]/, c => c.toLowerCase());
 const uc = s => s.replace(/^[a-z]/, c => c.toUpperCase());
@@ -702,10 +704,30 @@ en: {
   evc_ring: "{span} rings ({n} sites): model R² {a} vs continued-rate baseline {b} (cumulative).",
   evc_ring_ref: "{span} rings ({n} sites, cumulative from each site's first survey after the 2022 gap, across which the rings changed depth reference): model RMSE {ra} cm vs continued-rate baseline {rb} cm; R² {a} vs {b}.",
   evc_pile: "{span} deep benchmarks printed in the WRA monthly reports ({n} piles on the grid, {v} printed values verified): model error {e} cm vs {b} cm continuing each pile's previous year; on the {nd} piles anchored below 200 m, {ed} vs {bd} cm with {kd} of {nd} inside the 10–90 % band. After every feed stopped ({span2}): model {e2} cm vs {b2} cm.",
-  evc_pr_heads: "Policy response, heads ({span} masked refits, registered test): the head response to pumping changes beats both simple baselines in Yunlin (error {ry} m vs {cy} m for no change) and Changhua ({rc} m vs {cc} m).",
-  evc_pr_subs: "Policy response, subsidence: the size of the 1–3-year response is not supported. On the {span} leveling the observed year-to-year swing does not follow the model's (observed ÷ modelled {sy} in Yunlin, {sc} in Changhua; a constant sinking rate fits better), while the 2007–10 comparison across places pointed the other way in Yunlin (more sinking than modelled, inconclusive). Read “subsidence avoided” as a long-run trend, not a 1–3-year forecast.",
-  evc_pr_ch: "Changhua levers: not supported. This model carries no Changhua pumping; the census model's 2007–10 dose-response came out opposite in sign to the leveling (observed {o} vs modelled {m} cm/yr per GWh/yr), and neither registered fix closed the gap. Lever effects in Changhua townships have no tested magnitude.",
-  pol_caveat: "Subsidence avoided is a long-run trend: its 1–3-year size is not supported by the registered tests. Changhua levers: not supported.",
+  evc_pile_ro: "Report-only, not independent skill: these piles' scores were used on {d} to choose between columns ({u}). ",
+  evc_pr_heads: "Policy response, heads, {cty} ({span} masked refits, registered test{dt}; scored on {mdl}): {res}.{note}",
+  pr_beats: "the head response to pumping changes beats both simple baselines (error {r} m vs {c} m for no change)",
+  pr_not_beats: "the head response to pumping changes does not beat both simple baselines (error {r} m vs {c} m for no change)",
+  pr_design: "; design-time window: parameters masked, not a fresh period", pr_design_p: " (design-time window: parameters masked, not a fresh period)",
+  pr_other_note: " That model is not the one shown on this page.",
+  evc_pr_heads_size: "Size of the head response ({span}{dt}): observed ÷ modelled head change {hy} ({hyl}–{hyu}, 90 % interval) in Yunlin and {hc} ({hcl}–{hcu}) in Changhua on {mc}; above 1 means the modelled change is too small. A 2015 drought test found a larger gap, but that event mixes canal water and rain with pumping. No correction is applied to the levers.",
+  pr_ch_nopump: " The model shown carries no Changhua pumping, so it cannot represent a Changhua pumping change; its own recipe scored on Changhua (declared secondary) is marginal: error {r} m vs {c} m, ratio {q}, upper end of the 90 % interval {u} m.",
+  prm_r0: "the R0 recipe refitted with these years masked",
+  prm_r1c: "the census model (R1c flow with Changhua pumping, three-zone column)",
+  prm_none: "the model named in the N1 summary",
+  cty_yunlin: "Yunlin", cty_changhua: "Changhua",
+  evc_pr_subs: "Policy response, subsidence: the size of the 1–3-year response is not supported. On the {span} leveling{dt} the observed year-to-year swing does not follow the modelled one (observed ÷ modelled {sy} in Yunlin on {my}, {sc} in Changhua on {mc}{cl}){sb}. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1–3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.",
+  evc_pr_subs_ok: "Policy response, subsidence ({span} leveling{dt}): the 1–3-year response beats both simple baselines in {list}.",
+  pr_cl_better: "; a constant sinking rate fits better",
+  pr_stepb: ", while the 2007–10 comparison across places pointed {way} in Yunlin ({dir} than modelled, {v})",
+  pr_way_other: "the other way", pr_way_same: "the same way", pr_more: "more sinking", pr_less: "less sinking",
+  vd_inconclusive: "inconclusive", vd_inconsistent: "inconsistent", vd_consistent: "consistent",
+  evc_pr_ch: "Changhua levers: not supported. {np}The census model's 2007–10 dose-response came out opposite in sign to the leveling (observed {o} vs modelled {m} cm/yr per GWh/yr), and neither registered fix closed the gap. Lever effects in Changhua townships have no tested magnitude.",
+  pr_ch_np: "This model carries no Changhua pumping, so Changhua pumping levers are not available in it. ",
+  pol_caveat: "In this model the avoided subsidence is an elastic response that arrives within about a year; its 1–3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. {hg}{ch}",
+  pol_caveat_hg: "Head gains: the tests found the modelled head response smaller than observed in Yunlin, so a lever's head gain there is likely understated. ",
+  pol_caveat_ch: "Changhua levers: not supported.",
+  pol_caveat_ch_np: "Changhua pumping levers: not available in this model (it carries no Changhua pumping; not supported).",
   ev_counts_long: "Tests: {p} passed, {f} failed (table below).", ev_independence: "Independence caveats", kv_details: "Details",
   // headline
   hl_fit: "Dec {year} is inside the fitted period ({a}–{b}): the model reproduces the record there. Policies act only after Dec {y0}; move the year forward to see their effect.",
@@ -715,7 +737,9 @@ en: {
   hl_opt: "<b>{p}</b> from {s}",
   hl_none: "This model has no full run of <b>{pol}</b> from {yr}. {boff} Try {opts}.", no_basis: "No response basis is loaded.",
   hl_early: "<b>{pol}</b> starts in Jan {yr}, so by Dec {year} it has not acted yet. Move the year to {yr} or later.",
-  hl_pol: "In this model, <b>{pol}</b> from {yr} avoids <b>{v} cm</b> {b} of fan-average subsidence by {year}, {share} of the {base} cm the baseline adds from Dec {y0}{fast}. Largest benefit in Yunlin: {tt}. {agree}{alt}.",
+  hl_pol: "In this model, <b>{pol}</b> from {yr} avoids <b>{v} cm</b> {b} of fan-average subsidence{yun} by {year}, {share} of the {base} cm the baseline adds from Dec {y0}{fast}. Largest benefit in Yunlin: {tt}{hot}. {agree}{alt}.",
+  hl_hot: " (post hoc, model-only, not a test: {lead} leads in only {p} of this model's {n} runs, {pc} of the R0 sibling's and {pa} of {na} perturbation draws; the leader is one of {grp} in {pg} of this model's runs, so read them as a group, not an order)",
+  hl_yun: " (<b>{v} cm</b> over the {n} cells of the named Yunlin townships, where the levers act; the model carries no Changhua pumping)",
   at_h: " (counted at {H})",
   prov_full: "Full model, {n} parameter sets × {k} initial fields", prov_fast: "Fast estimate: single-lever runs rescaled to the full model",
   prov_nl: " (non-linearity {p}%)", prov_assumed: "; {c} use the mean factor (assumed)", prov_title: "Rescaling factors (subsidence / head): ",
@@ -723,6 +747,8 @@ en: {
   pp_bau: "Business as usual", pp_all0: "Retiring all pumping", pp_allcut: "Cutting all pumping {p}%", pp_ret: "retiring {c} pumping", pp_cut: "cutting {c} pumping {p}%",
   bias_little: "the hindcast sinks too little at {names}, by {by} cm", bias_much: "the hindcast sinks too much at {names}, by {by} cm", bias_clause: " (over {yrs} {txt})",
   pooled_plain: "Changhua is pooled", pooled_low: "Changhua is pooled and poorly matched to its {n} benchmarks, R² {r2}",
+  pooled_np: "Changhua is pooled, and this model carries no Changhua pumping: its values are spillover from Yunlin cuts, untested",
+  tw_pooled_np: "no Changhua pumping in this model: values are spillover from Yunlin cuts, untested; ", conf_np: "spillover only, untested",
   agree_all: "All {n} parameter sets agree it helps", agree_some: "{lb}{a} of {n} parameter sets agree it helps", at_least: "At least ",
   agree_none: "Run agreement is not measured: there is no full-model run for {c}{late}", agree_none_start: " starting in {s}", agree_none_plain: "",
   alt_prev_km: "the previous model ({km} km stress spread)", alt_prev_wide: "the previous model (wider stress spread)",
@@ -814,7 +840,7 @@ en: {
   sel_fan: "Fan average ({n} cells of 1 km²)", sel_cell: "Cell", sel_bench: "Leveling benchmark", sel_resid: "hindcast − observed", sel_well: "Monitoring well · layer {l} · {t}", back_fan: "back to fan average",
   // timeline, policy bar
   timeline: "Timeline", play: "Play the years", year: "Year", year_end: "End of horizon ({y})", y_fit: "fitted period", y_proj: "projected, not validated",
-  levers_sub: "pumping by water-use class, relative to {rec}", cut_pct: "{p}% cut", of_energy: "{p} of energy",
+  levers_sub: "pumping by water-use class, relative to {rec}", levers_sub_np: "Yunlin metered pumping by water-use class, relative to {rec} (the model carries no Changhua pumping)", cut_pct: "{p}% cut", of_energy: "{p} of energy",
   pr_irr30: "Irrigation −30%", pr_aqua0: "Retire aquaculture", pr_both: "Both", pr_all20: "All classes −20%", pol_edit: "Edit", pol_hide: "Hide",
   starts: "Policy starts", start_group: "Start year", reset: "Reset to business as usual", pin: "Pin this policy", share: "Copy share link", pinned_n: "{n}/4 pinned",
   pin_base: "Business as usual is always shown; nothing to pin.", pin_done: "Pinned; see the Compare tab.",
@@ -911,7 +937,8 @@ en: {
   cv5_t: "Rivers are treated as no-flow.", cv5_b: " The Choushui, Xinhuwei and Beigang rivers exchange no water with the aquifers in the model. Near the rivers, real heads may recover faster.",
   cv6_ok_t: "The head test does not test policy response.", cv6_ok_b: " The head score {a} (interpolation {b}) measures interpolation between wells, not whether the response to a pumping change is right.",
   cv6_t: "At wells it never saw, the model is worse than interpolation.",
-  cv6_b: " In the {nf}-fold test on wells left out of the fit, it predicts {an}absolute levels with R² {a} against {b} ({v}).{wd} It is a tool for how heads respond to a pumping change, not a map of heads, and none of these tests checks that response directly.",
+  cv6_b: " In the {nf}-fold test on wells left out of the fit, it predicts {an}absolute levels with R² {a} against {b} ({v}).{wd} It is a tool for how heads respond to a pumping change, not a map of heads, and none of these tests checks that response directly{resp}.",
+  cv6_resp: "; the registered policy-response tests in the model card do, for heads (the size of the 1–3-year subsidence response is not supported)",
   cv6_an: "head changes (each well's mean removed) with R² {a} against {b} for simple interpolation between the other wells ({v}), and ",
   cv6_wd: " Each well's constant offset (rms {rms} m, up to {max} m over {n} wells) is estimated at the wells it was fitted to and cannot be carried to a new one; it never enters the solver, the column or the projection.",
   cv7_fixed_t: "The model's start-up and restart steps are fixed upstream.",
@@ -922,6 +949,10 @@ en: {
   cv8_b: " The model's parameters are set per zone (proximal, mid, distal) and change abruptly at {list}, so the sinking can step across those lines. The largest step is at {km} km, where the compaction column's parameters change: the first column of cells east of it sinks a median {e} cm from Dec {y0} to Dec {y1}{re}, against {w} cm{rw} just west. That step is the per-zone column's, not a feature of the ground.{oth} Read the straight north-south edges as model boundaries, not geology; the peak-cell values often sit on them.",
   cv8_km: "{km} km E", cv8_rate_e: " ({r} cm/yr in the final year)", cv8_rate_w: " ({r} cm/yr)", cv8_oth: " Elsewhere the step is small: {l}.", cv8_oth_i: "{e} against {w} cm at {km} km", cv8_sep: ", ",
   cv9_t: "Much of the avoided subsidence is a fast, likely reversible response.",
+  cv9_t_split: "In this model the avoided subsidence is an elastic response that arrives within about a year.",
+  cv9_b_split: " {txt} A post-hoc, model-only split of this model's column (not a test) separates the two: under the forecast's mean forcing no cell's head falls below its preconsolidation head after Jan {y0} (5 % of cells are within {mg} m of it), so the avoided subsidence is all elastic ({pols}, by Dec {H}).{lift} A dry year that drew heads below that margin would add permanent compaction that a cut could avoid; that case is not in these runs, which use ensemble-mean heads. The 1–3-year size of the avoided subsidence is not supported by the registered tests, and whether a cut changes long-run sinking is untested.{late}",
+  cv9_pol: "{pol}: inelastic {ie} of {tot} cm", cv9_lift: " Lifting the policy “{pol}” in Jan {y}, with heads returned abruptly to the baseline, leaves {left} cm of its benefit by Dec {H}.", eos: ".",
+  rank_gwh_tie: "Post hoc, model-only, not a test (A2b): per 100 GWh/yr the classes are a near-tie ({lo}–{hi} cm), and this order held in only {q} of the perturbation draws, so it is not a robust ranking; the cm order held in {qc}.", rank_gwh_tie_y: "{p} for {y} starts",
   cv9_b: " {txt} In a visco-elastic column the part that follows the heads that quickly is mostly elastic: the aquifer skeleton rebounds when heads rise and would compress again if pumping resumed. Only the slowing of inelastic clay compaction is a lasting gain, and this page cannot separate the two (the forward run does not save the elastic and inelastic parts). A policy that avoids more than the baseline adds makes the ground rise; that is the elastic rebound.{late}",
   fw_item: "{p} from {s}: {dec} of the {H} benefit is there by Dec {s}, {peak} at its first-year peak ({m})",
   fw_late: " The same 30 % irrigation cut started in {s1} gives {v1} cm by {H} in {n1} years, against {v0} cm in {n0} years from {s0}: most of the benefit is the first year's jump.",
@@ -942,7 +973,9 @@ en: {
   // tests and the model card
   tt_new: "New observations {span}: frozen-forecast RMSE", tt_heldout: "Held-out years: error ratio after each well's offset (≤ {k} passes)", tt_shape: "Held-out years: shape R²",
   tt_heldout_rmse: "Held-out years (RMSE)", tt_unseen_change: "Unseen wells: head-change R²", tt_unseen_level: "Unseen wells: absolute-level R²", tt_column: "Leveling: column out of fold R²",
-  tt_chain: "Leveling: full-chain hindcast R² ({n} sites)", tt_rings: "Compaction rings ({n}, total-column proxy) R²", tt_policy: "Policy-response check",
+  tt_chain: "Leveling: full-chain hindcast R² ({n} sites)", tt_rings: "Compaction rings ({n}, total-column proxy) R²", tt_policy: "Policy direction sanity check (model-internal, not a test against data)",
+  tt_n1_heads: "Policy response, heads, {cty} ({span}{dt}): RMSE, {mdl}", tt_n1_subs: "Policy response, subsidence, {cty} ({span}{dt}): RMS, {mdl}",
+  tt_n1_design: ", design-time", tt_n1_other: " (other model, not counted)", tt_n1_ref: "no change {c}; reference year {z}", mdl_r0: "R0 recipe", mdl_r1c: "census model R1c", mdl_none: "model not recorded",
   best_clim: "climatology", best_clim_trend: "climatology + trend", best_persist: "persistence",
   th_test: "Test", th_this: "This model", th_verdict: "Verdict", th_ref: "Reference", th_prev: "Previous model", th_tests: "How the model is tested",
   pl: "Compared with the previous model ({name}), this one does better on {gain}, and worse on {lose}. The previous model projects {proj}.",
@@ -953,7 +986,7 @@ en: {
   kv_datum_note: "In the observation operator only: never in the solver, the column or the projection.", kv_column: "Column, out of fold", kv_rings: "total-column-proxy rings", kv_chain: "Full-chain hindcast",
   kv_heldout: "Held-out years", kv_fair: "fair rule", kv_after_offset: "after each well's offset", kv_with_trend: "with trend", kv_months: "free-running months after", kv_fit_years: "fitted years",
   kv_raw: "Raw", kv_legacy: "legacy verdict", kv_raw_share: "of the raw error is the per-well offset", kv_screen_radius: "the screen's stress radius", kv_others: "other screens (fair ratio)",
-  kv_others2: "other screens", kv_months_at: "free-running months at", kv_policy: "Policy-response check", kv_proj: "Projection",
+  kv_others2: "other screens", kv_months_at: "free-running months at", kv_policy: "Policy direction sanity check (model-internal, not a test against data)", kv_proj: "Projection",
   kv_proj_val: "free-running from {f}{r}; further sinking counted from Dec {y}", kv_restart_fixed: ", heads restarted once from the observed heads{tk}, the compaction column on the model's own heads",
   kv_restart: ", restarted once from the observed heads", kv_taper: " (tapered over {tk} km from the wells)",
   kv_steps_fixed: "Model steps (fixed upstream)", kv_steps_removed: "Model steps removed", kv_nothing_removed: "nothing removed. Check of the", kv_creep: "Creep ceiling (baseline)",
@@ -992,23 +1025,47 @@ zh: {
   evc_ring: "{span} 壓密環（{n} 個站點）：模型 R² {a}，持續速率基準 {b}（累積量）。",
   evc_ring_ref: "{span} 壓密環（{n} 個站點；累積量自各站 2022 年停測後的首次量測起算，壓密環在停測期間更換了深度基準）：模型 RMSE {ra} 公分，持續速率基準 {rb} 公分；R² {a} 對 {b}。",
   evc_pile: "{span} 水利署月報印刷之深層樁（網格內 {n} 支，{v} 個印刷數值經驗證）：模型誤差 {e} 公分，各樁延續前一年速率 {b} 公分；樁深 200 公尺以下的 {nd} 支為 {ed} 對 {bd} 公分，{kd}/{nd} 落在 10–90 % 範圍內。所有即時資料中斷後（{span2}）：模型 {e2} 公分，基準 {b2} 公分。",
-  evc_pr_heads: "政策反應—地下水位（{span}遮蔽重新校準，已預先登錄的檢驗）：抽水變化造成的水位反應，在雲林（誤差 {ry} 公尺，不變基準 {cy} 公尺）與彰化（{rc} 公尺，基準 {cc} 公尺）皆優於兩種簡單基準。",
-  evc_pr_subs: "政策反應—地層下陷：1–3 年內反應的大小未獲證據支持。在{span}的水準測量上，觀測到的逐年變動與模型不一致（觀測 ÷ 模型：雲林 {sy}、彰化 {sc}；固定下陷速率的表現更好），而 2007–10 年跨地點的比較在雲林則指向相反方向（下陷多於模型，結果未定）。請將「避免的下陷量」視為長期趨勢，而非 1–3 年的預報。",
-  evc_pr_ch: "彰化的政策槓桿：證據不支持。本模型不含彰化抽水；普查模型在 2007–10 年的劑量反應與水準測量方向相反（觀測 {o}、模型 {m} 公分/年每 GWh/年），兩項已登錄的修正都未能縮小差距。彰化各鄉鎮的槓桿效果沒有經過檢驗的量值。",
-  pol_caveat: "避免的下陷量是長期趨勢：其 1–3 年內的大小未獲已登錄檢驗支持。彰化的政策槓桿：證據不支持。",
+  evc_pile_ro: "僅供報告，不是獨立的預測能力：這些樁的分數已於 {d} 用來在壓密柱之間做選擇（{u}）。",
+  evc_pr_heads: "政策反應—地下水位，{cty}（{span}遮蔽重新校準，已預先登錄的檢驗{dt}；評分模型：{mdl}）：{res}。{note}",
+  pr_beats: "抽水變化造成的水位反應優於兩種簡單基準（誤差 {r} 公尺，不變基準 {c} 公尺）",
+  pr_not_beats: "抽水變化造成的水位反應未能同時優於兩種簡單基準（誤差 {r} 公尺，不變基準 {c} 公尺）",
+  pr_design: "；設計期視窗：參數經遮蔽重新校準，並非全新的時段", pr_design_p: "（設計期視窗：參數經遮蔽重新校準，並非全新的時段）",
+  pr_other_note: "該模型不是本頁所顯示的模型。",
+  evc_pr_heads_size: "水位反應的大小（{span}{dt}）：觀測 ÷ 模型的水位變化，雲林 {hy}（90 % 區間 {hyl}–{hyu}）、彰化 {hc}（{hcl}–{hcu}，評分模型為{mc}）；大於 1 表示模型的變化偏小。2015 年乾旱的檢驗顯示差距更大，但該事件混合了渠道供水與降雨的影響。政策槓桿未做任何修正。",
+  pr_ch_nopump: "本頁顯示的模型不含彰化抽水，因此無法呈現彰化的抽水變化；以其自身配方評分彰化（事先宣告的次要結果）僅勉強較佳：誤差 {r} 公尺，基準 {c} 公尺，比值 {q}，90 % 區間上限 {u} 公尺。",
+  prm_r0: "R0 配方於遮蔽這些年份後重新校準",
+  prm_r1c: "普查模型（含彰化抽水的 R1c 地下水流，三分區壓密柱）",
+  prm_none: "N1 摘要所列的模型",
+  cty_yunlin: "雲林", cty_changhua: "彰化",
+  evc_pr_subs: "政策反應—地層下陷：1–3 年內反應的大小未獲證據支持。在{span}的水準測量上{dt}，觀測到的逐年變動與模型不一致（觀測 ÷ 模型：雲林 {sy}，評分模型為{my}；彰化 {sc}，評分模型為{mc}{cl}）{sb}。在本模型中，避免的下陷量是約一年內出現的彈性反應；其 1–3 年內的大小未獲已登錄檢驗支持，而減少抽水是否改變長期下陷則尚未檢驗。",
+  evc_pr_subs_ok: "政策反應—地層下陷（{span}水準測量{dt}）：1–3 年內的反應在{list}優於兩種簡單基準。",
+  pr_cl_better: "；固定下陷速率的表現更好",
+  pr_stepb: "，而 2007–10 年跨地點的比較在雲林則指向{way}（{dir}，{v}）",
+  pr_way_other: "相反方向", pr_way_same: "相同方向", pr_more: "下陷多於模型", pr_less: "下陷少於模型",
+  vd_inconclusive: "結果未定", vd_inconsistent: "結果不一致", vd_consistent: "結果一致",
+  evc_pr_ch: "彰化的政策槓桿：證據不支持。{np}普查模型在 2007–10 年的劑量反應與水準測量方向相反（觀測 {o}、模型 {m} 公分/年每 GWh/年），兩項已登錄的修正都未能縮小差距。彰化各鄉鎮的槓桿效果沒有經過檢驗的量值。",
+  pr_ch_np: "本模型不含彰化抽水，因此沒有彰化的抽水槓桿。",
+  pol_caveat: "在本模型中，避免的下陷量是約一年內出現的彈性反應；其 1–3 年內的大小未獲已登錄檢驗支持，而減少抽水是否改變長期下陷則尚未檢驗。{hg}{ch}",
+  pol_caveat_hg: "水位回升：檢驗發現雲林的模擬水位反應小於觀測，因此該處槓桿帶來的水位回升可能被低估。",
+  pol_caveat_ch: "彰化的政策槓桿：證據不支持。",
+  pol_caveat_ch_np: "彰化的抽水槓桿：本模型不提供（模型不含彰化抽水；證據不支持）。",
   ev_counts_long: "檢驗：{p} 項通過、{f} 項未通過（見下表）。", ev_independence: "獨立性限制", kv_details: "詳細資料",
   hl_fit: "{year}年12月屬於擬合期（{a}–{b}年）：模型在此重現觀測紀錄。政策只在{y0}年12月之後起作用；請把年份往後移以查看效果。",
   hl_base: "在<b>維持現狀</b>（{rec}年用水結構）下，全扇平均到{year}年12月再下陷 <b>{v} 公分</b>{rng}（自{y0}年12月起算；模型自身的推估趨勢）。{rh}移動下方槓桿，看看政策能減少多少。",
   hl_runs: "（各次模擬 {a}–{b}）", hl_rheo_ft: "{tau}的黏土潛變上限同樣擬合水準測量，會使之成為 {v} 公分。", hl_rheo: "{tau}的黏土潛變上限同樣擬合水準測量，會再多約 {v} 公分。",
   hl_opt: "<b>{p}</b>（自{s}年）", hl_none: "本模型沒有「{pol}」（自{yr}年起）的完整模擬。{boff}可選：{opts}。", no_basis: "未載入反應基底。",
   hl_early: "<b>{pol}</b>自{yr}年1月開始，到{year}年12月尚未起作用。請把年份移到{yr}年或更後。",
-  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年可減少全扇平均 <b>{v} 公分</b>{b}的下陷，為基準情境{y0}–{year}年新增 {base} 公分的 {share}{fast}。效益最大的雲林鄉鎮：{tt}。{agree}{alt}。",
+  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年可減少全扇平均 <b>{v} 公分</b>{b}的下陷{yun}，為基準情境{y0}–{year}年新增 {base} 公分的 {share}{fast}。效益最大的雲林鄉鎮：{tt}{hot}。{agree}{alt}。",
+  hl_hot: "（事後、僅模型分析，非檢驗：{lead}只在本模型 {n} 次模擬中的 {p} 居首，在 R0 對照模型的模擬中為 {pc}，在 {na} 次擾動抽樣中為 {pa}；本模型 {pg} 的模擬中居首者為{grp}之一，請視為一組，而非排序）",
   at_h: "（以{H}年計）",
   prov_full: "完整模型，{n}組參數 × {k}個初始場", prov_fast: "快速估算：單一槓桿模擬，已依完整模型校正", prov_nl: "（非線性誤差 {p}%）", prov_assumed: "；{c}用平均校正係數（假設）",
   prov_title: "校正係數（下陷/水頭）：", prov_none: "無完整模擬；快速估算已關閉", prov_base: "基準情境：完整模型，{n}次模擬",
   pp_bau: "維持現狀", pp_all0: "停止所有抽水", pp_allcut: "全部類別減抽{p}%", pp_ret: "停止{c}抽水", pp_cut: "{c}減抽{p}%",
   bias_little: "{names}的回推下陷偏少 {by} 公分", bias_much: "{names}的回推下陷偏多 {by} 公分", bias_clause: "（{yrs}，{txt}）",
   pooled_plain: "彰化尚未分鄉鎮", pooled_low: "彰化尚未分鄉鎮，且與水準測量吻合度低，R² {r2}",
+  pooled_np: "彰化尚未分鄉鎮，且本模型不含彰化抽水：其數值是雲林減抽的外溢效果，未經檢驗",
+  tw_pooled_np: "本模型不含彰化抽水：數值是雲林減抽的外溢效果，未經檢驗；", conf_np: "僅外溢效果，未經檢驗",
+  hl_yun: "（僅計雲林已命名鄉鎮的 {n} 個網格、即槓桿作用處為 <b>{v} 公分</b>；本模型不含彰化抽水）",
   agree_all: "{n}組參數中有{a}組認為是效益", agree_some: "{n}組參數中{lb}有{a}組認為是效益", at_least: "至少",
   agree_none: "模擬一致性未量測：{c}{late}完整模型模擬", agree_none_start: "沒有自{s}年起的", agree_none_plain: "沒有",
   alt_prev_km: "前一版模型（抽水分散約{km}公里）", alt_prev_wide: "前一版模型（抽水分散較廣）",
@@ -1092,7 +1149,7 @@ zh: {
   why_unvalidated: "為何{y}年12月之後都未驗證", th_time: "時間", th_avoided: "減少的下陷", th_diff: "政策減基準",
   sel_fan: "全扇平均（{n} 個 1 km² 網格）", sel_cell: "網格", sel_bench: "水準點", sel_resid: "回推減觀測", sel_well: "觀測井 · 第{l}層 · {t}", back_fan: "回到全扇",
   timeline: "時間軸", play: "播放年份", year: "年份", year_end: "推估終點（{y}）", y_fit: "擬合期", y_proj: "推估，未驗證",
-  levers_sub: "各用水類別抽水量，相對於{rec}", cut_pct: "減抽{p}%", of_energy: "用電 {p}",
+  levers_sub: "各用水類別抽水量，相對於{rec}", levers_sub_np: "雲林電表抽水量（依用水類別），相對於{rec}（本模型不含彰化抽水）", cut_pct: "減抽{p}%", of_energy: "用電 {p}",
   pr_irr30: "灌溉減30%", pr_aqua0: "停止養殖抽水", pr_both: "兩者皆是", pr_all20: "全部減20%", pol_edit: "編輯", pol_hide: "收合",
   starts: "政策開始", start_group: "開始年份", reset: "回到維持現狀", pin: "釘選此政策", share: "複製分享連結", pinned_n: "已釘選 {n}/4",
   pin_base: "維持現狀隨時顯示，不需釘選。", pin_done: "已釘選；見「比較」分頁。", pin_dropped: "最多釘選4個：最舊的「{name}」已移除。",
@@ -1181,7 +1238,8 @@ zh: {
   cv5_t: "河川視為不透水邊界。", cv5_b: "濁水溪、新虎尾溪、北港溪在模型中不與地下水交換。靠近河川處，實際水頭回升可能更快。",
   cv6_ok_t: "水頭檢驗不檢驗政策反應。", cv6_ok_b: "水頭分數 {a}（內插 {b}）衡量的是井與井之間的內插，而不是抽水改變的效果是否正確。",
   cv6_t: "在沒見過的井，模型不如簡單內插。",
-  cv6_b: "{nf}折交叉檢驗中，模型對未參與擬合的井{an}預測絕對水位的 R² 為 {a}，內插為 {b}（{v}）。{wd}它是推估抽水改變後水頭如何反應的工具，不是水頭分布圖；這些檢驗都不直接檢驗政策反應。",
+  cv6_b: "{nf}折交叉檢驗中，模型對未參與擬合的井{an}預測絕對水位的 R² 為 {a}，內插為 {b}（{v}）。{wd}它是推估抽水改變後水頭如何反應的工具，不是水頭分布圖；這些檢驗都不直接檢驗政策反應{resp}。",
+  cv6_resp: "；模型卡中已預先登錄的政策反應檢驗則檢驗了水位反應（1–3 年地層下陷反應的大小未獲支持）",
   cv6_an: "預測水頭變化（去除各井平均）的 R² 為 {a}，內插為 {b}（{v}）；",
   cv6_wd: "每口井的固定偏差（均方根 {rms} 公尺，最大 {max} 公尺，{n}口井）只在擬合過的井上估計，無法帶到新井；它不進入模擬、壓密柱或預報。",
   cv7_fixed_t: "模型啟動與重啟的陡降已在模擬中修正。",
@@ -1192,6 +1250,10 @@ zh: {
   cv8_b: "模型參數按扇區（近、中、遠）設定，在{list}突然改變，下陷在線的兩側跳變。最大的一條在 {km} 公里：壓密柱的參數在此改變，線東側第一排網格{y0}–{y1}下陷中位數 {e} 公分{re}，西側 {w} 公分{rw}。這是分區壓密柱的跳變，不是地面的特徵。{oth}請把這些直線視為模型的邊界，而非地質界線；最大網格值多落在線上。",
   cv8_km: "東經 {km} 公里", cv8_rate_e: "（最後一年速率 {r} 公分/年）", cv8_rate_w: "（{r} 公分/年）", cv8_oth: "{l}。", cv8_oth_i: "{km} 公里線：東 {e}、西 {w} 公分", cv8_sep: "；",
   cv9_t: "減少的下陷多為快速、可能可回復的反應。",
+  cv9_t_split: "在本模型中，避免的下陷量是約一年內出現的彈性反應。",
+  cv9_b_split: "{txt}本模型壓密柱的事後、僅模型分解（非檢驗）可以分開兩者：在預報的平均驅動下，{y0}年1月後沒有任何網格的水頭低於其預壓密水頭（5 % 的網格距離在 {mg} 公尺以內），因此避免的下陷量全為彈性（{pols}，至{H}年12月）。{lift}若乾旱年使水頭降到該餘裕以下，會增加減少抽水可以避免的永久壓密；這些模擬使用系集平均水頭，不含這種情況。避免的下陷量在 1–3 年內的大小未獲已登錄檢驗支持，而減少抽水是否改變長期下陷則尚未檢驗。{late}",
+  cv9_pol: "{pol}：非彈性 {ie}／{tot} 公分", cv9_lift: "若於{y}年1月取消「{pol}」（水頭立即回到基準情境），到{H}年12月剩下 {left} 公分的效益。", eos: "。",
+  rank_gwh_tie: "事後、僅模型分析，非檢驗（A2b）：以每 100 GWh/年計，各類別幾乎相同（{lo}–{hi} 公分），此排序在擾動抽樣中只有 {q} 維持不變，因此不是穩健的排序；以公分計的排序維持 {qc}。", rank_gwh_tie_y: "{y}年起 {p}",
   cv9_b: "{txt}。在黏彈性壓密柱中，這麼快跟著水頭變化的部分多為彈性：水頭回升時含水層骨架回彈，若恢復抽水會再壓縮。只有黏土非彈性壓密變慢才是持久的效益，而本頁無法分開兩者（預報未保存彈性與非彈性分量）。減少量超過基準新增量的政策會讓地面上升，那就是彈性回彈。{late}",
   fw_item: "{p}（自{s}年）：{H}年效益的 {dec} 在{s}年12月前出現，{m}達 {peak}",
   fw_late: "同樣減少30%灌溉：自{s1}年起到{H}年為 {v1} 公分（{n1}年），自{s0}年起為 {v0} 公分（{n0}年）。",
@@ -1210,7 +1272,9 @@ zh: {
   tl_item: "{p}（自{s}年）到{yz}12月分別減少 {vz} 公分", rl_item: "{p} {a} → {b}",
   tt_new: "新增觀測 {span}：凍結預報 RMSE", tt_heldout: "保留年份：去除各井偏差後誤差比（≤ {k} 通過）", tt_shape: "保留年份：變化形狀 R²",
   tt_heldout_rmse: "保留年份（RMSE）", tt_unseen_change: "未見過的井：水頭變化 R²", tt_unseen_level: "未見過的井：絕對水位 R²", tt_column: "水準測量：壓密柱跨折 R²",
-  tt_chain: "水準測量：全鏈回推 R²（{n}點）", tt_rings: "壓密環（{n}個，未分層代理）R²", tt_policy: "政策反應檢驗",
+  tt_chain: "水準測量：全鏈回推 R²（{n}點）", tt_rings: "壓密環（{n}個，未分層代理）R²", tt_policy: "政策方向合理性檢查（模型內部，非對照觀測的檢驗）",
+  tt_n1_heads: "政策反應—地下水位，{cty}（{span}{dt}）：RMSE，{mdl}", tt_n1_subs: "政策反應—地層下陷，{cty}（{span}{dt}）：RMS，{mdl}",
+  tt_n1_design: "，設計期視窗", tt_n1_other: "（其他模型，不計入）", tt_n1_ref: "不變基準 {c}；參考年基準 {z}", mdl_r0: "R0 配方", mdl_r1c: "普查模型 R1c", mdl_none: "未記錄模型",
   best_clim: "氣候平均", best_clim_trend: "氣候平均加趨勢", best_persist: "持續法",
   th_test: "檢驗", th_this: "本模型", th_verdict: "判定", th_ref: "參考", th_prev: "前一版模型", th_tests: "模型的檢驗",
   pl: "與前一版模型（{name}）相比，本模型在{gain}較好；在{lose}較差。前一版的預報：{proj}。",
@@ -1221,7 +1285,7 @@ zh: {
   kv_datum_note: "只在觀測算子中，不進入模擬、壓密柱或預報。", kv_column: "壓密柱（跨折）", kv_rings: "未分層代理壓密環", kv_chain: "全鏈回推",
   kv_heldout: "保留年份", kv_fair: "公平規則", kv_after_offset: "去除各井偏差後", kv_with_trend: "加趨勢", kv_months: "個月自行運算，擬合年數", kv_fit_years: "年",
   kv_raw: "原始", kv_legacy: "舊判定", kv_raw_share: "的原始誤差來自各井偏差", kv_screen_radius: "此檢驗的抽水分散半徑", kv_others: "其他檢驗（公平比值）",
-  kv_others2: "其他檢驗", kv_months_at: "個月自行運算，井數", kv_policy: "政策反應檢驗", kv_proj: "預報",
+  kv_others2: "其他檢驗", kv_months_at: "個月自行運算，井數", kv_policy: "政策方向合理性檢查（模型內部，非對照觀測的檢驗）", kv_proj: "預報",
   kv_proj_val: "自{f}起自行運算{r}；未來下陷自{y}年12月起算", kv_restart_fixed: "，水頭在起點重新接上觀測值一次{tk}，壓密柱採模型自身水頭",
   kv_restart: "，起點重新接上觀測水頭一次", kv_taper: "（依距觀測井{tk}公里漸變）",
   kv_steps_fixed: "模型陡降（已在模擬中修正）", kv_steps_removed: "已移除的模型陡降", kv_nothing_removed: "未移除任何數值。檢查", kv_creep: "潛變上限（基準）",
@@ -1310,9 +1374,11 @@ function classHead(k, si, y) { if (!F.dHeadL2) return 0; const off = (si*K + k)*
   for (let c = 0; c < A; c++) s += F.dHeadL2[off + c*Y + y]; return s/A; }
 function kpis(pol, y) {
   const out = {y}, H = Y-1, atH = y === H;
-  let s = 0, peak = 0, peakC = -1, h = 0, hmax = -1e9, hC = -1;
+  let s = 0, peak = 0, peakC = -1, h = 0, hmax = -1e9, hC = -1, sy = 0, ny = 0;
   for (let c = 0; c < A; c++) { const d = -dFwd(pol, c, y); s += d; if (d > peak) { peak = d; peakC = c; }
+    if (!D.towns[F.town[c]].pooled) { sy += d; ny++; }
     const dh = pol.dH[c*Y+y]; h += dh; if (dh > hmax) { hmax = dh; hC = c; } }
+  out.yunAvoid = ny ? sy/ny : null; out.yunN = ny;
   out.fieldAvoid = s/A; out.peak = peak; out.peakC = peakC; out.fieldHead = h/A; out.headMax = hmax; out.headC = hC;
   out.avoid = out.fieldAvoid; out.head = out.fieldHead; out.band = null; out.hband = null; out.bandNote = null;
   out.agree = null; out.agreeLB = false; out.noRun = []; out.nRuns = D.modelcard.n_members; out.nAll = D.modelcard.n_members;
@@ -1408,6 +1474,13 @@ function topTowns(kp, n = 3) {
   return kp.town.map((v, i) => [i, v]).filter(([i, v]) => v === v && !D.towns[i].pooled && !lowConf(i) && v > 0)
     .sort((a, b) => b[1] - a[1]).slice(0, n).map(([i]) => i);
 }
+function hotWords(ids) {               // post hoc, model-only (page_posthoc): how often the solved run's headline leader leads
+  const ph = D.modelcard.posthoc, hs = ph && ph.hotspot, x = solvedOf(P), r = hs && x ? hs[x.name] : null;
+  if (!r || r.stable || !ids.length || M.years[S.year] !== r.horizon_year || +x.start !== +r.start) return "";
+  if (ids.map(i => D.towns[i].en).join("|") !== r.headline.join("|")) return "";   // only the headline the check saw
+  return tr("hl_hot", {lead: TNB(ids[0]), p: pctf(100 * r.runs.share_same_leader), n: r.runs.n, pc: pctf(100 * r.r0_runs.share_same_leader),
+    pa: pctf(100 * r.draws.share_same_leader), na: r.draws.n, grp: ids.map(i => TNB(i)).join(tr("list_sep")), pg: pctf(100 * r.runs.share_leader_in_top3)});
+}
 function biasClause(ids) {              // the leveling bias of the named townships, when it is material
   if (!D.townSkill || !ids.length) return "";
   const yrs = `${M.years[0]}–${M.years[YO]}`;
@@ -1419,6 +1492,7 @@ function biasClause(ids) {              // the leveling bias of the named townsh
 }
 function pooledClause() {
   const s = D.townSkill ? D.townSkill[0] : null;
+  if (NOCHP()) return tr("pooled_np");
   if (!s || !s.low) return tr("pooled_plain");
   return tr("pooled_low", {n: s.n, r2: s.r2 != null ? sg(s.r2, 2) : "–"});
 }
@@ -1508,7 +1582,8 @@ function renderHeadline() {
     const ids = topTowns(kp), tt = ids.map(i => TNB(i)).join(tr("list_sep"));
     const b = kp.band ? `(${f2(kp.band[0])}–${f2(kp.band[1])})` : "";
     s = tr("hl_pol", {pol: lc(policyPhrase(S.f)), yr, v: f2(kp.avoid), b, year: Hy, share: pctf(kp.share), base: f1(baseFwdFanAt(y)), y0,
-      fast: fastClause(kp), tt: tt || "–", agree: agreeSentence(kp) + (kp.agree != null ? hz : ""), alt: altSentence(kp)});
+      yun: NOCHP() && kp.yunAvoid != null ? tr("hl_yun", {v: f2(kp.yunAvoid), n: kp.yunN.toLocaleString("en-US")}) : "",
+      fast: fastClause(kp), tt: tt || "–", hot: hotWords(ids), agree: agreeSentence(kp) + (kp.agree != null ? hz : ""), alt: altSentence(kp)});
   }
   setHtml($("headline"), s);
   const chip = $("prov"); chip.title = "";
@@ -1529,7 +1604,7 @@ function evLineText() {                  // ONE short line: what kind of result 
   if (tp && !tp.passed) return tr("ev_tp_fail", {y: M.years[YO]});
   return tr("ev_tp_pass", {y: M.years[YO]});
 }
-function testCounts() { let p = 0, f = 0; for (const r of testRows()) { if (r.verdict === "PASS") p++; else if (r.verdict === "FAIL") f++; } return {p, f}; }
+function testCounts() { let p = 0, f = 0; for (const r of testRows()) { if (r.count === false) continue; if (r.verdict === "PASS") p++; else if (r.verdict === "FAIL") f++; } return {p, f}; }
 function renderEvidenceBadge() {
   const {p, f} = testCounts(), b = $("evBadge");
   b.className = "badge" + (f ? " warn" : "");
@@ -2044,7 +2119,7 @@ function levLabel(k) { const v = Math.round((1 - S.f[k]) * 100), el = SL[k];
 function levTexts() {
   const tot = D.classes.reduce((a, c) => a + (c.gwh || 0), 0);
   D.classes.forEach((c, k) => { const d = $("lv" + k); setText(d.querySelector("label"), CN(k)); setText(d.querySelector(".sh"), c.gwh != null ? tr("of_energy", {p: pctf(100 * c.gwh / tot)}) : ""); });
-  setText($("polSub"), tr("levers_sub", {rec: `${M.years[0]}–${M.years[YO]}`}));
+  setText($("polSub"), tr(NOCHP() ? "levers_sub_np" : "levers_sub", {rec: `${M.years[0]}–${M.years[YO]}`}));
   const shown = presetsShown();
   setHtml($("presets"), shown.map(p => `<button class="btn" data-p="${p[0]}">${esc(tr("pr_" + p[0]))}</button>`).join(""));
   $("presets").querySelectorAll("button").forEach((b, i) => b.onclick = () => { S.f = shown[i][1].slice(); syncLevers(); update(true); });
@@ -2058,6 +2133,13 @@ function syncLevers() { D.classes.forEach((_, k) => { SL[k].value = Math.round((
   setText($("polToggle"), tr($("policy").classList.contains("open") ? "pol_hide" : "pol_edit")); }
 
 // ---------- lever ranking ---------------------------------------------------------------
+function gwhTieWords() {               // post hoc, model-only (A2b via page_posthoc): the per-GWh order is a near-tie
+  const ph = D.modelcard.posthoc, g = ph && ph.per_gwh; if (!g || g.ranking_survives) return "";
+  const st = Object.entries(g.starts || {}); if (!st.length) return "";
+  const per = k => st.map(([y, v]) => tr("rank_gwh_tie_y", {p: pctf(100 * v[k]), y})).join(tr("list_and"));
+  return tr("rank_gwh_tie", {lo: f2(Math.min(...st.map(([, v]) => v.lo))), hi: f2(Math.max(...st.map(([, v]) => v.hi))),
+    q: per("share_order_kept"), qc: per("cm_share_order_kept")});
+}
 function renderRank() {
   const W = cw("rankWrap", 300), rowH = 34, m = {l: 110, r: 52, t: 8}, y = S.year;
   const rows = D.classes.map((c, k) => { const a = M.starts.map((_, si) => -classResponse(k, si, y));
@@ -2075,7 +2157,7 @@ function renderRank() {
   setText($("rankUnit"), S.rank === "cm" ? tr("rank_unit_cm", {y: M.years[y]}) : tr("rank_unit_gwh"));
   setText($("rkCm"), tr("rkcm", {H: M.years[y]}));
   setHtml($("rankTbl"), `<table class="t"><caption class="sr">${esc(tr("tranking"))}</caption><thead><tr><th scope="col"></th>${M.starts.map(s0 => `<th scope="col">${s0}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${esc(CN(r.k))}</th>${r.v.map(v => `<td class="n">${v.toFixed(3)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
-  setHtml($("rankNote"), esc(tr("rank_limit")) + " " + esc(tr("rank_spread", {s: spreadWords()})) + (BOFF() ? " " + esc(tr("rank_boff")) : "") + " " + cavLink(2, tr("rank_cav2")));
+  setHtml($("rankNote"), (S.rank === "gwh" && gwhTieWords() ? esc(gwhTieWords()) + " " : "") + esc(tr("rank_limit")) + " " + esc(tr("rank_spread", {s: spreadWords()})) + (BOFF() ? " " + esc(tr("rank_boff")) : "") + " " + cavLink(2, tr("rank_cav2")));
 }
 
 // ---------- townships -------------------------------------------------------------------
@@ -2114,7 +2196,7 @@ function renderTowns() {
     const ta = townAgreeOf(i), taLow = ta && ta.n && ta.agree / ta.n < AGMIN() / 100;
     const agr = ta && ta.n ? `<span class="${taLow ? "lc" : "note"}">${tr("tw_sets", {a: ta.agree, n: ta.n})}</span>` : "";
     const skill = sk ? tr("tw_skill", {n: sk.n, bias: sk.bias != null ? tr("tw_bias", {v: sg(sk.bias, 1)}) : "", r2: sk.r2 != null ? tr("tw_r2", {v: sk.r2.toFixed(2)}) : ""}) : "";
-    const low = sk && sk.low, pooled = tw.pooled ? tr("tw_pooled") : "";
+    const low = sk && sk.low, pooled = tw.pooled ? tr("tw_pooled") + (NOCHP() ? tr("tw_pooled_np") : "") : "";
     return `<li><button class="town ${tw.pooled ? "pooled" : ""}" data-t="${i}" aria-pressed="${S.sel.k === "town" && S.sel.t === i}" aria-label="${esc(tw.zh + " " + tw.en)}: ${esc(val)}">
       <span class="nm">${tw.pooled ? esc(TN(i)) : `${esc(tw.zh)} <i>${esc(tw.en)}</i>`}</span>
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><rect x="${X(YO)}" y="0" width="${W - X(YO)}" height="${H}" fill="${ink3}" fill-opacity=".1"/>${pic}</svg>
@@ -2127,7 +2209,7 @@ function renderTowns() {
   setText($("sbaseOpt"), tr("sbase", {H: M.years[y]}));
 }
 function townRows() { return D.towns.map((tw, i) => { const sk = D.townSkill ? D.townSkill[i] : {};
-  return [`${tw.zh} ${tw.en}`, f2(KP.townBase[i]), NOPOL() ? "0.00" : f2(KP.town[i]), sk.n ?? "", sk.bias ?? "", sk.r2 ?? "", tw.pooled ? "pooled" : sk.low ? "low" : "ok", (a => a && a.n ? `${a.agree}/${a.n}` : "")(townAgreeOf(i))]; }).filter((_, i) => cellsOfTown[i].length); }
+  return [`${tw.zh} ${tw.en}`, f2(KP.townBase[i]), NOPOL() ? "0.00" : f2(KP.town[i]), sk.n ?? "", sk.bias ?? "", sk.r2 ?? "", tw.pooled ? (NOCHP() ? "pooled; no pumping in the model, spillover only" : "pooled") : sk.low ? "low" : "ok", (a => a && a.n ? `${a.agree}/${a.n}` : "")(townAgreeOf(i))]; }).filter((_, i) => cellsOfTown[i].length); }
 
 // ---------- rail ------------------------------------------------------------------------
 function renderHsr() {
@@ -2260,7 +2342,7 @@ function renderTrust() {
   else h += `<p class="note">${esc(tr("trust_nolev"))}</p>`;
   h += `<div class="tblwrap"><table class="t"><caption class="sr">${esc(tr("trust_tbl"))}</caption><thead><tr><th scope="col">${tr("th_township")}</th><th scope="col">n</th><th scope="col">${tr("th_bias")} cm</th><th scope="col">R²</th><th scope="col"></th></tr></thead><tbody>`;
   if (D.townSkill) D.towns.forEach((tw, i) => { const s = D.townSkill[i]; if (!cellsOfTown[i].length) return;
-    h += `<tr><th scope="row">${esc(tw.pooled ? TN(i) : tw.zh + " " + tw.en)}</th><td class="n">${s.n}</td><td class="n">${s.bias ?? "–"}</td><td class="n">${s.r2 ?? "–"}</td><td>${s.low ? esc(tr("low")) : ""}</td></tr>`; });
+    h += `<tr><th scope="row">${esc(tw.pooled ? TN(i) : tw.zh + " " + tw.en)}</th><td class="n">${s.n}</td><td class="n">${s.bias ?? "–"}</td><td class="n">${s.r2 ?? "–"}</td><td>${tw.pooled && NOCHP() ? esc(tr("conf_np")) : s.low ? esc(tr("low")) : ""}</td></tr>`; });
   h += `</tbody></table></div></div></div><h3 style="font-size:15px;margin:18px 0 6px">${esc(tr("known_limits"))}</h3><p class="note">${esc(tr("cavintro"))}</p><ol class="cavlist">${caveats().map((c, i) => `<li id="cav${i+1}"><b>${c[0]}</b>${c[1]}</li>`).join("")}</ol>`;
   setHtml($("trustWrap"), h);
   const cv = $("trustMap"), ctx = sizeCanvas(cv, Math.min(320, $("trustWrap").clientWidth - 10)), g = mapGeom(cv);
@@ -2355,7 +2437,7 @@ function unseenCaveat() {              // the k-fold on levels and on head chang
   const wd = mc.well_datum;
   if (!worse) return [tr("cv6_ok_t"), tr("cv6_ok_b", {a: r3(mc.r2_kfold), b: r3(mc.r2_idw)})];
   return [tr("cv6_t"), tr("cv6_b", {nf: mc.n_folds, an: hasA ? tr("cv6_an", {a: r3(mc.r2_anom), b: r3(mc.r2_anom_idw), v: mc.verdict_anom || "–"}) : "",
-    a: r3(mc.r2_kfold), b: r3(mc.r2_idw), v: mc.verdict || "–", wd: wd ? tr("cv6_wd", {rms: f1(wd.rms_m), max: f1(wd.max_abs_m), n: wd.n}) : ""})];
+    a: r3(mc.r2_kfold), b: r3(mc.r2_idw), v: mc.verdict || "–", resp: mc.policy_response ? tr("cv6_resp") : "", wd: wd ? tr("cv6_wd", {rms: f1(wd.rms_m), max: f1(wd.max_abs_m), n: wd.n}) : ""})];
 }
 function zoneCaveat() {                // the zone lines, and the column step at the largest
   const art = D.modelcard.artefacts; if (!art || !art.boundaries || !art.boundaries.length) return [tr("cv8_t"), ""];
@@ -2385,6 +2467,15 @@ function artFixedWords() {             // caveat 7 when the forward run fixed th
   const days = a.hpc0_fast_days != null ? Math.round(a.hpc0_fast_days) : null, tk = a.restart_taper_km;
   return tr("cv7_fixed_b", {days: days ?? "–", o, tk: tk ? tr("cv7_taper", {tk}) : "", y0: M.years[0], yr: M.years[YR], n: a.n_cells, rm: f1(a.restart_cell_median), sm: f1(a.startup_cell_median), sx: f1(a.startup_cell_max)});
 }
+function elasticCaveat(fw) {           // post hoc, model-only (page_posthoc): the elastic/inelastic split of the avoided subsidence
+  const ph = D.modelcard.posthoc, e = ph && ph.elastic; if (!e || e.cells_below_preconsolidation_after_2026_01 !== 0) return null;
+  const pol = name => { const x = D.solved.find(s => s.name === name); return x ? lc(policyPhrase(x.factors)) : null; };
+  const pols = Object.entries(e.policies || {}).filter(([n]) => pol(n)).map(([n, v]) => tr("cv9_pol", {pol: pol(n), ie: f2(v.inelastic_cm), tot: f2(v.total_cm)}));
+  if (!pols.length) return null;
+  const l = e.lift, lx = l ? D.solved.find(s => s.name === l.policy) : null;
+  const lift = lx ? tr("cv9_lift", {pol: policyPhrase(lx.factors), y: String(l.lifted).slice(0, 4), left: f2(l.left_cm), H: l.at_year}) : "";
+  return [tr("cv9_t_split"), tr("cv9_b_split", {txt: fw.txt ? uc(fw.txt) + tr("eos") : "", y0: e.start, mg: f2(e.margin_p5_m), pols: pols.join(tr("semi")), H: e.horizon_year, lift, late: fw.late})];
+}
 function caveats() {                   // numbered: the cav links point at these indices (1-based)
   const mc = D.modelcard, art = mc.artefacts, o = M.years[YO], nyr = mc.record_years ?? (M.years[YO] - M.years[0] + 1);
   const tau = (D.caveatWords || {}).tau, fw = fastWords();
@@ -2398,7 +2489,7 @@ function caveats() {                   // numbered: the cav links point at these
     FIXED() ? [tr("cv7_fixed_t"), artFixedWords()] : [tr("cv7_t"), art ? tr("cv7_b", {n: art.n_cells, z: art.zone_km, y0: M.years[0], o, sm: f1(art.startup_cell_median), sx: f1(art.startup_cell_max), rm: f1(art.restart_cell_median), rx: f1(art.restart_cell_max),
       bm: f1(Math.abs(art.bridge_median_cm)), bx: f1(art.bridge_max_abs_cm), yr: M.years[YR]}) : ""],
     zoneCaveat(),
-    [tr("cv9_t"), tr("cv9_b", {txt: uc(fw.txt) + (fw.txt ? "." : ""), late: fw.late})],
+    elasticCaveat(fw) || [tr("cv9_t"), tr("cv9_b", {txt: uc(fw.txt) + (fw.txt ? "." : ""), late: fw.late})],
     ringsCaveat(),
     recoveryCaveat(),
     timingCaveat()];
@@ -2420,15 +2511,31 @@ function testRows() {                  // {test, mine, verdict ("PASS"|"FAIL"|nu
   if (mc.column) add(tr("tt_column"), r3(mc.column.r2_oof), null, "", pv && pv.column ? r3(pv.column.r2_oof) : "–");
   if (mc.chain) add(tr("tt_chain", {n: mc.chain.n}), r3(mc.chain.r2), null, "", pv && pv.chain ? r3(pv.chain.r2) : "–");
   if (mc.column) add(tr("tt_rings", {n: mc.column.n_rings ?? "–"}), r3(mc.column.rings), null, "", pv && pv.column ? r3(pv.column.rings) : "–");
-  if (mc.policy) add(tr("tt_policy"), "", mc.policy, "", pv && pv.policy ? V(pv.policy) : "–");
+  if (mc.policy) add(tr("tt_policy"), String(mc.policy), null, "", pv && pv.policy ? esc(String(pv.policy)) : "–");
   for (const r of rows) r.verdict = r.verdict === "PASS" || r.verdict === "FAIL" ? r.verdict : null;
+  if (mc.policy_response) rows.push(...n1Rows(mc.policy_response));
   return rows;
 }
+function n1Rows(r) {                  // the registered N1 tests that name their model (page_labels v2)
+  const out = [], span = prSpan(r), dt = prDesign(r) ? tr("tt_n1_design") : "";
+  const both = row => row.verdict_cl === "model_better" && row.verdict_zr === "model_better" ? "PASS" : "FAIL";
+  for (const [kind, key, unit, m, c, z] of [["heads", "tt_n1_heads", "m", "rmse_model_m", "rmse_cl_m", "rmse_zr_m"], ["subsidence", "tt_n1_subs", "cm", "rms_model_cm", "rms_cl_cm", "rms_zr_cm"]]) {
+    for (const [cty, row] of Object.entries(r[kind] || {})) {
+      if (!row.model) continue;           // a v1 label file names no model: no table row
+      const counted = row.model.deliverable_recipe === true;
+      out.push({test: tr(key, {cty: tr("cty_" + cty), span, dt, mdl: mdlShort(row.model)}) + (counted ? "" : tr("tt_n1_other")),
+        mine: `${f2(row[m])} ${unit}`, verdict: both(row), count: counted,
+        ref: tr("tt_n1_ref", {c: `${f2(row[c])} ${unit}`, z: row[z] == null ? "–" : `${f2(row[z])} ${unit}`}), prev: "–"});
+    }
+  }
+  return out;
+}
+function mdlShort(m) { const id = String(m && m.id || ""); return id.startsWith("R1c") ? tr("mdl_r1c") : id.startsWith("R0") ? tr("mdl_r0") : id || tr("mdl_none"); }
 function testTable() {
   const rows = testRows(), pv = PREV(); if (!rows.length) return "";
-  const V = v => v ? `<b class="vd ${v === "PASS" ? "ok" : "no"}">${v}</b>` : "–";
+  const V = (v, n) => v ? (n === false ? esc(v) : `<b class="vd ${v === "PASS" ? "ok" : "no"}">${v}</b>`) : "–";
   const hdr = [tr("th_test"), tr("th_this"), tr("th_verdict"), tr("th_ref"), pv ? tr("th_prev") + (D.alt.spread_km != null ? ` (${Math.round(D.alt.spread_km)} km)` : "") : ""];
-  return `<div class="tblwrap" style="max-height:none"><table class="t tests"><caption class="sr">${esc(tr("th_tests"))}</caption><thead><tr>${hdr.filter((h, i) => i < 4 || pv).map(h => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><th scope="row" style="font-weight:400;text-align:left">${esc(r.test)}</th><td class="n">${esc(r.mine)}</td><td>${r.verdict ? V(r.verdict) : esc(r.verdict === null ? "" : "")}</td><td class="n">${esc(r.ref)}</td>${pv ? `<td class="n">${r.prev}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+  return `<div class="tblwrap" style="max-height:none"><table class="t tests"><caption class="sr">${esc(tr("th_tests"))}</caption><thead><tr>${hdr.filter((h, i) => i < 4 || pv).map(h => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><th scope="row" style="font-weight:400;text-align:left">${esc(r.test)}</th><td class="n">${esc(r.mine)}</td><td>${r.verdict ? V(r.verdict, r.count) : esc(r.verdict === null ? "" : "")}</td><td class="n">${esc(r.ref)}</td>${pv ? `<td class="n">${r.prev}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
 }
 const andJoin = a => !a.length ? "–" : joinList(a);
 function prevLine() {                  // "Compared with the previous model: ..."
@@ -2468,21 +2575,52 @@ function evidenceItems() {              // what is known about how far to trust 
 function prSpan(r) {                   // "2016-01..2018-12 (...)" -> "2016–18"
   const m = String(r.window).match(/^(\d{4})-\d{2}\.\.(\d{4})/); return m ? `${m[1]}–${m[2].slice(2)}` : "";
 }
+function prDesign(r) {                 // a design-time window (the masked recipe was designed on fits that saw it)
+  return r.design_time === true || /design-time/.test(String(r.window));
+}
+function prModel(row) {                // the model a registered row was scored on
+  const id = String(row && row.model && row.model.id || "");
+  return id.startsWith("R1c") ? tr("prm_r1c") : id.startsWith("R0") ? tr("prm_r0") : tr("prm_none");
+}
 function policyResponseLines(r) {      // the registered N1 verdicts: heads, subsidence, Changhua
-  const h = r.heads, s = r.subsidence, c = r.changhua, span = prSpan(r), out = [];
-  if (h && h.yunlin && h.changhua) {
-    const ok = ["yunlin", "changhua"].every(k => h[k].verdict_cl === "model_better" && h[k].verdict_zr === "model_better");
-    out.push([ok ? "ok" : "warn", tr("evc_pr_heads", {span, ry: f2(h.yunlin.rmse_model_m), cy: f2(h.yunlin.rmse_cl_m), rc: f2(h.changhua.rmse_model_m), cc: f2(h.changhua.rmse_cl_m)})]);
+  const h = r.heads || {}, s = r.subsidence || {}, c = r.changhua, span = prSpan(r), out = [];
+  const dt = prDesign(r) ? tr("pr_design") : "", dtp = prDesign(r) ? tr("pr_design_p") : "", pass = row => row.verdict_cl === "model_better" && row.verdict_zr === "model_better";
+  for (const [cty, row] of Object.entries(h)) {
+    const other = !!row.model && row.model.deliverable_recipe === false;
+    let note = other ? tr("pr_other_note") : "";
+    const sec = r.secondary && r.secondary[cty + "_heads_deliverable_recipe"];
+    if (cty === "changhua" && NOCHP() && sec)
+      note += tr("pr_ch_nopump", {r: f2(sec.rmse_model_m), c: f2(sec.rmse_cl_m), q: f2(sec.ratio_cl), u: sg(sec.ci_cl[1], 4)});
+    out.push([pass(row) && !other ? "ok" : "warn", tr("evc_pr_heads", {cty: tr("cty_" + cty), span, dt, mdl: prModel(row),
+      res: tr(pass(row) ? "pr_beats" : "pr_not_beats", {r: f2(row.rmse_model_m), c: f2(row.rmse_cl_m)}), note})]);
   }
-  if (s && s.yunlin && s.changhua)
-    out.push(["warn", tr("evc_pr_subs", {span, sy: f2(s.yunlin.slope_obs_on_model), sc: f2(s.changhua.slope_obs_on_model)})]);
+  const hy = h.yunlin, hc = h.changhua, sized = row => !!row && row.slope_obs_on_model != null && !!row.slope_ci && row.slope_ci.length === 2;
+  if (sized(hy) && sized(hc))           // observed on modelled slope: above 1 = the modelled head change is too small
+    out.push(["warn", tr("evc_pr_heads_size", {span, dt, hy: f2(hy.slope_obs_on_model), hyl: f2(hy.slope_ci[0]), hyu: f2(hy.slope_ci[1]),
+                                               hc: f2(hc.slope_obs_on_model), hcl: f2(hc.slope_ci[0]), hcu: f2(hc.slope_ci[1]), mc: prModel(hc)})]);
+  if (s.yunlin && s.changhua) {
+    const ok = ["yunlin", "changhua"].filter(k => pass(s[k]));
+    if (ok.length === 2) out.push(["ok", tr("evc_pr_subs_ok", {span, dt: dtp, list: ok.map(k => tr("cty_" + k)).join(tr("list_and"))})]);
+    else {
+      const cl = ["yunlin", "changhua"].every(k => s[k].verdict_cl === "baseline_better") ? tr("pr_cl_better") : "";
+      const b = r.step_b && r.step_b.yunlin, sy = s.yunlin.slope_obs_on_model;
+      let sb = "";
+      if (b && b.beta_obs_cm_per_gwh != null && b.beta_model_cm_per_gwh != null) {
+        const more = b.beta_obs_cm_per_gwh > b.beta_model_cm_per_gwh, moreC = sy > 1;
+        sb = tr("pr_stepb", {way: tr(more !== moreC ? "pr_way_other" : "pr_way_same"), dir: tr(more ? "pr_more" : "pr_less"), v: T.en["vd_" + b.verdict] !== undefined ? tr("vd_" + b.verdict) : String(b.verdict)});
+      }
+      out.push(["warn", tr("evc_pr_subs", {span, dt: dtp, sy: f2(sy), sc: f2(s.changhua.slope_obs_on_model), my: prModel(s.yunlin), mc: prModel(s.changhua), cl, sb})]);
+    }
+  }
   if (c && c.status === "not_supported")
-    out.push(["warn", tr("evc_pr_ch", {o: sg(c.dose_obs_cm_per_gwh, 2), m: sg(c.dose_model_cm_per_gwh, 2)})]);
+    out.push(["warn", tr("evc_pr_ch", {np: NOCHP() ? tr("pr_ch_np") : "", o: sg(c.dose_obs_cm_per_gwh, 2), m: sg(c.dose_model_cm_per_gwh, 2)})]);
   return out;
 }
 function polCaveat() {                  // one line under the levers, so the labels sit where the levers are
   const r = D.modelcard.policy_response, el = $("polCaveat"); if (!el) return;
-  el.hidden = !r; setText(el, r ? tr("pol_caveat", {span: prSpan(r)}) : "");
+  const ch = r && r.changhua && r.changhua.status === "not_supported" ? tr(NOCHP() ? "pol_caveat_ch_np" : "pol_caveat_ch") : "";
+  const hy = r && r.heads && r.heads.yunlin, hg = hy && hy.slope_ci && hy.slope_ci[0] > 1 ? tr("pol_caveat_hg") : "";
+  el.hidden = !r; setText(el, r ? tr("pol_caveat", {span: prSpan(r), hg, ch}) : "");
 }
 function ringLine() {                   // "2023-25 rings (n sites): model R² x vs continued-rate baseline y (cumulative)"
   const r = D.modelcard.ring_holdout; if (!r || !r.rings || !r.rings.cum) return "";
@@ -2498,8 +2636,9 @@ function pileLine() {                   // frozen column vs the deep benchmarks 
   const r = D.modelcard.deep_piles; if (!r || !r.cum || !r.cum.model || r.cum.model.rmse == null) return "";
   const span = r.window && r.window.length === 2 ? `${monthYear(r.window[0])}–${monthYear(r.window[1])}` : "";
   const a = r.after_feeds || {}, span2 = a.window && a.window.length === 2 ? `${monthYear(a.window[0])}–${monthYear(a.window[1])}` : "";
-  const d = r.cum_deep || {}, dm = d.model || {}, db = d.base_continue || {};
-  return tr("evc_pile", {span, n: r.n_sites, v: r.n_verified_values, e: f1(r.cum.model.rmse), b: f1(r.cum.base_continue ? r.cum.base_continue.rmse : NaN),
+  const d = r.cum_deep || {}, dm = d.model || {}, db = d.base_continue || {}, sel = r.selection;
+  // selection-contaminated (ruling U7): report-only, never skill
+  return (sel ? tr("evc_pile_ro", {d: sel.date, u: sel.ruling}) : "") + tr("evc_pile", {span, n: r.n_sites, v: r.n_verified_values, e: f1(r.cum.model.rmse), b: f1(r.cum.base_continue ? r.cum.base_continue.rmse : NaN),
     nd: d.n_sites == null ? "?" : d.n_sites, ed: dm.rmse == null ? "–" : f1(dm.rmse), bd: db.rmse == null ? "–" : f1(db.rmse), kd: dm.n_inside == null ? "?" : dm.n_inside,
     span2, e2: a.model ? f1(a.model.rmse) : "–", b2: a.base_continue ? f1(a.base_continue.rmse) : "–"});
 }
@@ -2513,7 +2652,7 @@ function renderCard() {
   if (mc.temporal) { const tp = mc.temporal, fr = tp.fair;
     add(tr("kv_heldout"), fr ? `<b>${fr.verdict}</b> (${tr("kv_fair")}) · ${tr("kv_after_offset")} RMSE ${f2(fr.rmse)} m vs ${bestName(fr.best)} ${f2(fr.rmse_best)} m, ratio ${fr.ratio.toFixed(2)} (≤ ${fr.k}); shape R² ${sg(fr.shape, 2)} vs ${tr("best_clim")} ${sg(fr.shape_clim, 2)} (≥ −${fr.shape_tol}), ${tr("kv_with_trend")} ${sg(fr.shape_clim_trend, 2)}; ${fr.n_wells} wells, ${tp.months} ${tr("kv_months")} ${Math.round(tp.fit_months / 12)} ${tr("kv_fit_years")}. ${tr("kv_raw")} RMSE ${tp.rmse_model.toFixed(2)} m vs ${tr("best_clim")} ${tp.rmse_clim.toFixed(2)} m (${tr("kv_legacy")} ${tp.verdict || "–"}; ${pctf(100 * fr.datum_share)} ${tr("kv_raw_share")})${tp.spread_km != null ? `; ${tr("kv_screen_radius")} ${f1(tp.spread_km)} km` : ""}${(tp.others || []).length ? `; ${tr("kv_others")}: ` + tp.others.map(x => `${esc(x.name)} ${x.fair && x.fair.ratio != null ? x.fair.ratio.toFixed(2) + " " + x.fair.verdict : x.rmse != null ? x.rmse.toFixed(2) + " m " + (x.verdict || "") : "–"}`).join(", ") : ""}`
       : `<b>${tp.passed ? "PASS" : "FAIL"}</b> · RMSE ${tp.rmse_model.toFixed(2)} m vs ${tr("best_clim")} ${tp.rmse_clim.toFixed(2)} m over ${tp.months} ${tr("kv_months_at")} ${tp.n_wells} wells${tp.r2_shape != null ? `; shape R² ${sg(tp.r2_shape, 2)}, median per-well R² ${sg(tp.r2_well_median, 1)}, level error ${f2(tp.level_err_m)} m` : ""}${(tp.others || []).length ? `; ${tr("kv_others2")}: ` + tp.others.map(x => `${esc(x.name)} ${x.rmse != null ? x.rmse.toFixed(2) + " m" : "–"} ${x.verdict || ""}`).join(", ") : ""}`); }
-  if (mc.policy) add(tr("kv_policy"), `<b>${esc(mc.policy)}</b>`);
+  if (mc.policy) add(tr("kv_policy"), esc(mc.policy));
   add(tr("kv_proj"), tr("kv_proj_val", {f: esc(mc.free_from || M.vintage), r: FIXED() ? tr("kv_restart_fixed", {tk: mc.artefacts.restart_taper_km ? tr("kv_taper", {tk: mc.artefacts.restart_taper_km}) : ""}) : tr("kv_restart"), y: M.years[YR]}));
   if (mc.artefacts) add(FIXED() ? tr("kv_steps_fixed") : tr("kv_steps_removed"), (FIXED() ? `${esc(mc.artefacts.fixed_upstream)}; ${tr("kv_nothing_removed")} ` : "") + `${mc.artefacts.n_cells} ${esc(mc.artefacts.zone)} cells: start-up median ${f1(mc.artefacts.startup_cell_median)} cm (max ${f1(mc.artefacts.startup_cell_max)}), restart median ${f1(mc.artefacts.restart_cell_median)} cm (max ${f1(mc.artefacts.restart_cell_max)})`);
   if (D.rheology) { const r = D.rheology; add(tr("kv_creep"), `${esc(r.alt)} vs ${esc(r.ref)}: baseline${r.baseRef != null ? ` ${f2(r.baseRef)} → ${f2(r.baseAlt)} cm,` : ""} ${sg(r.dBase, 2)} cm (p10–p90 ${sg(r.dBaseP[0], 2)} to ${sg(r.dBaseP[2], 2)}), policy responses change by at most ${r.policyShift.toFixed(3)} cm; leveling out of fold ${r.levOofAlt != null ? sg(r.levOofAlt, 3) : "–"} vs ${r.levOof != null ? sg(r.levOof, 3) : "–"}; ${esc(r.source)}${r.artefacts ? " (run with the start-up/restart steps)" : ""}`); }

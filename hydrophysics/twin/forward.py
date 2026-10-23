@@ -76,6 +76,54 @@ from .zones import (
 
 N_LAYERS = 4
 
+# ---------------------------------------------------------------------------------------
+# what this code can rebuild: a theta, meta or column written by newer code is refused,
+# never silently rolled out without the terms it does not know (review code-02, 2026-10-24:
+# the F2 theta's return_rice_b was dropped without a word by code that predates it)
+# ---------------------------------------------------------------------------------------
+# parameters, by base name (the zone suffix, Changhua copies included, stripped)
+THETA_PARAMS = frozenset({
+    "log_T", "log_S", "log_L", "log_Sd", "log_tau", "log_du0", "log_Sa", "log_G",
+    "log_C_coast", "log_C_apex", "log_C_riv", "log_sw_scale", "log_eta", "log_head_extra",
+    "recharge_frac_logit", "pump_split_logit", "return_frac_logit", "pump_layer_logits",
+    "pump_layer_logits_ch", "log_tau_ret", "log_eta_ratio_ch", "log_spread_km", "spread_km"})
+# physical-unit readouts calibrate_flow writes beside the parameters (never read back)
+THETA_READOUTS = frozenset({
+    "eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2day", "C_riv_m2day",
+    "pump_frac_shallow", "return_frac", "sw_scale", "tau_ret_steps", "eta_ratio_changhua",
+    "pump_layer_shares", "pump_layer_shares_ch", "Sd", "tau_days", "du0_m", "Sa",
+    "G_per_day", "S_eff", "delay_is_elastic"})
+# opt-in flags of later code (twin/n1-changhua-fix: --return-rice-share, --column-zones 3)
+UNSUPPORTED_META = ("return_rice_share",)
+UNSUPPORTED_COLUMN = ("column_zones_collapsed",)
+
+
+def check_supported(theta: dict, meta: dict | None, label: str = "theta") -> None:
+    """Refuse a theta key or meta flag this code does not rebuild: rolling such a model out
+    without it would be a different model under the same name. Zonal keys are checked on
+    their base name (``log_T_mid_changhua`` -> ``log_T``)."""
+    from .calibrate_flow import _base_param_name
+
+    unknown = sorted(k for k in theta
+                     if _base_param_name(k) not in THETA_PARAMS | THETA_READOUTS)
+    flags = sorted(k for k in UNSUPPORTED_META if (meta or {}).get(k))
+    if unknown or flags:
+        raise ValueError(
+            f"{label}: written by newer code than this checkout; "
+            + (f"unknown theta keys {unknown}" if unknown else "")
+            + ("; " if unknown and flags else "")
+            + (f"unsupported opt-in meta {flags}" if flags else "")
+            + ". Rebuild it with the code that wrote it (its meta git_commit).")
+
+
+def check_supported_column(params: dict, label: str = "column") -> None:
+    """Refuse a column JSON carrying an opt-in flag this code does not rebuild."""
+    flags = sorted(k for k in UNSUPPORTED_COLUMN if params.get(k))
+    if flags:
+        raise ValueError(f"{label}: written by newer code than this checkout "
+                         f"(unsupported column flags {flags}); rebuild it with the code "
+                         "that wrote it")
+
 
 # ---------------------------------------------------------------------------------------
 # calibrated parameter sets
@@ -233,6 +281,7 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
     from .zone_county import apply_county_ties, flow_zone_map, flow_zone_weights
 
     meta = member.meta
+    check_supported(member.theta, meta, label=member.label)
     # --county-tie: a tied Changhua copy is its parent (a no-op otherwise)
     th = apply_county_ties(member.theta, meta)
     mode = meta.get("param_mode", "zonal")
@@ -970,6 +1019,7 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
     if vep_json and os.path.exists(vep_json):
         with open(vep_json) as fh:
             p = json.load(fh)
+        check_supported_column(p, label=vep_json)
         p, changed = release_fast_startup(p, hpc0_fast_days)
         if changed:
             p["hpc0_released"] = {"tau_days_below": float(hpc0_fast_days),
