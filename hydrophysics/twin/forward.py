@@ -365,6 +365,16 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         if k in th:
             scalars[k] = torch.tensor(np.asarray(th[k], dtype="float64"),
                                       dtype=torch.float64, device=device)
+    if "return_rice_b" in th:
+        # fix F2 (--return-rice-share): the per-cell return-flow logit a + b * intensity
+        path = meta.get("return_rice_share")
+        if not path:
+            raise ValueError("a theta with return_rice_b needs meta['return_rice_share']")
+        rice = np.load(path)["share"]
+        if rice.shape != (grid.n_active,):
+            raise ValueError(f"{path}: {rice.shape} vs {grid.n_active} active cells")
+        scalars["return_frac_logit"] = scalars["return_frac_logit"] + float(
+            th["return_rice_b"]) * torch.tensor(rice, dtype=torch.float64, device=device)
     if "pump_layer_logits" in th:
         # rung R4: layer shares of the pumped volume (Changhua's own copy with the county map
         # the calibration recorded)

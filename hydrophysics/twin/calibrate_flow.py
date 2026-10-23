@@ -111,6 +111,26 @@ from .zones import (
 # conditioning finding); log_S and log_L keep the brief's bounds. log_eta (fix round 1)
 # is the brief's original wire-to-water-efficiency bound.
 RETURN_FRAC_MAX = 0.7      # irrigation return flow cannot exceed this share of pumping
+# fix F2 (opt-in 2026-10-23, --return-rice-share): a per-cell paddy intensity (A,). With it
+# the return-flow logit is ``return_frac_logit + return_rice_b * intensity`` (one learned
+# slope), so the returned share of pumping follows the paddy area; None = the scalar logit
+RETURN_RICE: torch.Tensor | None = None
+
+
+def set_return_rice(intensity) -> None:
+    """Install (or clear with None) the --return-rice-share intensity field."""
+    global RETURN_RICE
+    RETURN_RICE = (None if intensity is None
+                   else torch.as_tensor(np.asarray(intensity, dtype="float64")))
+
+
+def return_logit(theta: dict):
+    """The return-flow logit a rollout uses: the scalar, or with --return-rice-share the
+    per-cell ``return_frac_logit + return_rice_b * intensity``."""
+    a = theta.get("return_frac_logit")
+    if a is None or "return_rice_b" not in theta or RETURN_RICE is None:
+        return a
+    return a + theta["return_rice_b"] * RETURN_RICE.to(device=a.device, dtype=a.dtype)
 # --pump-layer-fractions (rung R4, opt-in 2026-10-21): epoch-0 shares of each cell's pumped
 # volume taken from twin layers 0-3 (mostly aquifer 2, as the historical single-layer split)
 PUMP_LAYER_INIT = (0.1, 0.7, 0.15, 0.05)
@@ -1702,6 +1722,11 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             theta["pump_layer_logits_ch"] = nn.Parameter(init.clone())
     elif pump_fractions_county:
         raise ValueError("--pump-fractions-county needs --pump-layer-fractions")
+    if RETURN_RICE is not None:
+        if not return_flow:
+            raise ValueError("--return-rice-share needs --return-flow")
+        theta["return_rice_b"] = nn.Parameter(torch.tensor(0.0, dtype=torch.float64,
+                                                           device=dev))
     if return_lag:
         if not return_flow:
             raise ValueError("--return-lag needs --return-flow")
@@ -1894,7 +1919,7 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             log_C_coast=theta.get("log_C_coast"),
             log_C_apex=theta.get("log_C_apex"),
             pump_split_logit=theta.get("pump_split_logit"),
-            return_frac_logit=theta.get("return_frac_logit"),
+            return_frac_logit=return_logit(theta),
             pump_layer_frac=(pump_layer_fractions(
                 theta.get("pump_layer_logits", fixed.get("pump_layer_logits")),
                 theta.get("pump_layer_logits_ch"), ch_t)
@@ -2076,6 +2101,8 @@ def _predict_homogeneous(model: FlowModel, fit: dict, h0: torch.Tensor, n_steps:
                  if "pump_split_logit" in theta else None)
         ret = (torch.tensor(theta["return_frac_logit"], dtype=torch.float64)
                if "return_frac_logit" in theta else None)
+        if ret is not None and "return_rice_b" in theta and RETURN_RICE is not None:
+            ret = ret + float(theta["return_rice_b"]) * RETURN_RICE.to(dtype=torch.float64)
         # rung R4: layer shares of the pumped volume and the return-flow lag
         lfrac = None
         if "pump_layer_logits" in theta:
@@ -3058,6 +3085,10 @@ def main(argv=None) -> None:
     ap.add_argument("--return-flow", action="store_true",
                     help="learn an irrigation return-flow fraction (<= 0.7) of the pumped "
                          "volume that re-enters layer 1 the same month; one logit")
+    ap.add_argument("--return-rice-share", default=None, metavar="NPZ",
+                    help="fix F2 (2026-10-23): npz with 'share' (A,), a per-cell paddy "
+                         "intensity; the return-flow logit becomes a + b * share with one "
+                         "learned slope b (needs --return-flow; default: scalar logit)")
     ap.add_argument("--pump-spread-km", type=float, default=None,
                     help="spread each cell's pumping energy over a Gaussian of this radius "
                          "(km, mass-conserving) before conversion -- spread.py")
@@ -3423,6 +3454,16 @@ def main(argv=None) -> None:
         allowed = set(pd.read_csv(args.wells_from, dtype={"sid": str})["sid"])
     idx, lay, series, xy_used, sids_used, raw_series = [], [], [], [], [], []
     mask_m = mask_month_flags(args.mask_months, hf.dates)
+    if args.return_rice_share:
+        if not args.return_flow:
+            raise SystemExit("--return-rice-share needs --return-flow")
+        rice = np.load(args.return_rice_share)["share"]
+        if rice.shape != (grid.n_active,):
+            raise SystemExit(f"--return-rice-share {args.return_rice_share}: shape "
+                             f"{rice.shape}, the grid has {grid.n_active} active cells")
+        set_return_rice(rice)
+        print(f"--return-rice-share: intensity p50 {np.median(rice):.3f}, max "
+              f"{rice.max():.3f}", flush=True)
     for w in range(len(hf)):
         if allowed is not None and str(hf.sids[w]) not in allowed:
             continue
@@ -3854,6 +3895,9 @@ def main(argv=None) -> None:
                   "eta_classes": eta_class_names, "fix_eta": args.fix_eta,
                   "fix_head_extra": args.fix_head_extra, "pump_split": args.pump_split,
                   "return_flow": args.return_flow, "l_min": args.l_min,
+                  **({"return_rice_share": args.return_rice_share,
+                      "return_rice_share_sha256": _file_sha256(args.return_rice_share)}
+                     if args.return_rice_share else {}),
                   "pump_spread_km": args.pump_spread_km, "learn_spread": args.learn_spread,
                   "holdout_months": args.holdout_months, "temporal_gate": temporal,
                   "loss": args.loss, "level_weight": args.level_weight,
