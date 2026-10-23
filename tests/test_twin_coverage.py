@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hydrophysics.twin.coverage import Z, _residual_sd, score_coverage
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.coverage import Z, _residual_sd, score_coverage  # noqa: E402
 
 
 def _rows(seed=0, W=20, T=40, scale=1.0):

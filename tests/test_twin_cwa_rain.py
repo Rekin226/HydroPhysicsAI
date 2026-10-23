@@ -6,8 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hydrophysics.twin.calibrate_flow import monthly_mean_rate
-from hydrophysics.twin.cwa_rain import (
+pytest.importorskip("torch")
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.calibrate_flow import monthly_mean_rate  # noqa: E402
+from hydrophysics.twin.cwa_rain import (  # noqa: E402
     build,
     compare_with_cache,
     requests_for,

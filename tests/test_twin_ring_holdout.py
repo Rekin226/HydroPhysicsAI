@@ -4,8 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hydrophysics.twin.mechanism import band_compaction, ring_hiatuses
-from hydrophysics.twin.ring_holdout import (
+pytest.importorskip("torch")
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.mechanism import band_compaction, ring_hiatuses  # noqa: E402
+from hydrophysics.twin.ring_holdout import (  # noqa: E402
     continued_rate,
     r2_rmse,
     score_sites,

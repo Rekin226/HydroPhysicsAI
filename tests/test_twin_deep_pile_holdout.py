@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from hydrophysics.twin.deep_pile_holdout import printed_year_check, reconstruct_cumulative, score
+pytest.importorskip("torch")
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.deep_pile_holdout import (  # noqa: E402
+    printed_year_check,
+    reconstruct_cumulative,
+    score,
+)
 
 
 def _piles(months, vals, pile="土庫國中", verified=None):

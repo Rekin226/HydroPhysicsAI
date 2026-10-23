@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from hydrophysics.twin.hybrid import (
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.hybrid import (  # noqa: E402
     candidates,
     lag1_rho,
     month_of_year_mean,

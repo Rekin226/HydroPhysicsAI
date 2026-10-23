@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from hydrophysics.twin.forcing_diag import annual_anomaly, partial_corr
+pytest.importorskip("torch")
+pytest.importorskip("scipy")
+pytest.importorskip("matplotlib")
+
+from hydrophysics.twin.forcing_diag import annual_anomaly, partial_corr  # noqa: E402
 
 
 def test_partial_corr_removes_the_shared_driver():

@@ -39,7 +39,7 @@ def test_masked_months_stay_nan_after_backfill():
     raw[[40, 41]] = np.nan                       # an ordinary gap elsewhere is still filled
     m = raw.copy()
     m[f] = np.nan
-    s = prepare_series(m, backfill=True)
+    s = prepare_series(m, backfill=True).copy()   # may be read-only (pandas CoW)
     s[f] = np.nan
     assert np.isnan(s[f]).all()
     assert np.isfinite(s[~f]).all()
