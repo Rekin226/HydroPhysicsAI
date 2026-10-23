@@ -120,3 +120,36 @@ https://github.com/Rekin226/HydroPhysicsAI
 ## October 2026 evidence update
 
 Interval coverage, the registered prospective tests (the physics and the statistical layer), the 2023-25 ring/GNSS continuation, the negative aquitard-column result, the statistical layer's 2023-26 score and the frozen column's score against the deep benchmarks printed in the WRA monthly reports (January 2024 to January 2026, transcribed with the Claude API and verified; `results/twin/deep_pile_holdout/`) are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.
+
+### Groundwater-subsidence twin: status after Phase 1 (2026-10-23)
+
+The deliverable is the R0 twin, `stage3_datum_gate_cwa`: a 4-layer differentiable flow
+model with a leveling-calibrated VEP column. No Phase 1 candidate beat it under its
+declared gates.
+
+Head skill:
+- **Fitted period.** Out-of-fold k-fold R² is 0.643 on the design folds and 0.718 on a fresh partition. It sits below inverse-distance interpolation on anomalies.
+- **Masked test (`N1.G1_mask_E2015`).** Refitted without the Jan-May 2015 targets, it reproduces the 2015 drought-spring anomaly better than climatology (RMSE 1.49 against 2.06 m, ratio 0.72) and better than its own zero-response counterfactual (1.75 m), at 135 wells.
+- **Damped amplitude.** The response is about half the observed size: the observed-on-modelled slope is 2.13.
+
+Reported by county, because they differ:
+
+| | Changhua | Yunlin |
+|---|---|---|
+| Masked 2015 test, RMSE ratio to climatology | 0.89 (59 wells) | 0.68 (76 wells) |
+| Median correlation, fresh folds | 0.42 | 0.74 |
+| County-mean anomaly RMSE, fresh folds | 0.52 m | 1.08 m |
+
+Changhua's year-to-year head changes are not reproduced by any forcing available. The
+suspected missing source is canal water outside the Jiji supply, for which no data are
+available.
+
+Subsidence:
+- **Fitted period.** The column fits the 2012-2022 leveling with out-of-fold R² 0.65.
+- **Not claimed as skill:**
+  - its 2023-26 deep-pile score was used to choose between columns, so it is not reported as skill;
+  - the registered spring-compaction test (G4) is not evaluable with the printed record.
+- **Untested.** No test yet scores the subsidence side of the policy response.
+- **Pending.** The only fully prospective scores are the 2026-11 to 2027-10 registrations.
+
+Details: [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md), section 12.

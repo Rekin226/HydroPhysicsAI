@@ -650,11 +650,11 @@ The 2023-25 forcing experiment and every 2023-26 subsidence score are reported, 
 - [open] Refit the column on leveling per zone; the column pairs with its head field.
 - [open] Propagate forcing uncertainty (plan 4.8, P40 `engine_tlm`). A0 or its successor must
   first add a use for it.
-- [open] Run N1's registered Phase 1-2 tests (G1 masked 2015, G3, G4, C3, C5).
+- [done 2026-10-23] Run N1's registered Phase 1-2 tests: G1 model better than CL and ZR; G3 not run (no delivery term); G4 not evaluable (erratum). C3 and C5 were never registered.
 - [open] Pre-register one primary model before any 2023-26 re-score, then apply the I1
   re-scoring protocol (steps 0-7).
-- [open] Update the evidence doc and the model card, with Changhua and Yunlin reported
-  separately.
+- [done 2026-10-23] Update the evidence doc (section 12) and the model card, with Changhua and
+  Yunlin reported separately.
 - P4.3/P4.4 as written are superseded. The R1-family decision takes their place.
 
 **Step 7. Harness prerequisites** (before any Phase-1 test on fresh units)
@@ -1177,3 +1177,18 @@ confirmation is run; R0 stays the deliverable.**
 - **Leveling collapses** (0.65 to 0.37; Changhua -0.62), and the measured shares again overshoot the P2f layer response (1.00).
 - **The time direction is fine:** R* has the best temporal ratio of any rung and passes the plausibility check. The failure is in out-of-fold spatial skill.
 - **Next suspect, per the declared interpretation:** a source term the model does not hold. The most likely is canal water outside the Jiji supply (X4: W1 counts about 35 % of the Changhua irrigation office's water), which would add recharge and damp Changhua's response.
+
+## N1 Phase 1-2 tests (2026-10-23)
+
+Registration `N1.phase12_response.v1`. Each test was scored once. Numbers:
+`results/dataprep/reports/N1_evidence/phase12_tests/`. The full write-up is in
+`docs/TWIN_EVIDENCE_2026-10.md`, section 12.
+
+- **G1, masked 2015 refit (batch 23, `stage3_datum_gate_m15`, 135 of 158 wells).**
+  - Model better than CL: RMSE 1.490 against 2.062 m, 90 % interval of the difference -0.67 to -0.46.
+  - Model better than ZR: 1.749 m, interval -0.32 to -0.20. ZR is informative (RMS 0.63 m).
+  - By county: Changhua ratio 0.89, Yunlin 0.68.
+  - Reported, not gating: the response slope is 2.13, the damping seen out of sample.
+- **G3: not run.** R0 has no canal-delivery term.
+- **G4: not evaluable.** No sensor has all five Jan-May 2022 months. `g4/erratum.json` corrects the written verdict.
+- **Code.** `--mask-months` is on branch `twin/n1-mask-months` (uncommitted); the frozen diff is `results/twin_runs/par23/code.diff`.

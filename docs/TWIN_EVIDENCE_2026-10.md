@@ -422,3 +422,83 @@ artefacts are kept beside the registered ones. One tooling note: `merge_folds` n
 a `git_commit` that differs between the full fit and a fold as provenance (logged) rather
 than as a different configuration, since a commit made while the fold jobs were queued
 had stopped the merge without changing what they ran.
+
+## 12. Phase 1 outcome and the registered policy-response tests (2026-10-23)
+
+**Phase 1: no candidate replaces the deliverable.** Every rung was declared before it ran
+(`results/dataprep/preregistration/I1.*`) and scored against gates fixed by R0, the
+`stage3_datum_gate_cwa` recipe. Detail is in `docs/DATA_REMEDIATION_STATUS_2026-10.md`;
+the numbers are in `results/dataprep/reports/I1_*/report.json`.
+
+| Rungs | What they added | Outcome |
+|---|---|---|
+| R1, R1b-R1e | Changhua and Chiayi pump census, canal recharge, a county-split column, public-supply wells | No rung passes the design-time gates. On fresh folds (G2), R1c and R1e-pw fail too |
+| R4, R4p | per-layer pumping shares (learned, then measured), lagged return flow | Fail |
+| R* | R4p plus a learned Changhua pump-efficiency factor | Fails 5 of 7 gates. The factor went to 1.55, not below 1 |
+
+What Phase 1 shows:
+- The Changhua census gives the right seasonal amplitude: predicted to observed goes from 0.39 to between 1.07 and 1.40.
+- No rung reproduces Changhua's year-to-year changes: the interannual correlation stays at or below 0.52, except with canal water alone, which reaches 0.63.
+- The R1c-based rungs forecast uplift after 2022. That uplift is an artefact of their 6-zone column.
+- Changhua's damped head response is not an efficiency effect. The remaining suspect is water the model does not carry, chiefly canal water outside the Jiji supply. Those data are not available.
+- R0 stays the deliverable for heads and subsidence (user ruling 2026-10-21). Its 2023-26 deep-pile scores were used to choose between columns, so they are no longer reported as skill (U7).
+
+**Registered tests of the policy response (`N1.phase12_response.v1`).** Results are in
+`results/dataprep/reports/N1_evidence/phase12_tests/`. Each was scored once, after
+`prereg3.assert_can_score`, which verified the inputs and found no blocking look.
+
+*G1, masked 2015 refit: passes against both baselines.*
+- **Setup.** R0's recipe was refitted with Jan-May 2015 hidden from the head targets (`calibrate_flow --mask-months 2015-01:2015-05`, batch 23, `results/twin_runs/stage3_datum_gate_m15/`). The in-sample R² was 0.867; R0's was 0.865.
+  - The I1 primary model is R0, because no I1 rung passed, so the registration's two models are this one refit.
+- **Scoring.** The refit's own rollout M was scored on the 2015 drought-spring anomaly against two baselines:
+  - CL: climatology, an anomaly of 0;
+  - ZR: the same rollout with the Jan-May 2015 pumping energy replaced by its reference-year mean, cell by cell.
+- **Coverage.** 135 of the 158 calibration wells (63 sites) meet the registered eligibility rule. The paired site bootstrap used B = 2000 and seed 20261024.
+
+| | wells | RMSE M (m) | RMSE baseline (m) | ratio | 90 % interval of the difference (m) | verdict |
+|---|---|---|---|---|---|---|
+| M vs CL | 135 | 1.490 | 2.062 | 0.72 | -0.674 to -0.462 | model better |
+| M vs ZR | 135 | 1.490 | 1.749 | 0.85 | -0.319 to -0.198 | model better |
+| Changhua, M vs CL | 59 | 1.211 | 1.362 | 0.89 | -0.209 to -0.105 | model better |
+| Yunlin, M vs CL | 76 | 1.675 | 2.472 | 0.68 | -0.906 to -0.687 | model better |
+
+ZR is informative: its anomaly differs from M's by an RMS of 0.63 m, above the 0.05 m floor.
+So the improvement over ZR is the model's response to the recorded 2015 pumping, not its
+seasonal cycle.
+
+Reported, not gating: the response slope, the observed on the modelled event anomaly
+through the origin, is 2.13 (90 % interval 1.93 to 2.39).
+- The sign agrees at 96 % of wells, with correlation 0.58.
+- The model gets the direction of the 2015 shortfall right almost everywhere, but only about half its size. This is the damping of section 4, now seen out of sample.
+- The external wells of `N1.T1_ext_E2015` give 1.76, so the damping is not an artefact of the calibration wells.
+
+Changhua gains less than Yunlin (ratio 0.89 against 0.68), as in every Phase 1 result.
+
+Caveats:
+- Only the targets were masked. The 2015 forcing (pumping energy, rain) stayed in the record, as registered, because the test asks whether the forced response is right.
+- The recipe itself was designed on fits that included 2015, so G1 holds out the parameters, not the design.
+- The column was not refitted; G1 tests heads only.
+
+*G3, canal-delivery channel: not run.* The registration applies G3 only to a G1 recipe
+with a canal-delivery term, and R0 has none.
+
+*G4, deep benchmarks, 2020 and 2021 springs against 2022: not evaluable.*
+- No printed sensor has all five Jan-May 2022 months verified: each has 4, and the fifth has no row in `deep_benchmarks_printed/v2`. So none of the 14 sensor-events can be scored.
+- The scorer wrote `not_model_better`. `g4/erratum.json` corrects this to `not_evaluable`; results.json is left as written.
+- Model side only: the column's Jan-May compaction at every pile cell is larger in 2020 and 2021 than in 2022, which is the registered direction. Example: 37 and 57 mm against 17 mm at 土庫.
+- Two further limits stand regardless:
+  - the column returns only total compaction, so the sensor's depth interval is not resolved;
+  - the product's `positive_means` label is ambiguous and must be checked before any rescore.
+- G4 can be rescored only with a fifth 2022 month or under a new registration.
+
+C3 and C5, the masked 2020 and 2021 refits, appear in the plan but were never registered.
+They need a new registration before they can run.
+
+**Reading.**
+- G1 is the first out-of-sample evidence that the model's head response to a drought-year pumping change is real:
+  - it beats both climatology and its own zero-response counterfactual on wells and months it never saw;
+  - in both counties.
+- The size of the response is about half of what was observed. That is the limit the policy numbers inherit: the head change under a pumping cut is about half the real one.
+  - The column was calibrated on leveling under these same damped heads, so its compressibility may partly make up for it.
+  - Whether avoided subsidence is understated is therefore not settled by this test.
+- No test here scores the subsidence side of the policy response. G4 has no complete 2022 spring, and the 2023-26 pile record is selection-contaminated.
