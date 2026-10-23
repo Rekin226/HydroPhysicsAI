@@ -86,16 +86,18 @@ THETA_PARAMS = frozenset({
     "log_T", "log_S", "log_L", "log_Sd", "log_tau", "log_du0", "log_Sa", "log_G",
     "log_C_coast", "log_C_apex", "log_C_riv", "log_sw_scale", "log_eta", "log_head_extra",
     "recharge_frac_logit", "pump_split_logit", "return_frac_logit", "pump_layer_logits",
-    "pump_layer_logits_ch", "log_tau_ret", "log_eta_ratio_ch", "log_spread_km", "spread_km"})
+    "pump_layer_logits_ch", "log_tau_ret", "log_eta_ratio_ch", "log_spread_km", "spread_km",
+    "return_rice_b"})
 # physical-unit readouts calibrate_flow writes beside the parameters (never read back)
 THETA_READOUTS = frozenset({
     "eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2day", "C_riv_m2day",
     "pump_frac_shallow", "return_frac", "sw_scale", "tau_ret_steps", "eta_ratio_changhua",
     "pump_layer_shares", "pump_layer_shares_ch", "Sd", "tau_days", "du0_m", "Sa",
     "G_per_day", "S_eff", "delay_is_elastic"})
-# opt-in flags of later code (twin/n1-changhua-fix: --return-rice-share, --column-zones 3)
-UNSUPPORTED_META = ("return_rice_share",)
-UNSUPPORTED_COLUMN = ("column_zones_collapsed",)
+# opt-in flags of later code that this code cannot rebuild (none since the merge of
+# twin/n1-changhua-fix: --return-rice-share and --column-zones 3 are rebuilt here)
+UNSUPPORTED_META: tuple[str, ...] = ()
+UNSUPPORTED_COLUMN: tuple[str, ...] = ()
 
 
 def check_supported(theta: dict, meta: dict | None, label: str = "theta") -> None:

@@ -54,3 +54,12 @@ only link between the committed scorers and the G1 result cited in the model car
 - **Page.** Theta `results/twin_runs/stage3_datum_gate/stage3_theta.json` (`036a7a17…`), commit `fa5cca2`, vendor rainfall, fitted before the adjoint fix `730f65b`. Forward run `datum_gate_innov.npz` (`cf2c7154…`), basis `response_basis_innov.npz` (`f2e7c536…`).
 - **Tested.** The N1 tests scored `stage3_datum_gate_cwa` (theta `789d0e45…`; recorded commit `9715f58`; the code was at or after `13860ee`, see `TWIN_THETA_PROVENANCE_2026-10.md`) in Yunlin and R1c (`stage3_datum_gate_ccz`) in Changhua.
 - **Step A2.** It used `results/twin_forward/response_basis.npz` (`df534c04…`, commit `2f21f81`, built 2026-09-20). That is neither the page's basis nor R0's (`response_basis_cwa.npz`, `2b4b1d05…`).
+
+## Merged into the main line (2026-10-24)
+
+Branch `twin/n1-code-integration` merges `twin/n1-changhua-fix` (which contains
+`294ed2e` and `8a96b21` unchanged, so the batch-24 and batch-25 equivalences above still
+hold) onto the gap fixes. The merge also lets `forward.check_supported` rebuild what that
+code writes: `return_rice_b` is a known theta parameter and neither `return_rice_share`
+(meta) nor `column_zones_collapsed` (column) is refused any more. The promoted page's
+`code_sha256` (`ea6cadc9`) is the tree at `873e79d`, before this merge.
