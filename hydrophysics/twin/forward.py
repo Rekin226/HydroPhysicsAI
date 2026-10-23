@@ -65,6 +65,7 @@ from .calibrate_flow import (
 from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
 from .flow import FlowModel
 from .inputs import TwinInputs, input_options, load_twin_inputs
+from .recorded_pumping import load_recorded_multiplier, parse_recorded_spec
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
 from .zones import (
     COUNTY_SUFFIX,
@@ -1252,6 +1253,15 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
     all_dates = inp.dates.append(pd.date_range(inp.dates[-1] + pd.offsets.MonthBegin(1),
                                                periods=horizon, freq="MS"))
     L, A = N_LAYERS, inp.grid.n_active
+    # a recorded-pumping arm (opt-in) is refused here, before any rollout, when it does not
+    # fit this run's projection months or grid
+    for scen, _ in scenarios:
+        if getattr(scen, "recorded", None) is not None:
+            if scen.recorded.n_active is not None and scen.recorded.n_active != A:
+                raise ValueError(f"scenario {scen.name!r}: recorded multiplier bound to "
+                                 f"{scen.recorded.n_active} cells, the grid has {A} "
+                                 "(wrong grid)")
+            scen.recorded.check_window(all_dates[T:])
     n_scen = len(scenarios)
     n_mem = len(members) * len(ic_noises)
     heads_sum = np.zeros((n_scen, L, A, T + horizon), dtype="float64")
@@ -1467,6 +1477,18 @@ def main(argv=None) -> None:
                     help="'name:class=factor,...[,rain=f][@YYYY-MM][#zone/zone]' "
                          "(repeatable). Classes: " + ", ".join(CLASSES) + ". The baseline "
                          "(no change) is always run first.")
+    ap.add_argument("--recorded-pumping", action="append", default=[],
+                    metavar="NAME=PATH[@YYYY-MM][#yunlin|#changhua]",
+                    help="opt-in recorded-pumping arm (repeatable): one more scenario NAME "
+                         "whose metered pumping energy is the baseline climatology times a "
+                         "month-by-month multiplier read from PATH (.csv: month,multiplier "
+                         "or month,<class>...; .npz: see twin.recorded_pumping), from the "
+                         "start month (default: the file's first month) on, optionally in "
+                         "one county's cells only. Theta, column, restart and every other "
+                         "forcing stay frozen; the baseline in the same run is the "
+                         "zero-response arm. A start before the first projected month, a "
+                         "row before the start, a month past the horizon or a series for "
+                         "another grid is refused")
     ap.add_argument("--horizon", type=int, default=120, help="months past the record")
     ap.add_argument("--gain", type=float, default=1.0,
                     help="observation nudging gain at the forecast origin (1 = full "
@@ -1566,6 +1588,15 @@ def main(argv=None) -> None:
     scenarios = [(BASELINE, 1.0)] + [parse_scenario(s) for s in args.scenario]
     for s, rain in scenarios:
         print(f"scenario: {s.describe()}" + (f", rain x{rain:g}" if rain != 1.0 else ""))
+    # recorded-pumping arms: read (and refused on a bad file) before the inputs load; bound
+    # to the grid and checked against the projection months once the grid exists
+    recorded = []
+    for spec in args.recorded_pumping:
+        rname, rpath, rstart, rcounty = parse_recorded_spec(spec)
+        if rname in {s.name for s, _ in scenarios} | {r[0] for r in recorded}:
+            raise SystemExit(f"--recorded-pumping: arm name {rname!r} is already a scenario")
+        recorded.append((rname, load_recorded_multiplier(rpath, start=rstart,
+                                                         county=rcounty)))
 
     paths = {k: getattr(args, k) for k in ("polygon", "wells_dir", "stations", "pump_census",
                                            "pump_kwh", "rf_timeseries", "rf_stations",
@@ -1577,6 +1608,21 @@ def main(argv=None) -> None:
     print(f"census cleaning as calibrated: meter_filter={meta.get('meter_filter', 'none')}",
           flush=True)
     attach_sw_recharge(inp, meta, log=lambda m: print(m, flush=True))
+    if recorded:
+        fut_dates = pd.date_range(inp.dates[-1] + pd.offsets.MonthBegin(1),
+                                  periods=args.horizon, freq="MS")
+        for rname, rec in recorded:
+            flags = None
+            if rec.county is not None:
+                from .zone_county import DEFAULT_MAP, county_flags_for_grid
+
+                flags, _ = county_flags_for_grid(inp.grid, DEFAULT_MAP,
+                                                 expect_sha256=meta.get("zone_county_sha256"))
+            rec = rec.bind(inp.grid.n_active, flags)
+            rec.check_window(fut_dates)
+            scen = PumpingScenario(rname, recorded=rec)
+            scenarios.append((scen, 1.0))
+            print(f"scenario: {scen.describe()}", flush=True)
 
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir) if cfg.data_dir and os.path.isdir(str(cfg.data_dir)) else None
@@ -1707,6 +1753,10 @@ def main(argv=None) -> None:
                 (c[2]["zone_blend_km_override"]["used"] if c[2].get("zone_blend_km_override")
                  else float(c[2].get("zone_blend_km") or 0.0)) for c in columns],
             "save_members": args.save_members,
+            # opt-in 2026-10-24: only a run with a recorded-pumping arm records it
+            **({"recorded_pumping": {s.name: s.recorded.record() for s, _ in scenarios
+                                     if s.recorded is not None}}
+               if any(s.recorded is not None for s, _ in scenarios) else {}),
             # opt-in 2026-09-29: only a run with a banded column records its band count
             **({"column_bands": [len(c[2].get("banded") or []) for c in columns]}
                if any(c[2].get("banded") for c in columns) else {}),
