@@ -1262,11 +1262,12 @@ diff:
 | batch | used by | recorded `code.diff` | equivalent commits | on the PR branch |
 |---|---|---|---|---|
 | par23 | G1 refit (`_m15`) | af53ef55 | ccb6ff2..d3b365d | yes |
-| par24 | step C refits and columns; step A1 and step B runs | 2618484a | c48e858..294ed2e | no (`twin/n1-policy-response`) |
-| par25 | F1, F2 | 277d6a50 | c48e858..8a96b21 | no (`twin/n1-changhua-fix`) |
+| par24 | step C refits and columns; step A1 and step B runs | 2618484a | c48e858..294ed2e | yes (merge `c31a5a9`) |
+| par25 | F1, F2 | 277d6a50 | c48e858..8a96b21 | yes (merge `c31a5a9`) |
 
-`--withhold-surveys`, `--column-zones 3` and `--return-rice-share` are therefore not on the PR
-branch yet. Merging those two branches is a decision for the user. The scorers' usage lines
+`--withhold-surveys`, `--column-zones 3` and `--return-rice-share` reached the stacked PR
+branch `twin/n1-code-integration` with the merge `c31a5a9` (user decision 2026-10-24: stacked
+PRs), and `76ae637` makes `twin.forward` rebuild them. The scorers' usage lines
 say `py.sh -I`, which drops `PYTHONPATH`; run them through `par24/py.sh` or `par25/py.sh`
 without `-I`. The G1 and G4 scorers are not hash-bound by `N1.phase12_response.v1`. They
 were written after it and are tied to the looks only by their file times and commit ba76923
@@ -1306,3 +1307,52 @@ versions exist only as their hashes and as archived copies. The b2 release defin
 `results/dataprep/reports/H2_evidence/code_as_registered/015c1980819a/config.py`, a
 gitignored copy outside git. Whether to commit a sanitised copy under a new path, after the
 Rule 1 scan, is open for the user.
+
+## Inference round (2026-10-24/25)
+
+User direction (2026-10-24): any technique that infers missing quantities from the data
+already held may be tried. Inferred values enter only as model inputs, never as the
+observations a test is scored against. Full write-up: evidence section 14.
+
+- **A0, identifiability** (post hoc, model-only, not a test;
+  `results/dataprep/reports/N1_gaps_2026-10-24/A0/verdict.json`):
+  - The head response is identifiable on information, but only given the fixed eta and
+    head_extra. Its nonlinear coverage is 0.54-0.82, so the size is not pinned.
+  - Not identifiable: the pump shallow share; proximal Ske and Skv; most Changhua T and S.
+  - Rung A's precondition (a layer-0 recharge conductance) is not met, so rung A is not run.
+- **M1, storage-capped column** (post hoc, model-only, not a test; `M1/verdict.json`):
+  - Gate 0 (synthetic recovery) FAILED: the k = 2 mid zone recovers 0.61 at 3 years and
+    0.66 at 7 years.
+  - Not adopted, and kappa is not retuned.
+  - The code is on the local branch `twin/m1-ske-cap` (not pushed).
+- **Rung B, measured public supply** (`I1.B.v1`, a3aea7c7; batch par26, code 76ae637;
+  `results/dataprep/reports/I1_B/report.json` 58546161 and `reading.json`). Both arms fail
+  against Q0.
+  - B1 fails the Changhua county-mean RMSE (0.679 > 0.542 m), leveling (0.085) and
+    plausibility (rebound -0.03 and -0.32 cm/yr).
+  - B2 fails k-fold (0.481), the Changhua RMSE, leveling (0.482) and plausibility.
+  - B1 raises Changhua head correlation (0.557 against 0.468) but overshoots its amplitude
+    (1.19). The term is therefore neither confirmed nor ruled out.
+  - No seed-2029 confirmation, and no Changhua arm for N2.
+  - The exploratory follow-up is unspent.
+- **N2, prospective head-response test** (`N2.policy_response.prospective_2026-11.v1`,
+  bfbbd6b3, registered 2026-10-24 00:41 UTC):
+  - the page model is primary and R0 secondary;
+  - window 2026-11 to 2027-10, Yunlin wells;
+  - beta_response of obs - ZR on the recorded-pumping contrast;
+  - code on `twin/n2-pumping-arm` (`1fff145`, `f6eca60`);
+  - the rehearsal passed.
+
+**End state of the policy claims.**
+- Yunlin head response: supported on design-time windows; decided prospectively by N2.
+- 1-3-year subsidence size and long-run sinking: not supported or untested; no data held
+  can decide them.
+- Changhua levers: not supported; no route without new data remains.
+
+Data requests that would close the open claims:
+- a fresh WRA leveling campaign, or monthly compaction-well and GNSS series from 2026-11,
+  registered before they are read;
+- Changhua irrigation-office monthly diversions by intake;
+- pump-test energy-to-volume data;
+- per-well public-supply abstraction, including measured Yunlin public supply after 2018.
+
