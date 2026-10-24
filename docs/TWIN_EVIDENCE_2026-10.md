@@ -894,10 +894,14 @@ Findings:
   - It makes Changhua's heads too loud: amplitude 0.36 → 1.19 of observed.
   - The leveling column refitted on those heads loses the leveling: Changhua -0.73, rest
     of the fan 0.06.
-- **What it means:** the declared interpretation ruled the term out only if Changhua's
-  correlation did not move. It moved, so the term is neither confirmed nor ruled out. The
-  report's own decision line overstates this ("not the missing Changhua term"); `reading.json`
-  corrects it.
+- **What it means: heads improved; the leveling fit and forward plausibility failed.**
+  The declared interpretation ruled the public supply out only if Changhua's head
+  correlation did not move. It moved (0.468 → 0.557 in B1), so the measured public supply is
+  not ruled out as a Changhua term, and it is not confirmed either: the rung cannot promote.
+  The report's decision line ("the measured public supply is not the missing Changhua
+  term") was written into the scorer before any result existed and does not follow the
+  registration. The report is left as written; `reading.json` records this reading, and the
+  scorer's line now states only the gate outcome.
 - **The rebound** (post hoc, model inputs only, not a test):
   - In X2, Changhua's public supply is measured, 31-35 model Mm³/yr every year from 2007 to
     2022.
@@ -905,6 +909,9 @@ Findings:
     `twin.forward` holds that last value.
   - The rest-of-fan rebound (fan 2023-32 subsidence -0.58 cm in B1, against Q0's +2.93 cm)
     fits deep Yunlin heads still recovering from that inferred drop.
+  - Earlier rungs' post-2022 rebound was traced to the six-zone, county-split leveling
+    column. Rung B used the three-zone column (no `--zone-county-split`), so that
+    explanation does not carry over directly; which cause applies here is untested.
 - **Unspent:** the one exploratory follow-up allowed is left unspent. It could not promote,
   and nothing it shows could reach a registration in time.
 

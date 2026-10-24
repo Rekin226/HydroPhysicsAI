@@ -128,7 +128,8 @@ def main(argv=None) -> int:
             f"{arm.upper()} passes every gate: run the declared seed-2029 confirmation of R0, Q0 "
             f"and {arm.upper()} (same gates against Q0)" if arm else
             "B1 and B2 fail; no seed-2029 confirmation is run (declared: only if every gate "
-            "passes). The measured public supply is not the missing Changhua term.")
+            "passes). What the failure means for the public-supply term follows the "
+            "declaration's interpretation, read beside the metrics, not this line.")
     print(json.dumps(res, indent=1, ensure_ascii=False))
     if not a.check:
         OUT.mkdir(parents=True, exist_ok=True)

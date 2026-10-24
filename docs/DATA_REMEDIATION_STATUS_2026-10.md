@@ -1331,8 +1331,11 @@ observations a test is scored against. Full write-up: evidence section 14.
   - B1 fails the Changhua county-mean RMSE (0.679 > 0.542 m), leveling (0.085) and
     plausibility (rebound -0.03 and -0.32 cm/yr).
   - B2 fails k-fold (0.481), the Changhua RMSE, leveling (0.482) and plausibility.
-  - B1 raises Changhua head correlation (0.557 against 0.468) but overshoots its amplitude
-    (1.19). The term is therefore neither confirmed nor ruled out.
+  - Reading: heads improved; the leveling fit and forward plausibility failed. B1 raises
+    Changhua head correlation (0.557 against 0.468), which the declaration says keeps the
+    public supply from being ruled out, but overshoots its amplitude (1.19). The term is
+    neither confirmed nor ruled out; the report's "not the missing Changhua term" line
+    predates the results and is superseded by `reading.json`.
   - No seed-2029 confirmation, and no Changhua arm for N2.
   - The exploratory follow-up is unspent.
 - **N2, prospective head-response test** (`N2.policy_response.prospective_2026-11.v1`,
