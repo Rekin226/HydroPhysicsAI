@@ -1028,6 +1028,27 @@ def test_ring_holdout_block_is_absent_until_the_report_exists(tmp_path):
     assert va._ring_holdout_block(str(path))["max_ref_age_days"] == 62
 
 
+def test_policy_response_block_keeps_the_verdicts_the_page_quotes(tmp_path):
+    assert va._policy_response_block(None) is None
+    row = {"rmse_model_m": 1.4, "rmse_cl_m": 2.2, "rmse_zr_m": 2.3, "n_wells": 75,
+           "verdict_cl": "model_better", "verdict_zr": "model_better",
+           "slope_obs_on_model": 1.2, "slope_ci": [1.06, 1.36]}
+    report = {"window": "2016-01..2018-12 (masked refits)",
+              "heads": {"yunlin": row, "changhua": row},
+              "subsidence": {"yunlin": {"rms_model_cm": 1.9, "rms_cl_cm": 1.0,
+                                        "verdict_cl": "baseline_better",
+                                        "slope_obs_on_model": 0.22}, "changhua": {}},
+              "changhua": {"status": "not_supported", "dose_obs_cm_per_gwh": -0.5},
+              "registrations": {"N1.b": "sha", "N1.a": "sha"}, "inputs": {"x": {}}}
+    path = tmp_path / "page_labels.json"
+    path.write_text(json.dumps(report))
+    block = va._policy_response_block(str(path))
+    assert block["heads"]["yunlin"]["rmse_cl_m"] == 2.2 and "n_wells" not in block["heads"]["yunlin"]
+    assert block["subsidence"]["yunlin"]["slope_obs_on_model"] == 0.22
+    assert block["changhua"]["status"] == "not_supported"
+    assert block["registrations"] == ["N1.a", "N1.b"] and "inputs" not in block
+
+
 def test_three_is_shipped_unevaluated_and_the_page_has_one_dictionary():
     page = va._render({"meta": {}}, "inline", log=lambda s: None)
     marker = '<script type="text/plain" id="three-src">'

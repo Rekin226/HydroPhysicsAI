@@ -239,6 +239,7 @@ python -m hydrophysics.twin.viewer_app \
   --hybrid results/twin/hybrid_datum_gate_innov/report.json \
   --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
   --deep-piles results/twin/deep_pile_holdout/report.json \
+  --policy-response results/dataprep/reports/N1_policy/page_labels.json \
   --out results/twin/twin_app.html
 python -m hydrophysics.twin.release inspect results/twin/twin_app.html
 python -m hydrophysics.twin.browser_check \
