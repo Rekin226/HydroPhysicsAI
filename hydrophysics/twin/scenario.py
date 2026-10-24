@@ -27,9 +27,13 @@ right; the numbers are not yet evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from .recorded_pumping import RecordedMultiplier
 
 # Coarse policy classes, keyed off the substrings that actually appear in PURPOSE.
 # Order matters: 灌溉 (irrigation) and 養殖 (aquaculture) and 畜牧 (livestock) are all
@@ -108,6 +112,10 @@ class PumpingScenario:
     # (the historical behaviour, and optimistic: in the 2021 drought Changhua and Yunlin
     # met the canal rotation with wells).
     sw_sub: float = 0.0
+    # Recorded-pumping arm (opt-in, 2026-10-24, N2 draft): a month-by-month multiplier on
+    # the metered energy past the origin (``recorded_pumping.RecordedMultiplier``), applied
+    # before ``factors``. None (the default) leaves ``apply`` exactly as it was.
+    recorded: RecordedMultiplier | None = None
 
     def __post_init__(self) -> None:
         bad = set(self.factors) - set(CLASSES)
@@ -167,6 +175,8 @@ class PumpingScenario:
             cell_sel = np.isin(fan_band_of(zone_of_cell), idx).astype("float64")
 
         for name, E in e_by_class.items():
+            if self.recorded is not None:
+                E = self.recorded.scale(name, E, dates)
             f = float(self.factors.get(name, 1.0))
             if f == 1.0:
                 total = total + E
@@ -178,6 +188,13 @@ class PumpingScenario:
         return total
 
     def describe(self) -> str:
+        if self.recorded is not None:
+            s = f"{self.name}: {self.recorded.describe()}"
+            if self.factors or self.sw_factor != 1.0:
+                s += " + " + PumpingScenario(
+                    "", factors=self.factors, zones=self.zones, start=self.start,
+                    sw_factor=self.sw_factor, sw_sub=self.sw_sub).describe()[2:]
+            return s
         if not self.factors and self.sw_factor == 1.0:
             return f"{self.name}: baseline (no change)"
         parts = [f"{k} x{v:g}" for k, v in sorted(self.factors.items())]
