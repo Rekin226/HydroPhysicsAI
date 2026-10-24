@@ -86,16 +86,18 @@ THETA_PARAMS = frozenset({
     "log_T", "log_S", "log_L", "log_Sd", "log_tau", "log_du0", "log_Sa", "log_G",
     "log_C_coast", "log_C_apex", "log_C_riv", "log_sw_scale", "log_eta", "log_head_extra",
     "recharge_frac_logit", "pump_split_logit", "return_frac_logit", "pump_layer_logits",
-    "pump_layer_logits_ch", "log_tau_ret", "log_eta_ratio_ch", "log_spread_km", "spread_km"})
+    "pump_layer_logits_ch", "log_tau_ret", "log_eta_ratio_ch", "log_spread_km", "spread_km",
+    "return_rice_b"})
 # physical-unit readouts calibrate_flow writes beside the parameters (never read back)
 THETA_READOUTS = frozenset({
     "eta", "head_extra_m", "recharge_frac", "C_coast_m2day", "C_apex_m2day", "C_riv_m2day",
     "pump_frac_shallow", "return_frac", "sw_scale", "tau_ret_steps", "eta_ratio_changhua",
     "pump_layer_shares", "pump_layer_shares_ch", "Sd", "tau_days", "du0_m", "Sa",
     "G_per_day", "S_eff", "delay_is_elastic"})
-# opt-in flags of later code (twin/n1-changhua-fix: --return-rice-share, --column-zones 3)
-UNSUPPORTED_META = ("return_rice_share",)
-UNSUPPORTED_COLUMN = ("column_zones_collapsed",)
+# opt-in flags of later code that this code cannot rebuild (none since the merge of
+# twin/n1-changhua-fix: --return-rice-share and --column-zones 3 are rebuilt here)
+UNSUPPORTED_META: tuple[str, ...] = ()
+UNSUPPORTED_COLUMN: tuple[str, ...] = ()
 
 
 def check_supported(theta: dict, meta: dict | None, label: str = "theta") -> None:
@@ -414,6 +416,16 @@ def build_model(grid, member: Member, device) -> tuple[FlowModel, dict, np.ndarr
         if k in th:
             scalars[k] = torch.tensor(np.asarray(th[k], dtype="float64"),
                                       dtype=torch.float64, device=device)
+    if "return_rice_b" in th:
+        # fix F2 (--return-rice-share): the per-cell return-flow logit a + b * intensity
+        path = meta.get("return_rice_share")
+        if not path:
+            raise ValueError("a theta with return_rice_b needs meta['return_rice_share']")
+        rice = np.load(path)["share"]
+        if rice.shape != (grid.n_active,):
+            raise ValueError(f"{path}: {rice.shape} vs {grid.n_active} active cells")
+        scalars["return_frac_logit"] = scalars["return_frac_logit"] + float(
+            th["return_rice_b"]) * torch.tensor(rice, dtype=torch.float64, device=device)
     if "pump_layer_logits" in th:
         # rung R4: layer shares of the pumped volume (Changhua's own copy with the county map
         # the calibration recorded)
@@ -1053,6 +1065,13 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
         if "zonal" in p:
             if zone_of_cell is None:
                 raise ValueError("a zonal column needs zone_of_cell")
+            if p.get("column_zones_collapsed"):
+                # calibrate_coupled --column-zones 3: one three-zone column over a
+                # county-split flow model; its cells take their zone's unsplit id
+                zone_of_cell = np.asarray(zone_of_cell) % N_ZONES
+                if float(p.get("zone_blend_km") or 0.0) > 0.0 or blend_km:
+                    raise ValueError(f"{vep_json}: a collapsed three-zone column is not "
+                                     "supported with a zone blend")
             check_column_zonation(p, zone_of_cell, county_sha256, label=vep_json)
             w_km = float(p.get("zone_blend_km") or 0.0)
             if blend_km is not None:

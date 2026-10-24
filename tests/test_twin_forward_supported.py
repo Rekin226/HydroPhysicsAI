@@ -43,27 +43,35 @@ def test_a_theta_this_code_rebuilds_is_accepted():
 
 
 def test_a_newer_theta_key_is_refused_not_dropped():
-    with pytest.raises(ValueError, match=r"unknown theta keys \['return_rice_b'\]"):
-        F.check_supported({**THETA, "return_rice_b": 1.84}, META)
+    with pytest.raises(ValueError, match=r"unknown theta keys \['log_future_term'\]"):
+        F.check_supported({**THETA, "log_future_term": 1.84}, META)
 
 
-def test_a_newer_opt_in_meta_flag_is_refused():
-    meta = {**META, "return_rice_share": "rice.npz", "return_rice_share_sha256": "ab"}
-    with pytest.raises(ValueError, match=r"unsupported opt-in meta \['return_rice_share'\]"):
+def test_a_newer_opt_in_meta_flag_is_refused(monkeypatch):
+    monkeypatch.setattr(F, "UNSUPPORTED_META", ("future_share",))
+    meta = {**META, "future_share": "future.npz"}
+    with pytest.raises(ValueError, match=r"unsupported opt-in meta \['future_share'\]"):
         F.check_supported(THETA, meta)
     # an absent or empty flag is the historical behaviour
-    F.check_supported(THETA, {**META, "return_rice_share": None})
+    F.check_supported(THETA, {**META, "future_share": None})
+
+
+def test_the_f2_theta_and_meta_are_rebuilt_since_the_n1_merge():
+    meta = {**META, "return_rice_share": "rice.npz", "return_rice_share_sha256": "ab"}
+    F.check_supported({**THETA, "return_rice_b": 1.84}, meta)
 
 
 def test_build_model_refuses_before_building_anything():
-    member = F.Member(label="f2", theta={**THETA, "return_rice_b": 1.84}, meta=META)
+    member = F.Member(label="new", theta={**THETA, "log_future_term": 1.84}, meta=META)
     with pytest.raises(ValueError, match="newer code"):
         F.build_model(None, member, "cpu")
 
 
-def test_a_collapsed_zone_column_is_refused(tmp_path):
+def test_a_flagged_column_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(F, "UNSUPPORTED_COLUMN", ("future_flag",))
     path = tmp_path / "vep_zonal_leveling.json"
-    path.write_text(json.dumps({"zonal": [], "column_zones_collapsed": True}))
-    with pytest.raises(ValueError, match="column_zones_collapsed"):
+    path.write_text(json.dumps({"zonal": [], "future_flag": True}))
+    with pytest.raises(ValueError, match="future_flag"):
         F.load_or_fit_vep(str(path), None, None, "cpu", zone_of_cell=None)
-    F.check_supported_column({"zonal": [], "column_zones_collapsed": False})
+    F.check_supported_column({"zonal": [], "future_flag": False})
+    F.check_supported_column({"zonal": [], "column_zones_collapsed": True})

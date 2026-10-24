@@ -63,7 +63,7 @@ from torch import nn
 from ..config import Config
 from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
-from .calibrate_flow import set_compile_matvec
+from .calibrate_flow import mask_month_flags, set_compile_matvec
 from .compaction import AQUITARD_BOUNDS, CREEP_MODES, VEPColumn, column_param_sets
 from .forward import (
     N_LAYERS,
@@ -396,6 +396,25 @@ def leveling_rows(ddir: str, inp, heads: np.ndarray, zone_of_cell: np.ndarray | 
     return (np.stack(H), np.stack(OBS), np.stack(M), np.array(Z), names)
 
 
+def withhold_rows(mask: np.ndarray, flags: np.ndarray | None,
+                  min_left: int = 3) -> tuple[np.ndarray, np.ndarray]:
+    """--withhold-surveys: the (n, T) survey mask with the flagged months removed, and the
+    rows that keep at least ``min_left`` surveys (``leveling_rows``' own minimum). With no
+    flags the mask and every row are returned unchanged."""
+    mask = np.asarray(mask, dtype=bool)
+    if flags is None:
+        return mask, np.ones(mask.shape[0], dtype=bool)
+    out = mask & ~np.asarray(flags, dtype=bool)[None, :]
+    return out, out.sum(axis=1) >= min_left
+
+
+def collapse_zones(zone_of_cell: np.ndarray) -> np.ndarray:
+    """--column-zones 3 over a --zone-county-split flow model: the county copy of each
+    column zone (ids N_ZONES..2 N_ZONES - 1) mapped back onto its zone, so Changhua and the
+    rest of the fan share one three-zone column (the column of R0, R4 and R*)."""
+    return np.asarray(zone_of_cell) % N_ZONES
+
+
 def _rezero(pred: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """Subtract each row's prediction at its first observed month, so predictions and
     leveling series measure change from the same instant."""
@@ -475,7 +494,7 @@ def county_split_ids(zone: np.ndarray, changhua: np.ndarray,
 
 def county_report_unsplit(ddir: str, inp, heads: np.ndarray, zone: np.ndarray,
                           names: tuple[str, ...], preds: np.ndarray, obs: np.ndarray,
-                          mask: np.ndarray) -> dict | None:
+                          mask: np.ndarray, keep: np.ndarray | None = None) -> dict | None:
     """Per-county out-of-fold leveling scores of a column fitted WITHOUT the county split
     (rung R1c's like-for-like baseline: the same seeded folds, scored per county and
     zone with the default county map). Report only: never changes the fit, and a missing
@@ -491,6 +510,8 @@ def county_report_unsplit(ddir: str, inp, heads: np.ndarray, zone: np.ndarray,
     # column does), rows in the same order as the fit's
     cells = np.asarray(leveling_rows(ddir, inp, heads,
                                      np.arange(inp.grid.n_active))[3]).astype(np.int64)
+    if keep is not None:                   # --withhold-surveys dropped some rows
+        cells = cells[keep]
     ids, split_names = county_split_ids(zone, np.asarray(flags, dtype=bool)[cells], names)
     rep = oof_by_zone(preds, obs, mask, ids, split_names)
     rep["county_map"] = source
@@ -606,6 +627,17 @@ def main(argv=None) -> None:
                          "delayed-drainage term (compaction.aquitard_compaction) whose rate "
                          "depends on the head level; shared and zonal configs. Recorded as "
                          "'creep' in the column JSON, which twin.forward reads")
+    ap.add_argument("--column-zones", choices=("flow", "3"), default="flow",
+                    help="zones of the zonal column: 'flow' (default) follows the theta "
+                         "(six with --zone-county-split); '3' fits the three-zone column "
+                         "even over a county-split flow model (2026-10-23: the six-zone "
+                         "column is what made the R1c family uplift after 2022). Recorded "
+                         "as column_zones_collapsed in the JSON, which twin.forward reads")
+    ap.add_argument("--withhold-surveys", default=None, metavar="START:END",
+                    help="YYYY-MM:YYYY-MM, inclusive: leveling surveys and ring samples "
+                         "whose model month lies in the window never enter the loss, the "
+                         "k-fold, the in-run leveling check or the ring check (a temporal "
+                         "hold-out for a registered test; default: none withheld)")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -671,6 +703,15 @@ def main(argv=None) -> None:
     # the column's zones: three, or with the flow model's --zone-county-split the
     # Changhua copy of each (build_model returns that map, verified against the meta)
     col_names = column_zone_names(member.meta)
+    collapsed = args.column_zones == "3" and county
+    if collapsed:
+        if "banded" in configs:
+            raise SystemExit("--column-zones 3 applies to the shared/weighted/zonal configs")
+        zone_of_cell = collapse_zones(zone_of_cell)
+        col_names = column_zone_names({})
+        county = False                     # the column is unsplit from here on
+        print(f"--column-zones 3: one three-zone column {col_names} over the county-split "
+              "flow model", flush=True)
     n_col_zones = len(col_names)
     if int(np.max(zone_of_cell)) >= n_col_zones:
         raise SystemExit(f"zone map ids up to {int(np.max(zone_of_cell))} exceed the column's "
@@ -683,15 +724,27 @@ def main(argv=None) -> None:
     if args.zone_blend_km and args.zone_blend_km > 0.0:
         # the column is three-zone even over a flow model with the proximal split (and
         # split by county with the county split)
-        zone_rows = column_zone_weights(inp.grid, member.meta)(args.zone_blend_km).T
+        zone_meta = ({k: v for k, v in member.meta.items() if k != "zone_county_split"}
+                     if collapsed else member.meta)
+        zone_rows = column_zone_weights(inp.grid, zone_meta)(args.zone_blend_km).T
         print(f"column zones blended over {args.zone_blend_km:g} km across the "
               f"mid/distal line", flush=True)
     ztype = torch.float32 if np.asarray(zone_rows).dtype.kind == "f" else torch.long
 
+    wflags = mask_month_flags(args.withhold_surveys, inp.dates)
+    keep = None
     Hr, OBSr, Mr, Zr, names_r = site_rows(ddir, inp, heads, zone_rows)
+    Mr, _ = withhold_rows(Mr, wflags)        # every ring keeps its row; only months go
     print(f"MLCW sites on the grid: {len(names_r)}", flush=True)
     if args.target == "leveling":
         H, OBS, M, Z, names = leveling_rows(ddir, inp, heads, zone_rows)
+        M, keep = withhold_rows(M, wflags)
+        if wflags is not None:
+            H, OBS, M, Z = H[keep], OBS[keep], M[keep], Z[keep]
+            names = [n for n, k in zip(names, keep, strict=True) if k]
+            print(f"--withhold-surveys {args.withhold_surveys}: {int(wflags.sum())} months "
+                  f"withheld; {int((~keep).sum())} benchmarks left with < 3 surveys dropped",
+                  flush=True)
         print(f"leveling benchmarks on the grid: {len(names)}", flush=True)
     else:
         H, OBS, M, Z, names = Hr, OBSr, Mr, Zr, names_r
@@ -719,6 +772,8 @@ def main(argv=None) -> None:
         cells_r = site_rows(ddir, inp, heads, cells)[3]
         cells_f = (leveling_rows(ddir, inp, heads, cells)[3]
                    if args.target == "leveling" else cells_r)
+        if args.target == "leveling" and keep is not None:
+            cells_f = np.asarray(cells_f)[keep]
         by_config["banded"] = (torch.tensor(bw[cells_f], dtype=torch.float32, device=device),
                                bw[cells_r],
                                torch.tensor(bw, dtype=torch.float32, device=device),
@@ -773,7 +828,7 @@ def main(argv=None) -> None:
                 # an unsplit column's like-for-like baseline for R1c: same seeded folds,
                 # scored per county with the default county map (report only)
                 by_zone = county_report_unsplit(ddir, inp, heads, Zt.cpu().numpy(), col_names,
-                                                oof.cpu().numpy(), OBS, M)
+                                                oof.cpu().numpy(), OBS, M, keep=keep)
             for zn, sc in (by_zone or {}).items():
                 if isinstance(sc, dict):
                     print(f"    out-of-fold {zn:22s} n={sc['benchmarks']:4d}  R2 "
@@ -791,7 +846,8 @@ def main(argv=None) -> None:
         with torch.no_grad():
             field = np.concatenate([_predict(model_c, heads_all[i:i + 512], zone_all[i:i + 512])
                                     .cpu().numpy() for i in range(0, heads_all.shape[0], 512)])
-        lev = validate_against_leveling(ddir, inp.grid, field, inp.dates)
+        lev = validate_against_leveling(ddir, inp.grid, field, inp.dates,
+                                        exclude_months=wflags)
         params = column_json(model_c)
         at_ceil = tau_at_ceiling(params, heads.shape[-1])
         if any(at_ceil):
@@ -810,6 +866,10 @@ def main(argv=None) -> None:
                            "zone_county_map": member.meta.get("zone_county_map")}
                           if config == "zonal" and county else {}),
                        **(band_info if config == "banded" else {}),
+                       **({"column_zones_collapsed": True, "zone_names": list(col_names)}
+                          if collapsed else {}),
+                       **({"withhold_surveys": args.withhold_surveys}
+                          if args.withhold_surveys else {}),
                        "hpc0_guard_days": args.hpc0_guard_days,
                        **column_constraints(),
                        "tau_ceiling_days": tau_ceiling_days(heads.shape[-1]),

@@ -328,7 +328,8 @@ def build_forward_figure(fw: dict, stride: int = 1, coarsen: int = 1,
 
 
 def validate_against_leveling(ddir: str, grid, modelled: np.ndarray, dates,
-                              min_obs: int = 5, max_rate: float | None = 0.5) -> dict:
+                              min_obs: int = 5, max_rate: float | None = 0.5,
+                              exclude_months: np.ndarray | None = None) -> dict:
     """Score the modelled subsidence field against the WRA leveling benchmarks.
 
     The viewer would otherwise be a picture with no claim attached. This compares the
@@ -339,6 +340,9 @@ def validate_against_leveling(ddir: str, grid, modelled: np.ndarray, dates,
     Sign convention matches ``leveling.site_subsidence``: positive is sinking, re-zeroed to
     each site's first survey inside the window, so the comparison is like-for-like with the
     model's own re-zeroing at t=0.
+
+    ``exclude_months`` (bool over ``dates``) drops every survey whose nearest model month
+    is flagged, before the re-zeroing (``calibrate_coupled --withhold-surveys``).
     """
     from .leveling import load_panel, site_subsidence, site_xy
 
@@ -356,6 +360,10 @@ def validate_against_leveling(ddir: str, grid, modelled: np.ndarray, dates,
         cell = int(np.argmin(d2))
         if np.sqrt(d2[cell]) > grid.dx:          # benchmark outside the fan mask
             continue
+        if exclude_months is not None:
+            near = np.abs(np.subtract.outer(pd.DatetimeIndex(series.index).values,
+                                            pd.DatetimeIndex(dates).values)).argmin(axis=1)
+            series = series[~np.asarray(exclude_months, dtype=bool)[near]]
         m = pd.Series(modelled[cell], index=dates)
         aligned = m.reindex(series.index, method="nearest",
                             tolerance=pd.Timedelta("45D"))
