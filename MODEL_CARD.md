@@ -119,7 +119,7 @@ https://github.com/Rekin226/HydroPhysicsAI
 
 ## October 2026 evidence update
 
-Interval coverage, the registered prospective tests (the physics and the statistical layer), the 2023-25 ring/GNSS continuation, the negative aquitard-column result, the statistical layer's 2023-26 score and the frozen column's score against the deep benchmarks printed in the WRA monthly reports (January 2024 to January 2026, transcribed with the Claude API and verified; `results/twin/deep_pile_holdout/`) are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.
+Interval coverage, the registered prospective tests (the physics and the statistical layer), the 2023-25 ring/GNSS continuation, the negative aquitard-column result, the statistical layer's 2023-26 score and the frozen column's score against the deep benchmarks printed in the WRA monthly reports (January 2024 to January 2026, transcribed with the Claude API and verified; `results/twin/deep_pile_holdout/`; report-only and selection-contaminated since 2026-10-21, ruling U7, because these scores were used to choose between columns) are recorded in [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md); the page's evidence panel reads those report files directly.
 
 ### Groundwater-subsidence twin: status after Phase 1 (2026-10-23)
 
@@ -127,10 +127,20 @@ The deliverable is the R0 twin, `stage3_datum_gate_cwa`: a 4-layer differentiabl
 model with a leveling-calibrated VEP column. No Phase 1 candidate beat it under its
 declared gates.
 
+Two models carry the deliverable's recipe. In the I1 and N1 tests below, R0 is
+`stage3_datum_gate_cwa` (CWA-rebuilt rainfall; recorded commit `9715f58`; the code was at or
+after `13860ee`, see `docs/TWIN_THETA_PROVENANCE_2026-10.md`); the N1 tests for Changhua
+use the census model R1c instead. The decision page's
+levers and projections come from the registered run `datum_gate_innov` (theta
+`stage3_datum_gate`, vendor rainfall, commit `fa5cca2`). Both prospective registrations
+are bound to that run by hash, so the page was not rebuilt on R0. Evidence section 11 found
+the two within noise on every test it ran.
+
 Head skill:
 - **Fitted period.** Out-of-fold k-fold R² is 0.643 on the design folds and 0.718 on a fresh partition. It sits below inverse-distance interpolation on anomalies.
 - **Masked test (`N1.G1_mask_E2015`).** Refitted without the Jan-May 2015 targets, it reproduces the 2015 drought-spring anomaly better than climatology (RMSE 1.49 against 2.06 m, ratio 0.72) and better than its own zero-response counterfactual (1.75 m), at 135 wells.
-- **Damped amplitude.** The response is about half the observed size: the observed-on-modelled slope is 2.13.
+- **Damped amplitude.** The modelled head response is smaller than observed; by how much depends on the test. The observed-on-modelled slope is 2.13 (90 % interval 1.93-2.39) in the 2015 drought spring (G1). That event mixes canal water and rain with pumping, so 2.13 is not a correction factor. On the masked 2016-18 refits (step C, design-time) it is 1.21 (1.06-1.36) in Yunlin and 0.85 (0.63-1.05) in Changhua. The Changhua value was scored on the census model R1c, and its interval includes 1.
+- **Policy response, heads (`N1.policy_response.v1`, step C).** Masked 2016-18 refits beat both no change and reference-year pumping in Yunlin (R0; 75 wells, RMSE 1.38 against 2.21 and 2.29 m) and in Changhua (R1c census model, because R0 carries no Changhua pumping; 59 wells, 1.07 against 1.19 and 1.21 m). The verdict is supported in both counties, on a design-time window.
 
 Reported by county, because they differ:
 
@@ -149,7 +159,33 @@ Subsidence:
 - **Not claimed as skill:**
   - its 2023-26 deep-pile score was used to choose between columns, so it is not reported as skill;
   - the registered spring-compaction test (G4) is not evaluable with the printed record.
-- **Untested.** No test yet scores the subsidence side of the policy response.
+- **Policy response, 1-3-year size: not supported** (`N1.policy_response.v1`, steps B and C).
+  - On 2016-18, a constant sinking rate partitions the May 2015-19 leveling better than the column (observed-on-modelled slope 0.22 in Yunlin, 0.40 in Changhua).
+  - Across places in 2007-10, Yunlin sank more than modelled (observed +0.66 against +0.26 cm/yr per GWh/yr, inconclusive).
+  - The two tests disagree in direction, so the label is "not supported", with no direction attached.
+  - In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.
+- **Fitted record.** The column is fitted to the cumulative 2012-2022 leveling, not to a policy difference. The deep piles of 2024-25 are report-only.
+- **Step A (model-only).** A leveling-fitted column compensates for damped heads fan-wide (fitted/true avoided 0.93 at twice the damping), not zone by zone: 0.75 in proximal Yunlin and 0.77 in mid Changhua. Step A1 ran on R0 and R1c, not on the page's run. Step A2's lever ranking was computed on a superseded response basis (`response_basis.npz`, 2026-09-20, commit `2f21f81`), so its "ranking robust" is withdrawn as a statement about the page's levers; A2's result is left as written.
 - **Pending.** The only fully prospective scores are the 2026-11 to 2027-10 registrations.
 
-Details: [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md), section 12.
+Post-hoc model-only checks (2026-10-24; `results/dataprep/reports/N1_gaps_2026-10-24/`).
+Each is post hoc, model-only and not a test: model outputs only, no observation read,
+nothing scored.
+- **A2b, lever ranking on the page's basis** (post hoc, model-only, not a test). The A2 procedure rerun unchanged reproduces A2 on A2's own basis. On the page's basis, the page payload and R0's basis, the cm ranking (irrigation, aquaculture, livestock, domestic, industry, other) holds in 100 % of draws at both starts. The per-100-GWh/yr ranking is a non-robust near-tie (2.84-3.10 cm per 100 GWh/yr on the page; order kept in 3 % of draws). Hot spots are fragile: the irrigation lever's top-decile cell Jaccard has 5th percentile 0.00.
+- **Transfer from R0 to the page's model** (post hoc, model-only, not a test). The N1 verdicts were scored on `stage3_datum_gate_cwa` (R0) in Yunlin and R1c in Changhua; the page shows `stage3_datum_gate` (`datum_gate_innov`). Their avoided subsidence by 2032 differs by 2-4 % fan-wide (cut30 0.94 against 0.96 cm, retire_aqua 1.31 against 1.26 cm), with cell correlation 0.9996 or more.
+- **Hot-spot stability** (post hoc, model-only, not a test). The cut30 headline leader Baozhong leads in 83 % of the page model's 36 runs, 72 % of R0's and 57 % of the A2b draws; Baozhong, Beigang and Dongshi are the top three in every run. retire_aqua's leader Taixi leads in 61 % of the page's runs. Neither leader is stable by the check's rule; read each headline as a group of three.
+- **Elastic split** (post hoc, model-only, not a test). On ensemble-mean heads under mean forcing, no cell falls below its preconsolidation head after Jan 2026, so the avoided subsidence is all elastic (inelastic 0.000 cm of 0.94 cm for cut30 and of 1.31 cm for retire_aqua by 2032), 98-99 % of it arrives by Dec 2026, and none is left by 2032 if cut30 is lifted in Jan 2030 with the heads returned abruptly to the baseline (a splice of the ensemble-mean heads, not the flow model's own months-long return). A dry year below the 0.24 m (5th percentile) margin is not in the runs.
+
+Changhua levers: **not supported.** Neither R0 nor the page's model has Changhua pumping. The census model's
+2007-10 dose-response came out opposite in sign to the leveling (observed -0.50 against
++0.80 cm/yr per GWh/yr). Neither registered fix closed the gap: F1 failed its design gate
+and F2 changed nothing.
+
+Known defects in the head targets. Every cited fit (the page's run, R0, the G1 and step C
+refits, R1c) uses the historical defaults of `heads.build_head_field` and
+`calibrate_flow.prepare_series`. None was rescored.
+- **Sample-weighted monthly means.** After the hourly-to-10-minute logging switch on 2019-02-20, February 2019 shifts by up to 1.7 m at 13 Yunlin wells. The fix (`--day-weighted-months`) is opt-in and reaches only `calibrate_flow`, `inputs` and `forward`. `challenge`, `coverage`, `rescore_temporal`, `explorer3d`, `calibrate_mlcw` and `sk_leveling` still build equal-sample heads, so a day-weighted model (Q0) is scored against equal-sample observations.
+- **Coverage counted against hours.** 10-minute records pass the 80 % coverage rule at up to six times their true coverage (`--strict-coverage` is opt-in).
+- **Back-filled targets.** Interior gaps are interpolated and leading or trailing gaps filled by the nearest value, and the result becomes the fit target (`--no-backfill` is opt-in).
+
+Details: [docs/TWIN_EVIDENCE_2026-10.md](docs/TWIN_EVIDENCE_2026-10.md), sections 12 and 13.

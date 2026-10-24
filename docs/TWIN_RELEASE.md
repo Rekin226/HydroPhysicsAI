@@ -18,6 +18,13 @@ keeps these claims separate and exposes failed checks.
 | Offline browser checks | Desktop and mobile pass; no remote requests or JS errors | EN/中文, 3D controls, layout and 2D fallback work |
 | Software-rendered policy updates | Desktop p95 0.49–0.56 s; mobile 0.12–0.18 s | Does not certify the 30 FPS device target |
 
+*Superseded in part by `docs/TWIN_EVIDENCE_2026-10.md` section 1 (innovation update).* The
+2.072 m and 1.243 above score the field-update run (`datum_gate.npz`,
+`results/twin/new_data_challenge/report.json`). The page now embeds the innovation-update
+run, which scores **2.048 m**, ratio **1.229**, on the same 158 wells and 6,186 well-months
+(`results/twin/new_data_challenge_innov/report.json`). The table is kept as the
+2026-09-30 record.
+
 The field challenge has an RMSE ratio of **1.243** against the best simple baseline and
 fails the improvement gate. It was evaluated retrospectively after acquiring the data;
 it is not a preregistered prospective trial. No calibration was changed to improve this
@@ -140,6 +147,19 @@ with `tmux new -d -s hydro-par8 "bash results/twin_runs/par8/controller.sh"`. Th
 2026 rerun (`stage3_datum_gate_cwa`, `datum_gate_cwa.npz`, `results/twin/*_cwa/`) scored
 within noise of the registered model on every test (evidence section 11), so the page above
 is still built from `datum_gate_innov`, to which the prospective registrations are bound.
+
+The two models are not reproducible from the same code. The page's theta
+(`results/twin_runs/stage3_datum_gate/stage3_theta.json`, sha256 `036a7a17`) was fitted at
+commit `fa5cca2` on the vendor rainfall cache (`rf_timeseries_vendor_2012_2022.csv`). That
+commit predates the zero-start adjoint fix (`730f65b`, 2026-10-11), and no record says
+whether its tree was clean. Rerunning the recipe at the PR head therefore does not
+reproduce the page's theta: check out `fa5cca2` and install the vendor rainfall cache as
+`rf_timeseries.csv` first. Even then no GPU fit is bit-identical. `stage3_datum_gate_cwa`
+(theta sha256 `789d0e45`; recorded commit `9715f58`; the code was at or after `13860ee`,
+see `TWIN_THETA_PROVENANCE_2026-10.md`; both include the fix) is the post-fix
+reference on the CWA rainfall. It is also the model the N1 and I1 tests scored (evidence
+section 13).
+
 Do not commit mid-batch from the checkout the jobs run in: the fold files record `HEAD`,
 and `merge_folds` logs (no longer refuses) a commit-only difference.
 
@@ -203,12 +223,15 @@ private downloads remain ignored.
 
 ```bash
 python -m hydrophysics.twin.challenge \
-  --forward results/twin_forward/datum_gate.npz \
+  --forward results/twin_forward/datum_gate_innov.npz \
   --stations AMP_V2/data/fan_stations.parquet \
   --historical-wells AMP_V2/data/wells \
   --new-wells data_fetch_api/new_measurements/heads_202210_202610 \
-  --end 2026-09-01 --out results/twin/new_data_challenge
+  --end 2026-09-01 --out results/twin/new_data_challenge_innov
 ```
+
+This is the report the page embeds. The 2026-09-30 run above used `datum_gate.npz` (the
+field update) with `--out results/twin/new_data_challenge`; that report is superseded.
 
 Outputs are an aggregate `report.json`, private per-well `predictions.csv` and normalized
 `observations.csv`. Model offsets and climatology, climatology-plus-trend, and persistence
@@ -227,15 +250,22 @@ archive the protocol and predictions before acquiring the test observations.
 
 ## Building and checking the viewer
 
+The command below reproduces the source manifest of the live page
+(`results/twin/twin_app.html`, built 2026-10-23, identical to `twin_app_20261023.html`).
+The build log records no command line, so the arguments were recovered from the page's
+embedded hashes (`release.sources`), one input file at a time. Run it from the repository
+root with `HYDROMIND_GW_DATA` set: the leveling and well summaries are read from there
+(`--leveling auto`, `--wells auto`).
+
 ```bash
 python -m hydrophysics.twin.viewer_app \
-  --forward results/twin_forward/datum_gate.npz \
-  --basis results/twin_forward/response_basis_datum.npz \
+  --forward results/twin_forward/datum_gate_innov.npz \
+  --basis results/twin_forward/response_basis_innov.npz \
   --basemap results/twin/basemap.npz \
-  --challenge results/twin/new_data_challenge/report.json \
+  --challenge results/twin/new_data_challenge_innov/report.json \
   --coverage results/twin/coverage_datum_gate_innov/report.json \
   --prospective results/twin/prospective_2026-11/manifest.json \
-  --ring-holdout results/twin/ring_holdout_ref2023/report.json \
+  --ring-holdout results/twin/ring_holdout/report.json \
   --hybrid results/twin/hybrid_datum_gate_innov/report.json \
   --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
   --deep-piles results/twin/deep_pile_holdout/report.json \
@@ -245,6 +275,127 @@ python -m hydrophysics.twin.release inspect results/twin/twin_app.html
 python -m hydrophysics.twin.browser_check \
   --page results/twin/twin_app.html --out results/twin/browser_acceptance
 ```
+
+The committed `results/twin/twin_app.html` is the 2026-10-24 page `twin_app_20261024e.html`
+(promoted 2026-10-24); it no longer carries the withdrawn "long-run trend" caveat.
+
+The page's inputs, by role in `release.sources` (first 8 hex digits of the sha256).
+Roles marked *default* come from `viewer_app`'s defaults, which point at the registered
+model `results/twin_runs/stage3_datum_gate/`:
+
+| role | file | sha256 |
+|---|---|---|
+| forward, rheology | `results/twin_forward/datum_gate_innov.npz` | `cf2c7154` |
+| members, member_summary | `datum_gate_innov.members.npz`, `.members.csv` (beside the forward file) | `ca43a405`, `3d440d59` |
+| basis | `results/twin_forward/response_basis_innov.npz` | `f2e7c536` |
+| basemap | `results/twin/basemap.npz` | `99bbe12f` |
+| new_data_challenge | `results/twin/new_data_challenge_innov/report.json` | `b0648b27` |
+| coverage | `results/twin/coverage_datum_gate_innov/report.json` | `fe1b950d` |
+| prospective | `results/twin/prospective_2026-11/manifest.json` | `d7286551` |
+| ring_holdout | `results/twin/ring_holdout/report.json` (**pre-fix reference**, see below) | `71286b0a` |
+| hybrid | `results/twin/hybrid_datum_gate_innov/report.json` | `dbd4a314` |
+| hybrid_registration | `results/twin/prospective_2026-11_hybrid/manifest.json` | `8e28ac21` |
+| deep_piles | `results/twin/deep_pile_holdout/report.json` | `19421c35` |
+| policy_response | `results/dataprep/reports/N1_policy/page_labels.json` | `bd41d77e` |
+| theta (*default*) | `results/twin_runs/stage3_datum_gate/stage3_theta.json` | `036a7a17` |
+| column, rheology_column (*default*) | `stage3_datum_gate/coupled_leveling{,_tau30}/stage4_column.csv` | `5673a25e`, `bb6b4fd2` |
+| temporal, rescore, townships, alternative (*default*) | see `viewer_app` `DEFAULT_*` | |
+
+The ring line deliberately reproduces the live page. The 2026-10-11 page and its
+2026-10-23 rebuild both embed `results/twin/ring_holdout/report.json`. That report
+references each ring across the 2022 instrument gap, which evidence section 5 marks as
+superseded. The corrected report is `results/twin/ring_holdout_ref2023/report.json`
+(`92e621d4`). Switching the page to it is a page change that needs its own rebuild and
+decision; until then, the page's ring line shows the pre-fix numbers.
+
+**Candidate page (2026-10-24, not promoted).** The page's reports are bound to its forward
+run by sha256 (`model_sha256`, `forward_sha256`), so the forward, basis and challenge must
+be the `_innov` set the page uses. A rebuild that switches to the corrected ring report and
+to the v2 policy labels, which name the model behind each N1 row
+(`dataprep_staging/n1_policy/page_labels_v2.py`), changes only those two inputs. This is
+the command of `results/twin/twin_app_20261024b.html`; it writes a new file and leaves
+`twin_app.html` as it is:
+
+```bash
+python -m hydrophysics.twin.viewer_app \
+  --forward results/twin_forward/datum_gate_innov.npz \
+  --basis results/twin_forward/response_basis_innov.npz \
+  --basemap results/twin/basemap.npz \
+  --challenge results/twin/new_data_challenge_innov/report.json \
+  --coverage results/twin/coverage_datum_gate_innov/report.json \
+  --prospective results/twin/prospective_2026-11/manifest.json \
+  --ring-holdout results/twin/ring_holdout_ref2023/report.json \
+  --hybrid results/twin/hybrid_datum_gate_innov/report.json \
+  --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
+  --deep-piles results/twin/deep_pile_holdout/report.json \
+  --policy-response results/dataprep/reports/N1_policy/page_labels_v2.json \
+  --out results/twin/twin_app_20261024b.html
+```
+
+`twin_app_20261024b.html` was built before the two fixer branches were merged, so it lacks
+the head-response size line (`evc_pr_heads_size`), the head-gain caveat and the neutral
+subsidence wording of the merged template.
+
+**Rebuilds from the merged code (2026-10-24, not promoted).** Two pages carry those labels.
+Both are built from the uncommitted merge of the two fixer branches on base `82da213`, with
+that tree's `hydrophysics` first on `sys.path`, and both pass `release inspect` (no errors)
+and `browser_check`. Their command is the 20261024b command above plus `--posthoc
+results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json` (sha256 `fb59adcc`, off by
+default): the post-hoc, model-only labels (hot-spot stability, the per-100-GWh/yr near-tie,
+the elastic/inelastic split), which the viewer refuses unless the file names the same
+forward run. This is the first line of each build log:
+
+```bash
+python -m hydrophysics.twin.viewer_app \
+  --forward results/twin_forward/datum_gate_innov.npz \
+  --basis results/twin_forward/response_basis_innov.npz \
+  --basemap results/twin/basemap.npz \
+  --challenge results/twin/new_data_challenge_innov/report.json \
+  --coverage results/twin/coverage_datum_gate_innov/report.json \
+  --prospective results/twin/prospective_2026-11/manifest.json \
+  --ring-holdout results/twin/ring_holdout_ref2023/report.json \
+  --hybrid results/twin/hybrid_datum_gate_innov/report.json \
+  --hybrid-registration results/twin/prospective_2026-11_hybrid/manifest.json \
+  --deep-piles results/twin/deep_pile_holdout/report.json \
+  --policy-response results/dataprep/reports/N1_policy/page_labels_v2.json \
+  --posthoc results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json \
+  --out results/twin/twin_app_20261024c.html
+```
+
+- `results/twin/twin_app_20261024c.html`: sha256 `499e9025`, release `code_sha256`
+  `e585666f`, build log `twin_app_20261024c.build.log` (`abaa18e3`), browser report
+  `browser_acceptance_20261024c/report.json` (`fd9a03d8`).
+- `results/twin/twin_app_20261024d.html`: the same command with `--out
+  results/twin/twin_app_20261024d.html`; sha256 `7b6350c3`, release `code_sha256`
+  `3461dd9b`, build log `twin_app_20261024d.build.log` (`aa3356fb`), browser report
+  `browser_acceptance_20261024d/report.json` (`f3fe6583`). Its sources and payload equal
+  20261024c's; the only change is the post-hoc lift sentence (`cv9_lift`, en and zh), which
+  now says the heads return abruptly to the baseline (science-13 splices the ensemble-mean
+  heads; the flow model's own return would take months). 20261024c, whose lift sentence has
+  no such qualifier, is superseded and not a promotion candidate.
+- `results/twin/twin_app_20261024e.html`: the same command with `--out
+  results/twin/twin_app_20261024e.html`; sha256 `e37a36d3`, release `code_sha256`
+  `ea6cadc9`, build log `twin_app_20261024e.build.log` (`94becf35`), browser report
+  `browser_acceptance_20261024e/report.json` (`65744226`). Its sources and build log equal
+  20261024d's; the only change is that the headline's Yunlin figure (`hl_yun`, en and zh)
+  names its cell set: the 1,091 cells of the named Yunlin townships, not the model's county
+  mask (1,205 Yunlin cells) used by science-05 and science-13.
+
+The 20261024e page's `code_sha256` (`ea6cadc9`) is the hash of the package as committed
+with it; the earlier candidates (b, c, d) match only intermediate trees and are superseded.
+20261024e was promoted to `twin_app.html` on 2026-10-24.
+
+**The release pointer is stale.** `results/releases/current.json` still points to the page
+published on 2026-09-30 (`page_sha256` `95f47e20`, forward `datum_gate.npz`, no
+`policy_response` source). The labelled pages since then were promoted only by copying
+them to `results/twin/twin_app.html`; none went through `release publish`, which would
+rewrite `current.json`. The two therefore name different pages; `twin_app.html` is the
+current page, and `current.json` is updated only by a `release publish`.
+
+Earlier versions of this section and of the README built from `datum_gate.npz` and
+`response_basis_datum.npz`, the field-update run that section 1 supersedes; those commands
+do not reproduce the live page. Builds after this change print the full command line as
+the first line of their log.
 
 The statistical layer (`twin.hybrid`, climatology plus the decayed last-observed anomaly)
 is scored on the same acquisitions as the challenge and registered prospectively beside

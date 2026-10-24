@@ -403,6 +403,12 @@ def _rezero(pred: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return pred - pred.gather(1, first[:, None])
 
 
+def fold_seed_record(seed: int) -> dict:
+    """The column JSON's record of the leveling fold seed: ``fold_seed`` when it is not
+    the historical 0 (every column written before 2026-10-19 used 0 and carries no key)."""
+    return {"fold_seed": int(seed)} if seed else {}
+
+
 def kfold_sites(config: str, H, OBS, M, Z, epochs, lr, device, n_folds: int = 5,
                 seed: int = 0, rezero: bool = True, make=None,
                 n_zones: int = N_ZONES, return_preds: bool = False):
@@ -810,7 +816,7 @@ def main(argv=None) -> None:
                        "tau_at_ceiling": at_ceil,
                        "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
-                       **({"fold_seed": args.seed} if args.seed else {}),
+                       **fold_seed_record(args.seed),
                        **({"r2_outoffold_by_zone": by_zone} if by_zone is not None else {}),
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)
         rows.append({"config": config, "target": args.target,

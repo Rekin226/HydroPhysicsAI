@@ -367,19 +367,51 @@ def _file_sha256(path: str) -> str:
         return ""
 
 
+# the package that is running (hydrophysics/), not the working directory: a batch launched
+# from the main checkout with a worktree on PYTHONPATH ran the worktree's code
+_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", _PACKAGE_DIR, *args], capture_output=True,
+                          timeout=10)
+
+
 def _git_commit() -> str:
-    """Short commit SHA for the result artifact's provenance, or "" if it cannot be
-    determined (e.g. not a git checkout) -- never raises, since a multi-hour sweep must
-    not die on a provenance nicety.
+    """Short commit SHA of the checkout the running package lives in, or "" if it cannot
+    be determined (e.g. not a git checkout) -- never raises, since a multi-hour sweep must
+    not die on a provenance nicety. Before 2026-10-24 this read the working directory's
+    HEAD, which named the main checkout's commit for every batch run from a worktree
+    (review code-07); :func:`_git_provenance` says whether that commit holds the code.
     """
     try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        )
-        return out.stdout.strip() if out.returncode == 0 else ""
+        out = _git("rev-parse", "--short", "HEAD")
+        return out.stdout.decode().strip() if out.returncode == 0 else ""
     except Exception:
         return ""
+
+
+def _git_provenance() -> dict:
+    """The running package's full HEAD, whether its files differ from HEAD (tracked
+    changes or untracked files under ``hydrophysics/``) and the sha256 of ``git diff HEAD``
+    over it, so a dirty run names the exact code beside the commit. Empty when git is
+    unavailable; never raises."""
+    try:
+        head = _git("rev-parse", "HEAD")
+        if head.returncode != 0:
+            return {}
+        status = _git("status", "--porcelain", "--", ".")
+        diff = _git("diff", "HEAD", "--binary", "--", ".")
+        import hashlib
+
+        return {"git_commit_full": head.stdout.decode().strip(),
+                "git_dirty": bool(status.stdout.strip()),
+                "git_diff_sha256": hashlib.sha256(diff.stdout).hexdigest()
+                if diff.stdout else "",
+                "git_untracked": sum(1 for ln in status.stdout.decode().splitlines()
+                                     if ln.startswith("??"))}
+    except Exception:
+        return {}
 
 
 def _clamp_(tensors: dict[str, torch.Tensor]) -> dict[str, dict[str, int]]:
@@ -3611,6 +3643,7 @@ def main(argv=None) -> None:
                            "river_apex_overlap": int(n_overlap)})
         print(f"rivers ({args.rivers}, layer {args.river_layer}): {rs.describe()}", flush=True)
     git_commit = _git_commit()
+    git_prov = _git_provenance()   # full HEAD, dirty flag, diff hash (review code-07)
     _reset_cg_stats()
     t0 = time.perf_counter()
     E_full, recharge_full, sw_full, extra_full = E, recharge_field, sw_field, extra_q
@@ -3846,7 +3879,8 @@ def main(argv=None) -> None:
                   **({"log_t_min_proximal": float(args.log_t_min_proximal)}
                      if args.log_t_min_proximal is not None else {}),
                   "pump_layer": args.pump_layer, "recharge_layer": args.recharge_layer,
-                  "epochs": args.epochs, "git_commit": git_commit, "r2_insample": ins["r2"],
+                  "epochs": args.epochs, "git_commit": git_commit, **git_prov,
+                  "r2_insample": ins["r2"],
                   "rf_timeseries": args.rf_timeseries,
                   "rf_timeseries_sha256": _file_sha256(args.rf_timeseries),
                   "bounds_hit": ins["bounds_hit"], "n_wells": int(obs_h.shape[0]),

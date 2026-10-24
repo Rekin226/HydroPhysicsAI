@@ -81,6 +81,7 @@ import io
 import json
 import os
 import re
+import shlex
 import sys
 import warnings
 from types import SimpleNamespace
@@ -1194,7 +1195,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           coverage_json: str | None = None, prospective_json: str | None = None,
           ring_holdout_json: str | None = None, hybrid_json: str | None = None,
           hybrid_registration: str | None = None, deep_piles_json: str | None = None,
-          policy_response_json: str | None = None) -> dict:
+          policy_response_json: str | None = None,
+          posthoc_json: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1330,12 +1332,16 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                   "stations", "scored_months", "forecast_origin", "end_exclusive",
                   "prospective_validation", "causal_policy_validation", "qc")
         modelcard["new_data_challenge"] = {k: challenge[k] for k in fields}
+    pumping = _pumping_block(inp, g.gate_all, town_idx, log)
+    if pumping is not None:
+        modelcard["pumping"] = pumping
     for key, block in (("coverage", _coverage_block(coverage_json, forward_npz)),
                        ("prospective", _prospective_block(prospective_json, forward_npz)),
                        ("ring_holdout", _ring_holdout_block(ring_holdout_json)),
                        ("hybrid", _hybrid_block(hybrid_json, forward_npz, hybrid_registration)),
                        ("deep_piles", _deep_pile_block(deep_piles_json, forward_npz)),
-                       ("policy_response", _policy_response_block(policy_response_json))):
+                       ("policy_response", _policy_response_block(policy_response_json)),
+                       ("posthoc", _posthoc_block(posthoc_json, forward_npz, basis_npz))):
         if block is not None:
             modelcard[key] = block
     if rheo_npz == "auto":
@@ -1410,6 +1416,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "hybrid": hybrid_json, "hybrid_registration": hybrid_registration,
         "deep_piles": deep_piles_json if deep_piles_json and os.path.exists(deep_piles_json) else None,
         "policy_response": policy_response_json,
+        "posthoc": posthoc_json,
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1533,27 +1540,98 @@ def _ring_holdout_block(path: str | None) -> dict | None:
             "independence": [str(x) for x in report.get("independence", [])]}
 
 
+def _pumping_block(inp, gate: dict, town_idx: np.ndarray, log=print) -> dict | None:
+    """Where the forward run's pumping is: the in-grid annual energy and the share of it in
+    the pooled panel (township index 0, the Changhua half). Measured on the calibration's
+    default inputs, so only for a run calibrated on them: a run with its own census
+    (``pump_census``) or a fixed extra abstraction (``extra_abstraction``) gets
+    ``changhua: None`` (not measured here), and no inputs give no block. The page reads
+    ``changhua: False`` as "the levers act on Yunlin pumping only"."""
+    if inp is None:
+        return None
+    nyr = len(inp.dates) / 12.0
+    E = sum(np.asarray(v, dtype="float64") for v in inp.E_by_class.values())
+    if np.ndim(E) != 2 or E.shape[0] != len(town_idx):
+        return None                      # energies not on this grid's cells: not measured
+    total = float(E.sum() / nyr / 1e6)
+    pooled = float(E[np.asarray(town_idx) == 0].sum() / nyr / 1e6)
+    own = gate.get("pump_census") or gate.get("extra_abstraction")
+    out = {"in_grid_gwh": round(total, 3), "pooled_gwh": round(pooled, 3),
+           "source": "own census" if own else "default inputs",
+           "changhua": None if own else bool(pooled > 1e-3 * max(total, 1e-9))}
+    log(f"pumping: {total:.2f} GWh/yr in the grid, {pooled:.3f} in the pooled (Changhua) "
+        f"panel ({out['source']}; Changhua pumping {out['changhua']})")
+    return out
+
+
 def _policy_response_block(path: str | None) -> dict | None:
     """The registered N1 policy-response verdicts (page_labels.json of
     dataprep_staging/n1_policy): per county, the masked-refit head and subsidence response
-    against the zero-change and reference-year baselines, and the Changhua status."""
+    against the zero-change and reference-year baselines, and the Changhua status.
+
+    A v2 label file (``page_labels_v2.py``) also names the model each row was scored on
+    (``model``: id, theta, column, ``deliverable_recipe``), flags the design-time window
+    and carries step B's dose-response and the declared cross-county secondary; a v1 file
+    gives exactly the v1 block."""
     if not path:
         return None
     with open(path) as handle:
         report = json.load(handle)
     keep = ("rmse_model_m", "rmse_cl_m", "rms_model_cm", "rms_cl_cm", "verdict_cl",
             "verdict_zr", "slope_obs_on_model", "slope_ci")
-    return {"window": report["window"],
-            **{kind: {county: {k: row[k] for k in keep if k in row}
-                      for county, row in report[kind].items()}
-               for kind in ("heads", "subsidence")},
-            "changhua": report["changhua"],
-            "registrations": sorted(report["registrations"])}
+    if report.get("version", "v1") != "v1":
+        keep += ("rmse_zr_m", "rms_zr_cm", "model")
+    out = {"window": report["window"],
+           **{kind: {county: {k: row[k] for k in keep if k in row}
+                     for county, row in report[kind].items()}
+              for kind in ("heads", "subsidence")},
+           "changhua": report["changhua"],
+           "registrations": sorted(report["registrations"])}
+    if report.get("version", "v1") != "v1":
+        out.update({k: report[k] for k in ("version", "design_time", "step_b", "secondary")
+                    if k in report})
+    return out
+
+
+POSTHOC_STATUS = "post hoc, model-only, not a test"
+
+
+def _posthoc_block(path: str | None, forward_npz: str | None,
+                   basis_npz: str | None) -> dict | None:
+    """The post-hoc, model-only labels (``dataprep_staging/n1_policy/page_posthoc.py``):
+    hot-spot stability of the solved runs' headline townships, the per-100-GWh/yr near-tie
+    and the elastic/inelastic split of the avoided subsidence. None of it is a test; the page
+    says so on every line. Off unless a file is given; refused unless it names this forward
+    run (and this response basis, when one is given)."""
+    if not path:
+        return None
+    with open(path) as handle:
+        report = json.load(handle)
+    if report.get("status") != POSTHOC_STATUS:
+        raise ValueError("Post-hoc labels must be marked post hoc, model-only, not a test")
+    if forward_npz and report.get("forward_sha256") != sha256(forward_npz):
+        raise ValueError("Post-hoc labels do not match the supplied forward run")
+    if basis_npz and report.get("basis_sha256") != sha256(basis_npz):
+        raise ValueError("Post-hoc labels do not match the supplied response basis")
+    return {k: report[k] for k in ("status", "hotspot", "per_gwh", "elastic") if k in report}
+
+
+# U7 (2026-10-21, docs/DATA_REMEDIATION_STATUS_2026-10.md): the 2023-26 deep-pile scores
+# were used to choose between columns, so a deep-pile report whose window starts before
+# that date is report-only, never skill. The report itself is left as written; the page
+# block carries the ruling and supersedes the report's "never used in selection" clause.
+DEEP_PILE_SELECTION = {"date": "2026-10-21", "ruling": "U7"}
+_PILE_NEVER_SELECTED = "; the deep piles themselves were never used in calibration or selection"
+_PILE_SELECTED = ("; the deep piles were not used in calibration, but their scores were used "
+                  "on 2026-10-21 to choose between columns (U7), so they are report-only, "
+                  "not independent skill")
 
 
 def _deep_pile_block(path: str | None, forward_npz: str | None) -> dict | None:
     """twin.deep_pile_holdout's report (sha-checked against the forward run): the frozen
-    column against the deep benchmarks printed in the WRA monthly reports."""
+    column against the deep benchmarks printed in the WRA monthly reports. A report whose
+    score window starts before ``DEEP_PILE_SELECTION["date"]`` gets ``selection`` (the
+    page labels its line report-only) and the corrected independence clause."""
     if not path or not os.path.exists(path):
         return None
     with open(path) as handle:
@@ -1561,11 +1639,19 @@ def _deep_pile_block(path: str | None, forward_npz: str | None) -> dict | None:
     if forward_npz and report.get("forward_sha256") != sha256(forward_npz):
         raise ValueError("Deep-pile report does not match the supplied forward run")
     sc = report["scores"]
-    return {"n_sites": int(sc["n_sites"]), "window": sc["window"], "cum": sc["cum"],
-            "cum_deep": sc.get("cum_deep"), "after_feeds": sc.get("after_feeds"),
-            "n_verified_values": int(report.get("n_verified_values", 0)),
-            "n_values": int(report.get("n_values", 0)),
-            "independence": [str(x) for x in report.get("independence", [])]}
+    independence = [str(x) for x in report.get("independence", [])]
+    out = {"n_sites": int(sc["n_sites"]), "window": sc["window"], "cum": sc["cum"],
+           "cum_deep": sc.get("cum_deep"), "after_feeds": sc.get("after_feeds"),
+           "n_verified_values": int(report.get("n_verified_values", 0)),
+           "n_values": int(report.get("n_values", 0)),
+           "independence": independence}
+    if str(sc["window"][0])[:10] < DEEP_PILE_SELECTION["date"]:
+        out["selection"] = dict(DEEP_PILE_SELECTION, report_only=True)
+        out["independence"] = [x.replace(_PILE_NEVER_SELECTED, _PILE_SELECTED)
+                               for x in independence]
+        out["independence_superseded"] = [i for i, x in enumerate(independence)
+                                           if _PILE_NEVER_SELECTED in x]
+    return out
 
 
 def _render(payload: dict, three: str, log=print) -> str:
@@ -1785,11 +1871,18 @@ def main(argv=None) -> None:
                                          "--forward); omitted when the file does not exist")
     ap.add_argument("--policy-response", help="n1_policy page_labels.json: the registered "
                                               "policy-response verdicts per county")
+    ap.add_argument("--posthoc", help="n1_policy page_posthoc.json: post-hoc, model-only "
+                                      "labels (hot-spot stability, per-GWh near-tie, elastic "
+                                      "split); off by default, never a test")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
+    # the build log's first line: the exact command, so a page's inputs can be rebuilt from
+    # its log and not only recovered from the hashes in its source manifest
+    print("command: python -m hydrophysics.twin.viewer_app "
+          + shlex.join(sys.argv[1:] if argv is None else list(argv)), flush=True)
 
     def opt(v):
         return None if v in (None, "none") else v
@@ -1812,6 +1905,7 @@ def main(argv=None) -> None:
           hybrid_json=opt(args.hybrid), hybrid_registration=opt(args.hybrid_registration),
           deep_piles_json=opt(args.deep_piles),
           policy_response_json=opt(args.policy_response),
+          posthoc_json=opt(args.posthoc),
           log=lambda s: print(s, flush=True))
 
 
