@@ -1324,7 +1324,8 @@ observations a test is scored against. Full write-up: evidence section 14.
   - Gate 0 (synthetic recovery) FAILED: the k = 2 mid zone recovers 0.61 at 3 years and
     0.66 at 7 years.
   - Not adopted, and kappa is not retuned.
-  - The code is on the local branch `twin/m1-ske-cap` (not pushed).
+  - The code (branch `twin/m1-ske-cap`) is merged into main as a record; the cap is opt-in
+    and the default is unchanged.
 - **Rung B, measured public supply** (`I1.B.v1`, a3aea7c7; batch par26, code 76ae637;
   `results/dataprep/reports/I1_B/report.json` 58546161 and `reading.json`). Both arms fail
   against Q0.

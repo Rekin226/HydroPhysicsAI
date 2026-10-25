@@ -848,7 +848,7 @@ Findings:
   declared, and 2000-replicate coverage is reported as a diagnostic only.
 
 **M1, a storage-capped elastic column** (post hoc, model-only, not a test).
-- Code: local branch `twin/m1-ske-cap`. The cap is opt-in
+- Code: branch `twin/m1-ske-cap`, merged into main as a record. The cap is opt-in
   (`calibrate_coupled --ske-cap-from-theta`), the default is bit-identical, and there are
   14 tests.
 - Gate 0 was fixed before the run: synthetic recovery. The capped column (kappa 1) is

@@ -97,6 +97,14 @@ SKE_MIN: float | None = None
 # least SKE_MIN / SKE_SKV_MAX so that both constraints can hold at once
 SKE_SKV_MAX: float | None = None
 SKE_MAX = 1e-1
+# --ske-cap-from-theta KAPPA (opt-in, M1 2026-10-24): each column's Ske may not exceed
+# KAPPA times the flow model's own storativity summed over its layers (``ske_caps``).
+# SKE_CAP_KAPPA is the recorded factor; SKE_CAPS the caps in Ske units, one per column of
+# the config being fitted (``_make`` hands column ``i`` the cap ``SKE_CAPS[i]``). None = no
+# cap, which is the historical clamp exactly.
+SKE_CAP_KAPPA: float | None = None
+SKE_CAPS: list[float] | None = None
+SKE_CAP_ZONES: list[str] | None = None
 # --configs banded (opt-in, 2026-09-29): number of bands and the smoothness weight
 N_BANDS: int = 7
 BAND_LAMBDA: float = 0.0
@@ -111,8 +119,102 @@ CREEP: str = "vep"
 
 
 def column_constraints() -> dict:
-    """The constraints ``_clamp_column`` applies, for the column JSON (None = default)."""
-    return {"tau_min_days": TAU_MIN_DAYS, "ske_min": SKE_MIN, "ske_skv_max": SKE_SKV_MAX}
+    """The constraints ``_clamp_column`` applies, for the column JSON (None = default).
+    The Ske cap's keys appear only on a capped column, so an uncapped column's JSON is
+    the historical one."""
+    out = {"tau_min_days": TAU_MIN_DAYS, "ske_min": SKE_MIN, "ske_skv_max": SKE_SKV_MAX}
+    if SKE_CAP_KAPPA is not None:
+        out.update({"ske_cap_kappa": float(SKE_CAP_KAPPA),
+                    "ske_cap": None if SKE_CAPS is None else [float(c) for c in SKE_CAPS],
+                    "ske_cap_zones": None if SKE_CAP_ZONES is None else list(SKE_CAP_ZONES),
+                    "ske_cap_source": "kappa x flow theta storativity exp(log_S) summed over "
+                                      "the flow model's layers, area-weighted over the "
+                                      "column zone's cells"})
+    return out
+
+
+def flow_zone_storage(theta: dict, meta: dict | None = None,
+                      n_layers: int = N_LAYERS) -> dict[str, float]:
+    """``{flow zone name: sum over the flow model's layers of exp(log_S)}`` from a theta.
+
+    A zonal theta carries ``log_S_<zone>`` (four values, or one for the merged-aquifer
+    proximal zones, which ``calibrate_flow._expand_zonal`` gives to every layer, so it
+    counts ``n_layers`` times). A homogeneous theta's ``log_S`` is returned under the key
+    ``""`` (every zone). A ``--county-tie``d Changhua copy is its parent
+    (``apply_county_ties``)."""
+    from .zone_county import apply_county_ties
+
+    th = apply_county_ties(theta, meta)
+
+    def total(v) -> float:
+        a = np.asarray(v, dtype="float64").reshape(-1)
+        if a.size == 1:
+            a = np.repeat(a, n_layers)
+        if a.size != n_layers:
+            raise ValueError(f"log_S has {a.size} values, expected 1 or {n_layers}")
+        return float(np.exp(a).sum())
+
+    if "log_S" in th:
+        return {"": total(th["log_S"])}
+    out = {k[len("log_S_"):]: total(v) for k, v in th.items() if k.startswith("log_S_")}
+    if not out:
+        raise ValueError("the theta carries no log_S / log_S_<zone> storativity")
+    return out
+
+
+def ske_caps(storage: dict[str, float], flow_names: tuple[str, ...],
+             flow_w: np.ndarray, col_zone: np.ndarray, n_col: int,
+             kappa: float) -> list[float]:
+    """``--ske-cap-from-theta``: the Ske cap of each column, ``kappa`` times the
+    area-weighted mean over the column zone's cells of each cell's flow storativity
+    summed over layers (``flow_zone_storage``).
+
+    ``flow_w`` is ``(A, n_flow_zones)``: one-hot flow zone ids, or the flow model's
+    ``--zone-blend-km`` weights. Cells are equal-area, so a column zone that unites several
+    flow zones (the proximal split's ``proximal`` and ``proximal_w``, or a county split
+    collapsed by ``--column-zones 3``) gets their cell-count-weighted mean. ``col_zone``
+    (A,) is the column zone of every cell (all 0 for a shared/weighted column)."""
+    if not float(kappa) > 0.0:
+        raise ValueError(f"--ske-cap-from-theta must be > 0, got {kappa}")
+    if "" in storage:                                    # homogeneous flow model
+        s = np.full(len(flow_names), storage[""])
+    else:
+        missing = [n for n in flow_names if n not in storage]
+        if missing:
+            raise ValueError(f"the theta has no log_S for flow zone(s) {missing}")
+        s = np.array([storage[n] for n in flow_names], dtype="float64")
+    w = np.asarray(flow_w, dtype="float64")
+    if w.shape[1] != len(flow_names):
+        raise ValueError(f"flow weights have {w.shape[1]} zones, names {len(flow_names)}")
+    per_cell = w @ s / w.sum(axis=1)
+    col_zone = np.asarray(col_zone).reshape(-1)
+    caps = []
+    for c in range(int(n_col)):
+        sel = col_zone == c
+        if not sel.any():
+            raise ValueError(f"column zone {c} has no cell; cannot set its Ske cap")
+        caps.append(float(kappa) * float(per_cell[sel].mean()))
+    return caps
+
+
+def theta_ske_caps(theta: dict, meta: dict, grid, col_zone: np.ndarray, n_col: int,
+                   kappa: float) -> list[float]:
+    """``ske_caps`` on a calibrated flow model: its theta's storativity, its flow zone
+    map (``zone_county.flow_zone_map``; with ``zone_blend_km`` its blend weights) and the
+    column's zone of every cell."""
+    from .zone_county import flow_zone_map, flow_zone_weights
+
+    storage = flow_zone_storage(theta, meta)
+    if (meta or {}).get("param_mode", "zonal") != "zonal":
+        names: tuple[str, ...] = ("",)
+        w = np.ones((grid.n_active, 1))
+    else:
+        z, names = flow_zone_map(grid, meta)
+        if float((meta or {}).get("zone_blend_km") or 0.0) > 0.0:
+            w = np.asarray(flow_zone_weights(grid, meta, float(meta["zone_blend_km"]))).T
+        else:
+            w = np.eye(len(names))[np.asarray(z, dtype="int64")]
+    return ske_caps(storage, names, w, col_zone, n_col, kappa)
 
 
 def _clamp_column(col: VEPColumn, T: int) -> None:
@@ -141,8 +243,15 @@ def _clamp_column(col: VEPColumn, T: int) -> None:
         skv_lo = max(skv_lo, ske_lo - math.log(float(SKE_SKV_MAX)))
         if skv_lo > 0.0:
             raise ValueError("--ske-min / --ske-skv-max needs Skv > 1, above its ceiling")
+    ske_hi = math.log(SKE_MAX)
+    cap = getattr(col, "ske_cap", None)              # --ske-cap-from-theta (``_make``)
+    if cap is not None:
+        ske_hi = min(ske_hi, math.log(float(cap)))
+        if ske_lo >= ske_hi:
+            raise ValueError(f"the Ske cap {float(cap):g} from --ske-cap-from-theta is not "
+                             f"above the Ske floor {math.exp(ske_lo):g}")
     with torch.no_grad():
-        col.log_ske.clamp_(min=ske_lo, max=math.log(SKE_MAX))
+        col.log_ske.clamp_(min=ske_lo, max=ske_hi)
         col.log_skv.clamp_(min=skv_lo, max=math.log(1e0))
         if SKE_SKV_MAX is not None:
             col.log_ske.copy_(torch.minimum(col.log_ske,
@@ -315,15 +424,36 @@ def _make(config: str, device, n_zones: int = N_ZONES) -> nn.Module:
     if CREEP != "vep" and config not in ("shared", "zonal"):
         raise ValueError(f"--creep {CREEP} is implemented for the shared and zonal configs only")
     if config == "shared":
-        return VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP).to(device)
+        return _capped([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP)
+                        .to(device)])[0]
     if config == "weighted":
-        return _WeightedColumn(N_LAYERS, device=device).to(device)
+        model = _WeightedColumn(N_LAYERS, device=device).to(device)
+        _capped([model.col])
+        return model
     if config == "zonal":
-        return nn.ModuleList([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP)
-                              for _ in range(int(n_zones))]).to(device)
+        return nn.ModuleList(_capped([VEPColumn(n_sites=1, dt_days=30.0, device=device,
+                                                creep=CREEP)
+                                      for _ in range(int(n_zones))])).to(device)
     if config == "banded":
+        if SKE_CAPS is not None:
+            raise ValueError("--ske-cap-from-theta applies to the shared, weighted and zonal "
+                             "configs, not to banded")
         return _BandedColumns(N_BANDS, BAND_LAMBDA, device=device, kind=BAND_KIND).to(device)
     raise ValueError(config)
+
+
+def _capped(cols: list[VEPColumn]) -> list[VEPColumn]:
+    """``--ske-cap-from-theta``: give column ``i`` the cap ``SKE_CAPS[i]`` (read by
+    ``_clamp_column``) and start it no higher than that cap. No-op without a cap."""
+    if SKE_CAPS is None:
+        return cols
+    if len(SKE_CAPS) != len(cols):
+        raise ValueError(f"{len(SKE_CAPS)} Ske caps for {len(cols)} column(s)")
+    for c, cap in zip(cols, SKE_CAPS, strict=True):
+        c.ske_cap = float(cap)
+        with torch.no_grad():
+            c.log_ske.clamp_(max=math.log(float(cap)))
+    return cols
 
 
 def site_rows(ddir: str, inp, heads: np.ndarray, zone_of_cell: np.ndarray | None):
@@ -428,16 +558,63 @@ def fold_seed_record(seed: int) -> dict:
     return {"fold_seed": int(seed)} if seed else {}
 
 
+def fold_site_tol_record(tol_m: float) -> dict:
+    """The column JSON's record of ``--fold-site-tol-m``: only when it is positive (every
+    column written before 2026-10-24 used the per-benchmark partition and has no key)."""
+    return {"fold_site_tol_m": float(tol_m)} if tol_m and tol_m > 0.0 else {}
+
+
+def leveling_fold_groups(xy: np.ndarray | None, tol_m: float) -> np.ndarray | None:
+    """``--fold-site-tol-m``: the leveling folds' grouping. ``tol_m <= 0`` is None, the
+    historical per-benchmark partition (``kfold_sites``' seeded permutation, unchanged);
+    a positive ``tol_m`` gives one label per physical site, benchmarks chained within
+    ``tol_m`` metres of each other (single linkage, ``calibrate_flow._site_labels_tol``,
+    the meaning ``calibrate_flow --fold-site-tol-m`` gives its well folds), so that no two
+    benchmarks closer than the tolerance land in different folds."""
+    if not (tol_m and tol_m > 0.0):
+        return None
+    if xy is None:
+        raise ValueError("--fold-site-tol-m needs the benchmarks' coordinates")
+    from .calibrate_flow import _site_labels_tol
+
+    return _site_labels_tol(np.asarray(xy, dtype="float64").reshape(-1, 2), float(tol_m))
+
+
+def leveling_xy(ddir: str, names: list[str]) -> np.ndarray:
+    """(n, 2) EPSG:3826 coordinates of the leveling benchmarks ``names`` (the fit's rows,
+    in order), from the panel ``leveling_rows`` reads."""
+    from .leveling import load_panel, site_xy
+
+    xy = site_xy(load_panel(ddir))
+    return np.array([xy[str(n)] for n in names], dtype="float64").reshape(-1, 2)
+
+
+def site_folds(n: int, n_folds: int, seed: int = 0,
+               groups: np.ndarray | None = None) -> list[np.ndarray]:
+    """The leveling k-fold partition of ``n`` rows: with no ``groups`` the historical
+    seeded permutation split into ``n_folds`` (bit-for-bit what every column before
+    2026-10-24 used); with ``groups`` (``leveling_fold_groups``) a grouped split,
+    ``calibrate_flow._kfold_indices``, every row of a group in one fold."""
+    if groups is None:
+        order = np.random.default_rng(seed).permutation(n)
+        return np.array_split(order, n_folds)
+    from .calibrate_flow import _kfold_indices
+
+    return _kfold_indices(n, n_folds, seed=seed, groups=groups)
+
+
 def kfold_sites(config: str, H, OBS, M, Z, epochs, lr, device, n_folds: int = 5,
                 seed: int = 0, rezero: bool = True, make=None,
-                n_zones: int = N_ZONES, return_preds: bool = False):
+                n_zones: int = N_ZONES, return_preds: bool = False,
+                groups: np.ndarray | None = None):
     """Site-grouped k-fold R2. ``make(keep)`` (optional) returns the fold's starting
     model from the kept sites only (the banded column's zonal warm start); by default
     each fold starts from ``_make(config, n_zones=n_zones)``. ``return_preds``: also the
-    out-of-fold predictions, ``(r2, preds)``."""
+    out-of-fold predictions, ``(r2, preds)``. ``groups`` (``--fold-site-tol-m``,
+    ``leveling_fold_groups``): keep each physical site's benchmarks in one fold; None is
+    the historical per-benchmark partition."""
     n = H.shape[0]
-    order = np.random.default_rng(seed).permutation(n)
-    folds = np.array_split(order, n_folds)
+    folds = site_folds(n, n_folds, seed, groups)
     preds = torch.zeros_like(OBS)
     for held in folds:
         keep = np.setdiff1d(np.arange(n), held)
@@ -598,6 +775,19 @@ def main(argv=None) -> None:
     ap.add_argument("--ske-skv-max", type=float, default=None,
                     help="cap on Ske/Skv (default: none). Skv is first raised to at least "
                          "ske_min/ratio so that the floor and the cap can both hold")
+    ap.add_argument("--ske-cap-from-theta", type=float, default=None, metavar="KAPPA",
+                    help="M1 (opt-in): cap each column's elastic skeletal storage Ske at "
+                         "KAPPA times the flow model's own storativity, exp(log_S) of the "
+                         "--theta summed over its layers and area-weighted over the column "
+                         "zone (proximal = proximal and proximal_w by cell count). Keeps the "
+                         "column mass-consistent with the head calibration. Recorded as "
+                         "ske_cap_kappa / ske_cap in the column JSON. Default: no cap")
+    ap.add_argument("--fold-site-tol-m", type=float, default=0.0, metavar="M",
+                    help="--target leveling: group the k-fold partition by physical site "
+                         "(benchmarks within M m, single linkage, as calibrate_flow's "
+                         "--fold-site-tol-m for wells) so that no two benchmarks closer than "
+                         "M land in different folds; 0 (default) keeps the historical "
+                         "per-benchmark partition")
     ap.add_argument("--n-bands", type=int, default=7,
                     help="banded config: number of column bands along the easting "
                          "(default 7, about 10 km apart over the fan)")
@@ -650,10 +840,24 @@ def main(argv=None) -> None:
     set_compile_matvec(args.compile_matvec)
     global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
     global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD, CREEP
+    global SKE_CAP_KAPPA, SKE_CAPS, SKE_CAP_ZONES
     CREEP = args.creep
     N_BANDS, BAND_LAMBDA = int(args.n_bands), float(args.band_lambda)
     BAND_KIND, BAND_HPC0_GUARD = args.band_kind, args.band_hpc0_guard
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
+    if args.fold_site_tol_m < 0.0:
+        raise SystemExit("--fold-site-tol-m must be >= 0")
+    if args.fold_site_tol_m > 0.0 and args.target != "leveling":
+        raise SystemExit("--fold-site-tol-m groups the leveling folds; it needs --target "
+                         "leveling (the rings use leave-one-site-out)")
+    if args.ske_cap_from_theta is not None:
+        if not args.ske_cap_from_theta > 0.0:
+            raise SystemExit(f"--ske-cap-from-theta must be > 0, got {args.ske_cap_from_theta}")
+        if "banded" in configs:
+            raise SystemExit("--ske-cap-from-theta applies to the shared, weighted and zonal "
+                             "configs, not to banded")
+    SKE_CAP_KAPPA = args.ske_cap_from_theta
+    SKE_CAPS = SKE_CAP_ZONES = None
     band_range = (None, None)
     if "banded" in configs:
         if N_BANDS < 2:
@@ -746,7 +950,14 @@ def main(argv=None) -> None:
                   f"withheld; {int((~keep).sum())} benchmarks left with < 3 surveys dropped",
                   flush=True)
         print(f"leveling benchmarks on the grid: {len(names)}", flush=True)
+        fold_groups = leveling_fold_groups(
+            leveling_xy(ddir, names) if args.fold_site_tol_m > 0.0 else None,
+            args.fold_site_tol_m)
+        if fold_groups is not None:
+            print(f"--fold-site-tol-m {args.fold_site_tol_m:g}: {len(names)} benchmarks in "
+                  f"{len(np.unique(fold_groups))} physical sites", flush=True)
     else:
+        fold_groups = None
         H, OBS, M, Z, names = Hr, OBSr, Mr, Zr, names_r
     rezero = args.target == "leveling"
     Ht = torch.tensor(H, dtype=torch.float32, device=device)
@@ -803,8 +1014,26 @@ def main(argv=None) -> None:
         print(f"banded column: {N_BANDS} bands ({args.band_kind}) centred at "
               f"{np.round(centres, 1).tolist()} km, smoothness lambda {BAND_LAMBDA:g}",
               flush=True)
+    caps_by_config = {}
+    if SKE_CAP_KAPPA is not None:
+        # M1: per column zone for zonal, one fan-wide cap for shared/weighted
+        cz = np.asarray(zone_of_cell, dtype="int64")
+        caps_by_config["zonal"] = (theta_ske_caps(member.theta, member.meta, inp.grid, cz,
+                                                  n_col_zones, SKE_CAP_KAPPA),
+                                   list(col_names))
+        caps_by_config["shared"] = (theta_ske_caps(member.theta, member.meta, inp.grid,
+                                                   np.zeros_like(cz), 1, SKE_CAP_KAPPA),
+                                    ["fan"])
+        caps_by_config["weighted"] = caps_by_config["shared"]
+        for cfg_name in configs:
+            caps, zn = caps_by_config[cfg_name]
+            print(f"--ske-cap-from-theta {SKE_CAP_KAPPA:g} ({cfg_name}): Ske caps "
+                  + ", ".join(f"{z} {c:.3g}" for z, c in zip(zn, caps, strict=True)),
+                  flush=True)
     for config in configs:
         t0 = time.perf_counter()
+        if SKE_CAP_KAPPA is not None:
+            SKE_CAPS, SKE_CAP_ZONES = caps_by_config[config]
         Zt, Zr, zone_all, ztype = by_config.get(config, by_config[None])
         band_warm = config == "banded" and args.band_init == "zonal"
         model_c = warm() if band_warm else _make(config, device, n_col_zones)
@@ -818,7 +1047,8 @@ def main(argv=None) -> None:
             r2_loso, oof = kfold_sites(config, Ht, Ot, Mt, Zt, args.epochs, args.lr, device,
                                        n_folds=args.n_folds, seed=args.seed, rezero=True,
                                        make=warm if band_warm else None,
-                                       n_zones=n_col_zones, return_preds=True)
+                                       n_zones=n_col_zones, return_preds=True,
+                                       groups=fold_groups)
             if county and config == "zonal":
                 # reported beside the pooled gate R2, never a gate of its own; the rings
                 # (independent check) cover mid_changhua only
@@ -877,6 +1107,7 @@ def main(argv=None) -> None:
                        "theta": args.theta, "loss": loss,
                        "r2_insample": ins, "r2_outoffold": r2_loso,
                        **fold_seed_record(args.seed),
+                       **fold_site_tol_record(args.fold_site_tol_m),
                        **({"r2_outoffold_by_zone": by_zone} if by_zone is not None else {}),
                        "rings_independent_r2": rings_r2, "leveling": lev}, fh, indent=1)
         rows.append({"config": config, "target": args.target,
