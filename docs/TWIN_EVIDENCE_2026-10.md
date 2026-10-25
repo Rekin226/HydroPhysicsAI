@@ -611,8 +611,8 @@ cluster-bootstrap intervals.
 not a test: it reads model outputs only (forward runs, member fields, response bases, the
 page payload), reads no observation, scores nothing and is in no registration. The files are
 under `results/dataprep/reports/N1_gaps_2026-10-24/`; the scripts that wrote them
-(`dataprep_staging/n1_gaps/`, recorded in each file's `provenance`, git head `82da213`) are
-not yet on a branch.
+(`dataprep_staging/n1_gaps/`, recorded in each file's `provenance`, git head `82da213`) were
+committed afterwards in `6ea3b2b`.
 - **A2b, lever ranking on the page's basis** (`science-04/`; post hoc, model-only, not a
   test). The identical A2 procedure (seed 20261223, 500 draws per start) rerun on A2's own
   basis reproduces `step_a/a2.json` exactly (`a2_repro_check.json`, largest difference 0.0),
@@ -791,16 +791,167 @@ diff (index lines ignored):
 | batch | used by | recorded diff (sha256) | equivalent to | on this branch? |
 |---|---|---|---|---|
 | par23 | G1 refit `stage3_datum_gate_m15` | `af53ef55` | `ccb6ff2..d3b365d` (`calibrate_flow.py`; the diff also appends the then-untracked test file) | yes |
-| par24 | step C refits and columns, step A1 and step B runs | `2618484a` | `c48e858..294ed2e` (`calibrate_coupled`, `forward`, `explorer3d`) | no: branch `twin/n1-policy-response` |
-| par25 | fixes F1 and F2 | `277d6a50` | `c48e858..8a96b21` (adds `calibrate_flow --return-rice-share`) | no: branch `twin/n1-changhua-fix` |
+| par24 | step C refits and columns, step A1 and step B runs | `2618484a` | `c48e858..294ed2e` (`calibrate_coupled`, `forward`, `explorer3d`) | yes, merged in `c31a5a9` |
+| par25 | fixes F1 and F2 | `277d6a50` | `c48e858..8a96b21` (adds `calibrate_flow --return-rice-share`) | yes, merged in `c31a5a9` |
 
 Tests were untracked at run time and are not part of these diffs' `hydrophysics/` part.
-Until those two branches are merged, `--withhold-surveys`, `--column-zones 3` and
-`--return-rice-share` are not on the PR branch, and step C and the fixes can be reproduced
-only from those commits. To rerun a scorer, put a checkout of `294ed2e` (steps A-C) or
+`--withhold-surveys`, `--column-zones 3` and `--return-rice-share` reached this branch with
+the merge `c31a5a9`; `76ae637` then made `twin.forward` rebuild the merged terms
+(`return_rice_b`, the collapsed three-zone column), which it had refused. To rerun a scorer
+exactly as it ran, put a checkout of `294ed2e` (steps A-C) or
 `8a96b21` (fixes) first on `PYTHONPATH` and run it with `python -P`, as
 `results/twin_runs/par24/py.sh` and `par25/py.sh` do. Do not add `-I`. The usage lines of
 `run_step_a.py`, `run_step_b.py` and `run_step_c.py` say `py.sh -I`, which drops
 `PYTHONPATH` and imports the main tree's twin modules. That is the logged engineering
 failure of step B and A1, and the files stay as they are because the registration hashes
 them. Hashes and file times: [`N1_CODE_PROVENANCE_2026-10.md`](N1_CODE_PROVENANCE_2026-10.md).
+
+## 14. Inferring what the data do not hold (2026-10-24/25)
+
+After section 13 two claims were open: the 1-3-year subsidence size and the Changhua levers.
+The user's direction (2026-10-24) was to try any technique that infers missing quantities
+from the data already held. Inferred values may enter only as model inputs, never as the
+observations a test is scored against. Four routes were tried:
+- A0, an identifiability audit;
+- M1, a storage-capped column;
+- rung B, the measured public supply as pumping;
+- N2, a prospective test.
+
+Each route was declared before it ran and run once, and every attempt is reported.
+
+**A0, identifiability audit** (post hoc, model-only, not a test).
+- Script: `dataprep_staging/n1_gaps/identifiability.py`.
+- Files: `results/dataprep/reports/N1_gaps_2026-10-24/A0/`.
+- The rule was fixed before the run. A quantity is identifiable if its posterior sd/|mean|
+  is at most 0.5 and its 50-replicate 90 % coverage lies in [0.85, 0.95].
+- Laplace posteriors were computed on R0, Q0, R4p and R1c.
+
+Findings:
+- **Head response:** the cut30 head response is identifiable on information alone
+  (sd/|mean| 1.3-3.6 % in every model). That holds only given the fixed energy-to-volume
+  conversion (eta 0.5, head_extra 40 m), which sits outside the posterior.
+  - The nonlinear check on R0 covers 0.68-0.82, and with correlated-noise data 0.54-0.75.
+  - So the Laplace intervals are too narrow, and the calibration data do not pin the
+    response size.
+- **Not identifiable without new data:**
+  - the pump shallow share (the posterior equals the prior);
+  - proximal Ske and Skv;
+  - Changhua T and S in R0 and Q0 (prior-driven);
+  - Changhua T in layers 2-3 in R1c;
+  - most Changhua T and S in R4p.
+- **Identifiable:** Ske and Skv in the mid and distal zones.
+- **Rung A not run:** none of the four models has a layer-0 recharge conductance parameter.
+  That was the precondition for the post-deadline rung A (river-stage recharge), so by its
+  stopping rule rung A is not run.
+- **Caveat:** the declared 50-replicate coverage rule is noisy. A calibrated 90 % interval
+  falls outside [0.85, 0.95] about 23 % of the time. The rule was applied exactly as
+  declared, and 2000-replicate coverage is reported as a diagnostic only.
+
+**M1, a storage-capped elastic column** (post hoc, model-only, not a test).
+- Code: local branch `twin/m1-ske-cap`. The cap is opt-in
+  (`calibrate_coupled --ske-cap-from-theta`), the default is bit-identical, and there are
+  14 tests.
+- Gate 0 was fixed before the run: synthetic recovery. The capped column (kappa 1) is
+  fitted to leveling made from a known truth. It must recover the avoided subsidence within
+  [0.67, 1.5] in every zone at 1, 3 and 7 years, with head damping k of 1 and 2.
+- Result file: `M1/m1_synthetic_20261023T232354Z.json` (sha256 `c957d24b`).
+- **Result: FAIL.** At k = 2 the mid zone recovers 0.61 at 3 years and 0.66 at 7 years.
+  Every other zone and horizon passes.
+- The cap removes the uncapped column's distal inflation: the 1-year ratio at k = 2 goes
+  from 14.1 to 0.93. It cannot recover the mid zone's inelastic, creep part.
+- As declared, M1 is not adopted, kappa is not retuned, and no capped column is fitted to
+  real data.
+
+**Rung B, the measured public-supply abstraction** (`I1.B.v1`, sha256 `a3aea7c7`).
+- Registered before the run. Batch `results/twin_runs/par26`, code `76ae637` (clean).
+- Input: Taiwan Water yearbook volumes (X2) as fixed deep pumping in twin layers 2-3, on Q0
+  with the Changhua census.
+  - B1 keeps Q0's learned layer split.
+  - B2, the pre-declared alternative, fixes the measured X3 shares.
+- Partition: design-time, seed 2027.
+- Report: `results/dataprep/reports/I1_B/report.json` (sha256 `58546161`), written by
+  `dataprep_staging/i1/score_rung_b.py`. That scorer reproduces all nine R* gate results of
+  section 12 exactly (`--check rs`).
+- Reading: `I1_B/reading.json`.
+
+| gate (against Q0) | Q0 | B1 | B2 |
+|---|---|---|---|
+| k-fold R² ≥ 0.638 | 0.648 | **0.688** | 0.481 ✗ |
+| Changhua county_corr ≥ 0.448 | 0.468 | **0.557** | 0.473 |
+| Yunlin county_corr ≥ 0.720 | 0.740 | 0.751 | 0.734 |
+| Changhua county-mean RMSE ≤ 0.542 m | 0.531 | 0.679 ✗ | 0.648 ✗ |
+| Yunlin county-mean RMSE ≤ 1.000 m | 0.980 | 0.925 | 0.952 |
+| leveling out-of-fold R² ≥ 0.633 | 0.653 | 0.085 ✗ | 0.482 ✗ |
+| temporal fair ratio ≤ 1.0768, PASS | 1.066 | 1.054 | 1.034 |
+| plausibility, 2023-25 rate ≥ 0 cm/yr (Changhua, rest) | +0.27, +0.17 | -0.03, -0.32 ✗ | -0.02, -0.20 ✗ |
+| P2f Yunlin in [0.521, 0.954] (B2 only) | -0.007 | 0.050 (reported) | 0.900 |
+
+- **Both arms fail.** No seed-2029 confirmation is run, so no Changhua arm can be added to
+  N2 before its 2026-10-31 deadline.
+- **What the measured public supply did:**
+  - It improves Changhua head timing: B1's Changhua correlation is 0.557 against 0.468,
+    and its k-fold is 0.688, the best of any rung.
+  - It makes Changhua's heads too loud: amplitude 0.36 → 1.19 of observed.
+  - The leveling column refitted on those heads loses the leveling: Changhua -0.73, rest
+    of the fan 0.06.
+- **What it means: heads improved; the leveling fit and forward plausibility failed.**
+  The declared interpretation ruled the public supply out only if Changhua's head
+  correlation did not move. It moved (0.468 → 0.557 in B1), so the measured public supply is
+  not ruled out as a Changhua term, and it is not confirmed either: the rung cannot promote.
+  The report's decision line ("the measured public supply is not the missing Changhua
+  term") was written into the scorer before any result existed and does not follow the
+  registration. The report is left as written; `reading.json` records this reading, and the
+  scorer's line now states only the gate outcome.
+- **The rebound** (post hoc, model inputs only, not a test):
+  - In X2, Changhua's public supply is measured, 31-35 model Mm³/yr every year from 2007 to
+    2022.
+  - Yunlin's is inferred. It falls from 16-19 to 1.5 in 2019 and 0.5 in 2022, and
+    `twin.forward` holds that last value.
+  - The rest-of-fan rebound (fan 2023-32 subsidence -0.58 cm in B1, against Q0's +2.93 cm)
+    fits deep Yunlin heads still recovering from that inferred drop.
+  - Earlier rungs' post-2022 rebound was traced to the six-zone, county-split leveling
+    column. Rung B used the three-zone column (no `--zone-county-split`), so that
+    explanation does not carry over directly; which cause applies here is untested.
+- **Unspent:** the one exploratory follow-up allowed is left unspent. It could not promote,
+  and nothing it shows could reach a registration in time.
+
+**N2, a prospective test of the head response to recorded pumping**
+(`N2.policy_response.prospective_2026-11.v1`, sha256 `bfbbd6b3`, registered 2026-10-24
+00:41 UTC, before its window opens).
+- **Models and window:** the frozen page model is primary: `stage3_datum_gate` with its
+  `coupled_leveling` column and the forward run `datum_gate_innov`. R0 is the declared
+  secondary. The window is 2026-11 to 2027-10, on the 158 wells of the registered
+  prospective test.
+- **The recorded-pumping arm (PR):**
+  - Ruling U4, as the user extended it on 2026-10-24: recorded post-origin pumping may feed
+    a separate counterfactual arm, and the registered forecast (ZR) is unchanged.
+  - The multiplier r(t) is the Yunlin in-grid electricity of month t (X1) over its 2012-22
+    mean for that month of the year (`dataprep_staging/n2_policy/build_r.py`).
+  - The contrast c = PR - ZR comes from the same forward run (`twin.forward
+    --recorded-pumping`, commit `1fff145`). The PR prediction is ZR + c.
+- **The metric:** beta_response, the OLS slope of obs - ZR on c over Yunlin well-months.
+  It uses well fixed effects and a 5 km block bootstrap 90 % interval.
+- **The verdict:**
+  - "response supported": the interval excludes 0, the point estimate lies in [1/1.5, 1.5],
+    and RMSE(PR) < RMSE(ZR);
+  - "direction supported, size not": beta > 0, but the size or the RMSE condition fails;
+  - "not supported": otherwise;
+  - "not informative": the RMS of the well-demeaned contrast is below 0.05 m, or fewer than
+    6 window months carry a recorded r.
+- **Rehearsal** on 2023-01 to 2026-08 (an engineering check; no window value exists yet;
+  `results/dataprep/reports/N2_policy/rehearsal/`):
+  - 44 months of r, 42 of them flag 0;
+  - the contrast is exactly 0 before 2023 and averages -0.50 m in layer 2 over 2023-26.
+- **What a pass supports:** the frozen model's head response to real pumping anomalies at
+  Yunlin wells, on fresh months. Nothing about the 1-3-year subsidence size, long-run
+  sinking or Changhua. N2 is scored after October 2027.
+
+**Where each policy claim stands (2026-10-25).**
+
+| claim | status | decided by | what would close it |
+|---|---|---|---|
+| head response to a pumping change, Yunlin | supported on design-time masked refits (G1, step C); size not pinned by the calibration data (A0) | N2, registered, scored after 2027-10 | N2 decides |
+| head response, Changhua | supported only on the census model R1c; the page model has no Changhua pumping; rung B failed | no registered test | Changhua irrigation-office monthly diversions by intake; per-well public-supply abstraction |
+| 1-3-year subsidence size | not supported (steps B and C disagree in direction); M1 failed its synthetic gate | no unspent leveling decides it | a fresh WRA leveling campaign, or monthly compaction-well and GNSS series from 2026-11, registered before they are seen |
+| long-run sinking under a cut | untested; in this model the benefit is all elastic (section 13) | none | the same, over several years, including a dry year |
+| Changhua levers | not supported (step B, fixes F1 and F2, rungs R1-R4p, R* and B) | none before 2026-10-31 | the Changhua data above, plus pump-test energy-to-volume data |
