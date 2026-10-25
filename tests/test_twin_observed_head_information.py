@@ -10,6 +10,10 @@ from hydrophysics.twin.observed_head_information import (
     normalized_condition,
     scenario_table,
 )
+from hydrophysics.twin.site_geometry import TUKU_SOURCES
+
+needs_tuku = pytest.mark.skipif(not TUKU_SOURCES.exists(),
+                                reason="Tuku site tables are local-only, not in the public repo")
 
 
 def test_monthly_coverage_filters_sentinels_and_sparse_month():
@@ -30,6 +34,7 @@ def test_duplicate_head_timestamps_rejected():
         monthly_values(series)
 
 
+@needs_tuku
 def test_ordered_and_catalog_mapping_rank_bounds_are_conditional():
     t = np.arange(24.0)
     observations = np.stack([t, t + np.sin(t), 0.5 * t + np.cos(t)], axis=1)

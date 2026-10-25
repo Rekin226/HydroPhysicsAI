@@ -5,10 +5,14 @@ import numpy as np
 import pytest
 
 from hydrophysics.twin.site_geometry import (
+    TUKU_SOURCES,
     installed_ring_overlap,
     load_tuku_geometry,
     overlap_lengths,
 )
+
+pytestmark = pytest.mark.skipif(not TUKU_SOURCES.exists(),
+                                reason="Tuku site tables are local-only, not in the public repo")
 
 
 def test_tuku_source_tables_have_checked_station_version_and_depths():

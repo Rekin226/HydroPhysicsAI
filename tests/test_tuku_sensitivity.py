@@ -2,9 +2,14 @@
 import numpy as np
 import pytest
 
+from hydrophysics.twin.site_geometry import TUKU_SOURCES
 from hydrophysics.twin.tuku_sensitivity import analyze, support_weights
 
+needs_tuku = pytest.mark.skipif(not TUKU_SOURCES.exists(),
+                                reason="Tuku site tables are local-only, not in the public repo")
 
+
+@needs_tuku
 def test_source_supports_are_normalized_and_distinct():
     weights = support_weights()
     assert set(weights) == {"WRA_2003_confining_units", "IOT_2017_CL_ML"}
@@ -15,6 +20,7 @@ def test_source_supports_are_normalized_and_distinct():
     assert not np.allclose(*weights.values())
 
 
+@needs_tuku
 def test_ranking_depends_on_layer_response(tmp_path):
     # The source site lies in active cell 0; all other cells are inactive.
     heads = np.zeros((3, 4, 1, 1), dtype=np.float32)

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from hydrophysics.twin.site_geometry import load_tuku_geometry
+from hydrophysics.twin.site_geometry import TUKU_SOURCES, load_tuku_geometry
 from hydrophysics.twin.synthetic_depth_identifiability import (
     analyze,
     cumulative,
@@ -11,6 +11,9 @@ from hydrophysics.twin.synthetic_depth_identifiability import (
     ring_depths,
     synthetic_heads,
 )
+
+pytestmark = pytest.mark.skipif(not TUKU_SOURCES.exists(),
+                                reason="Tuku site tables are local-only, not in the public repo")
 
 
 def test_ring_shortening_telescopes_to_depth_displacement():

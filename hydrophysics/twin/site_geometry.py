@@ -2,6 +2,10 @@
 
 Overlaps are lengths in metres. They do not allocate observed shortening or
 assign compressibility to a soil class or hydrogeologic unit.
+
+The tables are transcribed from the WRA 2003 installation report and the MOT 2017
+report (URLs, pages and hashes in ``tuku_geometry_sources.json``). They are kept
+local under ``twin/data/`` and are not committed; tests that need them skip.
 """
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 _DATA = Path(__file__).parent / "data"
+TUKU_SOURCES = _DATA / "tuku_geometry_sources.json"
 
 
 @dataclass(frozen=True)
@@ -37,7 +42,7 @@ def _checked_rows(spec: dict) -> list[dict]:
 
 def load_tuku_geometry() -> TukuGeometry:
     """Load two separately dated official site tables, rejecting altered input."""
-    source = json.loads((_DATA / "tuku_geometry_sources.json").read_text())
+    source = json.loads(TUKU_SOURCES.read_text())
     if (source["schema"] != 1 or source["site_name"] != "土庫國中"
             or source["ring_station_id"] != "A130600GWMWTKJS"
             or source["location"]["crs"] != "EPSG:3826"

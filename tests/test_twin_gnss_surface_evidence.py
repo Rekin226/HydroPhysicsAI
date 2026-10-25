@@ -12,6 +12,10 @@ from hydrophysics.twin.gnss_surface_evidence import (
     station_match,
     step_candidates,
 )
+from hydrophysics.twin.site_geometry import TUKU_SOURCES
+
+needs_tuku = pytest.mark.skipif(not TUKU_SOURCES.exists(),
+                                reason="Tuku site tables are local-only, not in the public repo")
 
 
 def test_persistent_step_is_not_scored_across(tmp_path):
@@ -27,6 +31,7 @@ def test_persistent_step_is_not_scored_across(tmp_path):
     assert segment_contrasts(s, steps, dates, np.zeros(len(dates))) == []
 
 
+@needs_tuku
 def test_identity_and_raw_status_are_required(tmp_path):
     x, y = 187770.14, 2620603.69
     meta = tmp_path / "meta.parquet"
