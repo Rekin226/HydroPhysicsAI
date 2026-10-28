@@ -78,6 +78,31 @@ layered-aquifer and stress-radius variants were each screened and none removes i
 ([STATE.md §0](docs/superpowers/STATE.md)). The transient response, not the calibration,
 is the next thing to change.
 
+### The coast after 2022 (rung I1.X5NH.v1, design-time)
+
+The current model (Q0) forecasts the coastal (distal) zone rising after 2022. Its heads
+return to the 2012–2022 climatology while the observed coastal heads fell. Rung I1.X5NH.v1
+nudged the hindcast toward the observed heads every month through June 2025, refitted the
+compaction column on those heads, and scored the result on WRA's leveling summaries for the
+11 coastal townships. It also ran a no-harm check from yearly forecast origins 2016–2021,
+with leveling after each origin withheld from the column fit. Every post-2022 subsidence
+series had been looked at before, so the coastal scores are design-time.
+
+| Check | Q0 | Nudged to observed heads |
+|---|---|---|
+| Column leveling R2, out of fold | 0.653 | **0.670** |
+| Next-year leveling rate RMSE, 2016–21 origins (all / coastal benchmarks) | 2.43 / 3.31 cm/yr | **2.25 / 2.97** cm/yr |
+| Coastal township minimums met, 2017–22 origins | 11 of 34 | 9 of 34 (**gate failed**) |
+| Coastal cells rising, 2023–25 trend | 47 % | 100 % |
+
+The rung failed, so Q0 stays. Nudging with a column refitted on the nudged heads improves
+both the leveling fit and the next-year rates. Nudging under a column fitted on free-running
+heads had cost 0.2 of R2; that loss was the mismatch. Even with the observed heads, though,
+the coast in the model rises in 2023–25. The compaction rings at 元長 and 客厝 sink 1.6–1.8
+cm/yr over the same period. Both versions also sink the coast about 2.5 cm/yr too slowly in
+the 2016–21 next-year leveling. The binding coastal defect is the near-elastic distal
+column, not the forcing.
+
 ### Earlier calibration and scenario results
 
 | | test | result |
@@ -172,6 +197,18 @@ python -m hydrophysics.twin.forward --theta results/twin_runs/my_run/stage3_thet
     --vep-json results/twin_runs/my_run/coupled/vep_zonal_leveling.json --out results/twin_forward/cut30
 python -m hydrophysics.twin.viewer_app --forward results/twin_forward/cut30.npz \
     --out results/twin/my_app.html
+
+# a hindcast nudged toward the observed heads needs a column fitted on the same nudging
+# (twin.forward refuses a mismatched pair); --extend-record-to carries the record and the
+# nudging past 2022 (with a --wells-dir that holds later heads), --record-end moves the
+# origin back for rolling-origin tests
+python -m hydrophysics.twin.calibrate_coupled --theta results/twin_runs/my_run/stage3_theta.json \
+    --target leveling --configs zonal --hpc0-guard-days 365 \
+    --hindcast-gain 1 --hindcast-every 1 --apex-hold calibrated --out results/twin_runs/my_run/coupled_nh
+python -m hydrophysics.twin.forward --theta results/twin_runs/my_run/stage3_theta.json \
+    --hindcast-gain 1 --hindcast-every 1 --apex-hold calibrated --column-heads free \
+    --extend-record-to 2025-06 --wells-dir results/dataprep/twin_inputs/clean_heads/v2/wells \
+    --vep-json results/twin_runs/my_run/coupled_nh/vep_zonal_leveling.json --out results/twin_forward/nh
 ```
 
 `pytest -q` runs the test suite on CPU in about 12 minutes (CI runs plain `pytest`).
@@ -254,7 +291,10 @@ The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
   through the record, climatological forcing under named policies, and an ensemble over
   fold fits, Laplace-posterior draws and perturbed initial fields. An opt-in residual
   update uses the same cell/layer sampling and fixed well datum as scoring; assimilation
-  increments are separate from physical recharge and pumping fluxes.
+  increments are separate from physical recharge and pumping fluxes. The compaction column
+  is fitted on the head trajectory it will be driven by, free-running or nudged, and the
+  forward run checks the pair. The record can be cut at an earlier origin or carried
+  past 2022 with the same input construction.
 - **Surrogate.** A PhysicsNeMo Fourier neural operator trained on the calibrated solver,
   for policy sweeps and large ensembles.
 
@@ -328,6 +368,11 @@ in `docs/GPU_SERVER.md`.
 - The mid-zone viscous time constant reaches the length of the record; a 30-year ceiling
   fits leveling equally well and adds 0.3 cm to the baseline projection (shown as a range).
 - The 14 multi-layer compaction wells lost the skill they had under the previous model.
+- The coast sinks too slowly. The distal column is near-elastic (about 1.5 cm per metre of
+  head, 57-day time constant). It under-predicts coastal next-year leveling rates by about
+  2.5 cm/yr (2016–21) and rebounds when heads recover, even when driven by the observed
+  2023–25 heads (rung I1.X5NH.v1). Coastal forecasts after 2022, and the coastal benefit of
+  a pumping cut, are therefore not reliable.
 - The per-zone column produces a subsidence step at the 182 km mid/distal line that the
   leveling data do not show; the app marks it. Smoothly banded columns remove it only by
   becoming degenerate (they lose the compaction wells), so they were rejected.

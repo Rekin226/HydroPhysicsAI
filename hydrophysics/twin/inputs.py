@@ -10,7 +10,7 @@ recorded provenance is untouched; the loader functions it calls are the ones reu
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -254,6 +254,86 @@ def load_twin_inputs(paths: dict | None = None, dx: float = 1000.0,
                                        if ic_merged_proximal else None),
                       ic_month0_filled=bool(ic_month0_filled),
                       ic_layered=bool(ic_layered_proximal and ic_merged_proximal))
+
+
+def month_end_exclusive(month: str) -> str:
+    """``YYYY-MM`` -> the first day of the following month (``load_twin_inputs``'s ``t1``)."""
+    try:
+        p = pd.Period(month, freq="M")
+    except ValueError as e:
+        raise ValueError(f"{month!r}: expected YYYY-MM") from e
+    return (p + 1).start_time.strftime("%Y-%m-%d")
+
+
+def truncate_record(inp: TwinInputs, last: str) -> TwinInputs:
+    """The record cut after month ``last`` (``YYYY-MM``, kept), so a forward run's origin
+    moves back to it (rolling-origin tests, 2026-10-28). The hindcast is causal, so its
+    months up to ``last`` are those of the full record; the projection's climatology is
+    then that of the shortened record only. ``hf`` keeps the full record (only a column
+    fit reads it)."""
+    per = inp.dates.to_period("M")
+    p = pd.Period(last, freq="M")
+    n = int(per.get_loc(p)) + 1 if p in per else 0
+    if n < 2:
+        raise ValueError(f"--record-end {last}: not a month of the record "
+                         f"{per[0]}..{per[-1]} after its first")
+    if n == len(per):
+        return inp
+    if inp.sw_field is not None or inp.extra_q is not None:
+        raise ValueError("truncate_record: canal or extra-abstraction fields are not cut")
+    return replace(inp, dates=inp.dates[:n], obs_h=inp.obs_h[:, :n].copy(),
+                   obs_h_filled=inp.obs_h_filled[:, :n].copy(),
+                   E_by_class={k: v[:, :n].copy() for k, v in inp.E_by_class.items()},
+                   recharge_field=inp.recharge_field[:, :n].clone())
+
+
+def extend_record(inp: TwinInputs, ext: TwinInputs) -> TwinInputs:
+    """``inp``'s record followed by the months of ``ext`` after it (2026-10-28): the
+    forcing and the observed heads past the origin, so a hindcast can be nudged through
+    them before projecting. ``ext`` is the same construction loaded with a later ``t1``.
+
+    The months ``inp`` already holds are kept as they are: the census cleaning (duty cap)
+    depends on its window, so ``ext``'s copy of them can differ by a few kWh per cell, and
+    the record the parameters and column were fitted on must not move. The wells are
+    ``inp``'s: the head QC also depends on the window, so a well ``ext`` drops gets no head
+    past the record and a well only ``ext`` keeps is left out. Checked: the same grid and
+    first month, and each shared well's cell, layer and heads over the record."""
+    if ext.grid.n_active != inp.grid.n_active:
+        raise ValueError("extend_record: the extension is on another grid")
+    T = len(inp.dates)
+    if len(ext.dates) <= T or not ext.dates[:T].equals(inp.dates):
+        raise ValueError(f"extend_record: the extension {ext.dates[0]:%Y-%m}.."
+                         f"{ext.dates[-1]:%Y-%m} does not continue the record "
+                         f"{inp.dates[0]:%Y-%m}..{inp.dates[-1]:%Y-%m}")
+    pos = {sid: i for i, sid in enumerate(ext.sids)}
+    rows = np.array([pos.get(sid, -1) for sid in inp.sids])
+    shared = rows >= 0
+    r = rows[shared]
+    if not (np.array_equal(ext.obs_idx[r], inp.obs_idx[shared])
+            and np.array_equal(ext.obs_layer[r], inp.obs_layer[shared])):
+        raise ValueError("extend_record: a shared well sits in another cell or layer")
+    a, b = inp.obs_h[shared], ext.obs_h[r, :T]
+    if not (np.array_equal(np.isnan(a), np.isnan(b)) and np.allclose(a[~np.isnan(a)],
+                                                                     b[~np.isnan(b)])):
+        raise ValueError("extend_record: the extension's heads differ over the record "
+                         "(another head product?)")
+    if set(ext.E_by_class) != set(inp.E_by_class):
+        raise ValueError("extend_record: the pumping classes differ")
+    if any(x is not None for x in (inp.sw_field, inp.extra_q, ext.sw_field, ext.extra_q)):
+        raise ValueError("extend_record: canal or extra-abstraction fields are not extended")
+
+    def tail(arr: np.ndarray) -> np.ndarray:
+        out = np.full((len(inp.sids), len(ext.dates) - T), np.nan)
+        out[shared] = arr[r, T:]
+        return out
+
+    return replace(
+        inp, dates=ext.dates,
+        obs_h=np.concatenate([inp.obs_h, tail(ext.obs_h)], axis=1),
+        obs_h_filled=np.concatenate([inp.obs_h_filled, tail(ext.obs_h_filled)], axis=1),
+        E_by_class={k: np.concatenate([v, ext.E_by_class[k][:, T:]], axis=1)
+                    for k, v in inp.E_by_class.items()},
+        recharge_field=torch.cat([inp.recharge_field, ext.recharge_field[:, T:]], dim=1))
 
 
 SW_KEYS = ("sw_m_per_day", "dates", "dx", "n_active")
