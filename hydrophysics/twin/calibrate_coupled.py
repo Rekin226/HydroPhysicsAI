@@ -71,7 +71,9 @@ from .forward import (
     blended_column,
     build_model,
     extra_hist,
+    hindcast_with_nudging,
     load_members,
+    member_datum,
     rollout,
     sw_hist,
 )
@@ -828,6 +830,17 @@ def main(argv=None) -> None:
                          "whose model month lies in the window never enter the loss, the "
                          "k-fold, the in-run leveling check or the ring check (a temporal "
                          "hold-out for a registered test; default: none withheld)")
+    ap.add_argument("--hindcast-gain", type=float, default=0.0,
+                    help="fit the column on a hindcast nudged toward the observed heads by "
+                         "this gain every --hindcast-every months (twin.forward's "
+                         "hindcast_with_nudging, 2026-10-28), so a forward run with the same "
+                         "nudging drives it with the heads it was fitted on. 0 = the free "
+                         "hindcast (default)")
+    ap.add_argument("--hindcast-every", type=int, default=12)
+    ap.add_argument("--update-method", choices=("innovation", "field"), default="innovation",
+                    help="observation update of the nudged hindcast (twin.forward's)")
+    ap.add_argument("--apex-hold", choices=("restart", "calibrated"), default="restart",
+                    help="apex boundary head of the nudged hindcast (twin.forward's)")
     ap.add_argument("--epochs", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--data", default=None)
@@ -898,9 +911,24 @@ def main(argv=None) -> None:
         E = inp.E_total[:, 1:]
     t0 = time.perf_counter()
     attach_sw_recharge(inp, member.meta)
-    heads = rollout(model, scalars, inp.initial_heads(0), E, inp.recharge_field[:, 1:],
-                    inp.ground_elev, sw_field=sw_hist(inp),
-                    q_extra=extra_hist(inp)).cpu().numpy()  # (L, A, T)
+    nudged = args.hindcast_gain > 0.0 and args.hindcast_every > 0
+    if nudged:
+        if eta_classes or inp.sw_field is not None or inp.extra_q is not None:
+            raise SystemExit("--hindcast-gain: the nudged column fit supports the plain "
+                             "forcing only (no eta classes, canal or extra abstraction)")
+        h0 = inp.initial_heads(0, n_layers=N_LAYERS)
+        heads = hindcast_with_nudging(
+            model, scalars, inp, h0, E, inp.recharge_field[:, 1:], args.hindcast_gain,
+            args.hindcast_every, datum=member_datum(member, inp.sids),
+            apex_from=h0 if args.apex_hold == "calibrated" else None,
+            update_method=args.update_method).cpu().numpy()  # (L, A, T)
+        print(f"hindcast nudged toward the observed heads: gain {args.hindcast_gain:g} "
+              f"every {args.hindcast_every} month(s), {args.update_method} update, apex "
+              f"{args.apex_hold}", flush=True)
+    else:
+        heads = rollout(model, scalars, inp.initial_heads(0), E, inp.recharge_field[:, 1:],
+                        inp.ground_elev, sw_field=sw_hist(inp),
+                        q_extra=extra_hist(inp)).cpu().numpy()  # (L, A, T)
     print(f"hindcast heads in {time.perf_counter() - t0:.1f}s", flush=True)
     if zone_of_cell is None:
         zone_of_cell = fan_zones(inp.grid.centroids())
@@ -1100,6 +1128,11 @@ def main(argv=None) -> None:
                           if collapsed else {}),
                        **({"withhold_surveys": args.withhold_surveys}
                           if args.withhold_surveys else {}),
+                       # opt-in 2026-10-28: the head field the column pairs with
+                       **({"hindcast_gain": args.hindcast_gain,
+                           "hindcast_every": args.hindcast_every,
+                           "update_method": args.update_method,
+                           "apex_hold": args.apex_hold} if nudged else {}),
                        "hpc0_guard_days": args.hpc0_guard_days,
                        **column_constraints(),
                        "tau_ceiling_days": tau_ceiling_days(heads.shape[-1]),

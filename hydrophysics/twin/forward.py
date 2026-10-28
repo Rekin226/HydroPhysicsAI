@@ -64,7 +64,14 @@ from .calibrate_flow import (
 )
 from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
 from .flow import FlowModel
-from .inputs import TwinInputs, input_options, load_twin_inputs
+from .inputs import (
+    TwinInputs,
+    extend_record,
+    input_options,
+    load_twin_inputs,
+    month_end_exclusive,
+    truncate_record,
+)
 from .recorded_pumping import load_recorded_multiplier, parse_recorded_spec
 from .scenario import BASELINE, CLASSES, PumpingScenario, climatology
 from .zones import (
@@ -1565,6 +1572,16 @@ def main(argv=None) -> None:
                     help="'yearly': write <out>.members.npz with every member's December "
                          "fields of subsidence and layer-2 head, quantised to int16 (app "
                          "spec 3.4)")
+    ap.add_argument("--record-end", default=None, metavar="YYYY-MM",
+                    help="cut the record after this month, so the origin moves back to it "
+                         "(rolling-origin tests, 2026-10-28); the projection's climatology "
+                         "is then the shortened record's")
+    ap.add_argument("--extend-record-to", default=None, metavar="YYYY-MM",
+                    help="continue the record to this month with the same input "
+                         "construction (forcing and observed heads; --wells-dir must hold "
+                         "heads past the record), so --hindcast-gain nudges through them "
+                         "and the origin moves forward (2026-10-28). The months already in "
+                         "the record are kept as calibrated")
     ap.add_argument("--out", required=True, help="output stem: <out>.npz, <out>.summary.csv")
     for k in ("polygon", "wells_dir", "stations", "pump_census", "pump_kwh",
               "rf_timeseries", "rf_stations", "gw_stations", "et_npz"):
@@ -1607,6 +1624,26 @@ def main(argv=None) -> None:
                            **input_options(meta))
     print(f"census cleaning as calibrated: meter_filter={meta.get('meter_filter', 'none')}",
           flush=True)
+    if args.record_end and args.extend_record_to:
+        raise SystemExit("--record-end and --extend-record-to are exclusive")
+    if args.extend_record_to:
+        ext = load_twin_inputs(paths, dx=args.dx, wells_from=args.wells_from,
+                               meter_filter=meta.get("meter_filter", "none"),
+                               cap_duty=float(meta.get("cap_duty", 1.0)),
+                               t1=month_end_exclusive(args.extend_record_to),
+                               verbose=False, **input_options(meta))
+        T_rec = len(inp.dates)
+        inp = extend_record(inp, ext)
+        seen = np.isfinite(inp.obs_h[:, T_rec:]).sum(axis=0)
+        print(f"record extended {inp.dates[T_rec]:%Y-%m}..{inp.dates[-1]:%Y-%m}: wells "
+              f"observed per month {int(seen.min())}..{int(seen.max())}", flush=True)
+        if int(seen.min()) == 0:
+            raise SystemExit("--extend-record-to: a month past the record has no observed "
+                             "head (does --wells-dir hold heads past the record?)")
+    elif args.record_end:
+        inp = truncate_record(inp, args.record_end)
+        print(f"record cut after {inp.dates[-1]:%Y-%m}: origin {inp.dates[-1]:%Y-%m}",
+              flush=True)
     attach_sw_recharge(inp, meta, log=lambda m: print(m, flush=True))
     if recorded:
         fut_dates = pd.date_range(inp.dates[-1] + pd.offsets.MonthBegin(1),
@@ -1678,6 +1715,20 @@ def main(argv=None) -> None:
             print(f"VEP column [{rlabel}]: Ske={math.exp(vep['log_ske']):.3e} "
                   f"Skv={math.exp(vep['log_skv']):.3e} tau={math.exp(vep['log_tau']):.0f} d",
                   flush=True)
+    for rlabel, _, vep in columns:
+        # the column pairs with its head field (2026-09-19): one fitted on free-running
+        # heads loses leveling skill under nudged ones, and the reverse
+        fitted = (float(vep.get("hindcast_gain") or 0.0),
+                  int(vep.get("hindcast_every") or 0) if vep.get("hindcast_gain") else 0)
+        used = ((float(args.hindcast_gain), int(args.hindcast_every))
+                if args.hindcast_gain > 0.0 and args.hindcast_every > 0 else (0.0, 0))
+        if used[0] > 0.0:
+            fitted += (vep.get("update_method"), vep.get("apex_hold"))
+            used += (args.update_method, args.apex_hold)
+        if fitted != used:
+            raise SystemExit(f"column [{rlabel}] was fitted on hindcast nudging (gain, every"
+                             f"[, update, apex]) {fitted}, this run uses {used}: refit it "
+                             "with calibrate_coupled --hindcast-gain/--hindcast-every")
     col = columns[0][1] if len(columns) == 1 else [(c[0], c[1]) for c in columns]
 
     t0 = time.perf_counter()
@@ -1745,6 +1796,9 @@ def main(argv=None) -> None:
         forward_options=json.dumps({
             "restart_taper_km": args.restart_taper_km, "column_heads": args.column_heads,
             "update_method": args.update_method,
+            # opt-in 2026-10-28: only a run with a moved origin records it
+            **({"record_end": args.record_end} if args.record_end else {}),
+            **({"extend_record_to": args.extend_record_to} if args.extend_record_to else {}),
             **({"apex_hold": args.apex_hold} if args.apex_hold != "restart" else {}),
             "column_hpc0_fast_days": args.column_hpc0_fast_days,
             "hpc0_released": [c[2].get("hpc0_released") for c in columns],

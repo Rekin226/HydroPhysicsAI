@@ -258,3 +258,48 @@ def test_zonal_column_json_loads_and_applies_per_zone(tmp_path):
     assert subs[1, -1] > subs[0, -1] and subs[1, -1] > subs[3, -1]
     with pytest.raises(ValueError, match="zone_of_cell"):
         load_or_fit_vep(str(p), None, None, "cpu")
+
+
+def test_truncate_record_moves_the_origin_back_and_keeps_the_prefix():
+    from hydrophysics.twin.inputs import truncate_record
+
+    inp = _inputs(T=24)
+    t = truncate_record(inp, "2012-10")
+    assert len(t.dates) == 10 and t.dates[-1] == pd.Timestamp("2012-10-01")
+    assert t.obs_h.shape == (3, 10) and t.recharge_field.shape[1] == 10
+    assert all(v.shape[1] == 10 for v in t.E_by_class.values())
+    np.testing.assert_array_equal(t.obs_h, inp.obs_h[:, :10])
+    assert truncate_record(inp, "2013-12") is inp           # the last month: unchanged
+    for bad in ("2012-01", "2015-01"):
+        with pytest.raises(ValueError, match="not a month of the record"):
+            truncate_record(inp, bad)
+
+
+def test_extend_record_appends_the_later_months_and_keeps_the_record():
+    from dataclasses import replace
+
+    from hydrophysics.twin.inputs import extend_record
+
+    inp = _inputs(T=12)
+    ext = _inputs(T=18)
+    ext.obs_h[:, :12] = inp.obs_h                 # the fixture blanks each record's last month
+    # the census cleaning moves the record's energy with the window: the record's must win
+    ext = replace(ext, E_by_class={k: v * 1.01 for k, v in ext.E_by_class.items()})
+    # a well the extension's QC drops gets no head past the record
+    keep = [0, 2]
+    ext = replace(ext, obs_h=ext.obs_h[keep], obs_h_filled=ext.obs_h_filled[keep],
+                  obs_idx=ext.obs_idx[keep], obs_layer=ext.obs_layer[keep],
+                  well_xy=ext.well_xy[keep], sids=["a", "c"])
+    x = extend_record(inp, ext)
+    assert len(x.dates) == 18 and x.sids == inp.sids
+    np.testing.assert_array_equal(x.E_by_class["irrigation"][:, :12],
+                                  inp.E_by_class["irrigation"])
+    np.testing.assert_allclose(x.E_by_class["irrigation"][:, 12:],
+                               ext.E_by_class["irrigation"][:, 12:])
+    assert np.isnan(x.obs_h[1, 12:]).all()
+    np.testing.assert_array_equal(x.obs_h[2, 12:], ext.obs_h[1, 12:])
+    bad = replace(ext, obs_h=ext.obs_h + 1.0)
+    with pytest.raises(ValueError, match="heads differ"):
+        extend_record(inp, bad)
+    with pytest.raises(ValueError, match="does not continue"):
+        extend_record(inp, _inputs(T=12))
