@@ -64,7 +64,16 @@ from ..config import Config
 from ..subsidence import load_mlcw_stations, mlcw_compaction
 from ..train import pick_device
 from .calibrate_flow import mask_month_flags, set_compile_matvec
-from .compaction import AQUITARD_BOUNDS, CREEP_MODES, VEPColumn, column_param_sets
+from .compaction import (
+    AQUITARD_BOUNDS,
+    CREEP_MODES,
+    CREEP_ZONE_SETS,
+    VEPColumn,
+    aquitard_bounds,
+    column_param_sets,
+    zone_creep,
+    zone_key_matches,
+)
 from .forward import (
     N_LAYERS,
     attach_sw_recharge,
@@ -80,11 +89,13 @@ from .forward import (
 from .inputs import input_options, load_twin_inputs
 from .zone_county import column_zone_names, column_zone_weights
 from .zones import (
+    ALL_ZONE_NAMES,
     BAND_KINDS,
     N_ZONES,
     band_centres_km,
     band_weights,
     fan_zones,
+    zone_names,
 )
 
 TAU_MAX_YEARS: float | None = None      # set by --tau-max-years; None = the record length
@@ -118,13 +129,78 @@ BAND_HPC0_GUARD: str = "band"
 # --creep (opt-in, 2026-10-11): "aquitard" adds compaction.aquitard_compaction's delayed
 # drainage term to every column (shared and zonal configs); "vep" is the historical column
 CREEP: str = "vep"
+# Slow-component column (opt-in, E1 2026-10-28; every default is the historical column).
+# --creep-zones: the zonal column zones that carry the aquitard term (compaction
+# .CREEP_ZONE_SETS); the others stay pure VEP. "all" = every column, as before
+CREEP_ZONES: str = "all"
+# --aquitard-tau-min-years / --aquitard-ha0-min: raised floors of the aquitard term
+# (compaction.aquitard_bounds); None = AQUITARD_BOUNDS
+AQUITARD_TAU_MIN_YEARS: float | None = None
+AQUITARD_HA0_MIN: float | None = None
+# --tau-min-days-zone ZONE=DAYS: a per-zone floor on the VEP tau, on top of TAU_MIN_DAYS
+# (a name also floors its Changhua copy); None = no per-zone floor
+TAU_MIN_DAYS_ZONE: dict[str, float] | None = None
+# --deterministic: torch deterministic algorithms, for a bit-identity rerun
+DETERMINISTIC: bool = False
+
+
+def column_aquitard_bounds() -> dict | None:
+    """The aquitard bounds of the columns ``_make`` builds: None (``AQUITARD_BOUNDS``,
+    the historical clamp) unless a floor flag is given."""
+    if AQUITARD_TAU_MIN_YEARS is None and AQUITARD_HA0_MIN is None:
+        return None
+    return aquitard_bounds(AQUITARD_TAU_MIN_YEARS, AQUITARD_HA0_MIN)
+
+
+def zone_tau_floors(names) -> list[float | None]:
+    """``--tau-min-days-zone``: each column zone's own tau floor in days (None = only
+    the global ``TAU_MIN_DAYS``). A zone matched by two keys takes the higher floor."""
+    out: list[float | None] = []
+    for n in names:
+        v = [float(d) for k, d in (TAU_MIN_DAYS_ZONE or {}).items()
+             if n is not None and zone_key_matches(k, n)]
+        out.append(max(v) if v else None)
+    return out
+
+
+def parse_tau_min_days_zone(items: list[str] | None) -> dict[str, float] | None:
+    """``--tau-min-days-zone distal=3650`` (repeatable) -> ``{"distal": 3650.0}``. A key is
+    a column zone name (``distal``, ``mid_changhua``, ...); None/empty -> None."""
+    if not items:
+        return None
+    out: dict[str, float] = {}
+    for it in items:
+        key, sep, val = str(it).partition("=")
+        key = key.strip()
+        if not sep or key not in ALL_ZONE_NAMES:
+            raise ValueError(f"--tau-min-days-zone needs ZONE=DAYS with ZONE one of "
+                             f"{ALL_ZONE_NAMES}, got {it!r}")
+        if key in out:
+            raise ValueError(f"--tau-min-days-zone gives zone {key!r} twice")
+        days = float(val)
+        if not (math.isfinite(days) and days >= 1.0):
+            raise ValueError(f"--tau-min-days-zone {key}: the floor must be >= 1 d, got {val}")
+        out[key] = days
+    return out
 
 
 def column_constraints() -> dict:
     """The constraints ``_clamp_column`` applies, for the column JSON (None = default).
-    The Ske cap's keys appear only on a capped column, so an uncapped column's JSON is
-    the historical one."""
+    The Ske cap's keys appear only on a capped column, and the slow-component keys (E1)
+    only when their flags are given, so a column without them has the historical JSON."""
     out = {"tau_min_days": TAU_MIN_DAYS, "ske_min": SKE_MIN, "ske_skv_max": SKE_SKV_MAX}
+    if CREEP_ZONES != "all":
+        out["creep_zones"] = CREEP_ZONES
+    bounds = column_aquitard_bounds()
+    if bounds is not None:
+        out.update({"aquitard_tau_min_years": AQUITARD_TAU_MIN_YEARS,
+                    "aquitard_ha0_min": AQUITARD_HA0_MIN,
+                    "aquitard_bounds": {k: [float(lo), float(hi)]
+                                        for k, (lo, hi) in bounds.items()}})
+    if TAU_MIN_DAYS_ZONE:
+        out["tau_min_days_zone"] = {k: float(v) for k, v in TAU_MIN_DAYS_ZONE.items()}
+    if DETERMINISTIC:
+        out["deterministic"] = True
     if SKE_CAP_KAPPA is not None:
         out.update({"ske_cap_kappa": float(SKE_CAP_KAPPA),
                     "ske_cap": None if SKE_CAPS is None else [float(c) for c in SKE_CAPS],
@@ -229,12 +305,22 @@ def _clamp_column(col: VEPColumn, T: int) -> None:
     ``TAU_MIN_DAYS`` raises the tau floor from 1 d, ``SKE_MIN`` raises the Ske floor from
     1e-6, and ``SKE_SKV_MAX`` caps Ske/Skv. The round-2 proximal column had tau 24 d and
     Ske at its 1e-6 floor. That is an instant, purely inelastic response, which a
-    monthly model cannot tell apart from elastic storage."""
+    monthly model cannot tell apart from elastic storage.
+
+    Per column (E1, opt-in, set by ``_make``): ``col.tau_min_days`` (``--tau-min-days-zone``)
+    raises that column's tau floor further, and ``col.aquitard_bounds`` are its aquitard
+    bounds (``AQUITARD_BOUNDS`` unless ``--aquitard-tau-min-years``/``--aquitard-ha0-min``)."""
     tau_max = tau_ceiling_days(T, col.dt_days)
     tau_min = 1.0 if TAU_MIN_DAYS is None else max(1.0, float(TAU_MIN_DAYS))
     if tau_min >= tau_max:
         raise ValueError(f"--tau-min-days {tau_min:g} is not below the tau ceiling "
                          f"{tau_max:g} d")
+    zone_floor = getattr(col, "tau_min_days", None)      # --tau-min-days-zone (``_make``)
+    if zone_floor is not None:
+        tau_min = max(tau_min, float(zone_floor))
+        if tau_min >= tau_max:
+            raise ValueError(f"--tau-min-days-zone {tau_min:g} d is not below the tau "
+                             f"ceiling {tau_max:g} d (raise --tau-max-years)")
     ske_lo = math.log(1e-6 if SKE_MIN is None else float(SKE_MIN))
     if ske_lo >= math.log(SKE_MAX):
         raise ValueError(f"--ske-min {SKE_MIN:g} is not below the Ske ceiling {SKE_MAX:g}")
@@ -260,7 +346,7 @@ def _clamp_column(col: VEPColumn, T: int) -> None:
                                             col.log_skv + math.log(float(SKE_SKV_MAX))))
         col.log_tau.clamp_(min=math.log(tau_min), max=math.log(tau_max))
         if col.creep == "aquitard":
-            for k, (lo, hi) in AQUITARD_BOUNDS.items():
+            for k, (lo, hi) in getattr(col, "aquitard_bounds", AQUITARD_BOUNDS).items():
                 getattr(col, k).clamp_(min=lo, max=hi)
 
 
@@ -422,26 +508,59 @@ def _predict(model: nn.Module, heads: torch.Tensor, zone: torch.Tensor | None) -
 
 def _make(config: str, device, n_zones: int = N_ZONES) -> nn.Module:
     """A fresh column of ``config``; ``n_zones`` is the zonal config's number of parameter
-    sets (3, or 6 over a ``--zone-county-split`` flow model)."""
+    sets (3, or 6 over a ``--zone-county-split`` flow model).
+
+    E1 (opt-in): a zonal column gives the aquitard term only to the ``CREEP_ZONES`` zones,
+    and each column its ``--tau-min-days-zone`` floor (``_floored``); the zone names are
+    ``zones.zone_names(n_zones)``. The aquitard floors apply to shared and zonal."""
     if CREEP != "vep" and config not in ("shared", "zonal"):
         raise ValueError(f"--creep {CREEP} is implemented for the shared and zonal configs only")
+    per_zone = CREEP_ZONES != "all" or bool(TAU_MIN_DAYS_ZONE)
+    if per_zone and config != "zonal":
+        raise ValueError("--creep-zones and --tau-min-days-zone apply to the zonal config "
+                         f"only, not to {config}")
+    if CREEP_ZONES != "all" and CREEP != "aquitard":
+        raise ValueError(f"--creep-zones {CREEP_ZONES} needs --creep aquitard")
+    aq = column_aquitard_bounds()
     if config == "shared":
-        return _capped([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP)
-                        .to(device)])[0]
+        return _capped([VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=CREEP,
+                                  aquitard_bounds=aq).to(device)])[0]
     if config == "weighted":
         model = _WeightedColumn(N_LAYERS, device=device).to(device)
         _capped([model.col])
         return model
     if config == "zonal":
-        return nn.ModuleList(_capped([VEPColumn(n_sites=1, dt_days=30.0, device=device,
-                                                creep=CREEP)
-                                      for _ in range(int(n_zones))])).to(device)
+        names = zone_names(int(n_zones)) if per_zone else (None,) * int(n_zones)
+        creeps = zone_creep(CREEP, CREEP_ZONES, names)
+        return nn.ModuleList(_floored(_capped([
+            VEPColumn(n_sites=1, dt_days=30.0, device=device, creep=c,
+                      aquitard_bounds=aq if c == "aquitard" else None)
+            for c in creeps]), names)).to(device)
     if config == "banded":
         if SKE_CAPS is not None:
             raise ValueError("--ske-cap-from-theta applies to the shared, weighted and zonal "
                              "configs, not to banded")
         return _BandedColumns(N_BANDS, BAND_LAMBDA, device=device, kind=BAND_KIND).to(device)
     raise ValueError(config)
+
+
+def _floored(cols: list[VEPColumn], names) -> list[VEPColumn]:
+    """``--tau-min-days-zone``: give each column its zone's tau floor (read by
+    ``_clamp_column``) and start it no lower than that floor. No-op without the flag."""
+    if not TAU_MIN_DAYS_ZONE:
+        return cols
+    unmatched = [k for k in TAU_MIN_DAYS_ZONE
+                 if not any(zone_key_matches(k, n) for n in names)]
+    if unmatched:
+        raise ValueError(f"--tau-min-days-zone names zone(s) {unmatched} that the column "
+                         f"{tuple(names)} does not have")
+    for c, f in zip(cols, zone_tau_floors(names), strict=True):
+        if f is None:
+            continue
+        c.tau_min_days = float(f)
+        with torch.no_grad():
+            c.log_tau.clamp_(min=math.log(float(f)))
+    return cols
 
 
 def _capped(cols: list[VEPColumn]) -> list[VEPColumn]:
@@ -819,6 +938,30 @@ def main(argv=None) -> None:
                          "delayed-drainage term (compaction.aquitard_compaction) whose rate "
                          "depends on the head level; shared and zonal configs. Recorded as "
                          "'creep' in the column JSON, which twin.forward reads")
+    ap.add_argument("--creep-zones", choices=tuple(CREEP_ZONE_SETS), default="all",
+                    help="E1 (opt-in), with --creep aquitard and --configs zonal: the column "
+                         "zones that carry the aquitard term ('distal', 'mid+distal'; a name "
+                         "also selects its Changhua copy); the others stay pure VEP. "
+                         "Recorded as creep_zones in the JSON. Default 'all' (historical)")
+    ap.add_argument("--aquitard-tau-min-years", type=float, default=None,
+                    help="E1 (opt-in), with --creep aquitard: floor on the aquitard time "
+                         "constant tau_a, years (default 1). A floor of a decade stops the "
+                         "term from falling back to extra elastic storage")
+    ap.add_argument("--aquitard-ha0-min", type=float, default=None,
+                    help="E1 (opt-in), with --creep aquitard: floor on the aquitard's "
+                         "initial excess head h_a0, m (default -30); 0 makes the term "
+                         "residual drainage only. Both floors are recorded with the "
+                         "effective aquitard_bounds in the JSON")
+    ap.add_argument("--tau-min-days-zone", action="append", default=None,
+                    metavar="ZONE=DAYS",
+                    help="E1 (opt-in), --configs zonal: floor on one zone's VEP tau, days, "
+                         "on top of --tau-min-days (repeatable; e.g. distal=3650 for a slow "
+                         "distal column; a name also floors its Changhua copy). Recorded as "
+                         "tau_min_days_zone in the JSON")
+    ap.add_argument("--deterministic", action="store_true",
+                    help="torch deterministic algorithms (and CUBLAS workspace config), so "
+                         "a rerun of the column fit can be compared bit for bit; recorded "
+                         "as deterministic in the JSON. Default off (historical)")
     ap.add_argument("--column-zones", choices=("flow", "3"), default="flow",
                     help="zones of the zonal column: 'flow' (default) follows the theta "
                          "(six with --zone-county-split); '3' fits the three-zone column "
@@ -854,6 +997,8 @@ def main(argv=None) -> None:
     global TAU_MAX_YEARS, HPC0_GUARD_DAYS, TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX
     global N_BANDS, BAND_LAMBDA, BAND_KIND, BAND_HPC0_GUARD, CREEP
     global SKE_CAP_KAPPA, SKE_CAPS, SKE_CAP_ZONES
+    global CREEP_ZONES, AQUITARD_TAU_MIN_YEARS, AQUITARD_HA0_MIN, TAU_MIN_DAYS_ZONE
+    global DETERMINISTIC
     CREEP = args.creep
     N_BANDS, BAND_LAMBDA = int(args.n_bands), float(args.band_lambda)
     BAND_KIND, BAND_HPC0_GUARD = args.band_kind, args.band_hpc0_guard
@@ -887,8 +1032,40 @@ def main(argv=None) -> None:
     TAU_MAX_YEARS = args.tau_max_years
     HPC0_GUARD_DAYS = args.hpc0_guard_days
     TAU_MIN_DAYS, SKE_MIN, SKE_SKV_MAX = args.tau_min_days, args.ske_min, args.ske_skv_max
+    # E1 slow-component flags (opt-in; all off is the historical column)
+    CREEP_ZONES = args.creep_zones
+    AQUITARD_TAU_MIN_YEARS, AQUITARD_HA0_MIN = args.aquitard_tau_min_years, args.aquitard_ha0_min
+    try:
+        TAU_MIN_DAYS_ZONE = parse_tau_min_days_zone(args.tau_min_days_zone)
+        column_aquitard_bounds()                         # validates the floors
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+    if args.creep != "aquitard" and (CREEP_ZONES != "all" or AQUITARD_TAU_MIN_YEARS is not None
+                                     or AQUITARD_HA0_MIN is not None):
+        raise SystemExit("--creep-zones, --aquitard-tau-min-years and --aquitard-ha0-min need "
+                         "--creep aquitard")
+    if (CREEP_ZONES != "all" or TAU_MIN_DAYS_ZONE) and configs != ["zonal"]:
+        raise SystemExit("--creep-zones and --tau-min-days-zone apply to --configs zonal only")
+    if args.creep == "aquitard" and "zonal" in configs and args.zone_blend_km \
+            and args.zone_blend_km > 0.0:
+        # forward.blended_column mixes the four VEP keys only: it would drop the term
+        raise SystemExit("--creep aquitard cannot be fitted with --zone-blend-km (the blended "
+                         "zonal column carries the four VEP parameters only)")
+    DETERMINISTIC = bool(args.deterministic)
+    if DETERMINISTIC:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     # fail on an inconsistent set before the (long) hindcast rather than in the first step
     _clamp_column(VEPColumn(n_sites=1, dt_days=30.0), 132)
+    for f in (TAU_MIN_DAYS_ZONE or {}).values():
+        probe = VEPColumn(n_sites=1, dt_days=30.0)
+        probe.tau_min_days = float(f)
+        try:
+            _clamp_column(probe, 132)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
     device = pick_device(args.device)
     cfg = Config(data_dir=args.data) if args.data else Config()
     ddir = str(cfg.data_dir)
@@ -945,6 +1122,18 @@ def main(argv=None) -> None:
         print(f"--column-zones 3: one three-zone column {col_names} over the county-split "
               "flow model", flush=True)
     n_col_zones = len(col_names)
+    if TAU_MIN_DAYS_ZONE or CREEP_ZONES != "all":
+        # the zone names _make derives from the zone count must be the run's own
+        if tuple(zone_names(n_col_zones)) != tuple(col_names):
+            raise SystemExit(f"--creep-zones/--tau-min-days-zone: column zones {col_names} "
+                             f"are not the standard {zone_names(n_col_zones)}")
+        bad = [k for k in (TAU_MIN_DAYS_ZONE or {})
+               if not any(zone_key_matches(k, n) for n in col_names)]
+        if bad:
+            raise SystemExit(f"--tau-min-days-zone names zone(s) {bad} that the column "
+                             f"{col_names} does not have")
+        print(f"E1 per-zone column: creep {zone_creep(CREEP, CREEP_ZONES, col_names)}; tau "
+              f"floors (d) {zone_tau_floors(col_names)}", flush=True)
     if int(np.max(zone_of_cell)) >= n_col_zones:
         raise SystemExit(f"zone map ids up to {int(np.max(zone_of_cell))} exceed the column's "
                          f"{n_col_zones} zones {col_names}")

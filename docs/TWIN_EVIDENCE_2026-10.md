@@ -174,8 +174,9 @@ fit pushed the new term to its bounds in every zone (mid zone: time constant at 
 extra elastic storage). The leveling network does not identify a level-dependent rate,
 so a column fitted to it cannot carry one, whatever its rheology.
 
-Consequence for the page: the avoided-subsidence number by 2032 stands (both columns
-give it), but the statement that the benefit arrives within months and the sinking
+Consequence for the page: the avoided-subsidence number by 2032 stands as a model output (both
+columns give it; since 2026-10-29 it is withdrawn from the page's answer to "model internals",
+section 15), but the statement that the benefit arrives within months and the sinking
 rate is unchanged is a property of a column the ring record contradicts. The page
 now carries that as an unresolved question beside the number rather than as a
 finding. Resolving it needs a target that sees the rate response: the 2023-25 ring
@@ -955,3 +956,74 @@ Findings:
 | 1-3-year subsidence size | not supported (steps B and C disagree in direction); M1 failed its synthetic gate | no unspent leveling decides it | a fresh WRA leveling campaign, or monthly compaction-well and GNSS series from 2026-11, registered before they are seen |
 | long-run sinking under a cut | untested; in this model the benefit is all elastic (section 13) | none | the same, over several years, including a dry year |
 | Changhua levers | not supported (step B, fixes F1 and F2, rungs R1-R4p, R* and B) | none before 2026-10-31 | the Changhua data above, plus pump-test energy-to-volume data |
+
+## 15. Claims ledger and page scoping (2026-10-29)
+
+The user ruled on 2026-10-29: narrow or withdraw every page output that no registered test
+supports, fix the "registered beforehand" wording, drop the N2 companion, and keep "no
+calibrated correction factor follows". The ledger `hydrophysics/twin/claims_v1.json` gives
+every number the page or the README/MODEL_CARD shows an id and a status: S (supported by a
+registered test), D (decided by a registered prospective test, pending), N (narrowed wording
+the record supports), L (model-internal, labelled so), W (withdrawn from the answer). U
+(unsupported) and X (inconsistent with the record) are not allowed in the current state;
+`tests/test_twin_claims.py` enforces this on the template, the docs and, where the gitignored
+files exist, the registry and the built page.
+
+What changed on the page (`results/twin/twin_app_20261029c.html`; not promoted):
+- **The answer is the head response, in N2's unit** (second ruling of 2026-10-29). The
+  headline and the first tile give the mean head change over N2's 84 Yunlin monitoring wells,
+  each in its own screened layer (cut 30 % of irrigation: +1.19 m by December 2032, model
+  output), computed in the page build from the same forward run and shipped as an aggregate
+  only (`n2Unit`: no station id, cell or layer). The layer-2 means over the named Yunlin
+  townships and over the fan stay in the tile's detail line. The direction is supported by
+  step C (the registered masked 2016-18 refit, scored on the R0 recipe on a design-time
+  window); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping.
+  Both reach the page model only through the post-hoc, model-only comparison of science-05
+  (`transfer_innov_vs_cwa.json`). N2 decides whether the model's within-window response to
+  recorded Yunlin pumping anomalies is right: "response supported" needs the 90 % interval of
+  its per-well-demeaned anomaly slope to exclude 0, the slope within 1/1.5-1.5 and RMSE(PR) <
+  RMSE(ZR); a "not supported" result cannot separate the model from its X1 forcing, and the
+  level is report-only. Carrying the verdict to a class lever is a linear, model-only
+  transfer. The lever ranking now ranks by the same head unit; the start-year note gives the
+  head in that unit; the subsidence ranking is a labelled model-internals option.
+- **Withdrawn to "model internals":** fan-average avoided subsidence (tile and headline), the
+  area tile, the rail gradient and its better/worse verdict, the run agreement, and the
+  fan-wide baseline total. The default map layer and series are now the heads. These
+  decisions rest on pre-origin evidence alone: the 1-3-year subsidence size is not supported
+  (steps B and C), and the distal column does not sink while the 2016-21 next-year leveling
+  shows the coast sinking about 2.5 cm/yr faster than modelled. Post-origin coastal findings
+  (2023-25) played no part (U7).
+- **Wording.** The held-out-years fair rule and the anomaly k-fold verdict were declared on
+  2026-09-24 and 2026-09-26, before the current registry; neither has a registry entry, so
+  the page no longer calls them "registered beforehand". The two 2026-10-11 prospective
+  registrations are cited as what they are: manifest-hash registrations
+  (`results/twin/prospective_2026-11/manifest.json`, `prospective_2026-11_hybrid`), made
+  before the current registry. The coverage band is a run spread with no registered coverage
+  test; its 2023-26 coverage is shown as an after-the-fact measurement. The evidence badge
+  counts "checks" (registered tests and earlier screens).
+
+
+## 16. Coastal slow compaction, Changhua prospective test and pumping-class invariance (2026-10-28/29)
+
+- **Coastal slow compaction is not identifiable from held leveling** (`I1.X5SC.gate0.v1`,
+  synthetic identifiability gate, 12 fits on synthetic panels with the real 2012-21 survey
+  mask and the nudged 2012-22 heads). The aquitard form recovers about 0.01-0.02 cm/yr per m
+  of a true 0.55 cm/yr per m level sensitivity and pushes the background into the VEP part;
+  the VEP form with a distal time-constant floor invents about 1.4 cm/yr of background where
+  there is none. Neither form enters a coastal rung, and no level-dependent (long-run)
+  coastal response can be stated. The page's coastal values stay labelled "not reliable".
+- **Changhua head response, prospective** (`N2C.changhua_response.prospective_2026-11.v1`,
+  registered 2026-10-29). R1c is the primary model by user ruling, with its earlier Changhua
+  gate failures disclosed; q0c and x5r1 are report-only. Same decision rule, wells (74
+  Changhua) and window as N2; scored first in its session, not before 2028-01-15. R1c's
+  Changhua head lever reaches the page only if the verdict is "response supported".
+- **Head levers that cut every pumping class do not depend on the energy-to-volume
+  conversion** (`X5.lever_class_share.v1`, model-only declaration, scored once, pass). Two
+  models whose conversions differ about twofold (q0c, x5r1) give an all-class x0.7 cut whose
+  head-lever ratio at the well cells is 1.048/1.052 (Changhua, 2026-27/2030-32) and
+  1.034/1.036 (Yunlin), inside the declared [0.9, 1.1] (the report-only [0.95, 1.05] is
+  exceeded narrowly in Changhua 2030-32). Class-specific levers are not invariant: the
+  irrigation-only cut differs 1.39 (Changhua) and 1.27 (Yunlin) between the two
+  conversions, because the classes' shares differ. The pumping-volume deficit (the twin
+  pumps about half WRA's volume) therefore matters for class-specific levers, not for an
+  across-the-board cut. This adds no page lever.

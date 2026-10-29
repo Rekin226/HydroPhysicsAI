@@ -62,7 +62,14 @@ from .calibrate_flow import (
     well_datum_vector,
     zone_tensor,
 )
-from .compaction import AQUITARD_KEYS, VEPColumn, column_param_sets
+from .compaction import (
+    AQUITARD_KEYS,
+    CREEP_ZONE_SETS,
+    VEPColumn,
+    column_param_sets,
+    zone_creep,
+    zone_key_matches,
+)
 from .flow import FlowModel
 from .inputs import (
     TwinInputs,
@@ -620,20 +627,25 @@ def parse_scenario(text: str) -> tuple[PumpingScenario, float]:
 
 def future_forcing(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
                    rain_scale: float = 1.0, zone_of_cell: np.ndarray | None = None,
-                   eta_classes: list[str] | None = None
+                   eta_classes: list[str] | None = None, climatology_end: str | None = None
                    ) -> tuple[torch.Tensor, torch.Tensor, pd.DatetimeIndex]:
-    """Climatology of the recorded forcing, under the policy -> ``(E, recharge, dates)``."""
+    """Climatology of the recorded forcing, under the policy -> ``(E, recharge, dates)``.
+
+    ``climatology_end`` (``YYYY-MM``, opt-in) takes the month-of-year means from the record
+    months up to it only (``scenario.climatology``'s ``end``); the projection still starts
+    after the record's last month."""
     fut_by_class = {}
     fut_dates = None
     for k, E in inp.E_by_class.items():
-        fut_by_class[k], fut_dates = climatology(E, inp.dates, horizon)
+        fut_by_class[k], fut_dates = climatology(E, inp.dates, horizon, end=climatology_end)
     if eta_classes:
         # apply the policy class by class so each keeps its own efficiency
         E_fut = np.stack([scenario.apply({c: fut_by_class[c]}, fut_dates,
                                          zone_of_cell=zone_of_cell) for c in eta_classes])
     else:
         E_fut = scenario.apply(fut_by_class, fut_dates, zone_of_cell=zone_of_cell)
-    r_fut, _ = climatology(inp.recharge_field.numpy(), inp.dates, horizon)
+    r_fut, _ = climatology(inp.recharge_field.numpy(), inp.dates, horizon,
+                           end=climatology_end)
     return (torch.tensor(E_fut, dtype=torch.float64),
             torch.tensor(r_fut * rain_scale, dtype=torch.float64), fut_dates)
 
@@ -741,12 +753,15 @@ def delay_state_path(model: FlowModel, scalars: dict, heads: torch.Tensor,
 
 
 def future_sw(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
-              zone_of_cell: np.ndarray | None = None) -> torch.Tensor | None:
+              zone_of_cell: np.ndarray | None = None,
+              climatology_end: str | None = None) -> torch.Tensor | None:
     """Canal deliveries past the record: month-of-year climatology of ``inp.sw_field``
-    under the scenario's ``sw_factor`` -> ``(A, horizon)``, or ``None`` without one."""
+    (over the months up to ``climatology_end`` when given) under the scenario's
+    ``sw_factor`` -> ``(A, horizon)``, or ``None`` without one."""
     if inp.sw_field is None:
         return None
-    clim, fut_dates = climatology(np.asarray(inp.sw_field), inp.dates, horizon)
+    clim, fut_dates = climatology(np.asarray(inp.sw_field), inp.dates, horizon,
+                                  end=climatology_end)
     return torch.tensor(scenario.apply_sw(clim, fut_dates, zone_of_cell=zone_of_cell),
                         dtype=torch.float64)
 
@@ -754,7 +769,8 @@ def future_sw(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
 def sw_substitution_energy(inp: TwinInputs, scenario: PumpingScenario, horizon: int,
                            scalars: dict, h_ref: torch.Tensor, pump_layer: int = 1,
                            zone_of_cell: np.ndarray | None = None,
-                           dt: float = 30.0) -> torch.Tensor | None:
+                           dt: float = 30.0,
+                           climatology_end: str | None = None) -> torch.Tensor | None:
     """``--scenario ...,sw=0.8,sw_sub=f``: the extra irrigation pumping energy (kWh,
     ``(A, horizon)``) that replaces ``f`` x the canal water a scenario cuts, cell by cell.
 
@@ -768,7 +784,8 @@ def sw_substitution_energy(inp: TwinInputs, scenario: PumpingScenario, horizon: 
     built with the solver step ``dt`` (``model.dt``, 30 days), not the calendar month
     length, because ``_rollout`` applies pumping as volume / dt while canal water enters
     as m/day x area: the substituted pumping RATE then equals the lost delivery RATE in
-    every month. ``None`` when nothing is substituted."""
+    every month. ``climatology_end`` windows the canal climatology as in
+    :func:`future_sw`. ``None`` when nothing is substituted."""
     from .pumping import J_PER_KWH, MIN_LIFT_M, RHO_G
 
     f = float(getattr(scenario, "sw_sub", 0.0) or 0.0)
@@ -780,7 +797,7 @@ def sw_substitution_energy(inp: TwinInputs, scenario: PumpingScenario, horizon: 
     # with --sw-county-split the delivered field is its Changhua and rest pair
     delivered = ((sw[0] + sw[1]) if getattr(inp, "sw_county_split", False)
                  else sw[0] if sw.ndim == 3 else sw)
-    clim, fut_dates = climatology(delivered, inp.dates, horizon)
+    clim, fut_dates = climatology(delivered, inp.dates, horizon, end=climatology_end)
     lost = clim - scenario.apply_sw(clim, fut_dates, zone_of_cell=zone_of_cell)  # m/day
     vol = lost * float(inp.grid.dx) ** 2 * float(dt) * f                   # m3 per solver step
     log_eta = scalars["log_eta"].detach().cpu().double().reshape(-1)[0]
@@ -918,6 +935,9 @@ class ZonalColumn(torch.nn.Module):
         if zone_w is not None and np.asarray(zone_w).shape[0] != len(params):
             raise ValueError(f"zone weights have {np.asarray(zone_w).shape[0]} rows but the "
                              f"column has {len(params)} parameter sets")
+        if zone_w is not None and any(all(k in p for k in AQUITARD_KEYS) for p in params):
+            raise ValueError("a blended column mixes the four VEP parameters only; it cannot "
+                             "carry the aquitard term (refit without --zone-blend-km)")
         self.cols = torch.nn.ModuleList()
         for p in params:
             c = column_from_params(p, device)
@@ -952,6 +972,10 @@ def blended_column(cols, zone_w: torch.Tensor, drv: torch.Tensor) -> torch.Tenso
     """
     from .compaction import vep_compaction
 
+    if any(getattr(c, "creep", "vep") != "vep" for c in cols):
+        # it would silently drop the aquitard term (E1 review, 2026-10-28)
+        raise ValueError("blended_column mixes the four VEP parameters only; a column with "
+                         "the aquitard term cannot be blended")
     W = zone_w.to(dtype=drv.dtype, device=drv.device)
     per = {k: torch.cat([getattr(c, k).reshape(1) for c in cols]).to(drv.dtype) @ W
            for k in COLUMN_KEYS}
@@ -1012,6 +1036,72 @@ def check_column_zonation(p: dict, zone_of_cell: np.ndarray,
                          f"flow model on {str(county_sha256)[:12]}")
 
 
+def check_column_creep(p: dict, label: str = "column", rtol: float = 1e-4) -> None:
+    """The column's recorded rheology against what ``column_from_params`` rebuilds
+    (E1, 2026-10-28). Refuses rather than run a different column under the same name:
+
+    - a parameter set with some but not all aquitard keys (the rebuild drops the term);
+    - ``creep`` "vep" with aquitard keys, or ``creep`` "aquitard" whose sets carrying the
+      term are not exactly the zones its ``creep_zones`` selects (default "all");
+    - the aquitard term on a blended (``zone_blend_km``) or banded column;
+    - a parameter outside a recorded floor: ``tau_min_days_zone`` (per zone VEP tau) and
+      ``aquitard_bounds`` (relative tolerance ``rtol``, float32 fits).
+
+    A JSON without ``creep`` (the Stage-2 shared column) is checked for partial keys only.
+    """
+    sets = column_param_sets(p)
+    where = f"{label}: " if label else ""
+    has = []
+    for i, s in enumerate(sets):
+        n = sum(k in s for k in AQUITARD_KEYS)
+        if 0 < n < len(AQUITARD_KEYS):
+            raise ValueError(f"{where}column {i} carries {n} of the aquitard keys "
+                             f"{AQUITARD_KEYS}; the rebuild would drop the term")
+        has.append(n == len(AQUITARD_KEYS))
+    creep = p.get("creep")
+    cz = p.get("creep_zones", "all")
+    if cz not in CREEP_ZONE_SETS:
+        raise ValueError(f"{where}unknown creep_zones {cz!r} (this code rebuilds "
+                         f"{tuple(CREEP_ZONE_SETS)})")
+    if cz != "all" and "zonal" not in p:
+        raise ValueError(f"{where}creep_zones {cz!r} needs a zonal column")
+    if "zonal" in p:
+        from .zones import zone_names
+
+        try:
+            names = tuple(p.get("zone_names") or zone_names(len(sets)))
+        except ValueError:                       # a non-standard zone count: ids only
+            names = tuple(f"zone{i}" for i in range(len(sets)))
+    else:
+        names = ("fan",) * len(sets)
+    if creep == "vep" and any(has):
+        raise ValueError(f"{where}recorded creep 'vep' but column(s) "
+                         f"{[i for i, h in enumerate(has) if h]} carry the aquitard term")
+    if creep == "aquitard":
+        want = [c == "aquitard" for c in zone_creep("aquitard", cz, names)]
+        if has != want:
+            raise ValueError(f"{where}creep_zones {cz!r} selects the aquitard term in "
+                             f"{[n for n, w in zip(names, want, strict=True) if w]}, the "
+                             f"parameters carry it in "
+                             f"{[n for n, h in zip(names, has, strict=True) if h]}")
+    if any(has) and (float(p.get("zone_blend_km") or 0.0) > 0.0 or p.get("banded")):
+        raise ValueError(f"{where}a blended or banded column cannot carry the aquitard term")
+    floors = p.get("tau_min_days_zone") or {}
+    if floors and "zonal" not in p:
+        raise ValueError(f"{where}tau_min_days_zone needs a zonal column")
+    for i, (n, s) in enumerate(zip(names, sets, strict=True)):
+        f = [float(d) for k, d in floors.items() if zone_key_matches(k, n)]
+        if f and math.exp(float(s["log_tau"])) < max(f) * (1.0 - rtol):
+            raise ValueError(f"{where}column {i} ({n}) tau {math.exp(float(s['log_tau'])):.1f} "
+                             f"d is below its recorded floor {max(f):g} d")
+        if has[i] and p.get("aquitard_bounds"):
+            for k, (lo, hi) in p["aquitard_bounds"].items():
+                v, tol = float(s[k]), rtol * max(1.0, abs(float(lo)), abs(float(hi)))
+                if not float(lo) - tol <= v <= float(hi) + tol:
+                    raise ValueError(f"{where}column {i} ({n}) {k} {v:g} is outside its "
+                                     f"recorded bounds [{lo:g}, {hi:g}]")
+
+
 def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                     epochs: int = 2000, zone_of_cell: np.ndarray | None = None,
                     zone_weights=None, hpc0_fast_days: float | None = None,
@@ -1035,11 +1125,17 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
       a county-split column (rung R1c) runs only on a county-split map, and an unsplit
       one only on an unsplit map; ``county_sha256`` (the flow meta's
       ``zone_county_sha256``) must match the column's when both are known. A banded
-      column is easting-only and refused on a county-split map."""
+      column is easting-only and refused on a county-split map.
+    - A per-zone column with the aquitard term in some zones only (``calibrate_coupled
+      --creep-zones``, E1 2026-10-28) rebuilds each zone from its own keys
+      (``column_from_params``); ``check_column_creep`` first refuses a JSON whose
+      recorded creep, creep zones or floors the parameters do not match, and the term
+      is refused on a blended column."""
     if vep_json and os.path.exists(vep_json):
         with open(vep_json) as fh:
             p = json.load(fh)
         check_supported_column(p, label=vep_json)
+        check_column_creep(p, label=vep_json)
         p, changed = release_fast_startup(p, hpc0_fast_days)
         if changed:
             p["hpc0_released"] = {"tau_days_below": float(hpc0_fast_days),
@@ -1088,6 +1184,9 @@ def load_or_fit_vep(vep_json: str | None, ddir: str | None, hf, device,
                 w_km = float(blend_km)
             zw = None
             if w_km > 0.0:
+                if any(all(k in q for k in AQUITARD_KEYS) for q in p["zonal"]):
+                    raise ValueError(f"{vep_json}: a column with the aquitard term cannot be "
+                                     "rebuilt blended (--column-zone-blend-km)")
                 if zone_weights is None:
                     raise ValueError(f"{vep_json}: a column blended over {w_km:g} km needs "
                                      "zone_weights to rebuild its per-cell parameters")
@@ -1216,7 +1315,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
         log=print, hindcast_gain: float = 0.0, hindcast_every: int = 0,
         dump_delay_state: bool = False, restart_taper_km: float | None = None,
         column_heads: str = "restart", save_members: str | None = None,
-        apex_hold: str = "restart", update_method: str = "innovation") -> dict:
+        apex_hold: str = "restart", update_method: str = "innovation",
+        climatology_end: str | None = None) -> dict:
     """Run every member through every scenario, using innovation updates by default.
 
     ``update_method="field"`` preserves historical IDW updates. Other opt-in fixes:
@@ -1231,6 +1331,9 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
     - ``save_members="yearly"`` keeps every member's December fields of subsidence and
       layer-2 head (``members_yearly`` in the result; ``main`` writes the sidecar
       ``<out>.members.npz``).
+    - ``climatology_end`` (``YYYY-MM``) computes the projection's month-of-year climatology
+      of energy, recharge and canal deliveries from the record months up to it only; the
+      hindcast still runs through the whole (possibly extended) record.
     """
     if update_method not in ("field", "innovation"):
         raise ValueError("update_method must be 'field' or 'innovation'")
@@ -1269,6 +1372,12 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                                  f"{scen.recorded.n_active} cells, the grid has {A} "
                                  "(wrong grid)")
             scen.recorded.check_window(all_dates[T:])
+    if climatology_end is not None:
+        # a window that misses a calendar month is refused here, before any rollout
+        climatology(np.zeros((1, T)), inp.dates, 1, end=climatology_end)
+        n_win = int((inp.dates.to_period("M") <= pd.Period(climatology_end, freq="M")).sum())
+        log(f"projection climatology from {inp.dates[0]:%Y-%m}..{climatology_end} "
+            f"({n_win} of the record's {T} months)")
     n_scen = len(scenarios)
     n_mem = len(members) * len(ic_noises)
     heads_sum = np.zeros((n_scen, L, A, T + horizon), dtype="float64")
@@ -1340,17 +1449,20 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             for si, (scen, rain) in enumerate(scenarios):
                 E_fut, r_fut, fut_dates = future_forcing(inp, scen, horizon, rain_scale=rain,
                                                          zone_of_cell=zone_of_cell,
-                                                         eta_classes=eta_classes)
+                                                         eta_classes=eta_classes,
+                                                         climatology_end=climatology_end)
                 # canal cuts met by pumping (scenario sw_sub; None when not asked for)
                 E_fut = add_irrigation_energy(
                     E_fut, sw_substitution_energy(inp, scen, horizon, scalars, h_start,
-                                                  pump_layer, zone_of_cell, dt=model.dt),
+                                                  pump_layer, zone_of_cell, dt=model.dt,
+                                                  climatology_end=climatology_end),
                     eta_classes)
                 # the delay bed's slow state carries from the record into the projection
                 h_fut, _ = rollout(model, scalars, h_start, E_fut, r_fut,
                                        inp.ground_elev, pump_layer=pump_layer,
                                        recharge_layer=recharge_layer,
-                                       sw_field=future_sw(inp, scen, horizon, zone_of_cell),
+                                       sw_field=future_sw(inp, scen, horizon, zone_of_cell,
+                                                          climatology_end=climatology_end),
                                        u0=u_end, return_state=True,
                                        month0=fut_dates[0].month - 1, apex_from=apex0,
                                        q_extra=future_extra(inp, horizon))
@@ -1370,7 +1482,8 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
                 if h_col0 is not None:
                     h_fc, _ = rollout(model, scalars, h_col0, E_fut, r_fut, inp.ground_elev,
                                       pump_layer=pump_layer, recharge_layer=recharge_layer,
-                                      sw_field=future_sw(inp, scen, horizon, zone_of_cell),
+                                      sw_field=future_sw(inp, scen, horizon, zone_of_cell,
+                                                         climatology_end=climatology_end),
                                       u0=u_end, return_state=True,
                                       month0=fut_dates[0].month - 1, apex_from=apex0,
                                       q_extra=future_extra(inp, horizon))
@@ -1415,6 +1528,7 @@ def run(inp: TwinInputs, members: list[Member], scenarios: list[tuple[PumpingSce
             "subs_std": subs_std.astype("float32"),
             "rheology_labels": [c[0] for c in cols],
             "update_method": update_method,
+            **({"climatology_end": climatology_end} if climatology_end is not None else {}),
             "subs_mean_by_rheology": (subs_sum / n_mem).astype("float32"),
             "scenarios": [s.describe() for s, _ in scenarios],
             "scenario_names": [s.name for s, _ in scenarios],
@@ -1582,6 +1696,13 @@ def main(argv=None) -> None:
                          "heads past the record), so --hindcast-gain nudges through them "
                          "and the origin moves forward (2026-10-28). The months already in "
                          "the record are kept as calibrated")
+    ap.add_argument("--climatology-end", default=None, metavar="YYYY-MM",
+                    help="take the projection's month-of-year climatology of energy, "
+                         "recharge and canal deliveries from the record months up to this "
+                         "one only, while the hindcast still runs through the whole record "
+                         "(with --extend-record-to: a projection that never sees the "
+                         "forcing past the origin it is scored from, 2026-10-28). Default: "
+                         "every record month")
     ap.add_argument("--out", required=True, help="output stem: <out>.npz, <out>.summary.csv")
     for k in ("polygon", "wells_dir", "stations", "pump_census", "pump_kwh",
               "rf_timeseries", "rf_stations", "gw_stations", "et_npz"):
@@ -1644,6 +1765,18 @@ def main(argv=None) -> None:
         inp = truncate_record(inp, args.record_end)
         print(f"record cut after {inp.dates[-1]:%Y-%m}: origin {inp.dates[-1]:%Y-%m}",
               flush=True)
+    if args.climatology_end is not None:
+        # refused now (malformed, or a window missing a calendar month), not after the
+        # column is loaded
+        try:
+            climatology(np.zeros((1, len(inp.dates))), inp.dates, 1, end=args.climatology_end)
+        except ValueError as e:
+            raise SystemExit(f"--climatology-end: {e}") from e
+        if pd.Period(args.climatology_end, freq="M") >= inp.dates.to_period("M")[-1]:
+            # a window reaching the record's end is the default projection: not recorded
+            print(f"--climatology-end {args.climatology_end} covers the whole record "
+                  f"(to {inp.dates[-1]:%Y-%m}): no effect", flush=True)
+            args.climatology_end = None
     attach_sw_recharge(inp, meta, log=lambda m: print(m, flush=True))
     if recorded:
         fut_dates = pd.date_range(inp.dates[-1] + pd.offsets.MonthBegin(1),
@@ -1738,7 +1871,7 @@ def main(argv=None) -> None:
               hindcast_every=args.hindcast_every, dump_delay_state=args.dump_delay_state,
               restart_taper_km=args.restart_taper_km, column_heads=args.column_heads,
               apex_hold=args.apex_hold, update_method=args.update_method,
-              save_members=args.save_members)
+              save_members=args.save_members, climatology_end=args.climatology_end)
     print(f"ran {res['n_members']} members x {len(scenarios)} scenarios x "
           f"{len(res['dates'])} months in {time.perf_counter() - t0:.1f}s", flush=True)
 
@@ -1799,6 +1932,7 @@ def main(argv=None) -> None:
             # opt-in 2026-10-28: only a run with a moved origin records it
             **({"record_end": args.record_end} if args.record_end else {}),
             **({"extend_record_to": args.extend_record_to} if args.extend_record_to else {}),
+            **({"climatology_end": args.climatology_end} if args.climatology_end else {}),
             **({"apex_hold": args.apex_hold} if args.apex_hold != "restart" else {}),
             "column_hpc0_fast_days": args.column_hpc0_fast_days,
             "hpc0_released": [c[2].get("hpc0_released") for c in columns],

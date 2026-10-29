@@ -26,6 +26,7 @@ right; the numbers are not yet evidence.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -212,16 +213,33 @@ class PumpingScenario:
 BASELINE = PumpingScenario("baseline")
 
 
-def climatology(arr: np.ndarray, dates: pd.DatetimeIndex,
-                horizon: int) -> tuple[np.ndarray, pd.DatetimeIndex]:
+def climatology(arr: np.ndarray, dates: pd.DatetimeIndex, horizon: int,
+                end: str | None = None) -> tuple[np.ndarray, pd.DatetimeIndex]:
     """Extend ``(..., T)`` forward by ``horizon`` months using its month-of-year mean.
 
     Returns the extension only (not concatenated), plus its dates, so callers stay explicit
     about what is observation and what is assumption.
+
+    ``end`` (``YYYY-MM``, opt-in 2026-10-28) takes the mean over the record months up to and
+    including ``end`` only, while the extension still starts after ``dates[-1]``: a record
+    continued past the forecast origin (``forward --extend-record-to``) then projects with a
+    climatology that never saw the later months. A window that misses a calendar month is
+    refused rather than filled with NaN. ``None`` (the default) uses every month.
     """
     if horizon <= 0:
         raise ValueError("horizon must be positive")
     months = dates.month.to_numpy()
+    if end is not None:
+        # strict: pandas also reads '2022' (as 2022-01) or 'Dec 2012', silently
+        if not isinstance(end, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", end):
+            raise ValueError(f"climatology end {end!r}: expected YYYY-MM")
+        last = pd.Period(end, freq="M")
+        keep = np.asarray(dates.to_period("M") <= last)
+        missing = sorted(set(range(1, 13)) - set(months[keep].tolist()))
+        if missing:
+            raise ValueError(f"climatology end {end}: the record months up to it "
+                             f"({int(keep.sum())}) miss calendar month(s) {missing}")
+        arr, months = arr[..., keep], months[keep]
     clim = np.stack([np.nanmean(arr[..., months == m], axis=-1) for m in range(1, 13)],
                     axis=-1)                                   # (..., 12)
     future = pd.date_range(dates[-1] + pd.offsets.MonthBegin(1), periods=horizon, freq="MS")

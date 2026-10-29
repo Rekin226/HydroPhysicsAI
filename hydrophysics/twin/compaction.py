@@ -28,16 +28,23 @@ class VEPColumn(nn.Module):
     ``creep="aquitard"`` (opt-in, 2026-09-29) adds the delayed-drainage term of
     :func:`aquitard_compaction` and its three parameters (``log_ska``, ``log_tau_a``,
     ``h_a0``). The default ``"vep"`` registers exactly the historical four parameters.
+
+    ``aquitard_bounds`` (opt-in, E1 2026-10-28) are this column's fitting bounds for the
+    aquitard term, from :func:`aquitard_bounds`; the initial parameters are moved inside
+    them. ``None`` keeps the fixed ``AQUITARD_BOUNDS`` and the historical initial values.
     """
 
     def __init__(self, n_sites: int, dt_days: float = 30.0, device=None,
-                 creep: str = "vep"):
+                 creep: str = "vep", aquitard_bounds: dict | None = None):
         super().__init__()
         if creep not in CREEP_MODES:
             raise ValueError(f"creep must be one of {CREEP_MODES}, got {creep!r}")
         self.n_sites = int(n_sites)
         self.dt_days = float(dt_days)
         self.creep = creep
+        # read by calibrate_coupled._clamp_column; plain dict, not a parameter
+        self.aquitard_bounds = dict(AQUITARD_BOUNDS if aquitard_bounds is None
+                                    else aquitard_bounds)
         z = torch.zeros(self.n_sites, device=device)
         self.log_ske = nn.Parameter(z.clone() + torch.log(torch.tensor(1e-3)))
         self.log_skv = nn.Parameter(z.clone() + torch.log(torch.tensor(2e-2)))
@@ -48,6 +55,10 @@ class VEPColumn(nn.Module):
             self.log_ska = nn.Parameter(z.clone() + torch.log(torch.tensor(AQUITARD_INIT[0])))
             self.log_tau_a = nn.Parameter(z.clone() + torch.log(torch.tensor(AQUITARD_INIT[1])))
             self.h_a0 = nn.Parameter(z.clone() + AQUITARD_INIT[2])
+            if aquitard_bounds is not None:
+                with torch.no_grad():
+                    for k, (lo, hi) in self.aquitard_bounds.items():
+                        getattr(self, k).clamp_(min=lo, max=hi)
 
     def param_keys(self) -> tuple[str, ...]:
         """The parameter names this column carries, in JSON order."""
@@ -71,6 +82,58 @@ AQUITARD_INIT = (1e-2, 3652.5, 0.0)
 AQUITARD_BOUNDS = {"log_ska": (math.log(1e-4), math.log(1.0)),
                    "log_tau_a": (math.log(365.25), math.log(100 * 365.25)),
                    "h_a0": (-30.0, 30.0)}
+# --creep-zones (opt-in, E1 2026-10-28): the column zones that carry the aquitard term in
+# a zonal column; the others stay pure VEP. "all" (None) is the historical column. A name
+# also selects its Changhua copy (``distal`` -> ``distal_changhua``).
+CREEP_ZONE_SETS: dict[str, tuple[str, ...] | None] = {
+    "all": None, "distal": ("distal",), "mid+distal": ("mid", "distal")}
+
+
+def aquitard_bounds(tau_min_years: float | None = None,
+                    ha0_min: float | None = None) -> dict:
+    """``AQUITARD_BOUNDS`` with raised floors (opt-in, E1 2026-10-28).
+
+    ``tau_min_years`` raises the tau_a floor from 1 yr, so the term cannot turn into a
+    near-instant extra elastic storage (the 2026-10 leveling fit put tau_a on its 1-yr
+    floor). ``ha0_min`` raises the h_a0 floor from -30 m; 0 makes the term residual
+    drainage only (the interbeds start at or above the aquifer head, never below it).
+    Floors only tighten: a value below the default floor, or not below the ceiling, is
+    refused. Both None returns the default bounds."""
+    b = dict(AQUITARD_BOUNDS)
+    if tau_min_years is not None:
+        lo, hi = b["log_tau_a"]
+        v = math.log(float(tau_min_years) * 365.25)
+        if not lo - 1e-12 <= v < hi:
+            raise ValueError(f"--aquitard-tau-min-years {tau_min_years:g} must lie in "
+                             f"[{math.exp(lo) / 365.25:g}, {math.exp(hi) / 365.25:g}) yr")
+        b["log_tau_a"] = (max(lo, v), hi)
+    if ha0_min is not None:
+        lo, hi = b["h_a0"]
+        if not lo <= float(ha0_min) < hi:
+            raise ValueError(f"--aquitard-ha0-min {ha0_min:g} must lie in [{lo:g}, {hi:g}) m")
+        b["h_a0"] = (float(ha0_min), hi)
+    return b
+
+
+def zone_key_matches(key: str, name: str) -> bool:
+    """A per-zone flag's key against a column zone name: the name itself or its Changhua
+    copy (``distal`` matches ``distal`` and ``distal_changhua``)."""
+    from .zones import COUNTY_SUFFIX
+
+    return name == key or name == f"{key}{COUNTY_SUFFIX}"
+
+
+def zone_creep(creep: str, creep_zones: str, names) -> list[str]:
+    """The creep mode of each column zone (``names``): ``creep`` where ``creep_zones``
+    selects the zone, ``"vep"`` elsewhere. ``creep_zones="all"`` gives every zone
+    ``creep``, the historical column."""
+    if creep_zones not in CREEP_ZONE_SETS:
+        raise ValueError(f"creep_zones must be one of {tuple(CREEP_ZONE_SETS)}, "
+                         f"got {creep_zones!r}")
+    keys = CREEP_ZONE_SETS[creep_zones]
+    if keys is None:
+        return [creep] * len(names)
+    return [creep if any(zone_key_matches(k, n) for k in keys) else "vep" for n in names]
 
 
 def aquitard_compaction(h: torch.Tensor, log_ska: torch.Tensor, log_tau_a: torch.Tensor,

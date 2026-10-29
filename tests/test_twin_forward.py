@@ -70,6 +70,107 @@ def test_future_forcing_is_climatology_under_the_policy():
     assert torch.allclose(E3[1], torch.full_like(E3[1], 10.0))
 
 
+def _stepped_inputs(T=24):
+    """The fixture with forcing that steps up after the first year, so a climatology over
+    the first year differs from one over the whole record."""
+    from dataclasses import replace
+
+    inp = _inputs(T=T)
+    late = (np.arange(T) >= 12).astype(float)
+    E = {"irrigation": inp.E_by_class["irrigation"] * (1.0 + late),
+         "aquaculture": inp.E_by_class["aquaculture"] + 5.0 * late}
+    r = inp.recharge_field * torch.as_tensor(1.0 + 2.0 * late)
+    return replace(inp, E_by_class=E, recharge_field=r,
+                   sw_field=torch.full((inp.grid.n_active, T), 1e-3, dtype=torch.float64)
+                   * torch.as_tensor(1.0 + 3.0 * late))
+
+
+def test_climatology_end_windows_the_projection_forcing_and_none_is_unchanged():
+    from hydrophysics.twin.forward import future_sw
+
+    inp = _stepped_inputs()
+    scen, _ = parse_scenario("half:irrigation=0.5")
+    E0, r0, d0 = future_forcing(inp, scen, horizon=4)
+    # None and a window holding the whole record are the default, bit for bit
+    for end in (None, "2013-12", "2015-06"):
+        E, r, d = future_forcing(inp, scen, horizon=4, climatology_end=end)
+        assert torch.equal(E, E0) and torch.equal(r, r0) and d.equals(d0)
+        assert torch.equal(future_sw(inp, scen, 4, climatology_end=end),
+                           future_sw(inp, scen, 4))
+    assert torch.allclose(E0, torch.full_like(E0, 0.5 * 150.0 + 12.5))
+    # the first year only: the stepped-up second year never enters the projection, whose
+    # months still follow the record's last one
+    E1, r1, d1 = future_forcing(inp, scen, horizon=4, climatology_end="2012-12")
+    assert d1.equals(d0) and d1[0] == pd.Timestamp("2014-01-01")
+    assert torch.allclose(E1, torch.full_like(E1, 0.5 * 100.0 + 10.0))
+    assert torch.allclose(r1, torch.full_like(r1, 1e-4))
+    E3, _, _ = future_forcing(inp, scen, horizon=4, eta_classes=["irrigation", "aquaculture"],
+                              climatology_end="2012-12")
+    assert torch.allclose(E3[0], torch.full_like(E3[0], 50.0))
+    assert torch.allclose(E3[1], torch.full_like(E3[1], 10.0))
+    sw1 = future_sw(inp, scen, 4, climatology_end="2012-12")
+    assert torch.allclose(sw1, torch.full_like(sw1, 1e-3))
+    # a window missing a calendar month is refused, not filled with NaN
+    for bad in ("2012-06", "2011-12"):
+        with pytest.raises(ValueError, match="miss calendar month"):
+            future_forcing(inp, scen, horizon=4, climatology_end=bad)
+    with pytest.raises(ValueError, match="expected YYYY-MM"):
+        future_forcing(inp, scen, horizon=4, climatology_end="end of 2012")
+
+
+def test_run_climatology_end_keeps_the_hindcast_and_moves_only_the_projection(tmp_path):
+    from dataclasses import replace
+
+    # only the pumping steps up here, so the windowed projection pumps less
+    inp = replace(_stepped_inputs(), sw_field=None, recharge_field=_inputs().recharge_field)
+    p, _ = _theta_file(tmp_path)
+    members = load_members([p])
+    scen = [(parse_scenario("base:irrigation=1")[0], 1.0)]
+    kw = dict(horizon=3, gain=1.0, ic_members=0, ic_sigma=0.1, seed=0,
+              col=VEPColumn(n_sites=1, dt_days=30.0), device="cpu", log=lambda *_: None)
+    full = run(inp, members, scen, **kw)
+    same = run(inp, members, scen, climatology_end="2013-12", **kw)
+    win = run(inp, members, scen, climatology_end="2012-12", **kw)
+    assert "climatology_end" not in full and win["climatology_end"] == "2012-12"
+    np.testing.assert_array_equal(same["heads_mean"], full["heads_mean"])
+    np.testing.assert_array_equal(same["subs_mean"], full["subs_mean"])
+    T = len(inp.dates)
+    np.testing.assert_array_equal(win["heads_mean"][..., :T], full["heads_mean"][..., :T])
+    np.testing.assert_array_equal(win["subs_mean"][..., :T], full["subs_mean"][..., :T])
+    # the first year pumps about half as much: the projection's heads end higher
+    assert (win["heads_mean"][0, 1, :, -1] > full["heads_mean"][0, 1, :, -1]).all()
+    with pytest.raises(ValueError, match="miss calendar month"):
+        run(inp, members, scen, climatology_end="2012-06", **kw)
+
+
+def test_main_records_climatology_end_in_forward_options_only_when_asked(tmp_path,
+                                                                        monkeypatch):
+    from dataclasses import replace
+
+    from hydrophysics.twin import forward
+
+    inp = replace(_stepped_inputs(), sw_field=None)
+    monkeypatch.setattr(forward, "load_twin_inputs", lambda *a, **k: inp)
+    monkeypatch.setattr(forward, "load_columns", lambda *a, **k: [
+        ("column", VEPColumn(n_sites=1, dt_days=30.0),
+         {"log_ske": -9.0, "log_skv": -7.0, "log_tau": 5.0})])
+    p, _ = _theta_file(tmp_path)
+    base = ["--theta", p, "--horizon", "3", "--device", "cpu",
+            "--data", str(tmp_path / "no-data")]
+    opts = {}
+    for name, extra in (("full", []), ("win", ["--climatology-end", "2012-12"])):
+        forward.main(base + extra + ["--out", str(tmp_path / name)])
+        with np.load(tmp_path / f"{name}.npz") as z:
+            opts[name] = (json.loads(str(z["forward_options"])), z["heads_mean"])
+    assert "climatology_end" not in opts["full"][0]
+    assert opts["win"][0]["climatology_end"] == "2012-12"
+    T = len(inp.dates)
+    np.testing.assert_array_equal(opts["win"][1][..., :T], opts["full"][1][..., :T])
+    assert not np.array_equal(opts["win"][1][..., T:], opts["full"][1][..., T:])
+    with pytest.raises(SystemExit, match="--climatology-end"):
+        forward.main(base + ["--climatology-end", "2012-06", "--out", str(tmp_path / "bad")])
+
+
 def test_nudging_moves_observed_layers_only_and_gain_zero_is_a_no_op():
     inp = _inputs()
     A = inp.grid.n_active
@@ -303,3 +404,15 @@ def test_extend_record_appends_the_later_months_and_keeps_the_record():
         extend_record(inp, bad)
     with pytest.raises(ValueError, match="does not continue"):
         extend_record(inp, _inputs(T=12))
+
+
+def test_climatology_end_is_strict_yyyy_mm():
+    from hydrophysics.twin.scenario import climatology
+
+    dates = pd.date_range("2012-01-01", periods=36, freq="MS")
+    arr = np.arange(36.0)[None, :]
+    a, _ = climatology(arr, dates, 3, end="2013-12")
+    assert np.allclose(a, [[6.0, 7.0, 8.0]])          # Jan-Mar of 2012-2013 only
+    for bad in ("2013", "Dec 2013", "2013/12", "2013-12-31", "2013-13"):
+        with pytest.raises(ValueError, match="expected YYYY-MM"):
+            climatology(arr, dates, 3, end=bad)
