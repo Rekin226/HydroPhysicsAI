@@ -42,6 +42,15 @@ _P95 = """async (n) => {
 }"""
 
 
+def _settles(page, js: str, timeout: int = 5000) -> bool:
+    """True once ``js`` holds in the page (the page renders on animation frames)."""
+    try:
+        page.wait_for_function(js, timeout=timeout)
+        return True
+    except Exception:  # noqa: BLE001  (playwright's TimeoutError)
+        return False
+
+
 def _walk(page, errors, width):
     """Drive every feature once. Each assertion appends to ``errors``."""
     def need(cond, msg):
@@ -51,17 +60,23 @@ def _walk(page, errors, width):
     # on a phone the policy bar is a sticky sheet: open it
     if page.locator('#polToggle').is_visible():
         page.locator('#polToggle').click()
-    # preset: the headline names what it avoids
+    # preset: the headline names the tested quantity, the head response in N2's unit (the
+    # subsidence numbers are model internals: claims ledger, rulings 2026-10-29)
     page.locator('#presets button').first.click()
-    page.wait_for_function("document.getElementById('headline').textContent.includes('avoids')", timeout=5000)
+    page.wait_for_function("document.getElementById('headline').textContent"
+                           ".includes('raises the groundwater head')", timeout=5000)
     # the year slider: one timeline, the headline follows it
     page.evaluate("() => { const y = document.getElementById('year'); y.value = 14; y.dispatchEvent(new Event('input', {bubbles: true})); }")
-    page.wait_for_function("document.getElementById('headline').textContent.includes('2026')", timeout=5000)
+    page.wait_for_function("document.getElementById('headline').textContent.includes('Dec 2026')",
+                           timeout=5000)
     page.locator("#yearEnd").click()
-    need("2032" in page.locator("#headline").inner_text(), "Year-end button did not move the headline")
-    # the three others of the six numbers are one click away
+    # the headline re-renders on the next frame: wait for it rather than read it at once
+    need(_settles(page, "document.getElementById('headline').textContent.includes('2032')"),
+         "Year-end button did not move the headline")
+    # the model internals (four of the six numbers, withdrawn from the answer) are one click away
     page.locator("#moreBtn").click()
-    need(page.locator("#tilesMore").is_visible(), "More metrics did not open")
+    need(page.locator("#tilesMore").is_visible(), "Model internals did not open")
+    need(page.locator("#miNote").is_visible(), "Model internals carry no label")
     page.locator('#tA .qbtn').click()
     need(page.locator("#pop").is_visible(), "Tile definition popover did not open")
     page.keyboard.press("Escape")
@@ -107,7 +122,8 @@ def _walk(page, errors, width):
     # language
     page.locator("#lZh").click()
     need(page.locator("html").get_attribute("lang") == "zh-Hant", "Language switch failed")
-    need(any("一" <= ch <= "鿿" for ch in page.locator("#headline").inner_text()), "Headline not translated")
+    need(_settles(page, "/[\\u4e00-\\u9fff]/.test(document.getElementById('headline').textContent)"),
+         "Headline not translated")
     page.screenshot(path=str(Path(errors.out) / f"zh-{width}.png"))
     keys = page.evaluate("[Object.keys(T.en).filter(k => !(k in T.zh)), Object.keys(T.zh).filter(k => !(k in T.en)), [...MISSING]]")
     need(not keys[0] and not keys[1], f"Dictionary keys differ: {keys[0][:5]} {keys[1][:5]}")

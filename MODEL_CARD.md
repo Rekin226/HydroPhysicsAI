@@ -123,6 +123,8 @@ Interval coverage, the registered prospective tests (the physics and the statist
 
 ### Groundwater-subsidence twin: status after Phase 1 (2026-10-23)
 
+The page model is `datum_gate_innov` (theta `stage3_datum_gate`), N2's registered primary model; R0 (`stage3_datum_gate_cwa`) and Q0 are ladder baselines, and the N1 verdicts reach the page model only through a post-hoc, model-only comparison. The text below keeps the Phase 1 record.
+
 The deliverable is the R0 twin, `stage3_datum_gate_cwa`: a 4-layer differentiable flow
 model with a leveling-calibrated VEP column. No Phase 1 candidate beat it under its
 declared gates.
@@ -140,7 +142,7 @@ Head skill:
 - **Fitted period.** Out-of-fold k-fold R² is 0.643 on the design folds and 0.718 on a fresh partition. It sits below inverse-distance interpolation on anomalies.
 - **Masked test (`N1.G1_mask_E2015`).** Refitted without the Jan-May 2015 targets, it reproduces the 2015 drought-spring anomaly better than climatology (RMSE 1.49 against 2.06 m, ratio 0.72) and better than its own zero-response counterfactual (1.75 m), at 135 wells.
 - **Damped amplitude.** The modelled head response is smaller than observed; by how much depends on the test. The observed-on-modelled slope is 2.13 (90 % interval 1.93-2.39) in the 2015 drought spring (G1). That event mixes canal water and rain with pumping, so 2.13 is not a correction factor. On the masked 2016-18 refits (step C, design-time) it is 1.21 (1.06-1.36) in Yunlin and 0.85 (0.63-1.05) in Changhua. The Changhua value was scored on the census model R1c, and its interval includes 1.
-- **Policy response, heads (`N1.policy_response.v1`, step C).** Masked 2016-18 refits beat both no change and reference-year pumping in Yunlin (R0; 75 wells, RMSE 1.38 against 2.21 and 2.29 m) and in Changhua (R1c census model, because R0 carries no Changhua pumping; 59 wells, 1.07 against 1.19 and 1.21 m). The verdict is supported in both counties, on a design-time window.
+- **Policy response, heads (`N1.policy_response.v1`, step C).** Masked 2016-18 refits beat both no change and reference-year pumping in Yunlin (R0; 75 wells, RMSE 1.38 against 2.21 and 2.29 m) and in Changhua (R1c census model, because R0 carries no Changhua pumping; 59 wells, 1.07 against 1.19 and 1.21 m). The verdict is supported in Yunlin on R0, on a design-time window. In Changhua it is supported only on R1c, which failed its own rung (I1.R1c) and is not the page model; the page has no Changhua head lever.
 
 Reported by county, because they differ:
 

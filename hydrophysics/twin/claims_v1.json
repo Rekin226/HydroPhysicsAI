@@ -1,0 +1,5161 @@
+{
+ "schema": "twin-claims-ledger/1",
+ "created": "2026-10-29",
+ "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29 (user ruling). Not a registration; no look logged.",
+ "status_codes": {
+  "S": "supported by a registered test (window flagged when design-time)",
+  "D": "decided by a registered prospective test (pending)",
+  "N": "narrowed / honest wording the record supports",
+  "L": "model-internal, descriptive or UI number, labelled so",
+  "W": "withdrawn from the answer (shown only under Model internals, or not at all)",
+  "U": "world claim shown without support (not allowed)",
+  "X": "shown and inconsistent with the record (not allowed)"
+ },
+ "rulings": [
+  {
+   "id": "user ruling 2026-10-29 (1)",
+   "text": "Claims ledger: narrow or withdraw all unsupported page outputs and fix the false 'pre-registered' / 'registered beforehand' wording.",
+   "answers_draft_questions": [
+    "R-A",
+    "R-B",
+    "R-D"
+   ]
+  },
+  {
+   "id": "user ruling 2026-10-29 (2)",
+   "text": "R1c may be primary of a prospective Changhua head test (disclose its failures)."
+  },
+  {
+   "id": "user ruling 2026-10-29 (3)",
+   "text": "N2 companion dropped."
+  },
+  {
+   "id": "user ruling 2026-10-29 (4)",
+   "text": "Keep 'no calibrated correction factor follows'."
+  },
+  {
+   "id": "user ruling 2026-10-29 (second set)",
+   "text": "N2C page mapping: show the R1c Changhua head lever only if N2C reports 'response supported' (labelled), 'untested' before scoring; same-session order accepted (N2C first); the head tile is N2's unit (the mean at N2's 84 Yunlin monitoring wells, each in its own layer); promote the scoped page after the fixes (the lead does it)."
+  },
+  {
+   "id": "defaults kept 2026-10-29",
+   "text": "Both-county PR primary; the C09 baseline total stays withdrawn; C06 and C07 stay in Model internals."
+  }
+ ],
+ "page": {
+  "template": "hydrophysics/twin/app/template.html",
+  "template_sha256": "9c0293e29651f68134ad3a09cd45345ec74b0b32fd53bff5502be60bf307f790",
+  "html": "results/twin/twin_app_20261029d.html",
+  "html_note": "gitignored build (round-3 fixes plus Townships-tab model-internals labels, 2026-10-29), promoted to the tracked results/twin/twin_app.html on 2026-10-29; the previous page is kept as twin_app_20261024e.html",
+  "forward": "datum_gate_innov.npz",
+  "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
+  "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
+ },
+ "page_scoping": {
+  "answer_functions": [
+   "renderHeadline",
+   "evLineText",
+   "renderStartNote",
+   "renderPolicySummary",
+   "headWhere"
+  ],
+  "answer_functions_note": "checked with every top-level function they call; their own bodies may not read the withdrawn subsidence quantities (answer_must_not_read)",
+  "answer_must_not_read": [
+   "dFwd",
+   "classResponse",
+   "baseFwdFan",
+   "baseFwdFanAt",
+   "fwdField",
+   "yunAvoid",
+   "fieldAvoid"
+  ],
+  "answer_computed_keys": {
+   "BESTK[k]": [
+    "best_clim",
+    "best_clim_trend",
+    "best_persist"
+   ]
+  },
+  "answer_computed_keys_note": "tr() calls whose key is not a literal in the source (a lookup table or a concatenation) cannot be read by claims.tr_keys; each one in the answer functions is listed here with the keys it can take, and a test fails on any unlisted one",
+  "answer_tiles_allowed": [
+   "S",
+   "D",
+   "N",
+   "L"
+  ],
+  "answer_tiles_allowed_note": "L only for an input or accounting number labelled so (the cost tile, C08)",
+  "internals_labelled_keys": [
+   "rkcm",
+   "rank_unit_cm",
+   "sec_avoided",
+   "sec_avoided_s",
+   "ly_dsubs"
+  ],
+  "template_absent": [
+   "size decided by N2",
+   "大小由 N2 判定",
+   "same {v} cm by {H}",
+   "registered beforehand",
+   "pre-registered",
+   "事先登錄"
+  ],
+  "template_anchors": {
+   "def_tW": {
+    "en": "no calibrated correction factor follows",
+    "zh": "不據此推出校正係數"
+   }
+  },
+  "headline_must_not_use": [
+   "hl_yun",
+   "hl_hot",
+   "hl_runs",
+   "hl_rheo",
+   "hl_rheo_ft"
+  ],
+  "default_layer": "dhead",
+  "default_series": "head"
+ },
+ "claims": [
+  {
+   "id": "C01",
+   "where": "page tile tW + time series (head)",
+   "claim": "Head change under a policy in N2's unit (headline, tile tW, start note)",
+   "status_before": "U",
+   "status_current": "S+D",
+   "changes": true,
+   "wording_en": "Head change, policy minus baseline, in this model: the mean over N2's 84 Yunlin monitoring wells, each in its own screened layer (N2's scoring unit; built into the page as an aggregate, payload n2Unit). Tile range line: 'direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only'. Direction supported by the registered masked 2016-18 refit in Yunlin (step C, N1P.C_heads_yunlin), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to the page model only by a post-hoc, model-only comparison (science-05 transfer file); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping. Size likely too small (slopes reported, not gated; no calibrated correction factor follows). N2 decides the within-window response to recorded Yunlin pumping anomalies: 'response supported' needs the 90 % interval of the per-well-demeaned anomaly slope to exclude 0, the slope inside [1/1.5, 1.5] and RMSE(PR) < RMSE(ZR); a 'not supported' result cannot separate the model from its X1 forcing; the level is report-only; scored no earlier than 2028-01-15. Carrying it to a class lever is a linear, model-only transfer.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "ruling_also": "user ruling 2026-10-29 (second set)",
+   "cites": {
+    "registrations": [
+     "N1.phase12_response.v1",
+     "N1.policy_response.v1",
+     "N2.policy_response.prospective_2026-11.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_yunlin",
+     "N1.G1_mask_E2015",
+     "N2P.heads_yunlin_response"
+    ],
+    "reports": [
+     "docs/TWIN_EVIDENCE_2026-10.md",
+     "results/dataprep/reports/N1_gaps_2026-10-24/science-05/transfer_innov_vs_cwa.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Model output, recomputed in the page build from the forward run (cut30 / retire_aqua at Dec 2032): N2 unit +1.19 / +1.41 m (84 of 84 registered Yunlin wells found; station ids from the registered prospective predictions.csv, county code 09; cells and layers from the calibration wells, the same mapping as twin.coverage). Layer-2 context kept in the tile's detail line: named-Yunlin-township cell mean +1.37 m, fan average +0.90 m (about 20 % Changhua spillover). The S part rests on R0 tests only; G1 is consistent context, not the pumping-response test. The page carries no station id, cell or layer: n2Unit holds only the per-year means.",
+   "text_keys": [
+    "i18n:d_head",
+    "i18n:d_head_s",
+    "i18n:def_tW",
+    "i18n:evc_pr_heads_size",
+    "i18n:tHead",
+    "i18n:tW_d",
+    "tile:tW"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "No calibrated correction factor follows."
+     ]
+    }
+   }
+  },
+  {
+   "id": "C02",
+   "where": "page map (dhead layer), readout, section policy heads",
+   "claim": "Per-cell layer-2 head difference",
+   "status_before": "U",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "Per-cell layer-2 head difference; Changhua cells labelled on the map 'pooled; values are spillover, untested' when the model carries no Changhua pumping.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_yunlin",
+     "N1P.C_heads_changhua"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "Cell hatching of Changhua was not added; the map label carries it.",
+   "text_keys": [
+    "i18n:aria_map",
+    "i18n:ly_dhead",
+    "i18n:sec_note"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C03",
+   "where": "page tile tA, headline value, time series (subsidence difference), Compare",
+   "claim": "Fan-average avoided subsidence (cut30 0.94 cm, 98 % of it by Dec 2026)",
+   "status_before": "U",
+   "status_current": "W",
+   "changes": true,
+   "wording_en": "Withdrawn from the headline and the answer tiles. Shown only under 'Model internals' (tile tA, compare column, subsidence series, tA definition with the Yunlin-township figure), labelled 'size untested'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "I1.X5NH.v1"
+    ],
+    "tests": [
+     "N1P.C_lev_yunlin",
+     "N1P.B_dose_yunlin"
+    ],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/I1_X5NH/report.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "Withdrawal rests on pre-origin evidence alone: steps B and C (2016-18, 2007-10) do not support the 1-3-year size, and the distal column does not sink while the 2016-21 next-year leveling shows the coast sinking about 2.5 cm/yr faster than modelled (design-time). Post-origin coastal findings (2023-25) are context only and played no part (U7).",
+   "text_keys": [
+    "i18n:cmp_avoided",
+    "i18n:d_subs",
+    "i18n:d_subs_s",
+    "i18n:def_tA",
+    "i18n:hl_pol",
+    "i18n:hl_yun",
+    "i18n:tA_d_share",
+    "tile:tA"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C04",
+   "where": "page headline (hl_pol) + story step 1",
+   "claim": "'The sentence at the top is the answer' (subsidence cm, township leader)",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "Headline leads with the Yunlin head response (C01) and says subsidence is under Model internals, size untested; the township leader is no longer in the headline. Story step 1: 'The sentence at the top says what this model gives and what has been tested.'",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [
+     "N1P.C_lev_yunlin"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:hl_hot",
+    "i18n:hl_pol",
+    "i18n:st1_b"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C05",
+   "where": "page tile tR + Compare area column",
+   "claim": "Area sinking faster than the threshold (km²)",
+   "status_before": "U",
+   "status_current": "W",
+   "changes": true,
+   "wording_en": "Withdrawn: area tile moved to Model internals, labelled 'untested'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "I1.X5NH.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/I1_X5NH/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Pre-origin grounds only (distal cells 0.00 cm/yr against the 2016-21 next-year leveling bias of about -2.5 cm/yr; no test of the count).",
+   "text_keys": [
+    "i18n:cmp_area",
+    "i18n:def_tR",
+    "i18n:def_tR_runs",
+    "i18n:tArea",
+    "i18n:tR_period",
+    "i18n:tR_q",
+    "tile:tR"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C06",
+   "where": "page tile tH + Rail tab + Compare rail column",
+   "claim": "THSR max angular distortion and its % change (better/worse)",
+   "status_before": "U",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Rail tile moved to Model internals; the rail tab says 'model internals, untested ... an illustrative screening value, not a better/worse verdict'; the (worse)/(better) words are gone.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "No registered test of differential settlement exists.",
+   "text_keys": [
+    "i18n:def_tH",
+    "i18n:rail_dist",
+    "i18n:rail_dist_s",
+    "i18n:rail_gentler",
+    "i18n:rail_note",
+    "i18n:rail_steeper",
+    "i18n:tH_far",
+    "i18n:tH_q",
+    "i18n:tH_seg",
+    "tile:tH"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C07",
+   "where": "page tile tF, per-township and per-cell agreement",
+   "claim": "Sample sign agreement of parameter sets",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Unchanged text; the tile moved to Model internals (it counts sign agreement of the withdrawn subsidence quantity).",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_perrun",
+    "i18n:agree_all",
+    "i18n:agree_none",
+    "i18n:agree_some",
+    "i18n:def_tF",
+    "i18n:kv_hatch",
+    "i18n:lg_hatch_agree",
+    "i18n:tF_cells",
+    "i18n:tF_ic",
+    "i18n:tF_runs",
+    "i18n:tw_sets",
+    "i18n:w_likely",
+    "i18n:w_robust",
+    "tile:tF"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C08",
+   "where": "page tile tC, levers",
+   "claim": "Energy given up (GWh/yr)",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged ('Yunlin metered pumping by water-use class'; no volume shown).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:cut_pct",
+    "i18n:def_tC",
+    "i18n:levers_sub",
+    "i18n:of_energy",
+    "i18n:tC_d",
+    "i18n:tC_d0",
+    "i18n:tC_r",
+    "tile:tC"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C09",
+   "where": "page headline hl_base, tA baseline mode, README",
+   "claim": "Baseline: 'the fan sinks a further 2.9 cm by Dec 2032'",
+   "status_before": "U",
+   "status_current": "W",
+   "changes": true,
+   "wording_en": "Fan baseline total withdrawn from the headline; shown only in the tA definition under Model internals ('its size is untested, and the distal coast does not sink in this model'). The headline names the coast flag.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "I1.X5NH.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/I1_X5NH/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used.",
+   "text_keys": [
+    "i18n:hl_base",
+    "i18n:hl_runs",
+    "i18n:tA_base_adds",
+    "i18n:tA_d_base",
+    "i18n:tA_runs",
+    "i18n:tAvoidB"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C10",
+   "where": "page timing card cv12, rebound line, start note, first-year share",
+   "claim": "Benefit is a one-time rebound; ongoing sinking not slowed",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Unchanged timing card and rebound line. The start note no longer quotes the fan-average cm: it gives the head in N2's unit and is mapped to C01.",
+   "ruling": "user ruling 2026-10-29 (second set)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "docs/TWIN_EVIDENCE_2026-10.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:cv12_alt_rebound",
+    "i18n:cv12_alt_slows",
+    "i18n:cv12_later",
+    "i18n:cv12_reb_b",
+    "i18n:cv12_slow_b",
+    "i18n:cv12_test",
+    "i18n:def_tA_fast_n",
+    "i18n:fast_clause",
+    "i18n:fw_item",
+    "i18n:fw_late",
+    "i18n:rebound",
+    "i18n:rl_item",
+    "i18n:start_note",
+    "i18n:tl_item"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C11",
+   "where": "page Townships tab",
+   "claim": "Per-township avoided cm and leaders",
+   "status_before": "U",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Townships tab (policy view) opens 'Model internals, size untested' and flags townships west of the 182 km line as 'coastal benefit not reliable'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:ta_h_only",
+    "i18n:ta_note",
+    "i18n:tn_pol",
+    "i18n:tw_avoided_val"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C12",
+   "where": "page Ranking tab",
+   "claim": "Class ranking: head rise at N2's wells per class (default) and per 100 GWh/yr; the cm ranking as a labelled model-internals option",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Ranking tab defaults to the head rise in N2's unit when each class is retired (and per 100 GWh/yr forgone); the fan-average cm ranking is the third option, labelled 'Model internals (size untested)', with the A2b near-tie words. rank_limit says the per-class head is a linear, model-only transfer and N2 tests total recorded anomalies, not classes.",
+   "ruling": "user ruling 2026-10-29 (second set)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:rank_gwh_tie",
+    "i18n:rank_gwh_tie_y",
+    "i18n:rank_unit_cm",
+    "i18n:rank_unit_gwh",
+    "i18n:rkcm",
+    "i18n:rkgwh"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C13",
+   "where": "page Changhua levers + Changhua evidence line",
+   "claim": "Changhua class levers",
+   "status_before": "W",
+   "status_current": "W",
+   "changes": false,
+   "wording_en": "Unchanged: 'not available in this model'; Changhua levers not supported.",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "N1.changhua_fix.v1"
+    ],
+    "tests": [
+     "N1P.B_dose_changhua",
+     "N1F.F2_lev_changhua"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Candidate wording from the changhua_inference route (class-share factor x[1.0, 1.4]) is NOT usable until its model-only declaration is run.",
+   "text_keys": [
+    "i18n:evc_pr_ch",
+    "i18n:levers_sub_np",
+    "i18n:pr_ch_nopump"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C14",
+   "where": "page tile ranges, time-series bands, coverage line",
+   "claim": "'90 % band' of the runs",
+   "status_before": "U",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "'The runs' 90 % spread (a parameter spread, not a predictive interval; no registered coverage test) covered {a} of {span} observations, measured after the fact'; tile ranges read 'run spread p10-p90'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "A1.coverage_confirm.v1",
+     "A1r2.coverage3_confirm.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "hydrophysics/twin/coverage.py",
+     "results/twin/coverage_datum_gate_innov/report.json"
+    ],
+    "manifests": [],
+    "context_only": true
+   },
+   "notes": "The rename stands on pre-origin grounds alone: the band is a parameter spread with no registered coverage test (coverage.py: 'not a preregistered prospective validation'). The 2023-26 coverage is an after-the-fact measurement already published; it did not drive the rename (U7). The registered synthetic coverage tests A1.coverage_confirm.v1 and A1r2.coverage3_confirm.v1 concern recovery on synthetic data, not this band's coverage of observations, so they are context, not support.",
+   "text_keys": [
+    "i18n:bn_constructed",
+    "i18n:bn_head",
+    "i18n:bn_runs",
+    "i18n:cov_line",
+    "i18n:dn_con",
+    "i18n:dn_yr",
+    "i18n:evc_cov",
+    "i18n:rng_h_only",
+    "i18n:rng_p",
+    "i18n:rng_scaled"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C15",
+   "where": "page cv9 elastic split",
+   "claim": "Avoided subsidence all elastic",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged (post hoc, model-only).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:cv9_b",
+    "i18n:cv9_b_split",
+    "i18n:cv9_lift",
+    "i18n:cv9_pol"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C16",
+   "where": "page evidence N1 lines + test table N1 rows",
+   "claim": "Registered head (and subsidence) verdicts",
+   "status_before": "S",
+   "status_current": "S",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "N1.changhua_fix.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_yunlin",
+     "N1P.C_heads_changhua",
+     "N1P.C_lev_yunlin",
+     "N1P.C_lev_changhua"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Design-time window (masked recipe designed on fits that saw 2016-18).",
+   "text_keys": [
+    "i18n:evc_pr_heads",
+    "i18n:evc_pr_heads_size",
+    "i18n:pr_beats",
+    "i18n:pr_not_beats",
+    "i18n:tt_n1_heads",
+    "i18n:tt_n1_ref",
+    "i18n:tt_n1_subs"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C17",
+   "where": "README Results 'Policy timing' row",
+   "claim": "'untested which is right'",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "README timing row: the rings' sustained rate sensitivity (+0.0059 per m, 95 % CI 0.0048-0.0071) argues against this column; unresolved.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "docs/TWIN_EVIDENCE_2026-10.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "argues against this column, so the timing is unresolved"
+     ],
+     "absent": [
+      "untested which is right"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C18",
+   "where": "README Results 'Projection 2023-2032' row",
+   "claim": "2.9 / 1.9 / 1.6 cm with no caveat in the cell",
+   "status_before": "U",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "README projection row carries: model trend, not a forecast; subsidence size not supported; distal coast does not sink in the model; withdrawn from the page's answer.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [
+     "N1P.C_lev_yunlin"
+    ],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "Model trend, not a forecast: the size of the subsidence response is not supported"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C19",
+   "where": "README Results 'Creep uncertainty' row",
+   "claim": "Policy effects move < 0.05 cm",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged (model sensitivity).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "policy effects move by under 0.05 cm"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C20",
+   "where": "README status + Limits",
+   "claim": "Head response 'passes ... in both counties (Changhua on R1c)'",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "README Limits: Yunlin supported on R0 (design-time); Changhua only on R1c, which failed its own rung (I1.R1c) and is not the page model; no Changhua head lever.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "I1.R1c.county_zones.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_changhua"
+    ],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "In Changhua it passes only on the census\n  model R1c, which failed its own rung"
+     ],
+     "absent": [
+      "registered masked-refit tests in both\n  counties"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C21",
+   "where": "MODEL_CARD policy-response heads",
+   "claim": "'supported in both counties'",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "MODEL_CARD: same narrowing as C20.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "I1.R1c.county_zones.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_changhua"
+    ],
+    "reports": [
+     "MODEL_CARD.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:MODEL_CARD.md"
+   ],
+   "doc_anchors": {
+    "MODEL_CARD.md": {
+     "present": [
+      "In Changhua it is supported only on R1c, which failed its own rung"
+     ],
+     "absent": [
+      "The verdict is supported in both counties"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C22",
+   "where": "README / MODEL_CARD / page",
+   "claim": "Which model is 'the deliverable' (Q0 vs R0 vs datum_gate_innov)",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "One sentence in README (status, Phase-1 rung) and MODEL_CARD: the page model is datum_gate_innov (N2's registered primary model); R0 and Q0 are ladder baselines; N1 verdicts reach the page model only through a post-hoc, model-only comparison.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N2.policy_response.prospective_2026-11.v1",
+     "N1.policy_response.v1",
+     "I1.X5NH.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "MODEL_CARD.md",
+     "README.md",
+     "results/dataprep/reports/N1_gaps_2026-10-24/science-05/transfer_innov_vs_cwa.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md",
+    "doc:MODEL_CARD.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "The page model is `datum_gate_innov`"
+     ],
+     "absent": [
+      "Q0 stays. The page model is"
+     ]
+    },
+    "MODEL_CARD.md": {
+     "present": [
+      "The page model is `datum_gate_innov`"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C23",
+   "where": "README overview",
+   "claim": "'takes a pumping policy ... animates where and how fast the ground sinks'",
+   "status_before": "U",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "README overview: reports the head response (tested in Yunlin); subsidence only as the model's elastic rebound, labelled model internals, size untested.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_yunlin",
+     "N1P.C_lev_yunlin"
+    ],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "Subsidence is shown only as the model's elastic rebound"
+     ],
+     "absent": [
+      "animates where and how fast the ground sinks"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C24",
+   "where": "README status",
+   "claim": "Head response supported (2015 drought, 2016-18 masked)",
+   "status_before": "S",
+   "status_current": "S",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "N1.phase12_response.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_yunlin",
+     "N1.G1_mask_E2015"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "support the head response to a pumping change in Yunlin"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C25",
+   "where": "README / evidence / page caveat",
+   "claim": "Long-run sinking under a cut: untested",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "docs/TWIN_EVIDENCE_2026-10.md"
+    ],
+    "manifests": []
+   },
+   "notes": "Candidate wordings from other routes (delay-bed form range x1.3-10; 'leveling not yet a valid bound') are NOT usable until their errors-in-variables check passes.",
+   "text_keys": [
+    "i18n:pol_caveat"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "whether a cut changes long-run sinking is untested"
+     ]
+    }
+   }
+  },
+  {
+   "id": "C26",
+   "where": "README Limits",
+   "claim": "Coastal forecasts and coastal benefit not reliable",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged; enforced in the page by C03, C05, C09 and C30.",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "I1.X5NH.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/I1_X5NH/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "A coastal statistical background layer is a candidate (subsidence_stat_layer route) and stays out of the page until it is registered.",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "Coastal forecasts after 2022, and the coastal benefit of\n  a pumping cut, are therefore not reliable."
+     ]
+    }
+   }
+  },
+  {
+   "id": "C27",
+   "where": "README / page evidence + lever caveat",
+   "claim": "1-3 yr subsidence size not supported",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [
+     "N1P.B_dose_yunlin",
+     "N1P.C_lev_yunlin",
+     "N1P.C_lev_changhua"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:evc_pr_subs",
+    "i18n:evc_pr_subs_ok",
+    "i18n:pol_caveat",
+    "i18n:pr_stepb"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C28",
+   "where": "page fast-estimate chip + model card",
+   "claim": "Response-basis superposition error printed",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_fast",
+    "card:kv_rescale",
+    "card:kv_superpos",
+    "i18n:boff",
+    "i18n:prov_assumed",
+    "i18n:prov_base",
+    "i18n:prov_full",
+    "i18n:prov_nl"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C29",
+   "where": "page map (dsubs layer, default), section, compare mini maps, readout",
+   "claim": "Per-cell avoided subsidence fields",
+   "status_before": "U",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "dsubs is no longer the default layer (dhead is); its legend reads 'Model internals: subsidence avoided ..., cm (size untested)'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1",
+     "I1.X5NH.v1"
+    ],
+    "tests": [
+     "N1P.C_lev_yunlin"
+    ],
+    "reports": [
+     "results/dataprep/reports/I1_X5NH/report.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "notes": "Distal-cell hatching was not added; the internals note flags the coast.",
+   "text_keys": [
+    "i18n:aria_map",
+    "i18n:cmp_mini",
+    "i18n:ly_dsubs",
+    "i18n:sec_avoided",
+    "i18n:sec_avoided_s",
+    "i18n:st6_b"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "C30",
+   "where": "page baseline maps/series after Dec 2022 (cumulative, forward, rate, head), township and rail baselines",
+   "claim": "Baseline projection fields",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "Legend 'Projected value, not validated' unchanged; the baseline headline and the internals note add the coast flag (distal zone does not sink in the model; 2016-21 next-year leveling about 2.5 cm/yr faster).",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "I1.X5NH.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "results/dataprep/reports/I1_X5NH/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_proj",
+    "i18n:aria_map",
+    "i18n:lg_proj",
+    "i18n:ly_abs",
+    "i18n:ly_fwd",
+    "i18n:ly_head",
+    "i18n:rail_cum",
+    "i18n:rail_cum_s",
+    "i18n:sbase",
+    "i18n:sec_h_only",
+    "i18n:sec_note",
+    "i18n:st3_b",
+    "i18n:st3_low",
+    "i18n:th_base_fwd",
+    "i18n:tn_base",
+    "i18n:ts_subs_label",
+    "i18n:ts_subs_short",
+    "i18n:tw_base_val"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E01",
+   "where": "page evidence line + test table",
+   "claim": "New-data check: frozen forecast vs simple baselines on 2023-26 heads",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged; keep 'retrospective, not a preregistered prospective evaluation'.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/challenge.py",
+     "results/twin/new_data_challenge_innov/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "After-the-fact score on post-origin heads; never a selection input (U7).",
+   "text_keys": [
+    "i18n:ev_nc_fail",
+    "i18n:ev_nc_pass",
+    "i18n:evc_nc_fail",
+    "i18n:evc_nc_pass",
+    "i18n:tt_new"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E02",
+   "where": "page evidence line",
+   "claim": "Prospective heads test registered 2026-10-11 (Nov 2026-Oct 2027), result pending",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "'Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm) ...'",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N2.policy_response.prospective_2026-11.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/twin/prospective_2026-11/manifest.json"
+    ],
+    "manifests": [
+     "results/twin/prospective_2026-11/manifest.json"
+    ]
+   },
+   "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm.",
+   "text_keys": [
+    "i18n:evc_pro",
+    "i18n:evc_pro_nodates"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E03",
+   "where": "page evidence line",
+   "claim": "Statistical layer 2023-26 retrospective score",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "results/twin/hybrid_datum_gate_innov/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:evc_hyb"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E04",
+   "where": "page evidence line",
+   "claim": "Statistical layer registered prospectively (2026-10-11)",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "'Statistical layer registered prospectively by manifest hash on {reg}, before the current registry ...'",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "I1.hybrid_tf.prospective_2026-11.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/twin/prospective_2026-11_hybrid/manifest.json"
+    ],
+    "manifests": [
+     "results/twin/prospective_2026-11_hybrid/manifest.json"
+    ]
+   },
+   "notes": "The registration is the hybrid manifest (2026-10-11). I1.hybrid_tf (2026-10-20, an ARX model) uses this AR(1) layer only as a comparator.",
+   "text_keys": [
+    "i18n:evc_hyb_reg"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E05",
+   "where": "page evidence line",
+   "claim": "2023-25 compaction rings: model vs continued-rate baseline",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged (after-the-fact ring score, labelled as such).",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "I1.X5NH.v1",
+     "N1.rings_designtime.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/twin/ring_holdout_ref2023/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Draft proposal 'looked at during design (I1.X5NH)' not applied; open. GNSS numbers in the same report are mapped to E19.",
+   "text_keys": [
+    "i18n:evc_ring",
+    "i18n:evc_ring_ref"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E06",
+   "where": "page evidence line",
+   "claim": "Deep benchmarks from WRA monthly reports",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged ('report-only, not independent skill'; U7 selection-contaminated).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "results/twin/deep_pile_holdout/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Observation-scored world claim: N with the U7 report-only label (draft had L).",
+   "text_keys": [
+    "i18n:evc_pile",
+    "i18n:evc_pile_ro"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E07",
+   "where": "page caveat 1, test table, legend, model card",
+   "claim": "Held-out years 2020-22 (non-inferiority after per-well offsets)",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "'scored by the fair rule declared on 2026-09-24, before the current registry (it has no registry entry)' (EN and ZH); viewer_app docstring fixed the same way.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "hydrophysics/twin/viewer_app.py",
+     "results/twin/temporal_fair_rescore.csv"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_heldout",
+    "card:kv_test_period",
+    "i18n:cv1_ex",
+    "i18n:cv1_fail_b",
+    "i18n:cv1_none_b",
+    "i18n:cv1_pass_b",
+    "i18n:cv1_pass_t",
+    "i18n:cv1_passnf_b",
+    "i18n:dm_ext",
+    "i18n:dm_others",
+    "i18n:dm_pass",
+    "i18n:dm_ratio",
+    "i18n:dm_shape",
+    "i18n:ev_tp_fail",
+    "i18n:ev_tp_pass",
+    "i18n:lg_free_fail",
+    "i18n:lg_free_pass",
+    "i18n:pl_heldout",
+    "i18n:st6_b",
+    "i18n:st6_pass",
+    "i18n:tt_heldout"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E08",
+   "where": "page caveat 6, test table, model card",
+   "claim": "Unseen wells (5-fold): head changes and absolute levels vs interpolation",
+   "status_before": "X",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "Model-card row 'Unseen wells (verdict rules declared 2026-09-24/26, before the current registry)'; the 'pre-registered 2026-09-26' docstrings in viewer_app and kfold_scores now say 'declared'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "hydrophysics/twin/kfold_scores.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_datum",
+    "card:kv_unseen",
+    "i18n:cv6_an",
+    "i18n:cv6_b",
+    "i18n:cv6_ok_b",
+    "i18n:cv6_resp",
+    "i18n:cv6_wd",
+    "i18n:pl_abs",
+    "i18n:pl_anom"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E09",
+   "where": "page Trust tab, caveat 10, story step 4, model card, township skill",
+   "claim": "Leveling skill: column out of fold, full-chain hindcast, township bias/R²",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged (fit-period skill on 1997-2021 leveling, described as such).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_chain",
+    "card:kv_column",
+    "card:kv_runs",
+    "i18n:bias_clause",
+    "i18n:bias_little",
+    "i18n:bias_much",
+    "i18n:cv10_b",
+    "i18n:cv10_chain",
+    "i18n:pl_chain",
+    "i18n:pl_lev",
+    "i18n:pooled_low",
+    "i18n:st4_b",
+    "i18n:trust_chain",
+    "i18n:tt_chain",
+    "i18n:tw_bias",
+    "i18n:tw_low",
+    "i18n:tw_r2",
+    "i18n:tw_skill"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E10",
+   "where": "page caveat 10, test table",
+   "claim": "Compaction rings (total-column proxy) R²",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "docs/TWIN_EVIDENCE_2026-10.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_column",
+    "i18n:pl_rings",
+    "i18n:tt_rings"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E11",
+   "where": "page time series dots, story step 3, caveat 11",
+   "claim": "Observed layer-2 wells (2012-22 annual means) and the missed 2022 recovery",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:bn_aux",
+    "i18n:cv11_b",
+    "i18n:cv11_t",
+    "i18n:cv11_txt",
+    "i18n:st3_wells"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E12",
+   "where": "page facts line, caveats 2/4, model card",
+   "claim": "Model configuration numbers (grid, layers, spread radius, bounds, zone lines, runs)",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_bounds",
+    "card:kv_data",
+    "card:kv_pump",
+    "card:kv_runs",
+    "card:kv_zones",
+    "i18n:cv2_b",
+    "i18n:cv2_sk",
+    "i18n:cv4_b",
+    "i18n:facts",
+    "i18n:rank_spread",
+    "i18n:spread_km"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E13",
+   "where": "page caveats 7/8, tile definitions, model card",
+   "claim": "Column start-up/restart artefacts and zone-line steps",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_proj",
+    "card:kv_steps_fixed",
+    "card:kv_steps_removed",
+    "i18n:art_removed",
+    "i18n:cv7_b",
+    "i18n:cv7_fixed_b",
+    "i18n:cv7_taper",
+    "i18n:cv8_b",
+    "i18n:cv8_km",
+    "i18n:cv8_oth",
+    "i18n:cv8_oth_i",
+    "i18n:cv8_rate_e",
+    "i18n:cv8_rate_w",
+    "i18n:def_tA_fixed",
+    "i18n:def_tA_ledger",
+    "i18n:def_tA_removed",
+    "i18n:def_tH_excl",
+    "i18n:kv_proj_val",
+    "i18n:kv_restart_fixed",
+    "i18n:kv_taper",
+    "i18n:rail_excl"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E14",
+   "where": "page headline creep clause, caveat 3, model card",
+   "claim": "Creep ceiling sensitivity",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "README.md"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_creep",
+    "i18n:cv3_b",
+    "i18n:cv3_rheo",
+    "i18n:cv3_tau",
+    "i18n:def_tA_rheo",
+    "i18n:hl_rheo",
+    "i18n:hl_rheo_ft",
+    "i18n:rheo_atmost",
+    "i18n:rheo_lev",
+    "i18n:rheo_long",
+    "i18n:rheo_lt",
+    "i18n:rheo_mv_ft",
+    "i18n:rheo_short",
+    "i18n:rheo_short_ft",
+    "i18n:tau_long",
+    "i18n:tau_yr"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E15",
+   "where": "page tF detail, Compare, previous-model line",
+   "claim": "Previous / alternative model answers and scores",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged (the previous model's scores, named as such).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "Observation-scored world claim: N (draft had L).",
+   "text_keys": [
+    "card:kv_prev",
+    "i18n:alt_cmp",
+    "i18n:alt_cmp_a",
+    "i18n:alt_other_km",
+    "i18n:alt_other_wide",
+    "i18n:alt_prev_km",
+    "i18n:alt_r2",
+    "i18n:alt_s_other",
+    "i18n:alt_s_prev",
+    "i18n:alt_x",
+    "i18n:cmp_alt_km",
+    "i18n:cv10_prev",
+    "i18n:cv2_prev",
+    "i18n:pl",
+    "i18n:pl_base",
+    "i18n:pl_resp",
+    "i18n:tF_alt"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E16",
+   "where": "page test table + model card",
+   "claim": "Policy monotonicity check ('PASS')",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Unchanged (already 'not validation against a measured intervention').",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_polcheck",
+    "card:kv_policy"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E17",
+   "where": "page evidence badge + list",
+   "claim": "'tests p passed, f failed'",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "'checks p passed, f failed (registered tests and earlier screens; table below)'.",
+   "ruling": "user ruling 2026-10-29 (1)",
+   "cites": {
+    "registrations": [
+     "N1.policy_response.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+    ],
+    "manifests": []
+   },
+   "notes": "The count mixes prereg3-registered N1 rows with pre-registry screens.",
+   "text_keys": [
+    "i18n:ev_counts",
+    "i18n:ev_counts_long"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E18",
+   "where": "page status lines, model card",
+   "claim": "Release status, decision note, reproducibility",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [
+     "hydrophysics/twin/viewer_app.py"
+    ],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_repro",
+    "card:kv_status",
+    "i18n:ev_status"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "Z01",
+   "where": "page chrome",
+   "claim": "UI numbers: years, lever settings, counts of pins, steps",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Not a claim.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "card:kv_attrib",
+    "i18n:agree_none_start",
+    "i18n:at_h",
+    "i18n:cmp_empty",
+    "i18n:dec",
+    "i18n:def_of",
+    "i18n:from_y",
+    "i18n:hatch",
+    "i18n:hl_early",
+    "i18n:hl_fit",
+    "i18n:hl_none",
+    "i18n:hl_opt",
+    "i18n:hop_run",
+    "i18n:jan",
+    "i18n:km_n",
+    "i18n:loading_n",
+    "i18n:map_thsr",
+    "i18n:more_metrics",
+    "i18n:pin_dropped",
+    "i18n:pinned_n",
+    "i18n:pins_trimmed",
+    "i18n:pol_current",
+    "i18n:pol_later",
+    "i18n:pp_allcut",
+    "i18n:pp_cut",
+    "i18n:pp_ret",
+    "i18n:pr_all20",
+    "i18n:pr_irr30",
+    "i18n:sel_fan",
+    "i18n:sel_well",
+    "i18n:set_rail",
+    "i18n:st2_b",
+    "i18n:story_step",
+    "i18n:swipe_at",
+    "i18n:why_unvalidated",
+    "i18n:year_end",
+    "i18n:z_fit"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "Z02",
+   "where": "page legends and axes",
+   "claim": "Scale limits, legend ticks, axis ranges",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Not a claim.",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:cmp_mini",
+    "i18n:lg_beyond",
+    "i18n:lg_hatch",
+    "i18n:lg_hatch_full",
+    "i18n:rail_thr",
+    "i18n:rail_thr_above",
+    "i18n:rail_thr_s",
+    "i18n:ts_head_label",
+    "i18n:tshead",
+    "i18n:u_1mm",
+    "i18n:u_5cm"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "Z03",
+   "where": "page 3D drawer",
+   "claim": "Illustrative geometry (exaggeration, layer depths)",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Not a claim (the drawer says no values are read from it).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "reports": [],
+    "manifests": []
+   },
+   "notes": "",
+   "text_keys": [
+    "i18n:d3_aq",
+    "i18n:d3_aq14",
+    "i18n:d3_aq2",
+    "i18n:d3_cum",
+    "i18n:d3_exag",
+    "i18n:d3_gap",
+    "i18n:d3_s1_b",
+    "i18n:d3_s1_t",
+    "i18n:d3_s2_t",
+    "i18n:d3_s3_b",
+    "i18n:d3_s3_t"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "E19",
+   "where": "page evidence (ring/GNSS continuation line), model card",
+   "claim": "2023-25 GNSS rates in the ring-holdout report",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": false,
+   "wording_en": "Unchanged (after-the-fact score of the frozen model; report, not a selection input).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "manifests": [],
+    "reports": [
+     "results/twin/ring_holdout_ref2023/report.json"
+    ]
+   },
+   "notes": "Split from E05 so the rings claim no longer absorbs the GNSS numbers.",
+   "text_keys": [
+    "i18n:evc_ring"
+   ],
+   "doc_anchors": {}
+  },
+  {
+   "id": "Z04",
+   "where": "page payload only",
+   "claim": "Payload numbers the page never reads",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": false,
+   "wording_en": "Not displayed (the leaf key is named nowhere in the page code).",
+   "ruling": null,
+   "cites": {
+    "registrations": [],
+    "tests": [],
+    "manifests": [],
+    "reports": []
+   },
+   "notes": "",
+   "text_keys": [
+    "payload:unreferenced"
+   ],
+   "doc_anchors": {}
+  }
+ ],
+ "display_map": {
+  "tiles": {
+   "tW": [
+    "C01"
+   ],
+   "tC": [
+    "C08"
+   ],
+   "tA": [
+    "C03",
+    "C09"
+   ],
+   "tR": [
+    "C05"
+   ],
+   "tH": [
+    "C06"
+   ],
+   "tF": [
+    "C07"
+   ]
+  },
+  "i18n": {
+   "agree_all": [
+    "C07"
+   ],
+   "agree_none": [
+    "C07"
+   ],
+   "agree_none_start": [
+    "Z01"
+   ],
+   "agree_some": [
+    "C07"
+   ],
+   "alt_cmp": [
+    "E15"
+   ],
+   "alt_cmp_a": [
+    "E15"
+   ],
+   "alt_other_km": [
+    "E15"
+   ],
+   "alt_other_wide": [
+    "E15"
+   ],
+   "alt_prev_km": [
+    "E15"
+   ],
+   "alt_r2": [
+    "E15"
+   ],
+   "alt_s_other": [
+    "E15"
+   ],
+   "alt_s_prev": [
+    "E15"
+   ],
+   "alt_x": [
+    "E15"
+   ],
+   "aria_map": [
+    "C29",
+    "C02",
+    "C30"
+   ],
+   "art_removed": [
+    "E13"
+   ],
+   "at_h": [
+    "Z01"
+   ],
+   "bias_clause": [
+    "E09"
+   ],
+   "bias_little": [
+    "E09"
+   ],
+   "bias_much": [
+    "E09"
+   ],
+   "bn_aux": [
+    "E11"
+   ],
+   "bn_constructed": [
+    "C14"
+   ],
+   "bn_head": [
+    "C14"
+   ],
+   "bn_runs": [
+    "C14"
+   ],
+   "boff": [
+    "C28"
+   ],
+   "cmp_alt_km": [
+    "E15"
+   ],
+   "cmp_area": [
+    "C05"
+   ],
+   "cmp_avoided": [
+    "C03"
+   ],
+   "cmp_empty": [
+    "Z01"
+   ],
+   "cmp_mini": [
+    "Z02",
+    "C29"
+   ],
+   "cov_line": [
+    "C14"
+   ],
+   "cut_pct": [
+    "C08"
+   ],
+   "cv10_b": [
+    "E09"
+   ],
+   "cv10_chain": [
+    "E09"
+   ],
+   "cv10_prev": [
+    "E15"
+   ],
+   "cv11_b": [
+    "E11"
+   ],
+   "cv11_t": [
+    "E11"
+   ],
+   "cv11_txt": [
+    "E11"
+   ],
+   "cv12_alt_rebound": [
+    "C10"
+   ],
+   "cv12_alt_slows": [
+    "C10"
+   ],
+   "cv12_later": [
+    "C10"
+   ],
+   "cv12_reb_b": [
+    "C10"
+   ],
+   "cv12_slow_b": [
+    "C10"
+   ],
+   "cv12_test": [
+    "C10"
+   ],
+   "cv1_ex": [
+    "E07"
+   ],
+   "cv1_fail_b": [
+    "E07"
+   ],
+   "cv1_none_b": [
+    "E07"
+   ],
+   "cv1_pass_b": [
+    "E07"
+   ],
+   "cv1_pass_t": [
+    "E07"
+   ],
+   "cv1_passnf_b": [
+    "E07"
+   ],
+   "cv2_b": [
+    "E12"
+   ],
+   "cv2_prev": [
+    "E15"
+   ],
+   "cv2_sk": [
+    "E12"
+   ],
+   "cv3_b": [
+    "E14"
+   ],
+   "cv3_rheo": [
+    "E14"
+   ],
+   "cv3_tau": [
+    "E14"
+   ],
+   "cv4_b": [
+    "E12"
+   ],
+   "cv6_an": [
+    "E08"
+   ],
+   "cv6_b": [
+    "E08"
+   ],
+   "cv6_ok_b": [
+    "E08"
+   ],
+   "cv6_resp": [
+    "E08"
+   ],
+   "cv6_wd": [
+    "E08"
+   ],
+   "cv7_b": [
+    "E13"
+   ],
+   "cv7_fixed_b": [
+    "E13"
+   ],
+   "cv7_taper": [
+    "E13"
+   ],
+   "cv8_b": [
+    "E13"
+   ],
+   "cv8_km": [
+    "E13"
+   ],
+   "cv8_oth": [
+    "E13"
+   ],
+   "cv8_oth_i": [
+    "E13"
+   ],
+   "cv8_rate_e": [
+    "E13"
+   ],
+   "cv8_rate_w": [
+    "E13"
+   ],
+   "cv9_b": [
+    "C15"
+   ],
+   "cv9_b_split": [
+    "C15"
+   ],
+   "cv9_lift": [
+    "C15"
+   ],
+   "cv9_pol": [
+    "C15"
+   ],
+   "d3_aq": [
+    "Z03"
+   ],
+   "d3_aq14": [
+    "Z03"
+   ],
+   "d3_aq2": [
+    "Z03"
+   ],
+   "d3_cum": [
+    "Z03"
+   ],
+   "d3_exag": [
+    "Z03"
+   ],
+   "d3_gap": [
+    "Z03"
+   ],
+   "d3_s1_b": [
+    "Z03"
+   ],
+   "d3_s1_t": [
+    "Z03"
+   ],
+   "d3_s2_t": [
+    "Z03"
+   ],
+   "d3_s3_b": [
+    "Z03"
+   ],
+   "d3_s3_t": [
+    "Z03"
+   ],
+   "d_head": [
+    "C01"
+   ],
+   "d_head_s": [
+    "C01"
+   ],
+   "d_subs": [
+    "C03"
+   ],
+   "d_subs_s": [
+    "C03"
+   ],
+   "dec": [
+    "Z01"
+   ],
+   "def_of": [
+    "Z01"
+   ],
+   "def_tA": [
+    "C03"
+   ],
+   "def_tA_fast_n": [
+    "C10"
+   ],
+   "def_tA_fixed": [
+    "E13"
+   ],
+   "def_tA_ledger": [
+    "E13"
+   ],
+   "def_tA_removed": [
+    "E13"
+   ],
+   "def_tA_rheo": [
+    "E14"
+   ],
+   "def_tC": [
+    "C08"
+   ],
+   "def_tF": [
+    "C07"
+   ],
+   "def_tH": [
+    "C06"
+   ],
+   "def_tH_excl": [
+    "E13"
+   ],
+   "def_tR": [
+    "C05"
+   ],
+   "def_tR_runs": [
+    "C05"
+   ],
+   "def_tW": [
+    "C01"
+   ],
+   "def_tW_cells": [
+    "C01"
+   ],
+   "dm_ext": [
+    "E07"
+   ],
+   "dm_others": [
+    "E07"
+   ],
+   "dm_pass": [
+    "E07"
+   ],
+   "dm_ratio": [
+    "E07"
+   ],
+   "dm_shape": [
+    "E07"
+   ],
+   "dn_con": [
+    "C14"
+   ],
+   "dn_yr": [
+    "C14"
+   ],
+   "ev_counts": [
+    "E17"
+   ],
+   "ev_counts_long": [
+    "E17"
+   ],
+   "ev_nc_fail": [
+    "E01"
+   ],
+   "ev_nc_pass": [
+    "E01"
+   ],
+   "ev_status": [
+    "E18"
+   ],
+   "ev_tp_fail": [
+    "E07"
+   ],
+   "ev_tp_pass": [
+    "E07"
+   ],
+   "evc_cov": [
+    "C14"
+   ],
+   "evc_hyb": [
+    "E03"
+   ],
+   "evc_hyb_reg": [
+    "E04"
+   ],
+   "evc_nc_fail": [
+    "E01"
+   ],
+   "evc_nc_pass": [
+    "E01"
+   ],
+   "evc_pile": [
+    "E06"
+   ],
+   "evc_pile_ro": [
+    "E06"
+   ],
+   "evc_pr_ch": [
+    "C13"
+   ],
+   "evc_pr_heads": [
+    "C16"
+   ],
+   "evc_pr_heads_size": [
+    "C16",
+    "C01"
+   ],
+   "evc_pr_subs": [
+    "C27"
+   ],
+   "evc_pr_subs_ok": [
+    "C27"
+   ],
+   "evc_pro": [
+    "E02"
+   ],
+   "evc_pro_nodates": [
+    "E02"
+   ],
+   "evc_ring": [
+    "E05",
+    "E19"
+   ],
+   "evc_ring_ref": [
+    "E05"
+   ],
+   "facts": [
+    "E12"
+   ],
+   "fast_clause": [
+    "C10"
+   ],
+   "from_y": [
+    "Z01"
+   ],
+   "fw_item": [
+    "C10"
+   ],
+   "fw_late": [
+    "C10"
+   ],
+   "hatch": [
+    "Z01"
+   ],
+   "hl_base": [
+    "C30"
+   ],
+   "hl_early": [
+    "Z01"
+   ],
+   "hl_fit": [
+    "Z01"
+   ],
+   "hl_hot": [
+    "C04"
+   ],
+   "hl_none": [
+    "Z01"
+   ],
+   "hl_opt": [
+    "Z01"
+   ],
+   "hl_pol": [
+    "C01",
+    "C04"
+   ],
+   "hl_rheo": [
+    "E14"
+   ],
+   "hl_rheo_ft": [
+    "E14"
+   ],
+   "hl_runs": [
+    "C09"
+   ],
+   "hl_yun": [
+    "C03"
+   ],
+   "hop_run": [
+    "Z01"
+   ],
+   "hw_fan": [
+    "C01"
+   ],
+   "hw_n2": [
+    "C01"
+   ],
+   "hw_yun": [
+    "C01"
+   ],
+   "jan": [
+    "Z01"
+   ],
+   "km_n": [
+    "Z01"
+   ],
+   "kv_hatch": [
+    "C07"
+   ],
+   "kv_proj_val": [
+    "E13"
+   ],
+   "kv_restart_fixed": [
+    "E13"
+   ],
+   "kv_taper": [
+    "E13"
+   ],
+   "kv_unseen": [
+    "E08"
+   ],
+   "levers_sub": [
+    "C08"
+   ],
+   "levers_sub_np": [
+    "C13"
+   ],
+   "lg_beyond": [
+    "Z02"
+   ],
+   "lg_free_fail": [
+    "E07"
+   ],
+   "lg_free_pass": [
+    "E07"
+   ],
+   "lg_hatch": [
+    "Z02"
+   ],
+   "lg_hatch_agree": [
+    "C07"
+   ],
+   "lg_hatch_full": [
+    "Z02"
+   ],
+   "lg_proj": [
+    "C30"
+   ],
+   "lg_seq": [
+    "Z02"
+   ],
+   "loading_n": [
+    "Z01"
+   ],
+   "ly_abs": [
+    "C30"
+   ],
+   "ly_dhead": [
+    "C02"
+   ],
+   "ly_dsubs": [
+    "C29"
+   ],
+   "ly_fwd": [
+    "C30"
+   ],
+   "ly_head": [
+    "C30"
+   ],
+   "map_thsr": [
+    "Z01"
+   ],
+   "mi_base": [
+    "C09"
+   ],
+   "mi_note": [
+    "C03",
+    "C05",
+    "C09",
+    "C30"
+   ],
+   "more_metrics": [
+    "Z01"
+   ],
+   "of_energy": [
+    "C08"
+   ],
+   "pin_dropped": [
+    "Z01"
+   ],
+   "pinned_n": [
+    "Z01"
+   ],
+   "pins_trimmed": [
+    "Z01"
+   ],
+   "pl": [
+    "E15"
+   ],
+   "pl_abs": [
+    "E08"
+   ],
+   "pl_anom": [
+    "E08"
+   ],
+   "pl_base": [
+    "E15"
+   ],
+   "pl_chain": [
+    "E09"
+   ],
+   "pl_heldout": [
+    "E07"
+   ],
+   "pl_lev": [
+    "E09"
+   ],
+   "pl_resp": [
+    "E15"
+   ],
+   "pl_rings": [
+    "E10"
+   ],
+   "pol_caveat": [
+    "C27",
+    "C25"
+   ],
+   "pol_current": [
+    "Z01"
+   ],
+   "pol_later": [
+    "Z01"
+   ],
+   "pooled_low": [
+    "E09"
+   ],
+   "pp_allcut": [
+    "Z01"
+   ],
+   "pp_cut": [
+    "Z01"
+   ],
+   "pp_ret": [
+    "Z01"
+   ],
+   "pr_all20": [
+    "Z01"
+   ],
+   "pr_beats": [
+    "C16"
+   ],
+   "pr_ch_nopump": [
+    "C13"
+   ],
+   "pr_irr30": [
+    "Z01"
+   ],
+   "pr_not_beats": [
+    "C16"
+   ],
+   "pr_stepb": [
+    "C27"
+   ],
+   "prov_assumed": [
+    "C28"
+   ],
+   "prov_base": [
+    "C28"
+   ],
+   "prov_full": [
+    "C28"
+   ],
+   "prov_nl": [
+    "C28"
+   ],
+   "rail_cum": [
+    "C30"
+   ],
+   "rail_cum_s": [
+    "C30"
+   ],
+   "rail_dist": [
+    "C06"
+   ],
+   "rail_dist_s": [
+    "C06"
+   ],
+   "rail_excl": [
+    "E13"
+   ],
+   "rail_gentler": [
+    "C06"
+   ],
+   "rail_note": [
+    "C06"
+   ],
+   "rail_steeper": [
+    "C06"
+   ],
+   "rail_thr": [
+    "Z02"
+   ],
+   "rail_thr_above": [
+    "Z02"
+   ],
+   "rail_thr_s": [
+    "Z02"
+   ],
+   "rank_gwh_tie": [
+    "C12",
+    "C03"
+   ],
+   "rank_gwh_tie_y": [
+    "C12",
+    "C03"
+   ],
+   "rank_spread": [
+    "E12"
+   ],
+   "rank_unit_cm": [
+    "C12",
+    "C03"
+   ],
+   "rank_unit_gwh": [
+    "C12",
+    "C01"
+   ],
+   "rank_unit_head": [
+    "C12",
+    "C01"
+   ],
+   "rank_unit_head_l2": [
+    "C12",
+    "C01"
+   ],
+   "rebound": [
+    "C10"
+   ],
+   "rheo_atmost": [
+    "E14"
+   ],
+   "rheo_ftz": [
+    "E14"
+   ],
+   "rheo_lev": [
+    "E14"
+   ],
+   "rheo_long": [
+    "E14"
+   ],
+   "rheo_lt": [
+    "E14"
+   ],
+   "rheo_mv_ft": [
+    "E14"
+   ],
+   "rheo_short": [
+    "E14"
+   ],
+   "rheo_short_ft": [
+    "E14"
+   ],
+   "rkcm": [
+    "C12",
+    "C03"
+   ],
+   "rkgwh": [
+    "C12",
+    "C01"
+   ],
+   "rkhead": [
+    "C12",
+    "C01"
+   ],
+   "rl_item": [
+    "C10"
+   ],
+   "rng_h_only": [
+    "C14"
+   ],
+   "rng_p": [
+    "C14"
+   ],
+   "rng_scaled": [
+    "C14"
+   ],
+   "sbase": [
+    "C30"
+   ],
+   "sec_avoided": [
+    "C29"
+   ],
+   "sec_avoided_s": [
+    "C29"
+   ],
+   "sec_h_only": [
+    "C30"
+   ],
+   "sec_note": [
+    "C30",
+    "C02"
+   ],
+   "sel_fan": [
+    "Z01"
+   ],
+   "sel_well": [
+    "Z01"
+   ],
+   "set_rail": [
+    "Z01"
+   ],
+   "spread_km": [
+    "E12"
+   ],
+   "st1_b": [
+    "C04"
+   ],
+   "st2_b": [
+    "Z01"
+   ],
+   "st3_b": [
+    "C30"
+   ],
+   "st3_low": [
+    "C30"
+   ],
+   "st3_wells": [
+    "E11"
+   ],
+   "st4_b": [
+    "E09"
+   ],
+   "st6_b": [
+    "C29",
+    "E07"
+   ],
+   "st6_pass": [
+    "E07"
+   ],
+   "start_note": [
+    "C01"
+   ],
+   "story_step": [
+    "Z01"
+   ],
+   "swipe_at": [
+    "Z01"
+   ],
+   "tA_base_adds": [
+    "C09"
+   ],
+   "tA_d_base": [
+    "C09"
+   ],
+   "tA_d_share": [
+    "C03"
+   ],
+   "tA_runs": [
+    "C09"
+   ],
+   "tArea": [
+    "C05"
+   ],
+   "tAvoidB": [
+    "C09"
+   ],
+   "tC_d": [
+    "C08"
+   ],
+   "tC_d0": [
+    "C08"
+   ],
+   "tC_r": [
+    "C08"
+   ],
+   "tF_alt": [
+    "E15"
+   ],
+   "tF_cells": [
+    "C07"
+   ],
+   "tF_ic": [
+    "C07"
+   ],
+   "tF_runs": [
+    "C07"
+   ],
+   "tH_far": [
+    "C06"
+   ],
+   "tH_q": [
+    "C06"
+   ],
+   "tH_seg": [
+    "C06"
+   ],
+   "tHead_l2": [
+    "C01"
+   ],
+   "tR_period": [
+    "C05"
+   ],
+   "tR_q": [
+    "C05"
+   ],
+   "tW_d": [
+    "C01"
+   ],
+   "tW_r": [
+    "C01"
+   ],
+   "ta_h_only": [
+    "C11"
+   ],
+   "ta_note": [
+    "C11"
+   ],
+   "tau_long": [
+    "E14"
+   ],
+   "tau_yr": [
+    "E14"
+   ],
+   "th_base_fwd": [
+    "C30"
+   ],
+   "tl_item": [
+    "C10"
+   ],
+   "tn_base": [
+    "C30"
+   ],
+   "tn_pol": [
+    "C11"
+   ],
+   "trust_chain": [
+    "E09"
+   ],
+   "ts_head_label": [
+    "Z02"
+   ],
+   "ts_subs_label": [
+    "C30"
+   ],
+   "ts_subs_short": [
+    "C30"
+   ],
+   "tshead": [
+    "Z02"
+   ],
+   "tt_chain": [
+    "E09"
+   ],
+   "tt_heldout": [
+    "E07"
+   ],
+   "tt_n1_heads": [
+    "C16"
+   ],
+   "tt_n1_ref": [
+    "C16"
+   ],
+   "tt_n1_subs": [
+    "C16"
+   ],
+   "tt_new": [
+    "E01"
+   ],
+   "tt_rings": [
+    "E10"
+   ],
+   "tw_avoided_val": [
+    "C11"
+   ],
+   "tw_base_val": [
+    "C30"
+   ],
+   "tw_bias": [
+    "E09"
+   ],
+   "tw_low": [
+    "E09"
+   ],
+   "tw_r2": [
+    "E09"
+   ],
+   "tw_sets": [
+    "C07"
+   ],
+   "tw_skill": [
+    "E09"
+   ],
+   "u_1mm": [
+    "Z02"
+   ],
+   "u_5cm": [
+    "Z02"
+   ],
+   "w_likely": [
+    "C07"
+   ],
+   "w_robust": [
+    "C07"
+   ],
+   "why_unvalidated": [
+    "Z01"
+   ],
+   "year_end": [
+    "Z01"
+   ],
+   "z_fit": [
+    "Z01"
+   ],
+   "zero_ref": [
+    "Z01"
+   ]
+  },
+  "card_rows": {
+   "kv_unseen": [
+    "E08"
+   ],
+   "kv_datum": [
+    "E08"
+   ],
+   "kv_column": [
+    "E09",
+    "E10"
+   ],
+   "kv_chain": [
+    "E09"
+   ],
+   "kv_heldout": [
+    "E07"
+   ],
+   "kv_policy": [
+    "E16"
+   ],
+   "kv_proj": [
+    "E13",
+    "C30"
+   ],
+   "kv_steps_fixed": [
+    "E13"
+   ],
+   "kv_steps_removed": [
+    "E13"
+   ],
+   "kv_creep": [
+    "E14"
+   ],
+   "kv_perrun": [
+    "C07"
+   ],
+   "kv_pump": [
+    "E12"
+   ],
+   "kv_bounds": [
+    "E12"
+   ],
+   "kv_zones": [
+    "E12"
+   ],
+   "kv_runs": [
+    "E12",
+    "E09"
+   ],
+   "kv_superpos": [
+    "C28"
+   ],
+   "kv_rescale": [
+    "C28"
+   ],
+   "kv_fast": [
+    "C28"
+   ],
+   "kv_prev": [
+    "E15"
+   ],
+   "kv_data": [
+    "E12"
+   ],
+   "kv_attrib": [
+    "Z01"
+   ],
+   "kv_status": [
+    "E18"
+   ],
+   "kv_test_period": [
+    "E07"
+   ],
+   "kv_repro": [
+    "E18"
+   ],
+   "kv_polcheck": [
+    "E16"
+   ]
+  },
+  "functions": {
+   "TNB": [
+    "Z01"
+   ],
+   "altCompare": [
+    "E15"
+   ],
+   "altSentence": [
+    "E15"
+   ],
+   "altWords": [
+    "E15"
+   ],
+   "angDist": [
+    "C06"
+   ],
+   "ariaMap": [
+    "C29",
+    "C02",
+    "C30"
+   ],
+   "artFixedWords": [
+    "E13"
+   ],
+   "biasClause": [
+    "E09"
+   ],
+   "boffWords": [
+    "C28"
+   ],
+   "build3D": [
+    "Z03"
+   ],
+   "buildLevers": [
+    "C08"
+   ],
+   "caveats": [
+    "E14",
+    "E12",
+    "E13",
+    "C15"
+   ],
+   "covLine": [
+    "C14"
+   ],
+   "driftMore": [
+    "E07"
+   ],
+   "elasticCaveat": [
+    "C15"
+   ],
+   "evLineText": [
+    "E01",
+    "E07"
+   ],
+   "evidenceItems": [
+    "E18",
+    "E01",
+    "C14",
+    "E02",
+    "E03",
+    "E04",
+    "E17"
+   ],
+   "fastClause": [
+    "C10"
+   ],
+   "fastWords": [
+    "C10"
+   ],
+   "gwhTieWords": [
+    "C12"
+   ],
+   "hashWrite": [
+    "Z01"
+   ],
+   "headWhere": [
+    "C01"
+   ],
+   "heldOutCaveat": [
+    "E07"
+   ],
+   "hotWords": [
+    "C04"
+   ],
+   "hsrRows": [
+    "C06"
+   ],
+   "legend": [
+    "Z02",
+    "C07",
+    "E07",
+    "C30"
+   ],
+   "levLabel": [
+    "C08"
+   ],
+   "levTexts": [
+    "C08"
+   ],
+   "n1Rows": [
+    "C16"
+   ],
+   "niceTicks": [
+    "Z02"
+   ],
+   "paintField": [
+    "Z02"
+   ],
+   "pileLine": [
+    "E06"
+   ],
+   "policyPhrase": [
+    "Z01"
+   ],
+   "policyResponseLines": [
+    "C16",
+    "C01",
+    "C27",
+    "C13"
+   ],
+   "pooledClause": [
+    "E09"
+   ],
+   "prevLine": [
+    "E15"
+   ],
+   "railLine": [
+    "C06"
+   ],
+   "rangeText": [
+    "C14"
+   ],
+   "rateList": [
+    "C10"
+   ],
+   "readoutHtml": [
+    "C29",
+    "C02",
+    "C30"
+   ],
+   "reboundLine": [
+    "C10"
+   ],
+   "recoveryCaveat": [
+    "E11"
+   ],
+   "renderCard": [
+    "E07",
+    "E08",
+    "E09",
+    "E10",
+    "E12",
+    "E13",
+    "E14",
+    "E16",
+    "E18",
+    "C07",
+    "C28",
+    "E15"
+   ],
+   "renderCompare": [
+    "C03",
+    "C05",
+    "C06",
+    "C01",
+    "C07",
+    "C08",
+    "E15"
+   ],
+   "renderHeadline": [
+    "C01",
+    "C04",
+    "C30",
+    "C28"
+   ],
+   "renderHsr": [
+    "C06"
+   ],
+   "renderRank": [
+    "C12",
+    "C01",
+    "C03"
+   ],
+   "renderSection": [
+    "C29",
+    "C02",
+    "C30",
+    "Z02"
+   ],
+   "renderStartNote": [
+    "C01"
+   ],
+   "renderTS": [
+    "C14",
+    "C03",
+    "C01",
+    "C30",
+    "E11",
+    "E13"
+   ],
+   "renderTiles": [
+    "C01",
+    "C03",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C14",
+    "E15"
+   ],
+   "renderTowns": [
+    "C11",
+    "C30",
+    "E09",
+    "C07"
+   ],
+   "renderTrust": [
+    "E09",
+    "Z02"
+   ],
+   "rheoWords": [
+    "E14"
+   ],
+   "ringLine": [
+    "E05"
+   ],
+   "ringsCaveat": [
+    "E09",
+    "E10"
+   ],
+   "seriesFor": [
+    "C14",
+    "E11",
+    "C30"
+   ],
+   "setLang": [
+    "Z01"
+   ],
+   "sizeCanvas": [
+    "Z01"
+   ],
+   "spreadCaveat": [
+    "E12"
+   ],
+   "spreadWords": [
+    "E12"
+   ],
+   "story": [
+    "C04",
+    "C29",
+    "C30",
+    "E07",
+    "E09",
+    "E11"
+   ],
+   "syncLevers": [
+    "Z01"
+   ],
+   "testRows": [
+    "E01",
+    "E07",
+    "E08",
+    "E09",
+    "E10",
+    "E16",
+    "C16"
+   ],
+   "testTable": [
+    "E15"
+   ],
+   "tileDefHtml": [
+    "C01",
+    "C03",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "E13",
+    "E14",
+    "E15"
+   ],
+   "timingCaveat": [
+    "C10"
+   ],
+   "timingList": [
+    "C10"
+   ],
+   "townAgreeNote": [
+    "C11"
+   ],
+   "townRows": [
+    "C11",
+    "E09"
+   ],
+   "unseenCaveat": [
+    "E08"
+   ],
+   "wire": [
+    "Z01"
+   ],
+   "wireMap": [
+    "Z01"
+   ],
+   "zoneCaveat": [
+    "E13"
+   ]
+  },
+  "arrays": {
+   "cols": [
+    "Z01"
+   ],
+   "rows": [
+    "Z01"
+   ],
+   "zone": [
+    "Z01"
+   ],
+   "town": [
+    "Z01"
+   ],
+   "ground": [
+    "Z02"
+   ],
+   "subsBase": [
+    "C30"
+   ],
+   "rateBase": [
+    "C05",
+    "C30"
+   ],
+   "subsBand": [
+    "C14"
+   ],
+   "headBase": [
+    "C30"
+   ],
+   "dSubs": [
+    "C29",
+    "C03"
+   ],
+   "dHeadL2": [
+    "C02",
+    "C01"
+   ],
+   "dHeadEnd": [
+    "C02"
+   ],
+   "solvedSubs*": [
+    "C29",
+    "C03"
+   ],
+   "solvedHead*": [
+    "C02",
+    "C01"
+   ],
+   "solvedAgree*": [
+    "C07"
+   ]
+  },
+  "payload": {
+   "alt.baseFwd": [
+    "E15"
+   ],
+   "alt.prev.anom_well_median": [
+    "E15"
+   ],
+   "alt.prev.anom_well_median_idw": [
+    "E15"
+   ],
+   "alt.prev.chain.bias": [
+    "E15"
+   ],
+   "alt.prev.chain.n": [
+    "E15"
+   ],
+   "alt.prev.chain.r2": [
+    "E15"
+   ],
+   "alt.prev.chain.rmse": [
+    "E15"
+   ],
+   "alt.prev.column.n_rings": [
+    "E15"
+   ],
+   "alt.prev.column.r2_oof": [
+    "E15"
+   ],
+   "alt.prev.column.rings": [
+    "E15"
+   ],
+   "alt.prev.n_folds": [
+    "E15"
+   ],
+   "alt.prev.r2_anom": [
+    "E15"
+   ],
+   "alt.prev.r2_anom_idw": [
+    "E15"
+   ],
+   "alt.prev.r2_idw": [
+    "E15"
+   ],
+   "alt.prev.r2_kfold": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.datum_share": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.k": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.level_err_rms": [
+    "Z04"
+   ],
+   "alt.prev.temporal.fair.n_excluded": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.n_wells": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.ratio": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.rmse": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.rmse_best": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.rmse_clim": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.rmse_clim_trend": [
+    "Z04"
+   ],
+   "alt.prev.temporal.fair.rmse_raw": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.shape": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.shape_clim": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.shape_clim_trend": [
+    "E15"
+   ],
+   "alt.prev.temporal.fair.shape_tol": [
+    "E15"
+   ],
+   "alt.prev.temporal.rmse": [
+    "E15"
+   ],
+   "alt.prev.temporal.rmse_clim": [
+    "E15"
+   ],
+   "alt.r2_kfold": [
+    "E15"
+   ],
+   "alt.ratio[]": [
+    "E15"
+   ],
+   "alt.resp.cut30.agree_sets": [
+    "E15"
+   ],
+   "alt.resp.cut30.head_mean": [
+    "E15"
+   ],
+   "alt.resp.cut30.n_sets": [
+    "E15"
+   ],
+   "alt.resp.cut30.subs_mean": [
+    "E15"
+   ],
+   "alt.resp.cut30.subs_p[]": [
+    "E15"
+   ],
+   "alt.resp.retire_aqua.agree_sets": [
+    "E15"
+   ],
+   "alt.resp.retire_aqua.head_mean": [
+    "E15"
+   ],
+   "alt.resp.retire_aqua.n_sets": [
+    "E15"
+   ],
+   "alt.resp.retire_aqua.subs_mean": [
+    "E15"
+   ],
+   "alt.resp.retire_aqua.subs_p[]": [
+    "E15"
+   ],
+   "alt.spread_km": [
+    "E15"
+   ],
+   "alt.timing.cut30.at[].avoid": [
+    "E15"
+   ],
+   "alt.timing.cut30.at[].n": [
+    "E15"
+   ],
+   "alt.timing.cut30.at[].year": [
+    "E15"
+   ],
+   "alt.timing.cut30.first_share": [
+    "Z04"
+   ],
+   "alt.timing.cut30.rate_base": [
+    "E15"
+   ],
+   "alt.timing.cut30.rate_pol": [
+    "E15"
+   ],
+   "alt.timing.cut30.rate_years_span[]": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.at[].avoid": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.at[].n": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.at[].year": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.first_share": [
+    "Z04"
+   ],
+   "alt.timing.retire_aqua.rate_base": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.rate_pol": [
+    "E15"
+   ],
+   "alt.timing.retire_aqua.rate_years_span[]": [
+    "E15"
+   ],
+   "basisError.check_irr50_2026.factors[]": [
+    "C28"
+   ],
+   "basisError.check_irr50_2026.fan_cm": [
+    "C28"
+   ],
+   "basisError.check_irr50_2026.p95_cell_cm": [
+    "Z04"
+   ],
+   "basisError.check_irr50_2026.rel": [
+    "C28"
+   ],
+   "basisError.check_irr50_2026.start": [
+    "C28"
+   ],
+   "basisError.cut30.factors[]": [
+    "C28"
+   ],
+   "basisError.cut30.fan_cm": [
+    "C28"
+   ],
+   "basisError.cut30.p95_cell_cm": [
+    "Z04"
+   ],
+   "basisError.cut30.rel": [
+    "C28"
+   ],
+   "basisError.cut30.start": [
+    "C28"
+   ],
+   "basisError.retire_aqua.factors[]": [
+    "C28"
+   ],
+   "basisError.retire_aqua.fan_cm": [
+    "C28"
+   ],
+   "basisError.retire_aqua.p95_cell_cm": [
+    "Z04"
+   ],
+   "basisError.retire_aqua.rel": [
+    "C28"
+   ],
+   "basisError.retire_aqua.start": [
+    "C28"
+   ],
+   "calib.head[]": [
+    "C28"
+   ],
+   "calib.subs[]": [
+    "C28"
+   ],
+   "classes[].gwh": [
+    "C08"
+   ],
+   "hsr.ch[]": [
+    "C06"
+   ],
+   "hsr.idx[][]": [
+    "C06"
+   ],
+   "hsr.mixed[]": [
+    "C06"
+   ],
+   "hsr.reach": [
+    "Z04"
+   ],
+   "hsr.stations[].ch": [
+    "C06"
+   ],
+   "hsr.step": [
+    "C06"
+   ],
+   "hsr.thr": [
+    "C06"
+   ],
+   "hsr.w[][]": [
+    "C06"
+   ],
+   "hsr.x[]": [
+    "C06"
+   ],
+   "hsr.y[]": [
+    "C06"
+   ],
+   "layerDepths.distal[]": [
+    "Z03"
+   ],
+   "layerDepths.mid[]": [
+    "Z03"
+   ],
+   "layerDepths.proximal[]": [
+    "Z03"
+   ],
+   "layerThick.distal[]": [
+    "Z03"
+   ],
+   "layerThick.mid[]": [
+    "Z03"
+   ],
+   "layerThick.proximal[]": [
+    "Z03"
+   ],
+   "memberFields.agreeMin": [
+    "C07"
+   ],
+   "memberFields.area.1[]": [
+    "C05"
+   ],
+   "memberFields.area.2[]": [
+    "C05"
+   ],
+   "memberFields.area.3[]": [
+    "C05"
+   ],
+   "memberFields.baseBandYr[][]": [
+    "C14"
+   ],
+   "memberFields.baseFwd[]": [
+    "C09"
+   ],
+   "memberFields.baseHeadBandYr[][]": [
+    "C14"
+   ],
+   "memberFields.fan.head.baseline[][]": [
+    "C14"
+   ],
+   "memberFields.fan.head.cut30[][]": [
+    "Z04"
+   ],
+   "memberFields.fan.head.retire_aqua[][]": [
+    "Z04"
+   ],
+   "memberFields.fan.subs.baseline[][]": [
+    "C14"
+   ],
+   "memberFields.fan.subs.cut30[][]": [
+    "Z04"
+   ],
+   "memberFields.fan.subs.retire_aqua[][]": [
+    "Z04"
+   ],
+   "memberFields.hsr[]": [
+    "C06"
+   ],
+   "memberFields.n": [
+    "C07"
+   ],
+   "memberFields.n_sets": [
+    "C07"
+   ],
+   "members.base.end[]": [
+    "C14"
+   ],
+   "members.base.end_p[]": [
+    "Z04"
+   ],
+   "members.base.fwd[]": [
+    "C14"
+   ],
+   "members.base.fwd_p[]": [
+    "Z04"
+   ],
+   "members.base.head_p[]": [
+    "C14"
+   ],
+   "members.base.n": [
+    "C14"
+   ],
+   "meta.L": [
+    "Z01"
+   ],
+   "meta.dx": [
+    "Z01"
+   ],
+   "meta.nA": [
+    "Z01"
+   ],
+   "meta.nx": [
+    "Z01"
+   ],
+   "meta.ny": [
+    "Z01"
+   ],
+   "meta.rawFwdFan": [
+    "E13"
+   ],
+   "meta.starts[]": [
+    "Z01"
+   ],
+   "meta.x0": [
+    "Z01"
+   ],
+   "meta.y0": [
+    "Z01"
+   ],
+   "meta.yObs": [
+    "Z01"
+   ],
+   "meta.yRef": [
+    "Z01"
+   ],
+   "meta.yTested": [
+    "Z01"
+   ],
+   "meta.years[]": [
+    "Z01"
+   ],
+   "modelcard.anom_well_median": [
+    "E08"
+   ],
+   "modelcard.anom_well_median_idw": [
+    "E08"
+   ],
+   "modelcard.artefacts.boundaries[].east": [
+    "E13"
+   ],
+   "modelcard.artefacts.boundaries[].km": [
+    "E13"
+   ],
+   "modelcard.artefacts.boundaries[].n_east": [
+    "Z04"
+   ],
+   "modelcard.artefacts.boundaries[].n_west": [
+    "Z04"
+   ],
+   "modelcard.artefacts.boundaries[].rate_east": [
+    "E13"
+   ],
+   "modelcard.artefacts.boundaries[].rate_west": [
+    "E13"
+   ],
+   "modelcard.artefacts.boundaries[].west": [
+    "E13"
+   ],
+   "modelcard.artefacts.bridge_max_abs_cm": [
+    "E13"
+   ],
+   "modelcard.artefacts.bridge_median_cm": [
+    "E13"
+   ],
+   "modelcard.artefacts.bridge_p05_cm": [
+    "Z04"
+   ],
+   "modelcard.artefacts.hpc0_fast_days": [
+    "E13"
+   ],
+   "modelcard.artefacts.n_cells": [
+    "E13"
+   ],
+   "modelcard.artefacts.other_startup_p95_cm": [
+    "Z04"
+   ],
+   "modelcard.artefacts.ref_year": [
+    "Z04"
+   ],
+   "modelcard.artefacts.restart_cell_max": [
+    "E13"
+   ],
+   "modelcard.artefacts.restart_cell_median": [
+    "E13"
+   ],
+   "modelcard.artefacts.restart_cm": [
+    "Z04"
+   ],
+   "modelcard.artefacts.restart_taper_km": [
+    "E13"
+   ],
+   "modelcard.artefacts.startup_cell_max": [
+    "E13"
+   ],
+   "modelcard.artefacts.startup_cell_median": [
+    "E13"
+   ],
+   "modelcard.artefacts.startup_cm": [
+    "Z04"
+   ],
+   "modelcard.artefacts.trend_cm_yr": [
+    "Z04"
+   ],
+   "modelcard.artefacts.window": [
+    "E13"
+   ],
+   "modelcard.artefacts.windows[]": [
+    "Z04"
+   ],
+   "modelcard.artefacts.zone_km": [
+    "E13"
+   ],
+   "modelcard.bounds_at": [
+    "E12"
+   ],
+   "modelcard.bounds_tracked": [
+    "E12"
+   ],
+   "modelcard.chain.bias": [
+    "E09"
+   ],
+   "modelcard.chain.n": [
+    "E09"
+   ],
+   "modelcard.chain.r2": [
+    "E09"
+   ],
+   "modelcard.chain.rmse": [
+    "E09"
+   ],
+   "modelcard.column.n_rings": [
+    "E10"
+   ],
+   "modelcard.column.r2_oof": [
+    "E09",
+    "E10"
+   ],
+   "modelcard.column.rings": [
+    "E10"
+   ],
+   "modelcard.coverage.combined_picp_90": [
+    "C14"
+   ],
+   "modelcard.coverage.inflation_90": [
+    "C14"
+   ],
+   "modelcard.coverage.picp_90": [
+    "C14"
+   ],
+   "modelcard.coverage.scored_months": [
+    "C14"
+   ],
+   "modelcard.coverage.stations": [
+    "C14"
+   ],
+   "modelcard.deep_piles.after_feeds.base_continue.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_continue.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_continue.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_continue.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_zero.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_zero.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_zero.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.base_zero.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_continue.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_continue.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_continue.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_continue.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_zero.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_zero.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_zero.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.base_zero.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.model.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.model.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.model.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.model.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.deep.n_sites": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.model.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.model.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.model.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.model.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.after_feeds.n_sites": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_continue.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_continue.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_continue.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_continue.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_zero.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_zero.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_zero.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.base_zero.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.model.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.model.monthly_increment_corr_median": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.cum.model.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.model.n_inside": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.model.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.cum.model.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum.model.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_continue.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_continue.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_continue.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_continue.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_zero.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_zero.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_zero.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.base_zero.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.min_depth_m": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.cum_deep.model.bias": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.model.monthly_increment_corr_median": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.cum_deep.model.n": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.model.n_inside": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.model.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.cum_deep.model.r2": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.model.rmse": [
+    "E06"
+   ],
+   "modelcard.deep_piles.cum_deep.n_sites": [
+    "E06"
+   ],
+   "modelcard.deep_piles.independence_superseded[]": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.n_sites": [
+    "E06"
+   ],
+   "modelcard.deep_piles.n_values": [
+    "Z04"
+   ],
+   "modelcard.deep_piles.n_verified_values": [
+    "E06"
+   ],
+   "modelcard.fix_eta": [
+    "E12"
+   ],
+   "modelcard.fix_head_extra": [
+    "E12"
+   ],
+   "modelcard.hindcast_r2[]": [
+    "E09"
+   ],
+   "modelcard.hybrid.per_year.2023.clim": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2023.model": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2023.stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2024.clim": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2024.model": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2024.stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2025.clim": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2025.model": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2025.stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2026.clim": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2026.model": [
+    "E03"
+   ],
+   "modelcard.hybrid.per_year.2026.stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.picp_90_stat": [
+    "Z04"
+   ],
+   "modelcard.hybrid.ratio_mix": [
+    "Z04"
+   ],
+   "modelcard.hybrid.ratio_phys": [
+    "E03"
+   ],
+   "modelcard.hybrid.ratio_stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.registration.stations": [
+    "E04"
+   ],
+   "modelcard.hybrid.rmse_clim": [
+    "E03"
+   ],
+   "modelcard.hybrid.rmse_model": [
+    "E03"
+   ],
+   "modelcard.hybrid.rmse_stat": [
+    "E03"
+   ],
+   "modelcard.hybrid.scored_months": [
+    "E03"
+   ],
+   "modelcard.hybrid.stations": [
+    "E03"
+   ],
+   "modelcard.n_folds": [
+    "E08"
+   ],
+   "modelcard.n_members": [
+    "C07"
+   ],
+   "modelcard.n_wells": [
+    "E08"
+   ],
+   "modelcard.new_data_challenge.metrics.clim.bias_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.clim.pooled_rmse_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.clim.rmse_m": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.metrics.clim_trend.bias_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.clim_trend.pooled_rmse_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.clim_trend.rmse_m": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.metrics.model_datum.bias_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.model_datum.pooled_rmse_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.model_datum.rmse_m": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.metrics.model_raw.bias_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.model_raw.pooled_rmse_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.model_raw.rmse_m": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.metrics.persist.bias_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.persist.pooled_rmse_m": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.metrics.persist.rmse_m": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.rmse_ratio": [
+    "Z04"
+   ],
+   "modelcard.new_data_challenge.scored_months": [
+    "E01"
+   ],
+   "modelcard.new_data_challenge.stations": [
+    "E01"
+   ],
+   "modelcard.policy_response.changhua.dose_model_cm_per_gwh": [
+    "C13"
+   ],
+   "modelcard.policy_response.changhua.dose_obs_cm_per_gwh": [
+    "C13"
+   ],
+   "modelcard.policy_response.heads.changhua.rmse_cl_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.changhua.rmse_model_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.changhua.rmse_zr_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.changhua.slope_ci[]": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.changhua.slope_obs_on_model": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.yunlin.rmse_cl_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.yunlin.rmse_model_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.yunlin.rmse_zr_m": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.yunlin.slope_ci[]": [
+    "C16"
+   ],
+   "modelcard.policy_response.heads.yunlin.slope_obs_on_model": [
+    "C16"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.ci_cl[]": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.n_wells": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.ratio_cl": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_cl_m": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_model_m": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_zr_m": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.slope_ci[]": [
+    "C13"
+   ],
+   "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.slope_obs_on_model": [
+    "C13"
+   ],
+   "modelcard.policy_response.step_b.changhua.beta_model_cm_per_gwh": [
+    "C27"
+   ],
+   "modelcard.policy_response.step_b.changhua.beta_obs_cm_per_gwh": [
+    "C27"
+   ],
+   "modelcard.policy_response.step_b.changhua.ratio_ci[]": [
+    "Z04"
+   ],
+   "modelcard.policy_response.step_b.yunlin.beta_model_cm_per_gwh": [
+    "C27"
+   ],
+   "modelcard.policy_response.step_b.yunlin.beta_obs_cm_per_gwh": [
+    "C27"
+   ],
+   "modelcard.policy_response.step_b.yunlin.ratio_ci[]": [
+    "Z04"
+   ],
+   "modelcard.policy_response.subsidence.changhua.rms_cl_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.changhua.rms_model_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.changhua.rms_zr_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.changhua.slope_ci[]": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.changhua.slope_obs_on_model": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.yunlin.rms_cl_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.yunlin.rms_model_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.yunlin.rms_zr_cm": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.yunlin.slope_ci[]": [
+    "C27"
+   ],
+   "modelcard.policy_response.subsidence.yunlin.slope_obs_on_model": [
+    "C27"
+   ],
+   "modelcard.posthoc.elastic.cells_below_preconsolidation_after_2026_01": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.horizon_year": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.lift.at_year": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.lift.left_cm": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.margin_min_m": [
+    "Z04"
+   ],
+   "modelcard.posthoc.elastic.margin_p5_m": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.policies.cut30.elastic_cm": [
+    "Z04"
+   ],
+   "modelcard.posthoc.elastic.policies.cut30.inelastic_cm": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.policies.cut30.share_by_first_dec": [
+    "Z04"
+   ],
+   "modelcard.posthoc.elastic.policies.cut30.total_cm": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.policies.retire_aqua.elastic_cm": [
+    "Z04"
+   ],
+   "modelcard.posthoc.elastic.policies.retire_aqua.inelastic_cm": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.policies.retire_aqua.share_by_first_dec": [
+    "Z04"
+   ],
+   "modelcard.posthoc.elastic.policies.retire_aqua.total_cm": [
+    "C15"
+   ],
+   "modelcard.posthoc.elastic.start": [
+    "C15"
+   ],
+   "modelcard.posthoc.hotspot.cut30.draws.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.draws.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.draws.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.horizon_year": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.lead_minus_second_cm": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.r0_runs.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.r0_runs.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.r0_runs.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.leader_counts.Baozhong": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.leader_counts.Beigang": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.share_leader_in_top3": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.runs.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.cut30.start": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.draws.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.draws.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.draws.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.horizon_year": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.lead_minus_second_cm": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.r0_runs.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.r0_runs.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.r0_runs.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.leader_counts.Mailiao": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.leader_counts.Shuilin": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.leader_counts.Taixi": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.n": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.share_leader_in_top3": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.share_same_leader": [
+    "C04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.runs.share_same_top3_set": [
+    "Z04"
+   ],
+   "modelcard.posthoc.hotspot.retire_aqua.start": [
+    "C04"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2026.cm_share_order_kept": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2026.hi": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2026.lo": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2026.n_draws": [
+    "Z04"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2026.share_order_kept": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2030.cm_share_order_kept": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2030.hi": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2030.lo": [
+    "C12"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2030.n_draws": [
+    "Z04"
+   ],
+   "modelcard.posthoc.per_gwh.starts.2030.share_order_kept": [
+    "C12"
+   ],
+   "modelcard.prospective.stations": [
+    "E02"
+   ],
+   "modelcard.pumping.in_grid_gwh": [
+    "Z04"
+   ],
+   "modelcard.pumping.pooled_gwh": [
+    "Z04"
+   ],
+   "modelcard.r2_anom": [
+    "E08"
+   ],
+   "modelcard.r2_anom_idw": [
+    "E08"
+   ],
+   "modelcard.r2_idw": [
+    "E08"
+   ],
+   "modelcard.r2_kfold": [
+    "E08"
+   ],
+   "modelcard.record_years": [
+    "E12"
+   ],
+   "modelcard.ring_holdout.gnss.n_sites": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.archive.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.archive.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.archive.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.archive.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_continue.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_continue.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_continue.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_continue.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_zero.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_zero.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_zero.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.base_zero.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.climatology.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.climatology.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.climatology.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.gnss.rate.climatology.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.climatology.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_both.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_both.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_both.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_both.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_both.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_pumping.bias": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_pumping.n": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_pumping.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_pumping.r2": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.gnss.rate.observed_pumping.rmse": [
+    "E19"
+   ],
+   "modelcard.ring_holdout.max_ref_age_days": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.archive.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.archive.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.archive.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.archive.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_continue.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_continue.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_continue.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_continue.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_zero.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_zero.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_zero.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.base_zero.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.climatology.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.climatology.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.climatology.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.cum.climatology.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.climatology.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_both.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_both.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_both.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_both.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_both.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_pumping.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_pumping.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_pumping.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_pumping.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.cum.observed_pumping.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.n_sites": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.archive.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.archive.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.archive.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.archive.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_continue.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_continue.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_continue.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_continue.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_zero.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_zero.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_zero.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.base_zero.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.climatology.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.climatology.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.climatology.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.rate.climatology.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.climatology.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_both.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_both.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_both.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_both.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_both.rmse": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_pumping.bias": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_pumping.n": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_pumping.p10_p90_coverage": [
+    "Z04"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_pumping.r2": [
+    "E05"
+   ],
+   "modelcard.ring_holdout.rings.rate.observed_pumping.rmse": [
+    "E05"
+   ],
+   "modelcard.spread_km": [
+    "E12"
+   ],
+   "modelcard.spread_max_km": [
+    "E12"
+   ],
+   "modelcard.temporal.fair.datum_share": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.k": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.level_err_rms": [
+    "Z04"
+   ],
+   "modelcard.temporal.fair.n_excluded": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.n_wells": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.ratio": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.rmse": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.rmse_best": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.rmse_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.rmse_clim_trend": [
+    "Z04"
+   ],
+   "modelcard.temporal.fair.rmse_raw": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.shape": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.shape_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.shape_clim_trend": [
+    "E07"
+   ],
+   "modelcard.temporal.fair.shape_tol": [
+    "E07"
+   ],
+   "modelcard.temporal.fit_months": [
+    "E07"
+   ],
+   "modelcard.temporal.level_err_m": [
+    "E07"
+   ],
+   "modelcard.temporal.months": [
+    "E07"
+   ],
+   "modelcard.temporal.n_wells": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.datum_share": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.k": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.level_err_rms": [
+    "Z04"
+   ],
+   "modelcard.temporal.others[].fair.n_excluded": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.n_wells": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.ratio": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.rmse": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.rmse_best": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.rmse_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.rmse_clim_trend": [
+    "Z04"
+   ],
+   "modelcard.temporal.others[].fair.rmse_raw": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.shape": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.shape_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.shape_clim_trend": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].fair.shape_tol": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].level_err_m": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].r2_shape": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].r2_well_median": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].rmse": [
+    "E07"
+   ],
+   "modelcard.temporal.others[].rmse_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.r2_shape": [
+    "E07"
+   ],
+   "modelcard.temporal.r2_well_median": [
+    "E07"
+   ],
+   "modelcard.temporal.rmse_clim": [
+    "E07"
+   ],
+   "modelcard.temporal.rmse_model": [
+    "E07"
+   ],
+   "modelcard.temporal.spread_km": [
+    "E07"
+   ],
+   "modelcard.well_datum.max_abs_m": [
+    "E08"
+   ],
+   "modelcard.well_datum.mean_abs_m": [
+    "Z04"
+   ],
+   "modelcard.well_datum.n": [
+    "E08"
+   ],
+   "modelcard.well_datum.r2_insample_with_datum": [
+    "E08"
+   ],
+   "modelcard.well_datum.rms_m": [
+    "E08"
+   ],
+   "modelcard.well_datum.sd_m": [
+    "E08"
+   ],
+   "modelcard.zone_boundaries[]": [
+    "E12"
+   ],
+   "n2Unit.basis[][]": [
+    "C01",
+    "C12"
+   ],
+   "n2Unit.n": [
+    "C01"
+   ],
+   "n2Unit.n_registered": [
+    "Z04"
+   ],
+   "n2Unit.solved[][]": [
+    "C01"
+   ],
+   "palettes.cividis[][]": [
+    "Z02"
+   ],
+   "palettes.diverging[][]": [
+    "Z02"
+   ],
+   "palettes.viridis[][]": [
+    "Z02"
+   ],
+   "release.schema": [
+    "Z04"
+   ],
+   "release.sources.alternative.bytes": [
+    "E18"
+   ],
+   "release.sources.alternative_theta.bytes": [
+    "E18"
+   ],
+   "release.sources.basemap.bytes": [
+    "E18"
+   ],
+   "release.sources.basis.bytes": [
+    "E18"
+   ],
+   "release.sources.column.bytes": [
+    "E18"
+   ],
+   "release.sources.coverage.bytes": [
+    "E18"
+   ],
+   "release.sources.deep_piles.bytes": [
+    "E18"
+   ],
+   "release.sources.forward.bytes": [
+    "E18"
+   ],
+   "release.sources.hybrid.bytes": [
+    "E18"
+   ],
+   "release.sources.hybrid_registration.bytes": [
+    "E18"
+   ],
+   "release.sources.member_summary.bytes": [
+    "E18"
+   ],
+   "release.sources.members.bytes": [
+    "E18"
+   ],
+   "release.sources.new_data_challenge.bytes": [
+    "E18"
+   ],
+   "release.sources.policy_response.bytes": [
+    "E18"
+   ],
+   "release.sources.posthoc.bytes": [
+    "E18"
+   ],
+   "release.sources.prospective.bytes": [
+    "E18"
+   ],
+   "release.sources.rail.bytes": [
+    "E18"
+   ],
+   "release.sources.rescore.bytes": [
+    "E18"
+   ],
+   "release.sources.rheology.bytes": [
+    "E18"
+   ],
+   "release.sources.rheology_column.bytes": [
+    "E18"
+   ],
+   "release.sources.ring_holdout.bytes": [
+    "E18"
+   ],
+   "release.sources.rivers.bytes": [
+    "E18"
+   ],
+   "release.sources.temporal.bytes": [
+    "E18"
+   ],
+   "release.sources.theta.bytes": [
+    "E18"
+   ],
+   "release.sources.townships.bytes": [
+    "E18"
+   ],
+   "rheology.baseAlt": [
+    "E14"
+   ],
+   "rheology.baseRef": [
+    "E14"
+   ],
+   "rheology.dBase": [
+    "E14"
+   ],
+   "rheology.dBaseP[]": [
+    "E14"
+   ],
+   "rheology.levOof": [
+    "E14"
+   ],
+   "rheology.levOofAlt": [
+    "E14"
+   ],
+   "rheology.n": [
+    "E14"
+   ],
+   "rheology.policyShift": [
+    "E14"
+   ],
+   "rheology.tauYears": [
+    "E14"
+   ],
+   "rivers[].pts[][]": [
+    "Z01"
+   ],
+   "scales.absHead[]": [
+    "Z02"
+   ],
+   "scales.absSubs[]": [
+    "Z02"
+   ],
+   "scales.dhead.limit": [
+    "Z02"
+   ],
+   "scales.dhead.p98": [
+    "Z04"
+   ],
+   "scales.dsubs.limit": [
+    "Z02"
+   ],
+   "scales.dsubs.p98": [
+    "Z04"
+   ],
+   "scales.fwd[]": [
+    "Z02"
+   ],
+   "scales.rate[]": [
+    "Z02"
+   ],
+   "solved[].area.1.d[]": [
+    "C05"
+   ],
+   "solved[].area.1.pol[]": [
+    "C05"
+   ],
+   "solved[].area.2.d[]": [
+    "C05"
+   ],
+   "solved[].area.2.pol[]": [
+    "C05"
+   ],
+   "solved[].area.3.d[]": [
+    "C05"
+   ],
+   "solved[].area.3.pol[]": [
+    "C05"
+   ],
+   "solved[].bandYrHead[][]": [
+    "C14"
+   ],
+   "solved[].bandYr[][]": [
+    "C14"
+   ],
+   "solved[].factors[]": [
+    "Z01"
+   ],
+   "solved[].fast.dec": [
+    "C10"
+   ],
+   "solved[].fast.peak": [
+    "C10"
+   ],
+   "solved[].hsr.d[]": [
+    "C06"
+   ],
+   "solved[].hsr.pol[]": [
+    "C06"
+   ],
+   "solved[].members.agree": [
+    "C07"
+   ],
+   "solved[].members.agree_sets": [
+    "C07"
+   ],
+   "solved[].members.dhead[]": [
+    "C01"
+   ],
+   "solved[].members.dsubs[]": [
+    "C03"
+   ],
+   "solved[].members.head_mean": [
+    "C01"
+   ],
+   "solved[].members.head_p[]": [
+    "C01"
+   ],
+   "solved[].members.ic_spread": [
+    "C07"
+   ],
+   "solved[].members.n": [
+    "C07"
+   ],
+   "solved[].members.n_sets": [
+    "C07"
+   ],
+   "solved[].members.subs_mean": [
+    "C03"
+   ],
+   "solved[].members.subs_p[]": [
+    "C03"
+   ],
+   "solved[].members.subs_q[]": [
+    "C03"
+   ],
+   "solved[].start": [
+    "Z01"
+   ],
+   "solved[].timing.at[].avoid": [
+    "C10"
+   ],
+   "solved[].timing.at[].n": [
+    "C10"
+   ],
+   "solved[].timing.at[].year": [
+    "C10"
+   ],
+   "solved[].timing.first_share": [
+    "Z04"
+   ],
+   "solved[].timing.rate_base": [
+    "C10"
+   ],
+   "solved[].timing.rate_pol": [
+    "C10"
+   ],
+   "solved[].timing.rate_years_span[]": [
+    "C10"
+   ],
+   "solved[].townAgree[].agree": [
+    "C11"
+   ],
+   "solved[].townAgree[].n": [
+    "C11"
+   ],
+   "townSkill[].bias": [
+    "E09"
+   ],
+   "townSkill[].n": [
+    "E09"
+   ],
+   "townSkill[].r2": [
+    "E09"
+   ],
+   "vScale": [
+    "Z03"
+   ],
+   "wellsFan.model[]": [
+    "E11"
+   ],
+   "wellsFan.n[]": [
+    "E11"
+   ],
+   "wellsFan.n_wells": [
+    "E11"
+   ],
+   "wellsFan.obs[]": [
+    "E11"
+   ],
+   "wellsFan.years[]": [
+    "E11"
+   ]
+  }
+ },
+ "registry_hashes": {
+  "N1.phase12_response.v1": "5b1733aa4d2914ca6b9300ec7d0429ff8b279522e1d121dd5fe5693144551493",
+  "N1.policy_response.v1": "6c3a4e0c36c3b6cfd76197bf7f613769aed22d0a9c9f56c167c4e05875f4e3ce",
+  "N2.policy_response.prospective_2026-11.v1": "bfbbd6b3b5e0580c8b4e9025c18db966a7f728420f5a2d07fb4ccb047cff6b0c",
+  "I1.X5NH.v1": "0e0d2b051a2a45354e6702715e1c4551d6b4cad5bdabbaa901041009585a1f02",
+  "N1.changhua_fix.v1": "be85ab6ba986ebb2e0f2d3fb94ac3650359f24610a5ffdf8585a1ef226353ffa",
+  "A1.coverage_confirm.v1": "79f99e2f3c64cefef69aadf9a3fbb0a046db897eabb273482beda68b369ee7d0",
+  "A1r2.coverage3_confirm.v1": "c17ef3a04e6cebe9bac0bdf100de302e5f0340b229f4f20eb63c45475316bbdd",
+  "I1.R1c.county_zones.v1": "0686d88478b6e4e5d56bc192eb77ac3e347777056090999e0be1ee078c5abf76",
+  "I1.hybrid_tf.prospective_2026-11.v1": "14b26ac889d319e665787be956c370c557ea43fd8540116ddc3c18c1fe0a2239",
+  "N1.rings_designtime.v1": "ea357e5bbb96f4c7486e67d8e5e2ad065bf65d28fbceae771737ee9c043a1829",
+  "results/twin/prospective_2026-11/manifest.json": "d7286551245644b7932fac98751bcd0e837611ffdfbc9a403dd096c8c51af056",
+  "results/twin/prospective_2026-11_hybrid/manifest.json": "8e28ac21a7d590da93875bb02a639399ab9b196661e779aa9dff3538b777b512"
+ }
+}

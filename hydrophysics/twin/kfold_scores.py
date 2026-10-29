@@ -1,4 +1,5 @@
-"""K-fold spatial ANOMALY verdict, beside the legacy absolute one (pre-registered 2026-09-26).
+"""K-fold spatial ANOMALY verdict, beside the legacy absolute one (declared
+2026-09-26, before the current registry; it has no registry entry).
 
     python -m hydrophysics.twin.kfold_scores results/twin_runs/stage3_spreadL_gate [...]
 

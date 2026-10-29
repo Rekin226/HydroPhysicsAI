@@ -9,7 +9,7 @@
 
 [Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
 
-**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence test (2023-25 rings and GNSS) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. These pile scores are report-only since 2026-10-21 (ruling U7): they were used to choose between columns, so they are not independent skill. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. Registered policy-response tests (section 13, masked 2016-18 refits on a design-time window) support the head response to a pumping change in Yunlin, scored on a masked refit of the R0 recipe (`stage3_datum_gate_m1618`; R0 = `stage3_datum_gate_cwa`, the page model's recipe recalibrated on the rebuilt CWA rainfall), and in Changhua only on the census model R1c. The page displays `stage3_datum_gate` (`datum_gate_innov`), which carries no Changhua pumping; section 11 found it within noise of R0 on every earlier test, and a post-hoc, model-only comparison (not a test) puts their policy responses within 2-4 % of each other fan-wide. The R0 recipe scored on Changhua heads (a declared secondary) is marginal. In Yunlin the modelled head response is smaller than observed. The 1-3-year size of the subsidence response is not supported (two tests disagree in direction), and the Changhua levers are not supported. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. The decision page (`results/twin/twin_app.html`, rebuilt 2026-10-24) carries these labels. Inferring the missing quantities from the data already held did not close the open claims (section 14). An identifiability audit shows the calibration data do not pin the size of the head response or the Changhua aquifer properties. A storage-capped column failed its synthetic recovery check. Adding the measured public-supply abstraction improved Changhua head timing but failed the leveling and plausibility gates. The Yunlin head response is now decided prospectively by `N2.policy_response.prospective_2026-11.v1`, registered before its November 2026 to October 2027 window. The subsidence size and the Changhua levers need new data; section 14 lists the requests. The September status follows.
+**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence test (2023-25 rings and GNSS) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. These pile scores are report-only since 2026-10-21 (ruling U7): they were used to choose between columns, so they are not independent skill. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. Registered policy-response tests (section 13, masked 2016-18 refits on a design-time window) support the head response to a pumping change in Yunlin, scored on a masked refit of the R0 recipe (`stage3_datum_gate_m1618`; R0 = `stage3_datum_gate_cwa`, the page model's recipe recalibrated on the rebuilt CWA rainfall), and in Changhua only on the census model R1c. The page displays `stage3_datum_gate` (`datum_gate_innov`), which carries no Changhua pumping; section 11 found it within noise of R0 on every earlier test, and a post-hoc, model-only comparison (not a test) puts their policy responses within 2-4 % of each other fan-wide. The R0 recipe scored on Changhua heads (a declared secondary) is marginal. In Yunlin the modelled head response is smaller than observed. The 1-3-year size of the subsidence response is not supported (two tests disagree in direction), and the Changhua levers are not supported. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. The decision page (`results/twin/twin_app.html`, rebuilt 2026-10-24) carries these labels. Since 2026-10-29 (user ruling) the page is scoped by a claims ledger (`hydrophysics/twin/claims_v1.json`, checked by `tests/test_twin_claims.py`): its answer is the Yunlin head response; the avoided-subsidence, area and rail numbers and the fan-wide baseline total are withdrawn to a labelled "model internals" section, because their size is not supported (rebuilt page `results/twin/twin_app_20261029c.html`, not yet promoted). The page model is `datum_gate_innov` (theta `stage3_datum_gate`), N2's registered primary model; R0 (`stage3_datum_gate_cwa`) and Q0 are ladder baselines, and the N1 verdicts reach the page model only through a post-hoc, model-only comparison. Inferring the missing quantities from the data already held did not close the open claims (section 14). An identifiability audit shows the calibration data do not pin the size of the head response or the Changhua aquifer properties. A storage-capped column failed its synthetic recovery check. Adding the measured public-supply abstraction improved Changhua head timing but failed the leveling and plausibility gates. The Yunlin head response is now decided prospectively by `N2.policy_response.prospective_2026-11.v1`, registered before its November 2026 to October 2027 window. The subsidence size and the Changhua levers need new data; section 14 lists the requests. The September status follows.
 
 **Status in September 2026:** the frozen forecast fails the newer groundwater
 challenge. An observation-update defect is corrected in an opt-in method, but the
@@ -31,8 +31,9 @@ This repository is a physics-based twin of that system. A four-layer groundwater
 on a 1 km grid is driven by the registered-pump electricity census and rain-minus-ET
 recharge, coupled to a visco-elasto-plastic compaction column, and calibrated by gradient
 descent through the solver's own adjoint. It takes a pumping policy, runs the aquifer
-forward, and animates where and how fast the ground sinks, with a parameter ensemble
-around every number.
+forward with a parameter ensemble, and reports the head response to the pumping change, which is
+tested in Yunlin. Subsidence is shown only as the model's elastic rebound, labelled model internals:
+its size under a policy is untested.
 
 ```
 pumping policy ──▶ flow solver ──▶ layer heads ──▶ compaction column ──▶ subsidence ──▶ decision page
@@ -92,10 +93,12 @@ series had been looked at before, so the coastal scores are design-time.
 |---|---|---|
 | Column leveling R2, out of fold | 0.653 | **0.670** |
 | Next-year leveling rate RMSE, 2016–21 origins (all / coastal benchmarks) | 2.43 / 3.31 cm/yr | **2.25 / 2.97** cm/yr |
-| Coastal township minimums met, 2017–22 origins | 11 of 34 | 9 of 34 (**gate failed**) |
+| Coastal township minimums met, 2017–22 origins (validator reading) | 11 of 34 | 9 of 34 |
 | Coastal cells rising, 2023–25 trend | 47 % | 100 % |
 
-The rung failed, so Q0 stays. Nudging with a column refitted on the nudged heads improves
+The rung does not promote, so Q0 stays. Its township gates were scored on WRA summaries
+whose manifests allow only validator use; an erratum relabels them as validator readings
+(`results/dataprep/reports/I1_X5NH/erratum_uses.json`). Nudging with a column refitted on the nudged heads improves
 both the leveling fit and the next-year rates. Nudging under a column fitted on free-running
 heads had cost 0.2 of R2; that loss was the mismatch. Even with the observed heads, though,
 the coast in the model rises in 2023–25. The compaction rings at 元長 and 客厝 sink 1.6–1.8
@@ -112,9 +115,9 @@ column, not the forcing.
 | **Unseen wells, absolute level** | same folds, raw heads | FAIL, R² +0.64 vs +0.70 (the previous model passed, +0.80) |
 | **Compaction column** | 798 leveling benchmarks, site-grouped 5-fold | **+0.652** out of fold |
 | **Full chain hindcast** | 798 leveling sites, 36-member ensemble | R² **+0.639**, RMSE 5.7 cm |
-| **Projection 2023–2032** | fan-mean subsidence, December 2022 to December 2032, mean ± sd over the 36 runs of the page's leveling column | 2.9 ± 0.6 cm baseline · 1.9 with irrigation cut 30 % · 1.6 with aquaculture retired (the forward summary's 3.03 cm pools these runs with the 30-year-creep column's) |
+| **Projection 2023–2032** | fan-mean subsidence, December 2022 to December 2032, mean ± sd over the 36 runs of the page's leveling column | 2.9 ± 0.6 cm baseline · 1.9 with irrigation cut 30 % · 1.6 with aquaculture retired (the forward summary's 3.03 cm pools these runs with the 30-year-creep column's). Model trend, not a forecast: the size of the subsidence response is not supported, the distal coast does not sink in this model, and most of the avoided amount sits in the distal zone that the Limits call unreliable; withdrawn from the page's answer on 2026-10-29 |
 | **Creep uncertainty** | same, with a 30-year creep ceiling | baseline 3.2 cm; policy effects move by under 0.05 cm |
-| **Policy timing** | when the avoided subsidence arrives | within months, then flat: the policy gives a one-time rebound and does not slow the ongoing 0.3 cm/yr sinking (the previous model slowed it; untested which is right). Assumes heads set no new minimum after 2026 |
+| **Policy timing** | when the avoided subsidence arrives | within months, then flat: the policy gives a one-time rebound and does not slow the ongoing 0.3 cm/yr sinking (the previous model slowed it). The 14 compaction rings' sustained next-year rate sensitivity to head level (+0.0059 per m, 95 % CI 0.0048-0.0071; evidence section 6) argues against this column, so the timing is unresolved. Assumes heads set no new minimum after 2026 |
 | **Re-run cost** | 36 members × 3 policies × 21 years | about 50 min on one GPU (the FNO surrogate, 13–34× faster, was trained on the previous model and needs retraining) |
 
 Earlier calibration verdicts, including failed configurations, are recorded in
@@ -247,10 +250,14 @@ the corrected `ring_holdout_ref2023`).
 
 `results/twin/twin_app.html` is a research scenario page: one self-contained file of
 about 2.2 MB, with its 3D renderer bundled for offline use. It opens on a basin overview
-and, on desktop, a schematic four-aquifer scene. A generated headline and six tiles compare the current policy with
-business as usual: subsidence avoided by 2032 with its 36-run range, area sinking faster
-than a threshold, the high-speed-rail gradient, layer-2 head recovery, the pumping energy
-given up, and how many runs agree. Below them sit a 2D map of the policy's change from
+and, on desktop, a schematic four-aquifer scene. A generated headline and two tiles compare the current policy with
+business as usual: the head change at N2's 84 Yunlin monitoring wells, each in its own
+screened layer (N2's scoring unit; its direction is supported on design-time windows, and N2
+decides the within-window response to recorded pumping anomalies), and the pumping energy
+given up. Since 2026-10-29 the subsidence avoided by 2032,
+the area sinking faster than a threshold, the high-speed-rail gradient and the run agreement
+sit in a labelled "model internals" section (claims ledger `hydrophysics/twin/claims_v1.json`),
+because their size is not supported by the registered tests. Below them sit a 2D map of the policy's change from
 baseline, drawn on a fixed symmetric scale, and a linked time series. The series marks the
 fitted and projected periods and has a policy-minus-baseline panel. Historical validation
 dates remain separate from future projection years. A slider per
@@ -340,8 +347,10 @@ in `docs/GPU_SERVER.md`.
   in 2012–2022; no screened variant fixes it (see Results).
 - The 2022 head recovery after the drought is missed by every model tried. Canal deliveries
   with the 2021 curtailment and 2022 resumption explain about a quarter of it.
-- The head response to a pumping change passes registered masked-refit tests in both
-  counties (Changhua on the census model R1c). The 1-3-year size of the subsidence response
+- The head response to a pumping change passes registered masked-refit tests in Yunlin,
+  scored on the R0 recipe on design-time windows. In Changhua it passes only on the census
+  model R1c, which failed its own rung (I1.R1c) and is not the page model; the page has no
+  Changhua head lever. The 1-3-year size of the subsidence response
   does not: on 2016-18 a constant sinking rate partitions the leveling better than the
   column, while the 2007-10 comparison across places points the other way in Yunlin. In this
   model the avoided subsidence is an elastic response that arrives within about a year; its

@@ -1203,6 +1203,44 @@ def test_pumping_block_finds_no_changhua_pumping_in_a_yunlin_only_run():
     assert va._pumping_block(None, {}, town) is None
 
 
+def test_n2_unit_is_an_aggregate_of_the_registered_yunlin_wells(tmp_path):
+    """The head tile's unit (user ruling 2026-10-29): the mean over the registered prospective
+    test's Yunlin wells (county code 09) of policy minus baseline in each well's own layer.
+    Synthetic wells; only means reach the payload."""
+    from types import SimpleNamespace
+
+    from hydrophysics.twin.release import sha256
+
+    reg = tmp_path / "reg"
+    reg.mkdir()
+    pred = reg / "predictions.csv"
+    pd.DataFrame({"station_id": ["09000001", "09000001", "09000002", "07000001"],
+                  "layer": [2, 2, 3, 2]}).to_csv(pred, index=False)
+    man = reg / "manifest.json"
+    man.write_text(json.dumps({"predictions_sha256": sha256(pred)}))
+    inp = SimpleNamespace(sids=["07000001", "09000001", "09000002", "09999999"],
+                          obs_idx=np.array([0, 1, 2, 2]), obs_layer=np.array([1, 1, 2, 0]))
+    rng = np.random.default_rng(0)
+    heads = rng.normal(size=(2, 4, 3, 5)).astype("float32")
+    f = SimpleNamespace(heads=heads, names=["baseline", "cut30"])
+    g = SimpleNamespace(ye=np.array([1, 4]))
+    out = va._n2_unit_block(inp, str(man), f, [{"name": "cut30"}], None, None, g,
+                            log=lambda s: None)
+    want = ((heads[1, 1, 1] - heads[0, 1, 1]) + (heads[1, 2, 2] - heads[0, 2, 2]))[[1, 4]] / 2
+    assert out["n"] == 2 and out["n_registered"] == 2 and out["basis"] is None
+    assert np.allclose(out["solved"][0], want, atol=1e-4)
+    assert set(out) == {"n", "n_registered", "solved", "basis"}     # no ids, cells or layers
+    man.write_text(json.dumps({"predictions_sha256": "0" * 64}))   # changed registration
+    assert va._n2_unit_block(inp, str(man), f, [{"name": "cut30"}], None, None, g,
+                             log=lambda s: None) is None
+    man.write_text(json.dumps({"predictions_sha256": sha256(pred)}))
+    inp.obs_layer = np.array([1, 0, 2, 0])                           # layer disagrees
+    with pytest.raises(ValueError, match="layers differ"):
+        va._n2_unit_block(inp, str(man), f, [{"name": "cut30"}], None, None, g,
+                          log=lambda s: None)
+    assert va._n2_unit_block(None, str(man), f, [], None, None, g) is None
+
+
 def test_template_has_the_policy_label_keys_in_both_languages():
     with open(va.TEMPLATE, encoding="utf-8") as fh:
         t = fh.read()
@@ -1426,7 +1464,7 @@ def test_page_shows_the_posthoc_labels_only_when_given(tmp_path, quiet):
     js = ("() => { D.towns = [{en: 'Baozhong', zh: 'A'}, {en: 'Beigang', zh: 'B'}, "
           "{en: 'Dongshi', zh: 'C'}]; P = {src: 'solved', solved: "
           "D.solved.findIndex(x => x.name === 'cut30')}; S.year = M.years.indexOf(2032); "
-          "S.rank = 'gwh'; renderRank(); "
+          "S.rank = 'cm'; renderRank(); "                 # the A2b words sit with the cm ranking
           "return {hot: hotWords([0, 1, 2]), order: hotWords([1, 0, 2]), "
           "gwh: document.getElementById('rankNote').textContent, "
           "cv: caveats().map(c => c[0] + c[1]).join(' | ')}; }")

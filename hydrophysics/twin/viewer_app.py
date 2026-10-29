@@ -606,6 +606,70 @@ def _wells_block(inp, g, head_ye, public: bool) -> tuple[list | None, dict | Non
     return class_gwh, fan, points
 
 
+# N2.policy_response.prospective_2026-11.v1 scores its primary on the registered prospective
+# test's Yunlin wells: station ids of county code 09 (Changhua's 07 are report-only)
+N2_YUNLIN_PREFIX = "09"
+
+
+def _n2_unit_block(inp, prospective_json: str | None, f, solved: list, basis_npz: str | None,
+                   calib: dict | None, g, log=print) -> dict | None:
+    """The head change in N2's unit, at every year-end: the mean over the registered
+    prospective test's Yunlin wells of policy minus baseline at each well's cell and in its
+    OWN screened layer (N2's contrast). Model output only; the well set comes from the station
+    ids of ``predictions.csv`` beside the manifest (hash-checked), the cells and layers from the
+    calibration wells (``twin.inputs``, the same grid mapping as ``twin.coverage``).
+
+    Aggregates only: no station id, cell or layer enters the page. ``solved[i]`` follows the
+    payload's solved list; ``basis[row]`` (row = start_i * K + class_k) is rescaled by the same
+    per-class head factor as the layer-2 basis, so the page superposes it the same way."""
+    if inp is None or not prospective_json or not os.path.exists(prospective_json):
+        return None
+    pred = os.path.join(os.path.dirname(prospective_json), "predictions.csv")
+    with open(prospective_json) as handle:
+        manifest = json.load(handle)
+    if not os.path.exists(pred) or sha256(pred) != manifest.get("predictions_sha256"):
+        log("N2 unit: the registered predictions are missing or changed; head tile falls back "
+            "to the layer-2 cell mean")
+        return None
+    reg = pd.read_csv(pred, dtype={"station_id": str}, usecols=["station_id", "layer"])
+    reg = reg.drop_duplicates("station_id")
+    yun = reg[reg.station_id.str.startswith(N2_YUNLIN_PREFIX)]
+    pos = {s: i for i, s in enumerate(inp.sids)}
+    rows = np.array([pos[s] for s in yun.station_id if s in pos], dtype="int64")
+    if not len(rows):
+        log("N2 unit: none of the registered Yunlin wells is among the calibration wells")
+        return None
+    cell, lay = inp.obs_idx[rows], inp.obs_layer[rows]
+    reg_lay = yun.set_index("station_id").loc[[inp.sids[i] for i in rows], "layer"].to_numpy()
+    if np.any(reg_lay - 1 != lay):
+        raise ValueError("N2 unit: well layers differ from the registered predictions")
+
+    def unit(heads, s, b):
+        return (heads[s][lay, cell][:, g.ye] - heads[b][lay, cell][:, g.ye]).mean(axis=0)
+
+    out = {"n": int(len(rows)), "n_registered": int(len(yun)),
+           "solved": [np.round(unit(f.heads, f.names.index(x["name"]), 0), 4).tolist()
+                      for x in solved],
+           "basis": None}
+    if basis_npz and calib is not None and os.path.exists(basis_npz):
+        bs = np.load(basis_npz, allow_pickle=False)
+        names = [str(n) for n in bs["scenario_names"]]
+        heads, b, idx = bs["heads_mean"], names.index("baseline"), prep.basis_rows(names)
+        K = len(prep.CLASSES)
+        basis = np.zeros((len(prep.STARTS) * K, len(g.ye)))
+        for si, s0 in enumerate(prep.STARTS):
+            for k, c in enumerate(prep.CLASSES):
+                i = idx.get((c, s0))
+                if i is not None:
+                    basis[si * K + k] = calib["head"][k] * unit(heads, i, b)
+        out["basis"] = np.round(basis, 4).tolist()
+    msg = ", ".join(f"{x['name']} {v[-1]:+.2f} m" for x, v in zip(solved, out["solved"],
+                                                                  strict=True))
+    log(f"N2 unit: {out['n']} of {out['n_registered']} registered Yunlin wells, each in its own "
+        f"layer; head change at the horizon: {msg}")
+    return out
+
+
 def _leveling_block(ldir, g, base_monthly, town_idx, n_towns, public: bool, log,
                     extra: dict | None = None):
     """Leveling support: the chain skill, township skill and (private) the benchmarks.
@@ -717,8 +781,9 @@ def _temporal_block(temporal_npz, temporal_key="auto",
     were tried and how they did.
 
     The verdict is the **fair** one when the scorecard carries it (``verdict_fair``,
-    pre-registered 2026-09-24): each well's constant offset is taken from the fitted years
-    only, late-start wells are left out, and the model's error after that offset must be
+    declared 2026-09-24, before the current registry; it has no registry entry): each
+    well's constant offset is taken from the fitted years only, late-start wells are left
+    out, and the model's error after that offset must be
     within ``fair_k`` of the best simple forecast (climatology, climatology plus trend,
     persistence) with a shape R² no worse than climatology's minus ``fair_shape_tol``. The
     raw RMSE (``rmse_model`` against ``rmse_clim``) is kept: most of it is that offset. A
@@ -865,8 +930,8 @@ def _spread_of(th: dict) -> float | None:
 def _flow_scores(run_dir: str | None, gate_all: dict | None = None) -> dict:
     """The head tests of a flow calibration: the k-fold on levels (``r2_kfold`` against
     IDW) and on head changes after each well's mean (``r2_anom_kfold``, the anomaly verdict
-    pre-registered 2026-09-26, ``twin.kfold_scores``). Read from ``stage3_flow.csv`` of
-    ``run_dir``, else from its ``stage3_kfold_anom.csv``, else from the forward run's gate;
+    declared 2026-09-26, before the current registry, ``twin.kfold_scores``). Read from
+    ``stage3_flow.csv`` of ``run_dir``, else from its ``stage3_kfold_anom.csv``, else from the forward run's gate;
     ``None`` where a number was never computed."""
     gate = (gate_all or {}).get("gate") or {}
     out = {"r2_kfold": gate.get("r2_kfold"), "r2_idw": gate.get("r2_idw"),
@@ -1295,6 +1360,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         except Exception as e:
             log(f"wells and class energies unavailable ({type(e).__name__}: {e})")
     class_gwh, wells_fan, wells_out = _wells_block(inp, g, f.head_ye, public)
+    n2_unit = _n2_unit_block(inp, prospective_json, f, solved,
+                             basis_npz if basis is not None else None, calib, g, log)
     if wells_out is not None:
         sizes["wells"] = len(wells_out["obs"]["z"])
     extra = {}
@@ -1394,7 +1461,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "memberFields": member_info,
         "scales": scales,
         "hsr": hsr_out, "rivers": rivers_out, "leveling": lev_out, "wells": wells_out,
-        "wellsFan": wells_fan,
+        "wellsFan": wells_fan, "n2Unit": n2_unit,
         "modelcard": modelcard,
         "palettes": prep.PALETTES, "vScale": prep.VERT_SCALE,
         "layerDepths": LAYER_DEPTHS, "layerThick": AQUIFER_THICK,

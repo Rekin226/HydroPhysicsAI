@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Choushui Fan Twin</title>
-<meta name="description" content="Policy explorer for the Choushui alluvial fan digital twin: what a pumping policy changes in land subsidence, where, by when, and how sure the model is.">
+<meta name="description" content="Policy explorer for the Choushui alluvial fan digital twin: how a pumping policy changes groundwater heads in this model, what has been tested and what the registered N2 test will decide; subsidence is shown only as labelled model internals.">
 <style>
 :root{
   color-scheme:light;
@@ -92,6 +92,8 @@ main.wrap{padding-top:22px;padding-bottom:90px}
 .chip.full{border-color:var(--good);color:var(--good)}
 .chip.fast{border-color:var(--warn);color:var(--warn)}
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+#tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+.minote{grid-column:1/-1;margin:0;font-size:13px;color:var(--ink-2);border-left:3px solid var(--warn);padding:2px 0 2px 10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .tile .k{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px;color:var(--ink-3);font-weight:600}
 .tile .v{font-family:var(--mono);font-size:28px;line-height:1.2;font-weight:500;letter-spacing:-.02em;overflow-wrap:anywhere}
@@ -264,7 +266,7 @@ body.storying main{padding-bottom:230px}
   .badge{order:-1}
   main{padding-top:14px}
   .headline{font-size:17px}
-  .kpis{gap:8px;grid-template-columns:minmax(0,1fr)}
+  .kpis,#tiles{gap:8px;grid-template-columns:minmax(0,1fr)}
   .tile{padding:9px 10px}
   .tile .v{font-size:21px}
   .mapbox{flex-direction:column}
@@ -372,8 +374,8 @@ body.storying main{padding-bottom:230px}
     <div class="hd"><h2 id="tsTitle"><span data-i18n="timeseries">Time series</span> <span class="u" id="tsUnit"></span></h2></div>
     <div class="toolbar">
       <div class="seg" role="group" data-i18n-aria="series_group">
-        <button id="tsSubs" aria-pressed="true" data-i18n="tssubs">Subsidence</button>
-        <button id="tsHead" aria-pressed="false" data-i18n="tshead">Layer-2 head</button>
+        <button id="tsHead" aria-pressed="true" data-i18n="tshead">Layer-2 head</button>
+        <button id="tsSubs" aria-pressed="false" data-i18n="tssubs">Subsidence (model internals)</button>
       </div>
       <button class="btn" id="selFan" data-i18n="fanavg">Fan average</button>
       <button class="link" id="tsTable" data-i18n="astable">Show as table</button>
@@ -461,8 +463,9 @@ body.storying main{padding-bottom:230px}
   <div id="pRank" role="tabpanel" aria-labelledby="tRank" hidden>
     <div class="row" style="margin-bottom:6px">
       <div class="seg" role="group" data-i18n-aria="rank_group">
-        <button id="rkCm" aria-pressed="true"></button>
-        <button id="rkGwh" aria-pressed="false" data-i18n="rkgwh">per 100 GWh/yr forgone</button>
+        <button id="rkHead" aria-pressed="true"></button>
+        <button id="rkGwh" aria-pressed="false" data-i18n="rkgwh">head per 100 GWh/yr forgone</button>
+        <button id="rkCm" aria-pressed="false"></button>
       </div>
       <button class="link" id="rankTable" data-i18n="astable">Show as table</button>
     </div>
@@ -623,8 +626,8 @@ const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","
 const monthYear = iso => { if (!iso) return ""; const [y, m] = String(iso).split("-"); return LANG === "zh" ? `${y}年${+m}月` : `${MON[+m - 1]} ${y}`; };
 
 // ---------- state -----------------------------------------------------------------------
-const S = { f: new Array(K).fill(1), start: 0, year: Y-1, layer: "dsubs", view: "diff", swipe: .5, sel: {k: "fan"},
-  ts: "subs", thr: 1, base: "photo", tab: "towns", pins: [], rank: "cm", sort: "benefit", sec: "axis", secPts: null,
+const S = { f: new Array(K).fill(1), start: 0, year: Y-1, layer: "dhead", view: "diff", swipe: .5, sel: {k: "fan"},
+  ts: "head", thr: 1, base: "photo", tab: "towns", pins: [], rank: "head", sort: "benefit", sec: "axis", secPts: null,
   drawing: null, hsrThr: 1000, A: "base", B: "cur", focus: null, hatch: true, more: false, tsFit: false, hopI: null,
   ovl: {towns: true, hsr: true, rivers: true, bench: false, wells: false, zones: false}, theme: "light", story: false };
 let P = null;                            // current policy fields (preallocated, reused)
@@ -681,7 +684,7 @@ en: {
   load_failed: "The page failed to load", reload: "Reload",
   no_decompress: "This browser cannot open the page (it lacks DecompressionStream; use a current Chrome, Edge, Firefox or Safari).",
   facts: "Forecast origin {v} · {km} km grid · {L} aquifer layers · {off}", offline: "Offline", connected: "Connected", data: "data",
-  evidence_open: "Evidence", ev_badge: "Research scenario", ev_counts: "tests {p} passed, {f} failed", ev_open: "Opens the model card",
+  evidence_open: "Evidence", ev_badge: "Research scenario", ev_counts: "checks {p} passed, {f} failed", ev_open: "Opens the model card",
   list_sep: ", ", list_and: " and ", list_or: " or ", semi: "; ", plus: " + ", and: "and",
   baseline: "Business as usual", policy: "Policy", presets: "Presets", close: "Close", back: "Back", next: "Next", skip: "Skip", finish: "Explore",
   csv: "Download CSV", astable: "Show as table", aschart: "Show as chart", remove: "remove", load: "load", low: "low",
@@ -695,12 +698,12 @@ en: {
   ev_decision: "No depth-matched Tuku compaction validation or observed causal policy effect is available. Scenario order is not a recommendation.",
   evc_nc_fail: "New-data check: {n} wells, {span}. The frozen forecast has an error of {r} m against {c} m for the best simple baseline ({b}). It does not beat the baseline.",
   evc_nc_pass: "New-data check: {n} wells, {span}. The frozen forecast has an error of {r} m against {c} m for the best simple baseline ({b}). It beats the baseline; policy effects remain unvalidated.",
-  evc_cov: "90 % band of the {n} runs covered {a} of {span} observations (needs ×{x}); combined band {c} ({st} wells, {m} well-months).",
-  cov_line: "90 % band of the {n} runs covered {a} of {span} observations (needs ×{x}); combined band {c}.",
-  evc_pro: "Prospective test registered {reg} for {a}–{b} ({n} wells); result pending.",
+  evc_cov: "The runs' 90 % spread (a parameter spread, not a predictive interval; no registered coverage test) covered {a} of {span} observations, measured after the fact (needs ×{x}); combined spread {c} ({st} wells, {m} well-months).",
+  cov_line: "The runs' 90 % spread (not a predictive interval) covered {a} of {span} observations, measured after the fact (needs ×{x}); combined spread {c}.",
+  evc_pro: "Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm), for {a}–{b} ({n} wells); result pending.",
   evc_hyb: "Statistical layer (climatology plus the last observed anomaly, decayed): error {s} m against {c} m for climatology and {r} m for the physics alone, {span} ({y1}: {s1} vs {c1} m). The physics' own anomaly adds nothing (×{p}); the policy effect is still the physics' scenario difference.",
-  evc_hyb_reg: "Statistical layer registered prospectively {reg} for {a}–{b} ({n} wells); result pending.",
-  evc_pro_nodates: "Prospective test registered {reg} ({n} wells); result pending.",
+  evc_hyb_reg: "Statistical layer registered prospectively by manifest hash on {reg}, before the current registry, for {a}–{b} ({n} wells); result pending.",
+  evc_pro_nodates: "Prospective test registered by manifest hash on {reg}, before the current registry ({n} wells); result pending.",
   evc_ring: "{span} rings ({n} sites): model R² {a} vs continued-rate baseline {b} (cumulative).",
   evc_ring_ref: "{span} rings ({n} sites, cumulative from each site's first survey after the 2022 gap, across which the rings changed depth reference): model RMSE {ra} cm vs continued-rate baseline {rb} cm; R² {a} vs {b}.",
   evc_pile: "{span} deep benchmarks printed in the WRA monthly reports ({n} piles on the grid, {v} printed values verified): model error {e} cm vs {b} cm continuing each pile's previous year; on the {nd} piles anchored below 200 m, {ed} vs {bd} cm with {kd} of {nd} inside the 10–90 % band. After every feed stopped ({span2}): model {e2} cm vs {b2} cm.",
@@ -728,18 +731,22 @@ en: {
   pol_caveat_hg: "Head gains: the tests found the modelled head response smaller than observed in Yunlin, so a lever's head gain there is likely understated. ",
   pol_caveat_ch: "Changhua levers: not supported.",
   pol_caveat_ch_np: "Changhua pumping levers: not available in this model (it carries no Changhua pumping; not supported).",
-  ev_counts_long: "Tests: {p} passed, {f} failed (table below).", ev_independence: "Independence caveats", kv_details: "Details",
+  ev_counts_long: "Checks: {p} passed, {f} failed (registered tests and earlier screens; table below).", ev_independence: "Independence caveats", kv_details: "Details",
   // headline
   hl_fit: "Dec {year} is inside the fitted period ({a}–{b}): the model reproduces the record there. Policies act only after Dec {y0}; move the year forward to see their effect.",
-  hl_base: "Under <b>business as usual</b> (pumping at the {rec} mix) the fan sinks a further <b>{v} cm</b>{rng} on average by Dec {year}, counted from Dec {y0} (the model's own projected trend).{rh} Move a lever below to see what a policy avoids.",
+  hl_base: "Under <b>business as usual</b> (pumping at the {rec} mix) the model runs its own projected trend from Dec {y0} to Dec {year}. Its subsidence numbers are not given here: their size is untested, and in this model the distal coast does not sink although the 2016–21 next-year leveling showed it sinking about 2.5 cm/yr faster than modelled. They are under <b>Model internals</b> below. Move a lever to see the modelled head response to a pumping change.",
   hl_runs: " ({a}–{b} across the runs)",
   hl_rheo_ft: " A {tau} clay-creep ceiling fits the leveling as well and makes it {v} cm.", hl_rheo: " A {tau} clay-creep ceiling fits the leveling as well and adds about {v} cm.",
   hl_opt: "<b>{p}</b> from {s}",
   hl_none: "This model has no full run of <b>{pol}</b> from {yr}. {boff} Try {opts}.", no_basis: "No response basis is loaded.",
   hl_early: "<b>{pol}</b> starts in Jan {yr}, so by Dec {year} it has not acted yet. Move the year to {yr} or later.",
-  hl_pol: "In this model, <b>{pol}</b> from {yr} avoids <b>{v} cm</b> {b} of fan-average subsidence{yun} by {year}, {share} of the {base} cm the baseline adds from Dec {y0}{fast}. Largest benefit in Yunlin: {tt}{hot}. {agree}{alt}.",
+  hl_pol: "In this model, <b>{pol}</b> from {yr} raises the groundwater head by <b>{h} m</b> {where} by Dec {year}. The direction of the head response to a pumping change is supported by a registered masked-refit test of the R0 recipe in Yunlin (2016–18, design-time), carried to this model by a post-hoc, model-only comparison; the 2015 drought spring agrees, but that event mixes canal water and rain with pumping. The modelled size is likely too small (Evidence). Whether this model's within-window response to recorded Yunlin pumping anomalies is right is decided by N2, scored no earlier than 15 Jan 2028; the head level is report-only. Subsidence is under <b>Model internals</b>: its size is untested.",
   hl_hot: " (post hoc, model-only, not a test: {lead} leads in only {p} of this model's {n} runs, {pc} of the R0 sibling's and {pa} of {na} perturbation draws; the leader is one of {grp} in {pg} of this model's runs, so read them as a group, not an order)",
   hl_yun: " (<b>{v} cm</b> over the {n} cells of the named Yunlin townships, where the levers act; the model carries no Changhua pumping)",
+  hw_yun: "in layer 2, on average over the {n} cells of the named Yunlin townships (Changhua cells left out: the model carries no Changhua pumping, so their change is spillover)", hw_fan: "in layer 2, on average over the fan", hw_n2: "on average at N2's {n} Yunlin monitoring wells, each in its own screened layer (N2's scoring unit)",
+  mi_base: "Model internals: under business as usual the fan sinks a further <b>{v} cm</b>{rng} on average from Dec {y0} to Dec {year} (the model's own projected trend; its size is untested, and the distal coast does not sink in this model).{rh}",
+  mi_note: "Model internals, not part of the answer. These numbers come from the model's subsidence column and are not supported by the registered tests: the 1–3-year size of the subsidence response is not supported, long-run sinking under a cut is untested, the coastal (distal, west of the 182 km line) benefit is not reliable because the distal zone does not sink in this model while the 2016–21 next-year leveling showed the coast sinking about 2.5 cm/yr faster than modelled, and Changhua values are spillover. They are shown so the model can be inspected, not to size a policy.",
+  tW_r: "direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only",
   at_h: " (counted at {H})",
   prov_full: "Full model, {n} parameter sets × {k} initial fields", prov_fast: "Fast estimate: single-lever runs rescaled to the full model",
   prov_nl: " (non-linearity {p}%)", prov_assumed: "; {c} use the mean factor (assumed)", prov_title: "Rescaling factors (subsidence / head): ",
@@ -755,7 +762,7 @@ en: {
   alt_other_km: "a model that fits the wells as well ({km} km stress spread{r2})", alt_other_wide: "a model that fits the wells as well (wider stress spread{r2})", alt_r2: ", head R² {r2}",
   alt_assumed: " (some classes scaled by assumption)", alt_s_prev: "; {w} gives {v} cm{asm}", alt_s_other: "{pre}{w} gives {v} cm{x}{asm}", alt_but: ", but ", alt_dot: ". ", alt_x: ", {x}× less",
   fast_rise: ", more than the baseline adds: the ground rises (the model's elastic rebound)", fast_clause: "; {p} of it comes by Dec {yr}{rev}", fast_rev: ", likely elastic and reversible",
-  rail_same: "no change from the baseline", rail_steeper: "steeper by {p}% (worse), at km {km}", rail_gentler: "gentler by {p}% (better)",
+  rail_same: "no change from the baseline", rail_steeper: "steeper by {p}% at km {km}", rail_gentler: "gentler by {p}%",
   tw_horizon: "tested horizon", tw_failed: "tested: failed (drift)", tw_pass: "tested: passes", tw_pass_fair: "tested: passes after each well's offset", tw_pass_s: "tested: passes",
   boff: "Fast estimate off: the response basis ({src}) was built for the previous model and misses this model's full run of {nm} by {rel} % (limit {max} %). Only the policies with a full-model run are shown.",
   tau_yr: "{t}-yr", tau_long: "{t}-year", tau_longer: "longer",
@@ -765,17 +772,18 @@ en: {
   rheo_lt: "less than 0.01", rheo_atmost: "at most {v}", rheo_art: "; measured on a run that still carried the start-up and restart steps, which are common to both columns",
   spread_km: "about {km} km", spread_learned: "a learned radius", spread_bound: " (at its upper bound)",
   // tiles
-  tAvoidB: "Subsidence still to come by {y}", tA_pick: "business as usual; pick a preset to see what a policy avoids", map_empty: "Business as usual: no difference. Pick a preset or move a lever.",
-  tAvoid: "Avoided subsidence", tArea: "Area sinking faster than {t} cm/yr", tConf: "Sample sign agreement", tHsr: "Rail: max gradient", tHead: "Layer-2 head recovery", tCost: "Pumping cut (the cost)",
-  def_of: "What is “{k}”?", more_metrics: "{n} more metrics", less_metrics: "Fewer metrics",
+  tAvoidB: "Model: subsidence still to come by {y} (untested)", tA_pick: "business as usual; pick a preset to see what a policy avoids", map_empty: "Business as usual: no difference. Pick a preset or move a lever.",
+  tAvoid: "Model: avoided subsidence (size untested)", tArea: "Model: area sinking faster than {t} cm/yr (untested)", tConf: "Model: sample sign agreement", tHsr: "Model: rail max gradient (untested)", tHead: "Head change at N2's Yunlin wells", tHead_l2: "Layer-2 head change, Yunlin side", tCost: "Pumping cut (the cost)",
+  def_of: "What is “{k}”?", more_metrics: "Model internals ({n}): withdrawn from the answer", less_metrics: "Hide model internals",
   w_robust: "≥90% agree", w_likely: "≥66% agree", w_uncertain: "low or mixed", w_na: "not measured", no_run: "no full-model run",
-  rng_p: "p10–p90 {a}–{b} {u}", rng_scaled: " (scaled from the {y} full-model runs)", rng_na: "range not available", rng_h_only: "run range at {H} only",
+  rng_p: "run spread p10–p90 {a}–{b} {u}", rng_scaled: " (scaled from the {y} full-model runs)", rng_na: "range not available", rng_h_only: "run range at {H} only",
   tA_base_adds: "baseline adds {v} cm", tA_runs: " (runs {a}–{b})", tA_d_base: "fan average, Dec {y0}–Dec {year}", tA_d_share: "{p} of the baseline's {base} cm, Dec {y0}–{year}", tA_rise: ": the ground rises",
   tR_q: "p10–p90 over {n} sets: {a}–{b} km²", tR_period: "Dec {y} to Dec {year}, baseline → policy",
   tF_r: "parameter sets agree it helps", tF_none: "agreement not measured", tF_alt: "{m} model: {v} cm{x}", km_n: "{km} km", other_model: "other",
   tF_cells: "map: in {a} of the {b} cells that change by ≥ 1 mm, ≥ {p}% of sets agree on the sign ({q})",
   tH_far: "the largest value is {x}× below the 1/{n} screening value", tH_seg: "track above 1/{n}: {a} → {b} km", no_rail: "rail alignment not loaded", tH_q: "p10–p90 over {n} sets: {a} to {b}",
-  tW_d: "Dec {year}; max cell {v} m", tC_r: "{p} of pumping energy", tC_d: "per year of the policy, Jan {yr}–Dec {year} ({n} yr, {tot} GWh in all)", tC_d0: "the policy starts in Jan {yr}",
+  def_tW_same: " (the unit shown here)", def_tW_cells: ", not the layer-2 cell average shown here",
+  tW_d: "Dec {year}; layer 2: Yunlin townships {y} m, fan average {f} m (incl. Changhua spillover), max cell {v} m", tC_r: "{p} of pumping energy", tC_d: "per year of the policy, Jan {yr}–Dec {year} ({n} yr, {tot} GWh in all)", tC_d0: "the policy starts in Jan {yr}",
   tC_metered: "metered energy", no_energy: "class energy not loaded",
   def_tA: "Fan average of subs(policy, Dec {year}) − subs(policy, Dec {y0}), minus the same for the baseline, sign flipped so a benefit is positive. For a full-model policy it is the mean of the paired runs. The share's base is the baseline's sinking from Dec {y0} to Dec {year} ({base} cm){fx}. Projected.",
   def_tA_fixed: "; at the horizon the project ledger's figure is {v} cm: the forward run fixed the model's start-up and restart steps at the source",
@@ -791,14 +799,15 @@ en: {
   another_model: "another model", tF_runs: "{all} runs: each set from {per} initial fields{ic}{lb}.", tF_ic: ", {ic} cm apart", tF_lb: "; a lower bound for the mix",
   def_tH: "Differential settlement |Δs|/L along the THSR centreline over 1 km, after smoothing to 2 km (the 1 km grid resolves nothing shorter), written 1/N: a larger N is gentler and better. Computed on the ensemble-mean field. A policy that slows sinking on one side of a point but not the other steepens the edge between them, so it can make this worse even while it helps overall. The threshold is an illustrative screening value, not the operator's criterion.",
   def_tH_excl: " {km} km of track read cells on both sides of a zone line; the gradient there is the model's parameter boundary, so it is left out (with those points the baseline maximum would be {raw}).",
-  def_tW: "Fan average of head in layer 2 (the main production aquifer), policy minus baseline, Dec {year}. Projected.",
+  def_tW: "Groundwater head, policy minus baseline, Dec {year}, in this model, {where}. Direction: supported by the registered masked-refit test of 2016–18 in Yunlin (step C), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to this model by a post-hoc, model-only comparison; the 2015 drought spring (G1) agrees, but that event mixes canal water and rain with pumping. Size: the modelled response is likely too small (Evidence); those slopes are reported, not gated, and no calibrated correction factor follows. N2.policy_response.prospective_2026-11.v1 decides whether this model's response to recorded Yunlin pumping anomalies is right: it fits the slope of observed on modelled within-window anomalies (per-well demeaned), and the response is supported only if the slope's 90 % interval excludes 0, the slope lies within 1/1.5–1.5, and the forecast with recorded pumping beats the zero-response forecast (RMSE). Scored no earlier than 15 Jan 2028. A 'not supported' result cannot separate the model from its pumping forcing (X1). The head level is report-only. N2 scores 84 Yunlin wells, each in its own screened layer{u}; carrying its verdict to a class lever is a linear, model-only transfer. Projected.",
   def_tC: "Σ (1 − f) × class energy per year. The projection repeats the record's month-of-year mean, so every year of the policy gives up the same amount, counted from the start year. No published kWh-to-m³ factor per class is loaded, so no volume is shown.",
   see_limits: "Known limits of this model",
   // map and legend
   map: "Map", vdiff: "Difference", vside: "Side by side", vswipe: "Swipe", layer: "Map layer", mappng: "Download map PNG", view_group: "Comparison view",
-  ly_dsubs: "Subsidence avoided since Dec {y0}, cm (+ = less sinking)", ly_dhead: "Δ layer-2 head, m", ly_rate: "Subsidence rate that year, cm/yr",
+  ly_dsubs: "Model internals: subsidence avoided since Dec {y0}, cm (size untested)", ly_dhead: "Δ layer-2 head, m", ly_rate: "Subsidence rate that year, cm/yr",
   ly_abs: "Cumulative subsidence since {t0}{art}, cm", ly_head: "Layer-2 head, m", ly_art: " (start-up steps removed)", ly_fwd: "Subsidence since Dec {y0}, cm",
-  map_thsr: "THSR {s}", map_changhua: "Changhua (pooled)", pol_current: "Current policy, from {s}", pol_later: "Same policy, from {s}", zero_ref: " (the reference: zero change)",
+  map_thsr: "THSR {s}", map_changhua: "Changhua (pooled)",
+  map_changhua_np: "Changhua (pooled; values are spillover, untested)", pol_current: "Current policy, from {s}", pol_later: "Same policy, from {s}", zero_ref: " (the reference: zero change)",
   lg_div_cm: "Blue = less sinking than the baseline (positive), orange = more. Fixed scale that does not change with the policy; values beyond it take the end colour.",
   lg_div_m: "Blue = head higher than the baseline. Fixed scale; values beyond it take the end colour.", lg_beyond: " {n} cells are beyond the scale (largest {v} {u}).",
   lg_seq: "Scale spans the baseline's 2nd to 98th percentile, not its extremes.", u_1mm: "1 mm", u_5cm: "5 cm",
@@ -814,14 +823,14 @@ en: {
   readout_idle: "Hover the map to read values; click a cell to select it, shift-click for its township.", readout_free: " (free run, projected)",
   draw_hint: "Click two points on the map to draw the section line · Esc cancels", draw_cancelled: "Section drawing cancelled",
   // time series
-  timeseries: "Time series", tssubs: "Subsidence", tshead: "Layer-2 head", fanavg: "Fan average", series_group: "Series",
+  timeseries: "Time series", tssubs: "Subsidence (model internals)", tshead: "Layer-2 head", fanavg: "Fan average", series_group: "Series",
   bn_runs: "Bands: p10–p90 and p25–p75 of the {n} runs' fan average, every year.",
   bn_constructed: "Constructed bands: the {n} runs' fan-average spread is known at two dates only, Dec {a} and Dec {b}; it is interpolated between them and scaled by the cumulative fraction before {a}. The per-year spread was not saved.",
   bn_normal: "Bands: the baseline's per-cell run spread (normal approximation of the ensemble std).",
   bn_aux: "Dots: annual mean of the {n} layer-2 wells, observed; thin dashed line: the model at the same wells (on average {gap} m from the observed). Neither is the fan average.",
   bn_head: "Bands: p10–p90 and p25–p75 of the {n} runs' fan-average layer-2 head, every year. This is the spread of the runs, not a predictive interval.",
   bn_head_none: "The run spread of heads is not shipped with the page.",
-  ts_subs_label: "cumulative subsidence since {t0}, cm", ts_subs_short: "cm since {t0}", ts_head_label: "head, layer {l}{main}, m", ts_head_main: " (main production aquifer)",
+  ts_subs_label: "cumulative subsidence since {t0}, cm", ts_subs_short: "cm since {t0}", ts_head_label: "head, layer {l}{main}, m", ts_head_main: " (main production aquifer)", ts_head_fan: " · fan average, incl. Changhua spillover",
   z_fit: "{a}–{b} fitted to observations", z_fit_s: "fitted", z_proj: "model's own trend, not validated", z_proj_s: "not validated", down_sinking: " (down = sinking)",
   hop_run: "run {i} of {n}", hop_need: "Playing the runs one by one needs per-run yearly output (--save-members yearly), not yet available.",
   hop_fan: "Runs are played for the fan average only; select the fan.", hop_basis: "A fast estimate has no runs of its own: only the baseline's runs are played.",
@@ -845,18 +854,18 @@ en: {
   starts: "Policy starts", start_group: "Start year", reset: "Reset to business as usual", pin: "Pin this policy", share: "Copy share link", pinned_n: "{n}/4 pinned",
   pin_base: "Business as usual is always shown; nothing to pin.", pin_done: "Pinned; see the Compare tab.",
   pin_dropped: "Four pins is the limit: the oldest, “{name}”, was dropped.", pins_trimmed: "The link held {n} more pins than the four allowed; the extra ones were ignored.", link_copied: "Link copied.",
-  start_note: "Starting in {s0} or in {s1} gives about the same {v} cm by {H}: in this model the benefit comes in the first year and then stops growing, so the two differ only in the years before {s1} (the time series shows it).",
+  start_note: "Starting in {s0} or in {s1} gives about the same head rise by {H} at N2's {n} Yunlin wells ({v} m); the two differ in the years before {s1} (the time series shows it).",
   // tabs
   ttowns: "Townships", thsr: "Rail", tsec: "Section", tcmp: "Compare", ttrust: "Where the model is trusted", tranking: "Ranking",
-  rkcm: "cm avoided by {H}", rkgwh: "per 100 GWh/yr forgone", rank_group: "Ranking metric", rank_aria: "lever ranking",
-  rank_unit_cm: "retiring each class outright: fan-average cm avoided by {y}", rank_unit_gwh: "cm avoided per 100 GWh/yr of pumping energy forgone", from_y: "from {y}",
-  no_basis_short: "Response basis not loaded", rank_limit: "Ranking follows model assumptions; pumping volumes, depth-resolved compaction and policy effects are unvalidated.",
+  rkhead: "head rise by {H}", rkcm: "Model internals: cm avoided by {H}", rkgwh: "head per 100 GWh/yr forgone", rank_group: "Ranking metric", rank_aria: "lever ranking",
+  rank_unit_head: "retiring each class outright: head rise by {y}, m, mean at N2's {n} Yunlin wells (each in its own screened layer)", rank_unit_head_l2: "retiring each class outright: fan-average layer-2 head rise by {y}, m", rank_unit_cm: "Model internals (size untested): retiring each class outright, fan-average cm avoided by {y}", rank_unit_gwh: "head rise, m, per 100 GWh/yr of pumping energy forgone (same wells as the head ranking)", from_y: "from {y}",
+  no_basis_short: "Response basis not loaded", rank_limit: "Ranking follows model assumptions: each class's head response is a linear, model-only transfer (N2 tests the response to recorded total pumping anomalies, not class by class), class pumping volumes are unvalidated, and the subsidence ranking also rests on unvalidated depth-resolved compaction.",
   rank_spread: "The model spreads each area's pumping over {s}; the data do not pin that radius down, and why is not known.", rank_boff: "Fast estimate off: only policies with a full-model run have numbers.", rank_cav2: "More",
   sortby: "Sort by", sbenefit: "Benefit of the policy", sbase: "Baseline sinking to {H}", sname: "Name",
-  tw_base_val: "{v} cm baseline {a}–{b}", tw_avoided_val: "{v} cm avoided", tw_sets: "{a}/{n} sets: a benefit", tw_skill: "benchmarks n={n}{bias}{r2}", tw_bias: ", bias {v} cm", tw_r2: ", R² {v}",
+  tw_base_val: "{v} cm baseline {a}–{b} (model internals, size untested)", tw_avoided_val: "{v} cm avoided (model internals, size untested)", tw_sets: "{a}/{n} sets: a benefit", tw_skill: "benchmarks n={n}{bias}{r2}", tw_bias: ", bias {v} cm", tw_r2: ", R² {v}",
   tw_pooled: "not split by township; ", tw_low: "low confidence: {s}", tw_off: "off scale", tw_off_b: "↓ off scale",
   tn_base: "Shared axis 0–{hi} cm since {a} (down = sinking); grey = the baseline and its run range. Low-confidence townships are kept out of the headline. Bias = hindcast minus leveling (negative: the model sinks too little).",
-  tn_pol: "Blue = sinking avoided by the policy (up = benefit), shared axis ±{hi} cm. Low-confidence townships are kept out of the headline{bias}; {pooled}. Bias = hindcast minus leveling (negative: the model sinks too little). {agree}",
+  tn_pol: "Model internals, size untested. Blue = sinking avoided by the policy (up = benefit), shared axis ±{hi} cm. Townships west of the 182 km line (the distal zone) carry a coastal benefit that is not reliable. Low-confidence townships are kept out of the headline{bias}; {pooled}. Bias = hindcast minus leveling (negative: the model sinks too little). {agree}",
   ta_note: "“n/N sets”: the parameter sets in which the township's average sinking is reduced by {H}; below {p} % it is flagged.", ta_h_only: "Per-township run agreement is counted at {H}; move the year there to see it.",
   ta_full_only: "Per-township run agreement exists for the full-model runs only, not for a fast estimate.", ta_none: "Per-township run agreement needs per-run output, not yet available.",
   th_township: "Township", th_base_fwd: "Baseline {a}-{b} (cm)", th_avoided_pol: "Avoided by policy (cm)", th_bias: "bias", th_conf: "confidence", th_sets: "sets agreeing",
@@ -865,15 +874,15 @@ en: {
   rail_thr: "threshold 1/{n}: illustrative screening value, not the operator's criterion", rail_thr_s: "screening value 1/{n} (illustrative)", rail_thr_above: "; it is {x}× the largest value here, above this scale",
   rail_grey: "grey: zone line, left out", rail_chain: "chainage, km (north to south)", rail_aria: "rail profile",
   rail_excl: "leaving out {km} km of track at the zone lines (grey; with them the baseline maximum is {raw})", rail_ex_join: ", ",
-  rail_note: "Max angular distortion {a} (baseline) → {b} (policy): {line}{ex}. Ensemble-mean field. The 1 km grid does not resolve gradients shorter than about 2 km.",
+  rail_note: "Model internals, untested: max angular distortion {a} (baseline) → {b} (policy): {line}{ex}. This is the geometry of a subsidence field whose size is not supported, an illustrative screening value, not a better/worse verdict. Ensemble-mean field. The 1 km grid does not resolve gradients shorter than about 2 km.",
   no_rail_loaded: "Rail alignment not loaded (--hsr)", th_dist_base: "distortion base", th_dist_pol: "distortion policy",
-  sec_miss: "The line misses the fan", sec_avoided: "Sinking avoided {a}–{b} along the line (±{lim} cm, blue = less sinking)", sec_avoided_s: "Avoided {a}–{b}, ±{lim} cm, blue = less",
+  sec_miss: "The line misses the fan", sec_avoided: "Model internals: sinking avoided {a}–{b} along the line (±{lim} cm, blue = less sinking; size untested)", sec_avoided_s: "Model internals: avoided {a}–{b}, ±{lim} cm",
   sec_elev: "elevation, m above sea level", sec_dist: "distance, km", sec_aria: "cross-section",
   sec_note: "Elevation in m above sea level (vertically exaggerated). Brown = ground surface; coloured bands = the four aquifers at the zone's median screen depths, coloured by each cell's baseline head (viridis, {a}–{b} m); hatched = clay. Black lines h1–h4 = baseline head in each aquifer; blue dashed = policy (Dec {H}, fast estimate from the single-lever runs).",
   sec_h_only: "Policy heads are drawn at {H} only; the section shows the baseline at the chosen year.", sec_group: "Section line",
   secaxis: "Fan axis", sechsr: "Along the rail", sechuwei: "West-east through Huwei", secdraw: "Draw on the map",
   cmp_empty: "No pinned policies yet. Set the levers and press “Pin this policy” (up to 4). Pins also travel in the share link.",
-  cmp_avoided: "Avoided by {y} (cm)", cmp_area: "Area >{t} cm/yr (km²)", cmp_rail: "Rail max gradient", cmp_head: "L2 head (m)", cmp_cut: "Cut (GWh/yr)", cmp_agree: "Parameter sets agree",
+  cmp_avoided: "Model: avoided by {y} (cm, untested)", cmp_area: "Model: area >{t} cm/yr (km², untested)", cmp_rail: "Model: rail max gradient (untested)", cmp_head: "L2 head (m)", cmp_cut: "Cut (GWh/yr)", cmp_agree: "Parameter sets agree",
   cmp_alt: "Other model (cm)", cmp_alt_km: "{km} km model (cm)", cmp_full: " (full model)", cmp_mini: "Small maps share the fixed ±{lim} cm scale (sinking avoided {a}–{b}, blue = less sinking).",
   trust_ttl_pts: "Leveling benchmarks: hindcast minus observed at the last survey, cm", trust_ttl_town: "Mean leveling bias per township (hindcast minus observed), cm",
   trust_cap: "orange = the model sinks too much; blue = too little.", trust_agg: " The public page carries township aggregates only, not the individual benchmarks.",
@@ -905,20 +914,20 @@ en: {
   d3_s3_t: "3 · Elastic rebound and permanent compaction", d3_s3_b: "The surface drops by the compaction (drawn {x}× larger than the vertical scale). Inelastic compaction is permanent; the elastic part can rebound. The timing and depth distribution remain model assumptions.",
   // story
   story_step: "Story {a} / {b}", story_restored: "Story closed; your settings are restored.",
-  st1_t: "The answer first", st1_b: "Irrigation pumping cut by 30 % is the example. The sentence at the top is the answer; the three numbers under it say how much, how widely and how sure. The Evidence badge says how far to trust it. Next: where the numbers come from.",
+  st1_t: "The answer first", st1_b: "Irrigation pumping cut by 30 % is the example. The sentence at the top says what this model gives and what has been tested: the head response in Yunlin. Subsidence numbers sit under Model internals because their size is untested. The Evidence badge says how far to trust it. Next: where the numbers come from.",
   st2_t: "The fan and its layers", st2_b: "The Choushui River built this fan. In the 3D view the four aquifers are coloured by their water level, with the tan clay layers between them, pulled apart so you can see each one (the vertical exaggeration is on screen). The top is the ground, coloured like the map: cumulative sinking since {y}.",
   st3_t: "Where pumping draws the water down", st3_b: "The map shows the head in layer 2, the main pumping aquifer, in Dec {y}{low}. The chart covers the fitted years {a}–{y} only.{wells} By energy, about {irr}% of pumping is irrigation.",
   st3_low: "; it is lowest around {t}", st3_datum: ", before each well's fitted offset",
   st3_wells: " Dots: the annual mean of the {n} layer-2 wells ({dir} {v} m from {a} to {b}); dashed: the model at the same wells, {g} m {side} them on average{datum}.",
   st4_t: "Clay squeezes and the ground sinks", st4_b: "The 3D view plays it in three steps: the water level falls, the clay compacts, the ground lowers. The clay's inelastic compaction does not come back; a smaller elastic part rebounds when the water rises, and that is most of a policy's quick benefit. The map switches to cumulative sinking. The model's hindcast against the leveling network scores R² {r2}.",
   st5_t: "The rail", st5_b: "What matters to the high-speed rail is how uneven the sinking is along the track (the angular distortion, lower panel of the Rail tab), not the total (upper panel). Grey stretches read both sides of a zone line, a model boundary, and are left out.",
-  st6_t: "Try a policy", st6_b: "The map shows irrigation cut by 30 % against business as usual (blue = less sinking). {boff} One caveat: everything after Dec {y} is the model's own trend, {pass}; at wells it never saw it is worse than simple interpolation.",
+  st6_t: "Try a policy", st6_b: "The map shows the layer-2 head change of irrigation cut by 30 % against business as usual. {boff} One caveat: everything after Dec {y} is the model's own trend, {pass}; at wells it never saw it is worse than simple interpolation.",
   st6_move: "Move a lever or pick a preset.", st6_boff: "Pick a preset: only policies with a full-model run have numbers (the fast estimate is off).",
   st6_pass: "tested for its first {m} years only (it passes once each well's constant offset is removed)", st6_fail: "and its three-year test failed",
   // limits (the twelve caveats)
   cv1_none_t: "The decade-scale trend is not validated.", cv1_none_b: " The projection runs free from Dec {o}. The held-out-years test is not loaded.",
   cv1_pass_t: "It passes a historical {ny}-year test; all years after {o} are unvalidated.",
-  cv1_pass_b: " The projection runs free from Dec {o}: the heads are restarted from the observed field once, at that origin, and the model is on its own after that. The held-out-years test fits the first {fy} years and runs free for {months} months, scored by the fair rule registered beforehand: each well's constant offset is estimated from the fitted years only{ex}. After that offset its error at the {nw} wells is {rmse} m, against {rbest} m for the best simple forecast ({best}), a ratio of {ratio} (≤ {k} passes), and the shape of the wells' changes scores R² {shape} against {sclim} for climatology ({sctr} with its trend). Without removing the offsets the error is {raw} m, {share} of it the offsets themselves: the model does not know each well's absolute level, it tracks changes.{drift} Every value after Dec {yt} is the model's own, untested trend.",
+  cv1_pass_b: " The projection runs free from Dec {o}: the heads are restarted from the observed field once, at that origin, and the model is on its own after that. The held-out-years test fits the first {fy} years and runs free for {months} months, scored by the fair rule declared on 2026-09-24, before the current registry (it has no registry entry): each well's constant offset is estimated from the fitted years only{ex}. After that offset its error at the {nw} wells is {rmse} m, against {rbest} m for the best simple forecast ({best}), a ratio of {ratio} (≤ {k} passes), and the shape of the wells' changes scores R² {shape} against {sclim} for climatology ({sctr} with its trend). Without removing the offsets the error is {raw} m, {share} of it the offsets themselves: the model does not know each well's absolute level, it tracks changes.{drift} Every value after Dec {yt} is the model's own, untested trend.",
   cv1_ex: ", and the {n} wells with too short a fitted record are left out",
   cv1_passnf_t: "The decade-scale trend is not validated.", cv1_passnf_b: " In the held-out-years test (fit the first {fy} years, then run free for {months} months) the error is {rm} m against {rc} m for repeating the past average: it passes. Every value after Dec {yt} is untested.",
   cv1_fail_t: "The decade-scale trend is not validated, and the three-year test failed.",
@@ -982,7 +991,7 @@ en: {
   pl_heldout: "the held-out years (error ratio {a} against {b})", pl_anom: "head changes at unseen wells ({a} against {b})", pl_lev: "the leveling out of fold ({a} against {b})",
   pl_chain: "the full-chain hindcast ({a} against {b})", pl_abs: "absolute levels at unseen wells ({a} against {b})", pl_rings: "the compaction rings ({a} against {b})",
   pl_base: "a {a}–{b} baseline of {v} cm ({mine} here)", pl_resp: "{p} avoids {v} cm ({mine} here)",
-  kv_unseen: "Unseen wells", kv_levels: "levels", kv_changes: "head changes", kv_median: "median per well", kv_datum: "Per-well datum", kv_insample: "in-sample R² with the datum",
+  kv_unseen: "Unseen wells (verdict rules declared 2026-09-24/26, before the current registry)", kv_levels: "levels", kv_changes: "head changes", kv_median: "median per well", kv_datum: "Per-well datum", kv_insample: "in-sample R² with the datum",
   kv_datum_note: "In the observation operator only: never in the solver, the column or the projection.", kv_column: "Column, out of fold", kv_rings: "total-column-proxy rings", kv_chain: "Full-chain hindcast",
   kv_heldout: "Held-out years", kv_fair: "fair rule", kv_after_offset: "after each well's offset", kv_with_trend: "with trend", kv_months: "free-running months after", kv_fit_years: "fitted years",
   kv_raw: "Raw", kv_legacy: "legacy verdict", kv_raw_share: "of the raw error is the per-well offset", kv_screen_radius: "the screen's stress radius", kv_others: "other screens (fair ratio)",
@@ -1004,7 +1013,7 @@ zh: {
   keys_open: "鍵盤快速鍵", loading: "載入模型資料中…", loading_n: "解碼模型資料 {a} / {b}", load_failed: "頁面載入失敗", reload: "重新載入",
   no_decompress: "此瀏覽器無法開啟本頁（缺少 DecompressionStream；請使用最新版 Chrome、Edge、Firefox 或 Safari）。",
   facts: "預報起點 {v} · {km} 公里網格 · {L} 個含水層 · {off}", offline: "離線", connected: "連線", data: "資料",
-  evidence_open: "證據", ev_badge: "研究情境", ev_counts: "檢驗 {p} 通過、{f} 未通過", ev_open: "開啟模型說明",
+  evidence_open: "證據", ev_badge: "研究情境", ev_counts: "檢查 {p} 通過、{f} 未通過", ev_open: "開啟模型說明",
   list_sep: "、", list_and: "、", list_or: "、", semi: "；", plus: "＋", and: "與",
   baseline: "維持現狀", policy: "政策", presets: "預設組合", close: "關閉", back: "上一步", next: "下一步", skip: "略過", finish: "開始探索",
   csv: "下載CSV", astable: "以表格顯示", aschart: "以圖表顯示", remove: "移除", load: "載入", low: "低",
@@ -1017,11 +1026,11 @@ zh: {
   ev_decision: "尚未有土庫深度配對的地層壓密驗證，也沒有經觀測確認的政策因果效果。請勿將情境排序視為建議。",
   evc_nc_fail: "新增觀測檢驗：{n} 口井，{span}。凍結預報誤差 {r} 公尺，最佳簡單基準（{b}）為 {c} 公尺，未優於基準。",
   evc_nc_pass: "新增觀測檢驗：{n} 口井，{span}。凍結預報誤差 {r} 公尺，最佳簡單基準（{b}）為 {c} 公尺，優於基準；政策效果尚未驗證。",
-  evc_cov: "{n} 次模擬的 90 % 範圍涵蓋了 {span} 觀測的 {a}（需擴大 ×{x}）；合併範圍 {c}（{st} 口井，{m} 井月）。",
-  cov_line: "{n} 次模擬的 90 % 範圍涵蓋 {span} 觀測的 {a}（需擴大 ×{x}）；合併範圍 {c}。",
-  evc_pro: "前瞻性檢驗已於 {reg} 登錄，期間 {a}–{b}（{n} 口井）；結果待定。", evc_pro_nodates: "前瞻性檢驗已於 {reg} 登錄（{n} 口井）；結果待定。",
+  evc_cov: "{n} 次模擬的 90 % 分布（參數分布，不是預測區間；沒有已登錄的涵蓋率檢驗）事後量測涵蓋了 {span} 觀測的 {a}（需擴大 ×{x}）；合併分布 {c}（{st} 口井，{m} 井月）。",
+  cov_line: "{n} 次模擬的 90 % 分布（不是預測區間）事後量測涵蓋 {span} 觀測的 {a}（需擴大 ×{x}）；合併分布 {c}。",
+  evc_pro: "前瞻性檢驗已於 {reg} 以檔案雜湊（manifest）登錄，早於現行登錄制度（N2 以其預測作為零反應組），期間 {a}–{b}（{n} 口井）；結果待定。", evc_pro_nodates: "前瞻性檢驗已於 {reg} 以檔案雜湊（manifest）登錄，早於現行登錄制度（{n} 口井）；結果待定。",
   evc_hyb: "統計層（氣候平均加上最後觀測距平的衰減）：{span} 誤差 {s} 公尺，氣候平均 {c} 公尺，純物理模式 {r} 公尺（{y1}：{s1} 對 {c1} 公尺）。物理模式自身距平無額外貢獻（×{p}）；政策效果仍取自物理模式的情境差。",
-  evc_hyb_reg: "統計層已於 {reg} 登錄前瞻性檢驗，期間 {a}–{b}（{n} 口井）；結果待定。",
+  evc_hyb_reg: "統計層已於 {reg} 以檔案雜湊（manifest）登錄前瞻性檢驗，早於現行登錄制度，期間 {a}–{b}（{n} 口井）；結果待定。",
   evc_ring: "{span} 壓密環（{n} 個站點）：模型 R² {a}，持續速率基準 {b}（累積量）。",
   evc_ring_ref: "{span} 壓密環（{n} 個站點；累積量自各站 2022 年停測後的首次量測起算，壓密環在停測期間更換了深度基準）：模型 RMSE {ra} 公分，持續速率基準 {rb} 公分；R² {a} 對 {b}。",
   evc_pile: "{span} 水利署月報印刷之深層樁（網格內 {n} 支，{v} 個印刷數值經驗證）：模型誤差 {e} 公分，各樁延續前一年速率 {b} 公分；樁深 200 公尺以下的 {nd} 支為 {ed} 對 {bd} 公分，{kd}/{nd} 落在 10–90 % 範圍內。所有即時資料中斷後（{span2}）：模型 {e2} 公分，基準 {b2} 公分。",
@@ -1049,13 +1058,13 @@ zh: {
   pol_caveat_hg: "水位回升：檢驗發現雲林的模擬水位反應小於觀測，因此該處槓桿帶來的水位回升可能被低估。",
   pol_caveat_ch: "彰化的政策槓桿：證據不支持。",
   pol_caveat_ch_np: "彰化的抽水槓桿：本模型不提供（模型不含彰化抽水；證據不支持）。",
-  ev_counts_long: "檢驗：{p} 項通過、{f} 項未通過（見下表）。", ev_independence: "獨立性限制", kv_details: "詳細資料",
+  ev_counts_long: "檢查：{p} 項通過、{f} 項未通過（含已登錄檢驗與較早的篩選；見下表）。", ev_independence: "獨立性限制", kv_details: "詳細資料",
   hl_fit: "{year}年12月屬於擬合期（{a}–{b}年）：模型在此重現觀測紀錄。政策只在{y0}年12月之後起作用；請把年份往後移以查看效果。",
-  hl_base: "在<b>維持現狀</b>（{rec}年用水結構）下，全扇平均到{year}年12月再下陷 <b>{v} 公分</b>{rng}（自{y0}年12月起算；模型自身的推估趨勢）。{rh}移動下方槓桿，看看政策能減少多少。",
+  hl_base: "在<b>維持現狀</b>（{rec}年用水結構）下，模型自{y0}年12月至{year}年12月依其自身的推估趨勢運算。此處不列出下陷數值：其大小未經檢驗，且本模型的遠端沿海不下陷，而2016–21年的次年水準測量顯示該處每年比模型多下陷約2.5公分。下陷數值列於下方「<b>模型內部數值</b>」。移動槓桿，看模型對抽水改變的水頭反應。",
   hl_runs: "（各次模擬 {a}–{b}）", hl_rheo_ft: "{tau}的黏土潛變上限同樣擬合水準測量，會使之成為 {v} 公分。", hl_rheo: "{tau}的黏土潛變上限同樣擬合水準測量，會再多約 {v} 公分。",
   hl_opt: "<b>{p}</b>（自{s}年）", hl_none: "本模型沒有「{pol}」（自{yr}年起）的完整模擬。{boff}可選：{opts}。", no_basis: "未載入反應基底。",
   hl_early: "<b>{pol}</b>自{yr}年1月開始，到{year}年12月尚未起作用。請把年份移到{yr}年或更後。",
-  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年可減少全扇平均 <b>{v} 公分</b>{b}的下陷{yun}，為基準情境{y0}–{year}年新增 {base} 公分的 {share}{fast}。效益最大的雲林鄉鎮：{tt}{hot}。{agree}{alt}。",
+  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年12月使地下水位{where}上升 <b>{h} 公尺</b>。抽水改變造成的水頭反應方向，獲 R0 配方在雲林的已登錄遮蔽重新校準檢驗支持（2016–18年，設計期），並以事後、僅模型的比較延伸至本模型；2015年乾旱春季與此一致，但該事件混合了渠道供水與降雨的影響。模型的反應大小可能偏小（見證據）。本模型對雲林實際抽水距平的視窗內反應是否正確，由 N2 判定，最早於2028年1月15日評分；水位高低僅供報告。地層下陷列於「<b>模型內部數值</b>」：其大小未經檢驗。",
   hl_hot: "（事後、僅模型分析，非檢驗：{lead}只在本模型 {n} 次模擬中的 {p} 居首，在 R0 對照模型的模擬中為 {pc}，在 {na} 次擾動抽樣中為 {pa}；本模型 {pg} 的模擬中居首者為{grp}之一，請視為一組，而非排序）",
   at_h: "（以{H}年計）",
   prov_full: "完整模型，{n}組參數 × {k}個初始場", prov_fast: "快速估算：單一槓桿模擬，已依完整模型校正", prov_nl: "（非線性誤差 {p}%）", prov_assumed: "；{c}用平均校正係數（假設）",
@@ -1066,13 +1075,17 @@ zh: {
   pooled_np: "彰化尚未分鄉鎮，且本模型不含彰化抽水：其數值是雲林減抽的外溢效果，未經檢驗",
   tw_pooled_np: "本模型不含彰化抽水：數值是雲林減抽的外溢效果，未經檢驗；", conf_np: "僅外溢效果，未經檢驗",
   hl_yun: "（僅計雲林已命名鄉鎮的 {n} 個網格、即槓桿作用處為 <b>{v} 公分</b>；本模型不含彰化抽水）",
+  hw_yun: "在第二含水層、雲林已命名鄉鎮的 {n} 個網格平均（不含彰化網格：本模型不含彰化抽水，其變化為外溢）", hw_fan: "在第二含水層全扇平均", hw_n2: "在 N2 的 {n} 口雲林觀測井（各井於其篩管層，N2 的評分單位）平均",
+  mi_base: "模型內部數值：維持現狀下，全扇平均自{y0}年12月至{year}年12月再下陷 <b>{v} 公分</b>{rng}（模型自身的推估趨勢；其大小未經檢驗，且本模型的遠端沿海不下陷）。{rh}",
+  mi_note: "模型內部數值，不屬於答案。這些數值來自模型的壓密柱，未獲已登錄檢驗支持：1–3 年地層下陷反應的大小未獲支持，減少抽水對長期下陷的影響未經檢驗；沿海（182公里線以西的遠端區）效益不可靠，因為本模型的遠端區不下陷，而2016–21年的次年水準測量顯示沿海每年比模型多下陷約2.5公分；彰化的數值為外溢。列出它們是為了檢視模型，不是為了估計政策效果。",
+  tW_r: "方向獲支持（設計期、R0 配方）；視窗內距平反應由 N2 判定，最早2028-01-15；水位高低僅供報告",
   agree_all: "{n}組參數中有{a}組認為是效益", agree_some: "{n}組參數中{lb}有{a}組認為是效益", at_least: "至少",
   agree_none: "模擬一致性未量測：{c}{late}完整模型模擬", agree_none_start: "沒有自{s}年起的", agree_none_plain: "沒有",
   alt_prev_km: "前一版模型（抽水分散約{km}公里）", alt_prev_wide: "前一版模型（抽水分散較廣）",
   alt_other_km: "同樣擬合觀測井的另一個模型（抽水分散約{km}公里{r2}）", alt_other_wide: "同樣擬合觀測井的另一個模型（抽水分散更廣{r2}）", alt_r2: "，水頭 R² {r2}",
   alt_assumed: "（部分類別按比例假設）", alt_s_prev: "；{w}給出 {v} 公分{asm}", alt_s_other: "{pre}{w}只給出 {v} 公分{x}{asm}", alt_but: "；但", alt_dot: "。", alt_x: "（少{x}倍）",
   fast_rise: "，超過基準情境新增的下陷：地面上升（模型的彈性回彈）", fast_clause: "，其中 {p} 在{yr}年12月前出現{rev}", fast_rev: "，可能多為彈性、可回復",
-  rail_same: "與基準相同", rail_steeper: "變陡 {p}%（較差），在里程 {km} 公里", rail_gentler: "變緩 {p}%（較好）",
+  rail_same: "與基準相同", rail_steeper: "變陡 {p}%，在里程 {km} 公里", rail_gentler: "變緩 {p}%",
   tw_horizon: "已檢驗範圍", tw_failed: "已檢驗：未通過（漂移）", tw_pass: "已檢驗：通過", tw_pass_fair: "已檢驗：去除各井偏差後通過", tw_pass_s: "已檢驗：通過",
   boff: "快速估算已關閉：反應基底（{src}）是為前一版模型建立的，與本模型「{nm}」的完整模擬相差 {rel}%（上限 {max}%）。只顯示完整模型模擬過的政策。",
   tau_yr: "{t}年", tau_long: "取{t}年", tau_longer: "較長",
@@ -1081,17 +1094,18 @@ zh: {
   rheo_lev: "對水準測量的跨折技巧相同（R² {a}，本模型 {b}）", rheo_mv_ft: "", rheo_mv: "", rheo_ftz: "（從 {a} 變成 {b} 公分）", rheo_close: "",
   rheo_lt: "不到 0.01", rheo_atmost: "最多 {v}", rheo_art: "；此數值來自尚含啟動與重啟陡降的模擬（兩種壓密柱相同）",
   spread_km: "約{km}公里", spread_learned: "一個學得的半徑", spread_bound: "（已達上限）",
-  tAvoidB: "到{y}年仍會發生的下陷", tA_pick: "維持現狀；選一個預設組合，看政策能減少多少", map_empty: "維持現狀：沒有差異。請選一個預設組合或移動槓桿。",
-  tAvoid: "減少的下陷量", tArea: "下陷速率超過 {t} 公分/年的面積", tConf: "樣本方向一致性", tHsr: "高鐵：最大差異沉陷", tHead: "第二含水層水頭回升", tCost: "減抽量（代價）",
-  def_of: "「{k}」是什麼？", more_metrics: "另外 {n} 項指標", less_metrics: "收合指標",
+  tAvoidB: "模型：到{y}年仍會發生的下陷（未經檢驗）", tA_pick: "維持現狀；選一個預設組合，看政策能減少多少", map_empty: "維持現狀：沒有差異。請選一個預設組合或移動槓桿。",
+  tAvoid: "模型：減少的下陷量（大小未經檢驗）", tArea: "模型：下陷速率超過 {t} 公分/年的面積（未經檢驗）", tConf: "模型：樣本方向一致性", tHsr: "模型：高鐵最大差異沉陷（未經檢驗）", tHead: "N2 雲林觀測井的水頭變化", tHead_l2: "第二含水層水頭變化（雲林側）", tCost: "減抽量（代價）",
+  def_of: "「{k}」是什麼？", more_metrics: "模型內部數值（{n} 項）：已自答案撤回", less_metrics: "收合模型內部數值",
   w_robust: "≥90%一致", w_likely: "≥66%一致", w_uncertain: "低或混合", w_na: "未量測", no_run: "無完整模型模擬",
-  rng_p: "p10–p90 {a}–{b} {u}", rng_scaled: "（依{y}年完整模型比例）", rng_na: "範圍不可得", rng_h_only: "各次模擬的範圍只在{H}年提供",
+  rng_p: "模擬分布 p10–p90 {a}–{b} {u}", rng_scaled: "（依{y}年完整模型比例）", rng_na: "範圍不可得", rng_h_only: "各次模擬的範圍只在{H}年提供",
   tA_base_adds: "基準情境新增 {v} 公分", tA_runs: "（各次模擬 {a}–{b}）", tA_d_base: "全扇平均，{y0}–{year}", tA_d_share: "基準 {base} 公分的 {p}（{y0}–{year}）", tA_rise: "：地面上升",
   tR_q: "{n}組參數 p10–p90：{a}–{b} 公里²", tR_period: "{y}年12月至{year}年12月，基準 → 政策",
   tF_r: "組參數認為是效益", tF_none: "一致性未量測", tF_alt: "{m}模型：{v} 公分{x}", km_n: "{km}公里", other_model: "另一個",
   tF_cells: "地圖：變化 ≥ 1 公釐的 {b} 個網格中，{a} 個有 ≥ {p}% 的參數組同意方向（{q}）",
   tH_far: "最大值比 1/{n} 篩選值小 {x} 倍", tH_seg: "超過 1/{n} 的路段：{a} → {b} 公里", no_rail: "未載入高鐵路線", tH_q: "{n}組參數 p10–p90：{a}–{b}",
-  tW_d: "{year}年12月，最大網格 {v} 公尺", tC_r: "抽水用電的 {p}", tC_d: "政策期間每年（{yr}年1月至{year}年12月，{n}年，共 {tot} GWh）", tC_d0: "政策自{yr}年1月開始",
+  def_tW_same: "（即此處顯示的單位）", def_tW_cells: "，而非此處顯示的第二含水層網格平均",
+  tW_d: "{year}年12月；第二含水層：雲林鄉鎮 {y} 公尺，全扇平均 {f} 公尺（含彰化外溢），最大網格 {v} 公尺", tC_r: "抽水用電的 {p}", tC_d: "政策期間每年（{yr}年1月至{year}年12月，{n}年，共 {tot} GWh）", tC_d0: "政策自{yr}年1月開始",
   tC_metered: "依電表用電", no_energy: "未載入類別用電",
   def_tA: "全扇平均：政策情境在{y0}年12月至{year}年12月的下陷，減去基準情境的同一數值，正值代表效益。完整模型模擬時為配對模擬的平均。比例的分母是基準情境{y0}–{year}年的下陷（{base} 公分）{fx}。推估值。",
   def_tA_fixed: "；終點的專案紀錄數值為 {v} 公分（模擬已在源頭修正啟動與重啟陡降）",
@@ -1107,13 +1121,14 @@ zh: {
   another_model: "另一個模型", tF_runs: "{all}次模擬：每組{per}個初始場{ic}{lb}。", tF_ic: "，相差 {ic} 公分", tF_lb: "；組合的下限",
   def_tH: "沿高鐵中心線的差異沉陷 |Δs|/L（1 公里窗，先平滑至2公里），以 1/N 表示：N 越大越平緩、越好。由系集平均場計算。只在一側減緩下陷的政策，會讓減緩區邊緣的差異變大，因此可能讓此值變差。門檻為示意篩選值，非營運單位標準。",
   def_tH_excl: " 有 {km} 公里的軌道讀到扇區分界兩側的網格；那裡的梯度是模型參數的邊界，不列入（含這些點時基準最大值為 {raw}）。",
-  def_tW: "第二含水層（主要抽水層）{year}年12月全扇平均水頭：政策減基準。推估值。",
+  def_tW: "本模型中{year}年12月的地下水位：政策減基準，{where}。方向：獲 2016–18 年雲林的已登錄遮蔽重新校準檢驗（步驟 C）支持，以 R0 配方（stage3_datum_gate_cwa）在設計期視窗評分，並以事後、僅模型的比較延伸至本模型；2015年乾旱春季（G1）與此一致，但該事件混合了渠道供水與降雨的影響。大小：模型的反應可能偏小（見證據）；這些斜率僅供報告、不作為門檻，也不據此推出校正係數。N2.policy_response.prospective_2026-11.v1 判定本模型對雲林實際抽水距平的反應是否正確：以觀測對模型的視窗內距平斜率（各井去平均）評分，須斜率的 90 % 區間不含 0、斜率落在 1/1.5–1.5 之間，且以實際抽水的預報 RMSE 優於零反應預報，才判為反應獲支持。最早於2028年1月15日評分。「未獲支持」的結果無法區分模型與其抽水強迫（X1）。水位高低僅供報告。N2 評分84口雲林井，各井於其篩管層{u}；把判定延伸到用水類別槓桿是線性、僅模型的推論。推估值。",
   def_tC: "Σ(1−f)×各類別年用電；推估期重複紀錄期各月平均，所以每年相同，自政策開始年起計。沒有已發表的kWh-m³換算係數，因此只列GWh。",
   see_limits: "本模型的已知限制",
   map: "地圖", vdiff: "差異", vside: "並排", vswipe: "滑動比較", layer: "地圖圖層", mappng: "下載地圖 PNG", view_group: "比較檢視",
-  ly_dsubs: "減少的下陷（自{y0}年12月），公分（正＝少下陷）", ly_dhead: "第二含水層水頭變化，公尺", ly_rate: "當年下陷速率，公分/年",
+  ly_dsubs: "模型內部：減少的下陷（自{y0}年12月），公分（大小未經檢驗）", ly_dhead: "第二含水層水頭變化，公尺", ly_rate: "當年下陷速率，公分/年",
   ly_abs: "累積下陷（自{t0}{art}），公分", ly_head: "第二含水層水頭，公尺", ly_art: "，已移除啟動陡降", ly_fwd: "自{y0}年12月的下陷，公分",
-  map_thsr: "高鐵{s}站", map_changhua: "彰化縣（未分鄉鎮）", pol_current: "目前政策（自{s}年）", pol_later: "同一政策，自{s}年", zero_ref: "（參考：差值為0）",
+  map_thsr: "高鐵{s}站", map_changhua: "彰化縣（未分鄉鎮）",
+  map_changhua_np: "彰化縣（未分鄉鎮；數值為外溢，未經檢驗）", pol_current: "目前政策（自{s}年）", pol_later: "同一政策，自{s}年", zero_ref: "（參考：差值為0）",
   lg_div_cm: "藍色＝比基準少下陷（正值）；橘色＝更多。刻度固定，不隨政策改變；超出者以端色顯示。", lg_div_m: "藍色＝水頭比基準高。刻度固定；超出者以端色顯示。",
   lg_beyond: " 有 {n} 個網格超出刻度（最大 {v} {u}）。", lg_seq: "刻度為基準情境的第2–98百分位。", u_1mm: "1 公釐", u_5cm: "5 公分",
   lg_hatch: "斜線：變化小於{t}{ag}", lg_hatch_agree: "，或少於{p}%的參數組同意變化方向（{n}組，逐次輸出）。",
@@ -1125,13 +1140,13 @@ zh: {
   aria_swipe: "左右方向鍵移動分隔線，按住 Shift 微調。", swipe_at: "分隔線位於 {p}%",
   readout_idle: "將游標移到地圖上以讀取數值；點選以選取網格，Shift＋點選以選取鄉鎮。", readout_free: "（模型自行運算）",
   draw_hint: "在地圖上點兩下以繪製剖面線 · 按 Esc 取消", draw_cancelled: "已取消繪製剖面線",
-  timeseries: "時間序列", tssubs: "地層下陷", tshead: "第二含水層水頭", fanavg: "全扇平均", series_group: "數列",
+  timeseries: "時間序列", tssubs: "地層下陷（模型內部）", tshead: "第二含水層水頭", fanavg: "全扇平均", series_group: "數列",
   bn_runs: "帶狀範圍：{n}次模擬的全扇平均，逐年第10–90與25–75百分位。",
   bn_constructed: "推算的帶狀：只有{a}與{b}年12月兩個日期有{n}次模擬的全扇平均分布；其間內插，{a}年以前按累積比例縮放。逐年分布未保存。",
   bn_normal: "帶狀範圍：基準情境各網格的模擬標準差（常態近似）。",
   bn_aux: "點＝{n}口第二含水層觀測井的年平均；細虛線＝模型在同一批井的值（與觀測平均相差 {gap} 公尺）。兩者都不是全扇平均。",
   bn_head: "帶狀範圍：{n}次模擬的第二含水層全扇平均水頭，逐年第10–90與25–75百分位。這是各次模擬的分布，不是預測區間。", bn_head_none: "水頭的模擬分布未隨頁面提供。",
-  ts_subs_label: "累積下陷（自{t0}），公分", ts_subs_short: "自{t0}累積，公分", ts_head_label: "第{l}含水層水頭{main}，公尺", ts_head_main: "（主要抽水層）",
+  ts_subs_label: "累積下陷（自{t0}），公分", ts_subs_short: "自{t0}累積，公分", ts_head_label: "第{l}含水層水頭{main}，公尺", ts_head_main: "（主要抽水層）", ts_head_fan: "・全扇平均，含彰化外溢",
   z_fit: "擬合觀測資料", z_fit_s: "擬合", z_proj: "模型自身趨勢（未驗證）", z_proj_s: "未驗證", down_sinking: "（向下＝下陷）",
   hop_run: "第 {i}/{n} 次模擬", hop_need: "逐次模擬動畫需要每次模擬的年序列（--save-members yearly），尚未提供。",
   hop_fan: "逐次播放只適用於全扇平均。", hop_basis: "快速估算沒有逐次模擬，只播放基準。",
@@ -1154,17 +1169,17 @@ zh: {
   starts: "政策開始", start_group: "開始年份", reset: "回到維持現狀", pin: "釘選此政策", share: "複製分享連結", pinned_n: "已釘選 {n}/4",
   pin_base: "維持現狀隨時顯示，不需釘選。", pin_done: "已釘選；見「比較」分頁。", pin_dropped: "最多釘選4個：最舊的「{name}」已移除。",
   pins_trimmed: "連結中有 {n} 個超過上限4個的釘選，已忽略。", link_copied: "連結已複製。",
-  start_note: "自{s0}年或{s1}年開始，到{H}年都約減少 {v} 公分：本模型的效益在第一年出現後就不再增加，所以兩者只差在{s1}年以前的幾年（見時間序列）。",
+  start_note: "自{s0}年或{s1}年開始，到{H}年在 N2 的 {n} 口雲林觀測井水位上升約相同（{v} 公尺）；兩者差在{s1}年以前的幾年（見時間序列）。",
   ttowns: "鄉鎮", thsr: "高鐵", tsec: "剖面", tcmp: "比較", ttrust: "模型可信之處", tranking: "排序",
-  rkcm: "{H}年前減少下陷（公分）", rkgwh: "每減少100 GWh/年", rank_group: "排序指標", rank_aria: "槓桿排序",
-  rank_unit_cm: "完全停止各類別抽水，{y}年全扇平均減少下陷（公分）", rank_unit_gwh: "每減少 100 GWh/年 抽水用電可減少的下陷（公分）", from_y: "自{y}年",
-  no_basis_short: "未載入反應基底", rank_limit: "此排序僅依模型假設；缺乏經驗證的抽水量、垂向壓密及政策效果。",
+  rkhead: "{H}年水位上升", rkcm: "模型內部數值：{H}年前減少下陷（公分）", rkgwh: "每減少100 GWh/年的水位上升", rank_group: "排序指標", rank_aria: "槓桿排序",
+  rank_unit_head: "完全停止各類別抽水，{y}年水位上升（公尺），N2 的 {n} 口雲林觀測井平均（各井於其篩管層）", rank_unit_head_l2: "完全停止各類別抽水，{y}年全扇平均第二含水層水位上升（公尺）", rank_unit_cm: "模型內部數值（大小未經檢驗）：完全停止各類別抽水，{y}年全扇平均減少下陷（公分）", rank_unit_gwh: "每減少 100 GWh/年 抽水用電的水位上升（公尺；與水位排序同一批井）", from_y: "自{y}年",
+  no_basis_short: "未載入反應基底", rank_limit: "此排序僅依模型假設：各類別的水位反應是線性、僅模型的推論（N2 檢驗的是對實際總抽水距平的反應，而非逐一類別），各類別抽水量未經驗證，下陷排序另依賴未經驗證的垂向壓密。",
   rank_spread: "模型把每個地區的抽水分散到{s}的範圍，資料並未確定這個半徑，原因也未明。", rank_boff: "快速估算已關閉：只有完整模擬過的政策有數值。", rank_cav2: "更多",
   sortby: "排序", sbenefit: "政策效益", sbase: "基準情境至{H}下陷", sname: "名稱",
-  tw_base_val: "{v} 公分 基準 {a}–{b}", tw_avoided_val: "{v} 公分 減少", tw_sets: "{a}/{n} 組參數認為是效益", tw_skill: "水準點 n={n}{bias}{r2}", tw_bias: "，偏差 {v} 公分", tw_r2: "，R² {v}",
+  tw_base_val: "{v} 公分 基準 {a}–{b}（模型內部數值，大小未經檢驗）", tw_avoided_val: "{v} 公分 減少（模型內部數值，大小未經檢驗）", tw_sets: "{a}/{n} 組參數認為是效益", tw_skill: "水準點 n={n}{bias}{r2}", tw_bias: "，偏差 {v} 公分", tw_r2: "，R² {v}",
   tw_pooled: "未分鄉鎮；", tw_low: "低可信度：{s}", tw_off: "超出刻度", tw_off_b: "↓超出刻度",
   tn_base: "共用縱軸 0–{hi} 公分（自{a}年，向下＝下陷）；灰＝基準及其範圍。低可信度鄉鎮不列入頁首。偏差＝回推減水準測量（負＝模型下陷太少）。",
-  tn_pol: "藍＝政策減少的下陷（向上＝效益），共用縱軸 ±{hi} 公分。低可信度鄉鎮不列入頁首{bias}；{pooled}。偏差＝回推減水準測量（負＝模型下陷太少）。{agree}",
+  tn_pol: "模型內部數值，大小未經檢驗。藍＝政策減少的下陷（向上＝效益），共用縱軸 ±{hi} 公分。182公里線以西（遠端區）鄉鎮的沿海效益不可靠。低可信度鄉鎮不列入頁首{bias}；{pooled}。偏差＝回推減水準測量（負＝模型下陷太少）。{agree}",
   ta_note: "「n/N 組參數」：該鄉鎮平均下陷在{H}年減少的參數組數；少於{p}%者以紅字標示。", ta_h_only: "各鄉鎮的模擬一致性以{H}年計；請把年份移到該年。",
   ta_full_only: "每個鄉鎮的模擬一致性只有完整模型模擬才有；快速估算沒有。", ta_none: "每個鄉鎮的模擬一致性需要逐次輸出，尚未提供。",
   th_township: "鄉鎮", th_base_fwd: "基準 {a}-{b} (公分)", th_avoided_pol: "政策減少 (公分)", th_bias: "偏差", th_conf: "可信度", th_sets: "同意的參數組",
@@ -1173,15 +1188,15 @@ zh: {
   rail_thr: "門檻 1/{n}：示意篩選值，非營運標準", rail_thr_s: "篩選值 1/{n}（示意）", rail_thr_above: "；比最大值高 {x} 倍，在刻度之外",
   rail_grey: "灰：扇區分界，不計", rail_chain: "里程（公里，由北往南）", rail_aria: "高鐵剖面",
   rail_excl: "不含扇區分界旁 {km} 公里（灰色；含這些點時基準最大值為 {raw}）", rail_ex_join: "；",
-  rail_note: "最大角變形 {a}（基準）→ {b}（政策）：{line}{ex}。系集平均場。1 公里網格無法解析短於約2公里的差異。",
+  rail_note: "模型內部數值，未經檢驗：最大角變形 {a}（基準）→ {b}（政策）：{line}{ex}。這是大小未獲支持之下陷場的幾何量，僅為示意篩選值，不代表較好或較差。系集平均場。1 公里網格無法解析短於約2公里的差異。",
   no_rail_loaded: "未載入高鐵路線（--hsr）", th_dist_base: "角變形 基準", th_dist_pol: "角變形 政策",
-  sec_miss: "剖面線不在扇區內", sec_avoided: "沿線減少的下陷 {a}–{b}（±{lim} 公分，藍＝少下陷）", sec_avoided_s: "減少 {a}–{b}，±{lim} 公分，藍＝少",
+  sec_miss: "剖面線不在扇區內", sec_avoided: "模型內部數值：沿線減少的下陷 {a}–{b}（±{lim} 公分，藍＝少下陷；大小未經檢驗）", sec_avoided_s: "模型內部數值：減少 {a}–{b}，±{lim} 公分",
   sec_elev: "高程（公尺，海拔）", sec_dist: "距離（公里）", sec_aria: "剖面圖",
   sec_note: "縱軸為海拔高程（非比例：垂直誇大）。棕線＝地表；彩色帶＝四個含水層，以該處網格的基準水頭上色（viridis，{a}–{b} 公尺）；斜線＝黏土。黑線 h1–h4＝各含水層的基準水頭，藍虛線＝政策（{H}年12月，由單一槓桿模擬估算）。",
   sec_h_only: "政策水頭只在{H}年繪出；剖面顯示所選年份的基準水頭。", sec_group: "剖面線",
   secaxis: "扇軸", sechsr: "沿高鐵", sechuwei: "經虎尾東西向", secdraw: "在地圖上繪製",
   cmp_empty: "尚未釘選政策。設定槓桿後按「釘選此政策」，最多4個；它們也會存在分享連結中。",
-  cmp_avoided: "{y}年前減少下陷 (公分)", cmp_area: "面積>{t} (公里²)", cmp_rail: "高鐵最大梯度", cmp_head: "L2水頭 (公尺)", cmp_cut: "減抽 (GWh/年)", cmp_agree: "一致（參數組）",
+  cmp_avoided: "模型：{y}年前減少下陷（公分，未經檢驗）", cmp_area: "模型：面積>{t}（公里²，未經檢驗）", cmp_rail: "模型：高鐵最大梯度（未經檢驗）", cmp_head: "L2水頭 (公尺)", cmp_cut: "減抽 (GWh/年)", cmp_agree: "一致（參數組）",
   cmp_alt: "另一模型 (公分)", cmp_alt_km: "{km} 公里模型 (公分)", cmp_full: "（完整模型）", cmp_mini: "小地圖使用相同的固定刻度 ±{lim} 公分（{a}–{b}減少的下陷，藍＝少下陷）。",
   trust_ttl_pts: "水準點：回推減觀測（最後一次測量），公分", trust_ttl_town: "各鄉鎮水準點平均偏差（回推減觀測），公分",
   trust_cap: "橘色＝模型下陷過多；藍色＝模型下陷不足。", trust_agg: " 公開版只提供鄉鎮彙總，不含個別水準點。",
@@ -1208,19 +1223,19 @@ zh: {
   d3_s2_t: "2 · 黏土排水並被壓密", d3_s2_b: "水位下降時，相鄰黏土層的水被擠出，黏土被壓密；顏色＝該網格的總壓密量（模型不分層，此處分配僅為示意）。",
   d3_s3_t: "3 · 彈性回彈與永久壓密", d3_s3_b: "地表隨壓密量下降（下降量放大 {x} 倍於垂直比例）。非彈性壓密不會恢復；彈性部分可回彈。時間與深度分布仍是模型假設。",
   story_step: "導覽 {a} / {b}", story_restored: "導覽已關閉，已還原你的設定。",
-  st1_t: "先看答案", st1_b: "以灌溉抽水減少30%為例。頁首的一句話就是答案，下方三個數字說明減少多少、影響多大面積、有多確定；「證據」標籤說明可信到什麼程度。接下來說明數字從哪裡來。",
+  st1_t: "先看答案", st1_b: "以灌溉抽水減少30%為例。頁首的一句話說明本模型給出什麼、哪些經過檢驗：雲林的水頭反應。地層下陷數值列於「模型內部數值」，因為其大小未經檢驗。「證據」標籤說明可信到什麼程度。接下來說明數字從哪裡來。",
   st2_t: "沖積扇與它的地層", st2_b: "濁水溪堆積出這個沖積扇。下方3D視圖：四個含水層以地下水位上色，中間的黃褐色是黏土層，各層已拉開以便觀看（垂直誇張標示在畫面上）。頂面是地表，顏色與地圖相同：{y}年以來的累積下陷。",
   st3_t: "抽水壓低地下水位", st3_b: "地圖顯示{y}年12月第二含水層（主要抽水層）的水頭{low}；圖表只顯示擬合期{a}–{y}年。{wells}以用電計，抽水約{irr}%用於農業灌溉。",
   st3_low: "，最低處在{t}附近", st3_datum: "（未加上各井擬合的固定偏差）",
   st3_wells: "點＝{n}口第二含水層觀測井的年平均（{a}至{b}年{dir} {v} 公尺），虛線＝模型在同一批井的值，平均{side} {g} 公尺{datum}。",
   st4_t: "黏土被擠壓，地面下陷", st4_b: "3D視圖分三步播放：水位下降、黏土被壓密、地面下陷。黏土的非彈性壓密不會回復；較小的彈性部分會在水位回升時回彈，所以政策的快速效益大多是這一部分。地圖改為累積下陷。模型回推對水準測量的技巧 R² {r2}。",
   st5_t: "高鐵", st5_b: "對高鐵而言重要的是沿線下陷的不均勻程度（高鐵分頁下方的角變形），而不是總量（上方）。灰色路段讀到扇區分界兩側，是模型的邊界，不列入。",
-  st6_t: "試試一個政策", st6_b: "地圖顯示灌溉減少30%與維持現狀的差異（藍＝少下陷）。{boff}注意：{y}年12月以後都是模型自身的趨勢，{pass}；在沒見過的井，它不如簡單內插。",
+  st6_t: "試試一個政策", st6_b: "地圖顯示灌溉減少30%與維持現狀相比的第二含水層水頭變化。{boff}注意：{y}年12月以後都是模型自身的趨勢，{pass}；在沒見過的井，它不如簡單內插。",
   st6_move: "移動槓桿或選一個預設組合。", st6_boff: "請選一個預設組合：只有完整模擬過的政策有數值（快速估算已關閉）。",
   st6_pass: "只有前{m}年經過檢驗（去除各井固定偏差後通過）", st6_fail: "它的三年檢驗未通過",
   cv1_none_t: "十年尺度的趨勢未經驗證。", cv1_none_b: "預報自{o}年12月起由模型自行運算；保留年份檢驗結果未載入。",
   cv1_pass_t: "通過{ny}年的保留年份檢驗；之後的十年未經檢驗。",
-  cv1_pass_b: "預報自{o}年12月起由模型自行運算（水頭只在起點重新接上觀測值一次）。保留年份檢驗以前{fy}年擬合、再自行運算{months}個月，並依事先登錄的「公平」規則評分：每口井的固定偏差只用擬合期估計{ex}。去除偏差後，模型在{nw}口井的誤差為 {rmse} 公尺，最佳簡單預測（{best}）為 {rbest} 公尺，比值 {ratio}（≤ {k} 通過）；井的變化形狀 R² {shape}，氣候平均 {sclim}（加趨勢 {sctr}）。不去除偏差時誤差為 {raw} 公尺，其中 {share} 就是這些固定偏差：模型不知道每口井的絕對水位，它追蹤的是變化。{drift}{yt}年12月以後的每個數值都是模型本身未經檢驗的趨勢。",
+  cv1_pass_b: "預報自{o}年12月起由模型自行運算（水頭只在起點重新接上觀測值一次）。保留年份檢驗以前{fy}年擬合、再自行運算{months}個月，並依2026-09-24宣告的「公平」規則評分（早於現行登錄制度，沒有登錄紀錄）：每口井的固定偏差只用擬合期估計{ex}。去除偏差後，模型在{nw}口井的誤差為 {rmse} 公尺，最佳簡單預測（{best}）為 {rbest} 公尺，比值 {ratio}（≤ {k} 通過）；井的變化形狀 R² {shape}，氣候平均 {sclim}（加趨勢 {sctr}）。不去除偏差時誤差為 {raw} 公尺，其中 {share} 就是這些固定偏差：模型不知道每口井的絕對水位，它追蹤的是變化。{drift}{yt}年12月以後的每個數值都是模型本身未經檢驗的趨勢。",
   cv1_ex: "，並排除擬合期少於24個月的{n}口井",
   cv1_passnf_t: "十年尺度的趨勢未經驗證。", cv1_passnf_b: "保留年份檢驗（以前{fy}年擬合、再自行運算{months}個月）：模型誤差 {rm} 公尺，重複過去平均 {rc} 公尺，通過。{yt}年12月以後的數值未經檢驗。",
   cv1_fail_t: "十年尺度的趨勢未經驗證，三年的檢驗也未通過。",
@@ -1281,7 +1296,7 @@ zh: {
   pl_heldout: "保留年份檢驗（誤差比 {a}，前一版 {b}）", pl_anom: "未見過的井的水頭變化（{a}，前一版 {b}）", pl_lev: "水準測量跨折（{a}，前一版 {b}）",
   pl_chain: "全鏈回推（{a}，前一版 {b}）", pl_abs: "未見過的井的絕對水位（{a}，前一版 {b}）", pl_rings: "壓密環（{a}，前一版 {b}）",
   pl_base: "基準情境{a}–{b}年下陷 {v} 公分（本模型 {mine}）", pl_resp: "「{p}」減少 {v} 公分（本模型 {mine}）",
-  kv_unseen: "未見過的井", kv_levels: "水位", kv_changes: "水頭變化", kv_median: "各井中位數", kv_datum: "各井固定偏差", kv_insample: "含偏差的擬合 R²",
+  kv_unseen: "未見過的井（判定規則於2026-09-24/26宣告，早於現行登錄制度）", kv_levels: "水位", kv_changes: "水頭變化", kv_median: "各井中位數", kv_datum: "各井固定偏差", kv_insample: "含偏差的擬合 R²",
   kv_datum_note: "只在觀測算子中，不進入模擬、壓密柱或預報。", kv_column: "壓密柱（跨折）", kv_rings: "未分層代理壓密環", kv_chain: "全鏈回推",
   kv_heldout: "保留年份", kv_fair: "公平規則", kv_after_offset: "去除各井偏差後", kv_with_trend: "加趨勢", kv_months: "個月自行運算，擬合年數", kv_fit_years: "年",
   kv_raw: "原始", kv_legacy: "舊判定", kv_raw_share: "的原始誤差來自各井偏差", kv_screen_radius: "此檢驗的抽水分散半徑", kv_others: "其他檢驗（公平比值）",
@@ -1304,19 +1319,24 @@ function solvedMatch(f, startYear) {
     if (s.start === startYear && s.factors.every((v, k) => Math.abs(v - f[k]) < 1e-6)) return i; }
   return -1;
 }
-function newPolicy() { return {f: [], start: 0, dS: new Float32Array(A*Y), dH: new Float32Array(A*Y), src: "base", solved: -1}; }
+// N2's unit (D.n2Unit, model output): the mean head change over N2's Yunlin wells, each in its own
+// screened layer, per year-end; solved runs directly, levers by the same rescaled superposition
+const N2U = () => D.n2Unit || null;
+function newPolicy() { return {f: [], start: 0, dS: new Float32Array(A*Y), dH: new Float32Array(A*Y), dW: new Float32Array(Y), hasW: false, src: "base", solved: -1}; }
 function policyInto(out, f, si) {
   const startYear = M.starts[si], n = A*Y;
   out.f = f.slice(); out.start = si; out.solved = -1; out.src = "base";
-  out.dS.fill(0); out.dH.fill(0);
+  out.dS.fill(0); out.dH.fill(0); out.dW.fill(0); out.hasW = false;
   if (isBase(f)) return out;
-  const m = solvedMatch(f, startYear);
-  if (m >= 0 && F["solvedSubs"+m]) { out.dS.set(F["solvedSubs"+m]); out.dH.set(F["solvedHead"+m]); out.src = "solved"; out.solved = m; return out; }
+  const m = solvedMatch(f, startYear), u = N2U();
+  if (m >= 0 && F["solvedSubs"+m]) { out.dS.set(F["solvedSubs"+m]); out.dH.set(F["solvedHead"+m]); out.src = "solved"; out.solved = m;
+    if (u && u.solved[m]) { out.dW.set(u.solved[m]); out.hasW = true; } return out; }
   if (!F.dSubs) { out.src = "none"; return out; }
   const dS = out.dS, dH = out.dH, bS = F.dSubs, bH = F.dHeadL2;
   for (let k = 0; k < K; k++) { const w = 1 - f[k]; if (!w) continue; const off = (si*K + k)*n;
-    for (let i = 0; i < n; i++) { dS[i] += w * bS[off+i]; dH[i] += w * bH[off+i]; } }
-  out.src = "basis"; return out;
+    for (let i = 0; i < n; i++) { dS[i] += w * bS[off+i]; dH[i] += w * bH[off+i]; }
+    if (u && u.basis) for (let y = 0; y < Y; y++) out.dW[y] += w * u.basis[si*K + k][y]; }
+  out.hasW = !!(u && u.basis); out.src = "basis"; return out;
 }
 const policyFields = (f, si) => policyInto(newPolicy(), f, si);   // a fresh set, for pins and comparisons
 // forward change of the policy response at year y, since Dec of the reference year
@@ -1374,11 +1394,11 @@ function classHead(k, si, y) { if (!F.dHeadL2) return 0; const off = (si*K + k)*
   for (let c = 0; c < A; c++) s += F.dHeadL2[off + c*Y + y]; return s/A; }
 function kpis(pol, y) {
   const out = {y}, H = Y-1, atH = y === H;
-  let s = 0, peak = 0, peakC = -1, h = 0, hmax = -1e9, hC = -1, sy = 0, ny = 0;
-  for (let c = 0; c < A; c++) { const d = -dFwd(pol, c, y); s += d; if (d > peak) { peak = d; peakC = c; }
-    if (!D.towns[F.town[c]].pooled) { sy += d; ny++; }
-    const dh = pol.dH[c*Y+y]; h += dh; if (dh > hmax) { hmax = dh; hC = c; } }
-  out.yunAvoid = ny ? sy/ny : null; out.yunN = ny;
+  let s = 0, peak = 0, peakC = -1, h = 0, hmax = -1e9, hC = -1, sy = 0, ny = 0, hy = 0;
+  for (let c = 0; c < A; c++) { const d = -dFwd(pol, c, y), dh = pol.dH[c*Y+y]; s += d; if (d > peak) { peak = d; peakC = c; }
+    if (!D.towns[F.town[c]].pooled) { sy += d; hy += dh; ny++; }
+    h += dh; if (dh > hmax) { hmax = dh; hC = c; } }
+  out.yunAvoid = ny ? sy/ny : null; out.yunN = ny; out.yunHead = ny ? hy/ny : null; out.n2Head = pol.hasW ? pol.dW[y] : null;
   out.fieldAvoid = s/A; out.peak = peak; out.peakC = peakC; out.fieldHead = h/A; out.headMax = hmax; out.headC = hC;
   out.avoid = out.fieldAvoid; out.head = out.fieldHead; out.band = null; out.hband = null; out.bandNote = null;
   out.agree = null; out.agreeLB = false; out.noRun = []; out.nRuns = D.modelcard.n_members; out.nAll = D.modelcard.n_members;
@@ -1568,22 +1588,15 @@ function renderHeadline() {
   const hz = atH() ? "" : tr("at_h", {H});
   if (y <= YR) s = tr("hl_fit", {year: Hy, y0, a: M.years[0], b: M.years[YO]});
   else if (P.src === "base") {
-    const bq = MF() && MF().baseFwd && atH() ? MF().baseFwd : null, rw = atH() ? rheoWords(true) : "";
-    const rng = bq ? tr("hl_runs", {a: f1(bq[0]), b: f1(bq[2])}) : "";
-    const r = D.rheology, tau = r && r.tauYears ? r.tauYears : null, ft = r && r.baseAlt != null;
-    const rh = rw ? tr(ft ? "hl_rheo_ft" : "hl_rheo", {tau: tau ? tr("tau_long", {t: tau}) : tr("tau_longer"), v: ft ? f1(r.baseAlt) : f1(r.dBase)}) : "";
-    s = tr("hl_base", {rec, y0, year: Hy, v: f1(baseFwdFanAt(y)), rng, rh});
+    s = tr("hl_base", {rec, y0, year: Hy});
   } else if (P.src === "none") {
     const opts = D.solved.map(x => tr("hl_opt", {p: lc(policyPhrase(x.factors)), s: x.start})).join(tr("list_or"));
     s = tr("hl_none", {pol: lc(policyPhrase(S.f)), yr, boff: BOFF() ? boffWords() : tr("no_basis"), opts});
   } else if (y < startYearIdx()) {
     s = tr("hl_early", {pol: lc(policyPhrase(S.f)), yr, year: Hy});
   } else {
-    const ids = topTowns(kp), tt = ids.map(i => TNB(i)).join(tr("list_sep"));
-    const b = kp.band ? `(${f2(kp.band[0])}–${f2(kp.band[1])})` : "";
-    s = tr("hl_pol", {pol: lc(policyPhrase(S.f)), yr, v: f2(kp.avoid), b, year: Hy, share: pctf(kp.share), base: f1(baseFwdFanAt(y)), y0,
-      yun: NOCHP() && kp.yunAvoid != null ? tr("hl_yun", {v: f2(kp.yunAvoid), n: kp.yunN.toLocaleString("en-US")}) : "",
-      fast: fastClause(kp), tt: tt || "–", hot: hotWords(ids), agree: agreeSentence(kp) + (kp.agree != null ? hz : ""), alt: altSentence(kp)});
+    const hw = headWhere(kp);
+    s = tr("hl_pol", {pol: lc(policyPhrase(S.f)), yr, h: sg(hw.v), where: hw.where, year: Hy});
   }
   setHtml($("headline"), s);
   const chip = $("prov"); chip.title = "";
@@ -1613,18 +1626,26 @@ function renderEvidenceBadge() {
   setText($("evLine"), evLineText());
 }
 
-const TILE_IDS = ["tA", "tR", "tF", "tH", "tW", "tC"], PRIMARY = 3;
+// the answer row holds the tested quantity (heads) and the cost; the subsidence tiles and the
+// run agreement on them are model internals (claims ledger C03, C05, C06, C07; ruling 2026-10-29)
+const TILE_IDS = ["tW", "tC", "tA", "tR", "tH", "tF"], PRIMARY = 2;
+// the answer is in N2's unit (user ruling 2026-10-29, second set); the layer-2 cell means are fallbacks
+const headWhere = kp => N2U() && kp.n2Head != null ? {v: kp.n2Head, where: tr("hw_n2", {n: N2U().n}), n2: true}
+  : NOCHP() && kp.yunHead != null && kp.yunN
+  ? {v: kp.yunHead, where: tr("hw_yun", {n: kp.yunN.toLocaleString("en-US")})} : {v: kp.fieldHead, where: tr("hw_fan")};
 function buildTiles() {
   const mk = id => { const d = document.createElement("div"); d.className = "tile" + (TILE_IDS.indexOf(id) >= PRIMARY ? " more" : ""); d.id = id;
     d.innerHTML = `<div class="k"><span class="kl"></span><button class="qbtn" data-q="${id}" aria-expanded="false">?</button></div>
       <div class="v"><span class="vn num"></span><small class="vu"></small><span class="word" hidden></span></div><div class="r"></div><div class="d"></div>`; return d; };
   const a = $("tiles"), b = $("tilesMore"); a.textContent = ""; b.textContent = "";
+  const note = document.createElement("p"); note.className = "minote"; note.id = "miNote"; b.appendChild(note);
   TILE_IDS.forEach((id, i) => (i < PRIMARY ? a : b).appendChild(mk(id)));
 }
 function tileLabels() {
-  const lab = {tA: tr("tAvoid"), tR: tr("tArea", {t: S.thr}), tF: tr("tConf"), tH: tr("tHsr"), tW: tr("tHead"), tC: tr("tCost")};
+  const lab = {tA: tr("tAvoid"), tR: tr("tArea", {t: S.thr}), tF: tr("tConf"), tH: tr("tHsr"), tW: tr(N2U() ? "tHead" : "tHead_l2"), tC: tr("tCost")};
   for (const id of TILE_IDS) { const el = $(id); setText(el.querySelector(".kl"), lab[id]); el.querySelector(".qbtn").setAttribute("aria-label", tr("def_of", {k: lab[id]})); }
   setText($("moreBtn"), tr(S.more ? "less_metrics" : "more_metrics", {n: TILE_IDS.length - PRIMARY}));
+  setText($("miNote"), tr("mi_note"));
   $("moreBtn").setAttribute("aria-expanded", S.more);
 }
 function tset(id, num, unit, r, d, word) {
@@ -1664,7 +1685,9 @@ function renderTiles() {
   tset("tH", D.hsr ? `${inv(kp.hsrBase)} → ${inv(kp.hsrPol)}` : "–", "", D.hsr ? railLine(kp) : tr("no_rail"),
     D.hsr ? (far ? tr("tH_far", {x: Math.round(1 / thrN / Math.max(kp.hsrBase, kp.hsrPol)), n: thrN}) : tr("tH_seg", {n: thrN, a: f1(kp.hsrSegB), b: f1(kp.hsrSegP)})) : "");
   // tW: layer-2 head
-  tset("tW", isB ? "0.00" : sg(kp.head), "m", isB ? "" : rangeText(kp.hband, "m") || (H ? "" : tr("rng_h_only", {H: M.years[Y-1]})), tr("tW_d", {year: Hy, v: sg(kp.headMax, 1)}));
+  // the run spread (kp.hband) is a fan-average spread, so it is not shown beside N2's well mean
+  const hw = headWhere(kp);
+  tset("tW", isB ? "0.00" : sg(hw.v), "m", isB ? "" : tr("tW_r"), tr("tW_d", {year: Hy, y: kp.yunHead == null ? "–" : sg(kp.yunHead), f: sg(kp.head), v: sg(kp.headMax, 1)}));
   // tC: the cost, pumping energy given up
   const nyP = Hy - yr + 1;
   tset("tC", kp.gwh == null ? "–" : f1(kp.gwh), kp.gwh == null ? "" : "GWh/yr", kp.gwh == null ? tr("no_energy") : tr("tC_r", {p: pctf(kp.gwhPct)}),
@@ -1675,6 +1698,13 @@ function tileDefHtml(id) {
   const kp = KP, y = S.year, Hy = M.years[y], y0 = M.years[YR], yr = M.starts[S.start], isB = NOPOL(), raw = M.rawFwdFan, rows = [];
   const p = t => rows.push(`<p>${t}</p>`);
   if (id === "tA") {
+    if (isB && P.src === "base") {      // the baseline fan total, withdrawn from the headline (C09)
+      const bq = MF() && MF().baseFwd && atH() ? MF().baseFwd : null, r = D.rheology, tau = r && r.tauYears ? r.tauYears : null, ft = r && r.baseAlt != null;
+      const rh = atH() && rheoWords(true) ? tr(ft ? "hl_rheo_ft" : "hl_rheo", {tau: tau ? tr("tau_long", {t: tau}) : tr("tau_longer"), v: ft ? f1(r.baseAlt) : f1(r.dBase)}) : "";
+      p(tr("mi_base", {v: f1(baseFwdFanAt(y)), y0, year: Hy, rng: bq ? tr("hl_runs", {a: f1(bq[0]), b: f1(bq[2])}) : "", rh}));
+    }
+    if (!isB && NOCHP() && kp.yunAvoid != null)   // the Yunlin subsidence figure, withdrawn from the headline (C03)
+      p(tr("hl_yun", {v: f2(kp.yunAvoid), n: kp.yunN.toLocaleString("en-US")}).trim().replace(/^[(（]|[)）]$/g, ""));
     p(tr("def_tA", {y0, year: Hy, base: f1(baseFwdFanAt(y)), fx: FIXED() ? tr("def_tA_fixed", {v: f1(baseFwdFan())}) : tr("def_tA_removed", {v: f1(baseFwdFan()), led: raw != null ? tr("def_tA_ledger", {a: M.years[YO], b: M.years[Y-1], v: f1(raw)}) : ""})}));
     if (D.rheology) p(tr("def_tA_rheo", {t: rheoWords()}));
     p(tr("def_tA_fast"));
@@ -1694,9 +1724,9 @@ function tileDefHtml(id) {
     p(tr("def_tH") + (D.hsr && kp.hsrExcl ? tr("def_tH_excl", {km: f1(kp.hsrExcl), raw: inv(kp.hsrRawB)}) : ""));
     const q = isB ? kp.hsrBaseQ && [kp.hsrBaseQ[2], kp.hsrBaseQ[0]] : kp.hsrQ && [kp.hsrQ.pol[2], kp.hsrQ.pol[0]];
     if (q && MF()) p(tr("tH_q", {n: MF().n_sets, a: inv(q[0]), b: inv(q[1])}));
-  } else if (id === "tW") p(tr("def_tW", {year: Hy}));
+  } else if (id === "tW") { const hw = headWhere(kp); p(tr("def_tW", {year: Hy, where: hw.where, u: tr(hw.n2 ? "def_tW_same" : "def_tW_cells")})); }
   else if (id === "tC") p(tr("def_tC"));
-  return `<h3>${esc(tr(id === "tR" ? "tArea" : id === "tA" ? "tAvoid" : id === "tF" ? "tConf" : id === "tH" ? "tHsr" : id === "tW" ? "tHead" : "tCost", {t: S.thr}))}</h3>` + rows.join("")
+  return `<h3>${esc(tr(id === "tR" ? "tArea" : id === "tA" ? "tAvoid" : id === "tF" ? "tConf" : id === "tH" ? "tHsr" : id === "tW" ? (N2U() ? "tHead" : "tHead_l2") : "tCost", {t: S.thr}))}</h3>` + rows.join("")
     + `<p><button class="link" data-goto="trust">${esc(tr("see_limits"))}</button></p>`;
 }
 function reboundLine(kp) {             // beside the avoided-subsidence tile: a one-time rebound, not a slowing
@@ -1706,7 +1736,7 @@ function reboundLine(kp) {             // beside the avoided-subsidence tile: a 
 }
 
 // ---------- map -------------------------------------------------------------------------
-const LAYERS = ["dsubs", "dhead", "rate", "abs", "head"];
+const LAYERS = ["dhead", "dsubs", "rate", "abs", "head"];
 const T0 = () => monthYear(M.t0 || M.years[0] + "-01");
 const layerName = id => tr("ly_" + id, {y0: M.years[YR], t0: T0(), art: FIXED() ? "" : tr("ly_art")});
 const FBUF = [new Float32Array(A), new Float32Array(A)], ALOW = [new Uint8Array(A), new Uint8Array(A)];
@@ -1786,7 +1816,7 @@ function drawOverlays(ctx, g, small) {
       ctx.font = "600 13px " + ff; ctx.lineWidth = 3; ctx.strokeStyle = CV.halo; ctx.fillStyle = CV.ink;
       const a = LANG === "zh" ? tw.zh.replace(/[鄉鎮市]$/, "") : tw.en; ctx.strokeText(a, X, Yp); ctx.fillText(a, X, Yp); });
     if (townCentroid[0]) { const X = gx(g, townCentroid[0][0]), Yp = gy(g, townCentroid[0][1]);
-      ctx.font = "italic 13px " + ff; const a = tr("map_changhua"); ctx.strokeText(a, X, Yp); ctx.fillText(a, X, Yp); }
+      ctx.font = "italic 13px " + ff; const a = tr(NOCHP() ? "map_changhua_np" : "map_changhua"); ctx.strokeText(a, X, Yp); ctx.fillText(a, X, Yp); }
     ctx.textAlign = "start"; }
   if (!small) { // north arrow and 10 km scale bar
     const X = g.W - 22, Yp = 16;
@@ -1985,7 +2015,7 @@ function seriesFor(sel, pol) {
   const hb = !cells && lay === 1 && MF() && MF().baseHeadBandYr ? MF().baseHeadBandYr : null;
   const hNote = hb ? tr("bn_head", {n: MF().n}) : tr("bn_head_none");
   return {base, scen, band: hb ? [hb[0], hb[1], hb[3], hb[4]] : null, bandKind: hb ? "runs_head" : null, hop: lay === 1 ? hopSeries("head", cells) : null, aux, bandNote: hNote + (auxNote ? " " + auxNote : ""), obs, unit: "m",
-    label: tr("ts_head_label", {l: lay + 1, main: lay === 1 ? tr("ts_head_main") : ""}), invert: false};
+    label: tr("ts_head_label", {l: lay + 1, main: lay === 1 ? tr("ts_head_main") : ""}) + (cells ? "" : tr("ts_head_fan")), invert: false};
 }
 function niceTicks(lo, hi, n = 5) { const span = hi - lo, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), st = [1, 2, 2.5, 5, 10].map(v => v * mag).find(v => span / v <= n) || raw;
   const out = []; for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(10)); return {ticks: out, step: st}; }
@@ -2142,8 +2172,10 @@ function gwhTieWords() {               // post hoc, model-only (A2b via page_pos
 }
 function renderRank() {
   const W = cw("rankWrap", 300), rowH = 34, m = {l: 110, r: 52, t: 8}, y = S.year;
-  const rows = D.classes.map((c, k) => { const a = M.starts.map((_, si) => -classResponse(k, si, y));
-    const v = S.rank === "cm" ? a : a.map(x => c.gwh ? 100 * x / c.gwh : NaN); return {k, v}; }).sort((a, b) => (b.v[0] || 0) - (a.v[0] || 0));
+  // head at N2's wells by default (and per GWh); the cm ranking is labelled model internals
+  const u = N2U(), hd = (k, si) => u && u.basis ? u.basis[si*K + k][y] : classHead(k, si, y);
+  const rows = D.classes.map((c, k) => { const a = M.starts.map((_, si) => S.rank === "cm" ? -classResponse(k, si, y) : hd(k, si));
+    const v = S.rank === "gwh" ? a.map(x => c.gwh ? 100 * x / c.gwh : NaN) : a; return {k, v}; }).sort((a, b) => (b.v[0] || 0) - (a.v[0] || 0));
   const mx = Math.max(...rows.flatMap(r => r.v.filter(v => v === v)), 1e-9), H = m.t + rows.length * rowH + 24;
   const ink = CV.ink, ink3 = CV["ink-3"], cols = [CV["series-policy"], CV.band];
   let g = "";
@@ -2154,10 +2186,11 @@ function renderRank() {
   const ly = H - 8; M.starts.forEach((s0, si) => { const lx = m.l + 110 * si;
     g += `<rect x="${lx}" y="${ly - 10}" width="11" height="10" fill="${cols[si]}"/><text x="${lx + 15}" y="${ly}" font-size="13" fill="${ink3}">${tr("from_y", {y: s0})}</text>`; });
   setHtml($("rankWrap"), F.dSubs ? `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(tr("rank_aria"))}">${g}</svg>` : `<div class="nl">${BOFF() ? boffWords() : tr("no_basis_short")}</div>`);
-  setText($("rankUnit"), S.rank === "cm" ? tr("rank_unit_cm", {y: M.years[y]}) : tr("rank_unit_gwh"));
-  setText($("rkCm"), tr("rkcm", {H: M.years[y]}));
+  setText($("rankUnit"), S.rank === "cm" ? tr("rank_unit_cm", {y: M.years[y]}) : S.rank === "gwh" ? tr("rank_unit_gwh")
+    : u && u.basis ? tr("rank_unit_head", {y: M.years[y], n: u.n}) : tr("rank_unit_head_l2", {y: M.years[y]}));
+  setText($("rkHead"), tr("rkhead", {H: M.years[y]})); setText($("rkCm"), tr("rkcm", {H: M.years[y]}));
   setHtml($("rankTbl"), `<table class="t"><caption class="sr">${esc(tr("tranking"))}</caption><thead><tr><th scope="col"></th>${M.starts.map(s0 => `<th scope="col">${s0}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${esc(CN(r.k))}</th>${r.v.map(v => `<td class="n">${v.toFixed(3)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
-  setHtml($("rankNote"), (S.rank === "gwh" && gwhTieWords() ? esc(gwhTieWords()) + " " : "") + esc(tr("rank_limit")) + " " + esc(tr("rank_spread", {s: spreadWords()})) + (BOFF() ? " " + esc(tr("rank_boff")) : "") + " " + cavLink(2, tr("rank_cav2")));
+  setHtml($("rankNote"), (S.rank === "cm" && gwhTieWords() ? esc(gwhTieWords()) + " " : "") + esc(tr("rank_limit")) + " " + esc(tr("rank_spread", {s: spreadWords()})) + (BOFF() ? " " + esc(tr("rank_boff")) : "") + " " + cavLink(2, tr("rank_cav2")));
 }
 
 // ---------- townships -------------------------------------------------------------------
@@ -2904,10 +2937,12 @@ function renderStartNote() {           // the 2026/2030 toggle: the same horizon
   const el = $("startNote"); el.hidden = true; el.textContent = "";
   if (M.starts.length < 2 || NOPOL() || !atH()) return;
   const other = policyFields(S.f, otherStart()); if (other.src !== "solved" && other.src !== "basis") return;
-  const fan = pol => { let s = 0; for (let c = 0; c < A; c++) s -= dFwd(pol, c, Y-1); return s / A; };
-  const pols = S.start === 0 ? [P, other] : [other, P], a = pols.map(fan), H = M.years[Y-1];
+  // in N2's unit (the answer's quantity), never the withdrawn fan-average subsidence (C03)
+  const pols = S.start === 0 ? [P, other] : [other, P], H = M.years[Y-1];
+  if (!N2U() || !pols.every(p => p.hasW)) return;
+  const a = pols.map(p => p.dW[Y-1]);
   if (Math.abs(a[0] - a[1]) > Math.max(.01, .03 * Math.abs(a[0]))) return;
-  el.hidden = false; el.textContent = tr("start_note", {s0: M.starts[0], s1: M.starts[1], v: f2(a[0]), H});
+  el.hidden = false; el.textContent = tr("start_note", {s0: M.starts[0], s1: M.starts[1], v: sg(a[0]), n: N2U().n, H});
 }
 
 // ---------- selection, year, tabs, views ------------------------------------------------
@@ -2947,7 +2982,7 @@ function setLang(l) {
   $("polToggle").setAttribute("aria-expanded", $("policy").classList.contains("open"));
   levTexts(); polCaveat(); syncLevers(); refreshAB(); renderEvidenceBadge(); renderCard();
   setText($("sbaseOpt"), tr("sbase", {H: M.years[S.year]}));
-  setText($("rkCm"), tr("rkcm", {H: M.years[S.year]}));
+  setText($("rkHead"), tr("rkhead", {H: M.years[S.year]})); setText($("rkCm"), tr("rkcm", {H: M.years[S.year]}));
   $("kbBody").innerHTML = KEYS.map(([k, t]) => `<div>${k.split("+").map(x => `<kbd>${esc(x)}</kbd>`).join(" ")}</div><div>${esc(tr(t))}</div>`).join("");
   if (STORY_ON) story.render();
   if (d3) d3.rebuild();
@@ -3031,13 +3066,13 @@ const story = (() => {
     const irr30 = D.classes.map((_, k) => k === 0 ? .7 : 1);
     const passTxt = TP() && TP().passed ? tr("st6_pass", {m: Math.round(TP().months / 12)}) : tr("st6_fail");
     return [
-      {t: tr("st1_t"), x: tr("st1_b"), el: () => $("results"), go: () => apply({f: irr30, start: 0, layer: "dsubs", view: "diff", tsFit: false, ts: "subs", year: Y-1, sel: {k: "fan"}})},
+      {t: tr("st1_t"), x: tr("st1_b"), el: () => $("results"), go: () => apply({f: irr30, start: 0, layer: "dhead", view: "diff", tsFit: false, ts: "head", year: Y-1, sel: {k: "fan"}})},
       {t: tr("st2_t", {y: M.years[0]}), x: tr("st2_b", {y: M.years[0]}), el: () => $("d3stage"), go: () => { apply({layer: "abs", tsFit: false}); openDrawer(); whenD3(d => { d.recolor(); d.spinOnce(); }); }},
       {t: tr("st3_t"), x: tr("st3_b", {y: M.years[YO], low: lowT != null ? tr("st3_low", {t: TNB(lowT)}) : "", a: M.years[0], wells: wellTxt, irr: irr ?? "–"}), el: () => $("mapCard"), go: () => apply({layer: "head", tsFit: true, ts: "head", year: YO, sel: {k: "fan"}})},
       {t: tr("st4_t"), x: tr("st4_b", {r2: mc.chain ? sg(mc.chain.r2, 2) : "–"}), el: () => $("d3stage"), go: () => { apply({layer: "abs", tsFit: true, ts: "subs", year: YO, sel: {k: "fan"}}); openDrawer(); whenD3(d => { d.stopExplain(); d.explain(); }); }},
       {t: tr("st5_t"), x: tr("st5_b"), el: () => $("tabs"), go: () => apply({tsFit: false, tab: "hsr", year: Y-1})},
       {t: tr("st6_t"), x: tr("st6_b", {y: M.years[YO], pass: passTxt, boff: BOFF() ? tr("st6_boff") : tr("st6_move")}), el: () => $("policy"), interactive: true,
-        go: () => { apply({f: irr30, start: 0, layer: "dsubs", view: "diff", tsFit: false, year: Y-1}); $("lv0").classList.add("pulse"); setTimeout(() => $("lv0").classList.remove("pulse"), 4000); }}]; };
+        go: () => { apply({f: irr30, start: 0, layer: "dhead", view: "diff", tsFit: false, year: Y-1}); $("lv0").classList.add("pulse"); setTimeout(() => $("lv0").classList.remove("pulse"), 4000); }}]; };
   function render() { const all = steps(), st = all[step];
     setText($("stStep"), tr("story_step", {a: step + 1, b: all.length})); setText($("stTitle"), st.t); setText($("stText"), st.x);
     $("stDots").innerHTML = all.map((_, i) => `<i class="${i === step ? "on" : ""}"></i>`).join(""); $("stBack").disabled = step === 0;
@@ -3110,8 +3145,9 @@ function wire() {
   $("s2026").onclick = () => { S.start = 0; syncLevers(); refreshAB(); update(true); }; $("s2030").onclick = () => { S.start = 1; syncLevers(); refreshAB(); update(true); };
   $("reset").onclick = () => { S.f = new Array(K).fill(1); syncLevers(); update(true); };
   $("polToggle").onclick = () => { const o = $("policy").classList.toggle("open"); $("polToggle").setAttribute("aria-expanded", o); setText($("polToggle"), tr(o ? "pol_hide" : "pol_edit")); };
-  $("rkCm").onclick = () => { S.rank = "cm"; $("rkCm").setAttribute("aria-pressed", true); $("rkGwh").setAttribute("aria-pressed", false); invalidate("panel"); };
-  $("rkGwh").onclick = () => { S.rank = "gwh"; $("rkGwh").setAttribute("aria-pressed", true); $("rkCm").setAttribute("aria-pressed", false); invalidate("panel"); };
+  const RK = {rkHead: "head", rkGwh: "gwh", rkCm: "cm"};
+  for (const [id, v] of Object.entries(RK)) $(id).onclick = () => { S.rank = v;
+    for (const b of Object.keys(RK)) $(b).setAttribute("aria-pressed", b === id); invalidate("panel"); };
   if (D.classes[0].gwh == null) $("rkGwh").disabled = true;
   $("pinBtn").onclick = () => { if (isBase(S.f)) { toast(tr("pin_base")); return; }
     if (S.pins.length >= 4) { const gone = S.pins.shift(); toast(tr("pin_dropped", {name: gone.name})); }
