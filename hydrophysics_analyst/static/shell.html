@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twin analyst</title>
+<link rel="stylesheet" href="/static/shell.css">
+</head>
+<body>
+<main id="app">
+  <section id="chat" aria-label="Analyst">
+    <header>
+      <h1 id="title">Twin analyst</h1>
+      <div class="hdr-r">
+        <button id="langBtn" type="button" aria-label="Language">中文</button>
+      </div>
+    </header>
+    <p id="note" class="note"></p>
+    <ol id="log" aria-live="polite"></ol>
+    <form id="ask" autocomplete="off">
+      <label class="sr" for="q">Question</label>
+      <textarea id="q" rows="2" maxlength="600"></textarea>
+      <button id="send" type="submit">Ask</button>
+    </form>
+    <details id="presets"><summary id="presetsSum">Questions this tool answers</summary><ul id="presetList"></ul></details>
+  </section>
+  <section id="pagePane" aria-label="Decision page">
+    <iframe id="page" title="Decision page" src="about:blank"></iframe>
+  </section>
+</main>
+<template id="tplAnswer">
+  <li class="ans">
+    <div class="echo"><span class="echoLbl"></span><span class="chips"></span><button class="edit" type="button"></button></div>
+    <div class="editor" hidden></div>
+    <div class="banners"></div>
+    <div class="body"></div>
+    <table class="rank" hidden></table>
+    <div class="foot"><span class="cites"></span><span class="agree" hidden></span>
+      <button class="open" type="button" hidden></button><span class="aid"></span></div>
+  </li>
+</template>
+<script src="/static/shell.js"></script>
+</body>
+</html>

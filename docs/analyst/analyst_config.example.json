@@ -1,0 +1,11 @@
+{
+  "_note": "Deployment config for `python -m hydrophysics_analyst serve --config <this>`. Copy it outside the repo and fill it in; never commit a filled copy. users maps a user name to the sha256 of that user's token (python -c \"import hashlib,sys;print(hashlib.sha256(sys.argv[1].encode()).hexdigest())\" <token>).",
+  "users": {"analyst-1": "<sha256 of analyst-1's token>"},
+  "llm": {
+    "enabled": true,
+    "model": "claude-opus-5-5",
+    "fallbacks": false,
+    "inference_geo": null
+  },
+  "audit": {"dir": "/srv/twin/audit", "retention_days": 365}
+}
