@@ -92,7 +92,7 @@ def test_deep_link_round_trip(b):
 def test_start_note_only_inside_the_page_tolerance(b):
     r = Q.start_compare(b, Q.Policy.from_cuts({1: 100}, 2026).f, 2032)
     a0, a1 = r.value("head_2026_horizon").value, r.value("head_2030_horizon").value
-    has = any(s.key == "start_note" for s in r.snippets)
+    has = any(s.key.startswith("start_note") for s in r.snippets)
     assert has == (abs(a0 - a1) <= max(.01, .03 * abs(a0)))
 
 
