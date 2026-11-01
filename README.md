@@ -364,6 +364,27 @@ in `docs/GPU_SERVER.md`.
   model the avoided subsidence is an elastic response that arrives within about a year; its
   1-3-year size is not supported by the registered tests, and whether a cut changes
   long-run sinking is untested.
+- In this model the avoided subsidence is the head rise times the column's compaction per
+  metre of head change (elastic), so it rests on two links. The head factor is decided in
+  Yunlin by `N2.policy_response.prospective_2026-11.v1`. The conversion factor, the
+  compaction per metre of head change, is not identifiable at the 2 Yunlin deep-pile cells
+  (土庫國中 and 中科虎尾) by design: N3's synthetic check G0 failed at 12 and 24 months (with
+  2 piles the conversion test would call a coefficient twice the true one supported), so
+  `N3.piles_prospective.v1` was registered level-only (user ruling 2026-11-01). It decides
+  only pile-anchored status-quo compaction at those 2 cells on the deep piles printed in
+  the WRA monthly reports for December 2026 to November 2027 (scored not before
+  2028-01-15; at best 'passed N3 (prospective)', never supported), and its conversion
+  lines are report-only. On pre-origin piles (after-the-fact, spent sites) the coefficient
+  is not identifiable from held piles either (`N3.posthoc_pile_conversion.v1`).
+  No registered test decides a cut's subsidence size: the avoided-subsidence number stays
+  withdrawn. The coast is not identifiable
+  from held leveling, and no Changhua subsidence factor is tested (the Changhua subsidence
+  lever is withdrawn under every outcome). Context for the conversion, cited together and
+  never one without the other (after-the-fact, includes post-origin months, not a test, no
+  correction applied): the compaction rings' median seasonal slope is 3.4 mm per metre of
+  head against 9.3 mm/m for the column on its own heads (rings to 2025), while on the 3 deep
+  piles anchored below 200 m the column's 2024-25 compaction has R² 0.92 (scores that were
+  used to choose the column).
 - Changhua class-specific and subsidence levers are withdrawn under every outcome: the
   page's model carries no Changhua pumping, the census model's subsidence response failed
   its 2007-10 test (section 13 of the evidence update), and an irrigation-only lever differs
@@ -393,7 +414,11 @@ in `docs/GPU_SERVER.md`.
   head, 57-day time constant). It under-predicts coastal next-year leveling rates by about
   2.5 cm/yr (2016–21) and rebounds when heads recover, even when driven by the observed
   2023–25 heads (rung I1.X5NH.v1). Coastal forecasts after 2022, and the coastal benefit of
-  a pumping cut, are therefore not reliable.
+  a pumping cut, are therefore not reliable. The coastal sinking classes and each county's
+  area sinking faster than the threshold are decided prospectively by
+  `N3SL.township_prospective_roc116-117.v1` on the WRA annual leveling summaries for
+  ROC 116 and 117, registered before the summaries for those survey years exist; a pass
+  returns at most a narrowed county-area claim.
 - The per-zone column produces a subsidence step at the 182 km mid/distal line that the
   leveling data do not show; the app marks it. Smoothly banded columns remove it only by
   becoming degenerate (they lose the compaction wells), so they were rejected.

@@ -1,7 +1,7 @@
 {
  "schema": "twin-claims-ledger/1",
  "created": "2026-10-29",
- "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29 and the round-5 amendment (user rulings 2026-10-29, third set). Not a registration; no look logged. Registrations still to be written are cited with the hash PENDING, and claims.load_ledger refuses the ledger until each is replaced by its registry sha256.",
+ "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29, the round-5 amendment (user rulings 2026-10-29, third set) and the round-6 amendment (user rulings 2026-11-01, fourth set: N3 deep piles, the C13a display caps, the E02/E02c decidability reading, the subsidence decomposition and N3S-L). Round-6 results (2026-11-01; evidence update section 19): FV.decidability.v1 not evaluable, X5.changhua_lever_model.v1 F = 0.49 (C13a capped at N), X5.n2c_reading.v1 estimated, N3 registered level-only, FS.start_invariance.v1 pass (row E23). Not a registration; no look logged. Registrations still to be written are cited with the hash PENDING, and claims.load_ledger refuses the ledger until each is replaced by its registry sha256. Placeholders for results that do not exist yet are marked 'SLOT' or 'PLACEHOLDER' in notes only; the page never shows them.",
  "status_codes": {
   "S": "supported by a registered test (window flagged when design-time)",
   "D": "decided by a registered prospective test (pending)",
@@ -56,13 +56,53 @@
   {
    "id": "user ruling 2026-10-29 (third set) (d)",
    "text": "Approved narrowings: C13 split into C13a/b/c (Changhua head vs subsidence lines; only R1c's all-class lever may ever be shown, and only under an N2C 'response supported' pass); C14 split into C14a-e; subsidence bands permanently Model internals; the paired run spread moved off the head-response tiles into Model internals."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (a)",
+   "text": "N3.piles_prospective approved, with the 溪州國小 report-only Changhua arm: a future-month deep_benchmarks_printed v3 product may list prospective_scorer (future months only); the pile months move from N2's report-only arm to N3's gating role (N2's arm stays as report text); the pre-origin leveling-cell rate replaces printed-pile persistence as the competitor; narrowed page mapping: only the new claim C31 ('compaction per metre of head change at the 2 Yunlin deep-pile cells') can become S, and no cut number becomes S; the 溪州 arm is appended after N2C in the session order; window 2026-12, registered by 2026-11-30T16:00Z; the synthetic gate G0 runs first."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (b)",
+   "text": "X5.changhua_lever_model.v1: F < 0.5 (the share of R1c's Changhua all-class head response exercised by N2C's own estimator) caps an N2C 'response supported' at N for C13a. Pre-declared; tightening only."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (c)",
+   "text": "X5.n2c_reading.v1: run; it may tighten N2C's display ('reported, not shown' on a high confounded false-pass rate); the verdict word never changes. The shared N2/N2C block-bootstrap scorer is written and hashed now, and N2C step (1) uses that sha."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (d)",
+   "text": "FV.decidability.v1 (OSSE for E02c): run; P <= 0.5 means 'weak by design' (C30 stays N whatever the 2028 level outcome); one-sided reading (no 'a fail is informative')."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (e)",
+   "text": "README/Limits may cite the paired mechanism and pile context (both, never one alone, labelled 'after-the-fact, includes post-origin months, not a test, no correction applied'), and an after-the-fact pre-origin pile conversion diagnostic capped at N, with no correction applied. Its use is after_the_fact_analysis: the release b2 ruling of 2026-10-18 limits pre-origin printed piles to validator and after_the_fact_analysis, so design_time_evidence is not available."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fourth set) (f)",
+   "text": "Create subsidence_public_reports/prospective/v1 (survey intervals ending after registration only, prospective_scorer allowed; ROC115 excluded) and register a prospective township-summary test (N3S-L) on ROC116/117; SL's page role is fixed in that registration now, never after scoring."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fifth set) (N3.level_only)",
+   "text": "N3's synthetic decidability gate G0 failed at 12 and 24 months (result sha 80e260d0: with 2 Yunlin piles the conversion test calls rho = 2 'supported' 93-100 % of the time). Register level-only: the conversion tests are report-only by declaration, the level test gates with a status ceiling of N ('passed N3 (prospective)'), and the Xizhou report-only arm is appended after N2C. C31 stays N. Source: results/dataprep/rulings/user_rulings_2026-11-01.json."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fifth set) (N3SL.design)",
+   "text": "N3S-L: SL role report_only; staged products subsidence_public_reports/prospective/v1 (ROC116 stage) and v2 (ROC117 stage); L1 Z-clause read as net (lower bounds met minus upper bounds broken >= Z's). Source: results/dataprep/rulings/user_rulings_2026-11-01.json."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fifth set) (scorer.literal_rule)",
+   "text": "The shared N2/N2C bootstrap scorer (sha256 f8990d61) implements the registered decision rule literally; an interval wholly below 0 with beta > 0 is a flag only: the registered rule is unchanged and the flag is reported beside any verdict it touches (X5.n2c_reading.v1, N3.piles_prospective.v1). Source: results/dataprep/rulings/user_rulings_2026-11-01.json."
+  },
+  {
+   "id": "user ruling 2026-11-01 (fifth set) (chlever.per_window)",
+   "text": "X5.changhua_lever_model.v1: the L_ccz >= 0.05 m gate is applied per window, with F carrying its own evaluability; F < 0.5 is the only cap on an N2C pass for C13a. Source: results/dataprep/rulings/user_rulings_2026-11-01.json."
   }
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "85cbd2d8402daf0c89d8e39b2bedb6a2f3855ae444a9e93528a1ba8bf452861f",
-  "html": "results/twin/twin_app_20261029e.html",
-  "html_note": "gitignored build of the round-5 template (C13a-c, C14a-e, N2C labels, E02 U7 disclosure, E02c and external-well lines); built with the command of docs/TWIN_EVIDENCE_2026-10.md section 17; promotion to results/twin/twin_app.html is the lead's decision",
+  "template_sha256": "2b89bf895a12bf2b605d84c3b687c33668f762b6b055daed0e7c405453ec8861",
+  "html": "results/twin/twin_app_20261101a.html",
+  "html_note": "gitignored build of the round-6 template (C31, the N3/N3S-L/FV lines and the C13a caps, each shown only once its id is in the registry; the FV not-evaluable line and the measured C13a clauses once their reports exist; the FS start-state sentence once its report exists; the decomposition line; the start code fact in the internals note); built with the command of docs/TWIN_EVIDENCE_2026-10.md section 18; promotion to results/twin/twin_app.html is the lead's decision",
   "forward": "datum_gate_innov.npz",
   "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
   "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
@@ -186,14 +226,15 @@
    "status_before": "U",
    "status_current": "S+D",
    "changes": true,
-   "wording_en": "Head change, policy minus baseline, in this model: the mean over N2's 84 Yunlin monitoring wells, each in its own screened layer (N2's scoring unit; built into the page as an aggregate, payload n2Unit). Tile range line: 'direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only'. Direction supported by the registered masked 2016-18 refit in Yunlin (step C, N1P.C_heads_yunlin), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to the page model only by a post-hoc, model-only comparison (science-05 transfer file); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping. Size likely too small (slopes reported, not gated; no calibrated correction factor follows). N2 decides the within-window response to recorded Yunlin pumping anomalies: 'response supported' needs the 90 % interval of the per-well-demeaned anomaly slope to exclude 0, the slope inside [1/1.5, 1.5] and RMSE(PR) < RMSE(ZR); a 'not supported' result cannot separate the model from its X1 forcing; the level is report-only; scored no earlier than 2028-01-15. Carrying it to a class lever is a linear, model-only transfer.",
+   "wording_en": "Head change, policy minus baseline, in this model: the mean over N2's 84 Yunlin monitoring wells, each in its own screened layer (N2's scoring unit; built into the page as an aggregate, payload n2Unit). Tile range line: 'direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only'. Direction supported by the registered masked 2016-18 refit in Yunlin (step C, N1P.C_heads_yunlin), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to the page model only by a post-hoc, model-only comparison (science-05 transfer file); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping. Size likely too small (slopes reported, not gated; no calibrated correction factor follows). N2 decides the within-window response to recorded Yunlin pumping anomalies: 'response supported' needs the 90 % interval of the per-well-demeaned anomaly slope to exclude 0, the slope inside [1/1.5, 1.5] and RMSE(PR) < RMSE(ZR); a 'not supported' result cannot separate the model from its X1 forcing; the level is report-only; scored no earlier than 2028-01-15. Carrying it to a class lever is a linear, model-only transfer. The tile's definition adds the model-only start-state check (FS.start_invariance.v1, row E23): 'does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1)', with the measured largest departure.",
    "ruling": "user ruling 2026-10-29 (1)",
    "ruling_also": "user ruling 2026-10-29 (second set)",
    "cites": {
     "registrations": [
      "N1.phase12_response.v1",
      "N1.policy_response.v1",
-     "N2.policy_response.prospective_2026-11.v1"
+     "N2.policy_response.prospective_2026-11.v1",
+     "FS.start_invariance.v1"
     ],
     "tests": [
      "N1P.C_heads_yunlin",
@@ -204,16 +245,24 @@
      "docs/TWIN_EVIDENCE_2026-10.md",
      "results/dataprep/reports/N1_gaps_2026-10-24/science-05/transfer_innov_vs_cwa.json",
      "results/dataprep/reports/N1_policy/SUMMARY.md",
-     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+     "results/dataprep/reports/N1_policy/page_labels_v2.json",
+     "results/dataprep/reports/FS.start_invariance.v1/report.json"
     ],
     "manifests": []
    },
-   "notes": "Model output, recomputed in the page build from the forward run (cut30 / retire_aqua at Dec 2032): N2 unit +1.19 / +1.41 m (84 of 84 registered Yunlin wells found; station ids from the registered prospective predictions.csv, county code 09; cells and layers from the calibration wells, the same mapping as twin.coverage). Layer-2 context kept in the tile's detail line: named-Yunlin-township cell mean +1.37 m, fan average +0.90 m (about 20 % Changhua spillover). The S part rests on R0 tests only; G1 is consistent context, not the pumping-response test. The page carries no station id, cell or layer: n2Unit holds only the per-year means.",
+   "notes": "Model output, recomputed in the page build from the forward run (cut30 / retire_aqua at Dec 2032): N2 unit +1.19 / +1.41 m (84 of 84 registered Yunlin wells found; station ids from the registered prospective predictions.csv, county code 09; cells and layers from the calibration wells, the same mapping as twin.coverage). Layer-2 context kept in the tile's detail line: named-Yunlin-township cell mean +1.37 m, fan average +0.90 m (about 20 % Changhua spillover). The S part rests on R0 tests only; G1 is consistent context, not the pumping-response test. The page carries no station id, cell or layer: n2Unit holds only the per-year means. Rank 7 result: FS.start_invariance.v1 (registered 2026-11-01, sha 9f8a7115; scored once, report results/dataprep/reports/FS.start_invariance.v1/report.json sha 6130a3bf): verdict pass, wording case 'pass'. Largest |R - 1| over the 20 gated cells 9.74e-06 % (S1 free-run start 3.42e-06 %, S2 old untapered field restart 9.74e-06 %); largest per-well p90 deviation 9.07e-07; no failing arm. The invariance holds to numerical precision, as expected because the head solver is linear in the start state; this is a different property from FV.decidability.v1's failed pumping superposition (0.28 m), which concerned nonlinearity in the pumping multipliers. The start moves the levels only early (N2-unit baseline shift, arm minus S0: Jan 2023 -0.23 m for S1 and +0.77 m for S2; Dec 2026 about 1e-06 m; Dec 2032 0), not the policy differences. C01 gains, on the tile tW definition, 'In this model the head change does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1): largest departure < 0.001 %.' (fs_pass, row E23), and the start note adds start_note_fs when it is shown. No status moves (C01 stays S+D); the start itself is decided only by the prospective tests (E02, N2).",
    "text_keys": [
     "i18n:d_head",
     "i18n:d_head_s",
     "i18n:def_tW",
     "i18n:evc_pr_heads_size",
+    "i18n:fs_arm_s1",
+    "i18n:fs_arm_s2",
+    "i18n:fs_fail",
+    "i18n:fs_p90",
+    "i18n:fs_pass",
+    "i18n:fs_s2_only",
+    "i18n:start_note_fs",
     "i18n:tHead",
     "i18n:tW_d",
     "tile:tW"
@@ -268,12 +317,13 @@
    "status_before": "U",
    "status_current": "W",
    "changes": true,
-   "wording_en": "Withdrawn from the headline and the answer tiles. Shown only under 'Model internals' (tile tA, compare column, subsidence series, tA definition with the Yunlin-township figure), labelled 'size untested'.",
+   "wording_en": "Withdrawn from the headline and the answer tiles. Shown only under 'Model internals' (tile tA, compare column, subsidence series, tA definition with the Yunlin-township figure), labelled 'size untested'. Fourth set (a): stays W under every N3 outcome; on a joint N2 + N3G pass it reads 'links tested, cut size untested'; no cut number becomes S.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
      "N1.policy_response.v1",
-     "I1.X5NH.v1"
+     "I1.X5NH.v1",
+     "N3.piles_prospective.v1"
     ],
     "tests": [
      "N1P.C_lev_yunlin",
@@ -297,7 +347,8 @@
     "i18n:tA_d_share",
     "tile:tA"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-11-01 (fourth set) (a)"
   },
   {
    "id": "C04",
@@ -334,13 +385,14 @@
    "where": "page tile tR + Compare area column",
    "claim": "Area sinking faster than the threshold (km²)",
    "status_before": "U",
-   "status_current": "W",
+   "status_current": "W+D",
    "changes": true,
-   "wording_en": "Withdrawn: area tile moved to Model internals, labelled 'untested'.",
+   "wording_en": "Withdrawn: area tile moved to Model internals, labelled 'untested'. Fourth set (f): D sub-label 'county area sinking faster than the threshold, decided by N3S-L on the WRA annual leveling summaries ROC116/117' (L2: ratio in [1/1.5, 1.5] and closer than SL; zero printed area: absolute rule in km² from pre-origin county-area variability). Page line evc_n3sl, shown once N3S-L is in the registry. A pass returns at most a narrowed county-area claim (S); a fail is decided W. The tile stays in Model internals.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
-     "I1.X5NH.v1"
+     "I1.X5NH.v1",
+     "N3SL.township_prospective_roc116-117.v1"
     ],
     "tests": [],
     "reports": [
@@ -354,12 +406,14 @@
     "i18n:cmp_area",
     "i18n:def_tR",
     "i18n:def_tR_runs",
+    "i18n:evc_n3sl",
     "i18n:tArea",
     "i18n:tR_period",
     "i18n:tR_q",
     "tile:tR"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-11-01 (fourth set) (f)"
   },
   {
    "id": "C06",
@@ -468,14 +522,15 @@
    "where": "page headline hl_base, tA baseline mode, README",
    "claim": "Baseline: 'the fan sinks a further 2.9 cm by Dec 2032'",
    "status_before": "U",
-   "status_current": "W",
+   "status_current": "W+D",
    "changes": true,
-   "wording_en": "Fan baseline total withdrawn from the headline; shown only in the tA definition under Model internals ('its size is untested, and the distal coast does not sink in this model'). The headline names the coast flag.",
+   "wording_en": "Fan baseline total withdrawn from the headline; shown only in the tA definition under Model internals ('its size is untested, and the distal coast does not sink in this model'). The headline names the coast flag. Fourth set (a): D sub-label 'pile-anchored status-quo compaction at 2 Yunlin cells decided by N3 (not before 2028-01-15)' for the narrowed sub-claim only (page line evc_pile_n3, shown once N3 is in the registry). The fan total stays W under every N3 outcome; an N3 level pass words the 2-cell sub-claim 'passed N3 (prospective)' at N, a decided label (only C31 can become S; C31 outcome_display.level_pass).",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
      "I1.X5NH.v1",
-     "U1.no_band.v1"
+     "U1.no_band.v1",
+     "N3.piles_prospective.v1"
     ],
     "tests": [],
     "reports": [
@@ -486,6 +541,7 @@
    },
    "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used. Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals.",
    "text_keys": [
+    "i18n:evc_pile_n3",
     "i18n:hl_base",
     "i18n:hl_runs",
     "i18n:tA_base_adds",
@@ -493,7 +549,8 @@
     "i18n:tA_runs",
     "i18n:tAvoidB"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-11-01 (fourth set) (a)"
   },
   {
    "id": "C10",
@@ -588,7 +645,7 @@
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (d)",
-   "notes": "Replaces C13 (W). The step C Changhua slope 0.85 [0.63, 1.05] is the registered N1P.C_heads_changhua result on ccz_m1618 (design-time window), shown from the page labels, not recomputed.",
+   "notes": "Replaces C13 (W). The step C Changhua slope 0.85 [0.63, 1.05] is the registered N1P.C_heads_changhua result on ccz_m1618 (design-time window), shown from the page labels, not recomputed. Rank 8 result (X5.changhua_lever_model.v1, scored once 2026-11-01, report results/dataprep/reports/X5.changhua_lever_model.v1/report.json sha 8e721741): F = 0.49 (0.4933; 0.45-0.68 over the 7 pre-origin replays) < 0.5, so C13a is capped at N even after an N2C 'response supported': it may show only 'first-year response' wording, never S (readings.F; the only cap, fifth set chlever.per_window). Model-internal lever spread (L, readings.spread_L): across 7 Changhua-pumping variants (chc, chs, cdm, csw, ccs, rs, x5r1t), every one of which failed at least one registered gate, the all-class x0.7 head lever at N2C's 74 Changhua wells is x1.04-1.30 of R1c's in 2026-27 and x0.96-1.27 in 2030-32 (cpw and b1 report-only, excluded; adding the disclosed q0c and x5r1 arms leaves the range unchanged). T (L, no gate, readings.T_L): R1c's lever is x1.31 (2026-27) and x1.33 (2030-32) that of its 2016-18 masked refit ccz_m1618; step C's design-time support belongs to the masked refit. Both windows evaluable (L_ccz >= 0.05 m). Page: the Changhua head line's F clause becomes pr_ch_cap_f_res (the measured F) once the report exists; the spread and T lines are ledger text only (the page has no Model internals slot for them), and no 'N2C speaks for the family' clause is written. Rank 10 result (X5.n2c_reading.v1, run 2026-11-01, results/dataprep/reports/X5.n2c_reading.v1/result.json sha d9afc45d; synthetic worlds only; scorer bootstrap_scorer f8990d61): status estimated. Confounded false pass P(supported | k = 0, rho = -0.83) = 0.116 (< 0.25: the 'reported, not shown' rule does not fire). Wrong-size pass P(supported | k = 0.5) = 0.744 and P(supported | k = 2) = 0.01 (the k = 0.5 rate is >= 0.25, so any shown Changhua head lever carries the measured rates). 90 % interval coverage at k = 1: 0.828 (>= 0.80). Power P(supported | k = 1) = 0.93, 0.60 with the canal confounder (rho = -0.83). Display text (result.reading.display_text): with any shown lever 'false pass 0.12; wrong-size pass at k = 0.5 / 2: 0.74 / 0.01; 90 % interval coverage at k = 1: 0.83; pass rates are the stricter of unconditional and given informative'; beside a non-pass N2C verdict 'power 0.93 (P(response supported) if the model's response were right; 0.60 with the canal confounder)'; the N2C verdict word never changes. Combined with F < 0.5 the stricter reading applies: no lever is shown, so the rates are never printed; the power sentence joins the page with an N2C verdict (none before 2028-01-15; the page has no N2C verdict slot yet). Page now: the head line's reading clause becomes pr_ch_rd_res (the measured false-pass rate) once the result exists.",
    "doc_anchors": {
     "README.md": {
      "present": [
@@ -615,14 +672,22 @@
    "status_before": "W",
    "status_current": "W",
    "changes": true,
-   "wording_en": "Withdrawn from the answer until N2C is scored; no number is shown. Every mention on the page and in README/MODEL_CARD carries 'untested (N2C registered, scored not before 2028-01-15)'. Head line: 'Changhua head response: design-time support only for the R1c recipe refitted with 2016-18 masked (ccz_m1618, step C slope 0.85 [0.63, 1.05]), not for R1c itself; R1c failed its own Changhua gates and is not the page model; untested (N2C registered, scored not before 2028-01-15)'. The pending decision is the D evidence row E20 (never a bare D on a withdrawn lever).",
-   "ruling_also": "user ruling 2026-10-29 (second set)",
+   "wording_en": "Withdrawn from the answer until N2C is scored; no number is shown. Every mention on the page and in README/MODEL_CARD carries 'untested (N2C registered, scored not before 2028-01-15)'. Head line: 'Changhua head response: design-time support only for the R1c recipe refitted with 2016-18 masked (ccz_m1618, step C slope 0.85 [0.63, 1.05]), not for R1c itself; R1c failed its own Changhua gates and is not the page model; untested (N2C registered, scored not before 2028-01-15)'. The pending decision is the D evidence row E20 (never a bare D on a withdrawn lever). Fourth set (b), (c): two declarations can only narrow how an N2C pass is shown (outcome_display cap_F and reading); once each is registered the head line adds 'A model-only study (X5.changhua_lever_model.v1) fixes beforehand that if N2C's estimator exercises less than half of R1c's head response, a pass stays narrowed wording.' and 'A synthetic study of N2C's rule (X5.n2c_reading.v1) fixes beforehand that if a confounded world passes too often, a pass is reported, not shown.' Scored 2026-11-01: X5.changhua_lever_model.v1 measured F = 0.49 (< 0.5), so cap_F applies and C13a stays at N even after an N2C 'response supported' (first-year response wording only, never S, no number); the head line then reads 'A model-only study (X5.changhua_lever_model.v1) found that N2C's estimator exercises 0.49 of R1c's head response (below 0.5), so even an N2C pass stays narrowed wording (first-year response only, no number shown).' X5.n2c_reading.v1 measured a confounded false-pass rate of 0.12 (< 0.25), so 'reported, not shown' does not fire; the head line reads 'A synthetic study of N2C's rule (X5.n2c_reading.v1) found that a confounded world with no true response passes it 0.12 of the time (below 0.25), so a pass would not be held back on that ground.' Each measured clause replaces its rule clause only when the report exists (viewer_app PAGE_RESULTS).",
+   "ruling_also": [
+    "user ruling 2026-10-29 (second set)",
+    "user ruling 2026-11-01 (fourth set) (b)",
+    "user ruling 2026-11-01 (fourth set) (c)",
+    "user ruling 2026-11-01 (fifth set) (chlever.per_window)",
+    "user ruling 2026-11-01 (fifth set) (scorer.literal_rule)"
+   ],
    "cites": {
     "registrations": [
      "N2C.changhua_response.prospective_2026-11.v1",
      "N1.policy_response.v1",
      "I1.R1c.county_zones.v1",
-     "X5.lever_class_share.v1"
+     "X5.lever_class_share.v1",
+     "X5.changhua_lever_model.v1",
+     "X5.n2c_reading.v1"
     ],
     "tests": [
      "N1P.C_heads_changhua",
@@ -630,19 +695,24 @@
     ],
     "reports": [
      "results/dataprep/reports/N1_policy/page_labels_v2.json",
-     "results/dataprep/reports/X5.lever_class_share.v1/report.json"
+     "results/dataprep/reports/X5.lever_class_share.v1/report.json",
+     "results/dataprep/reports/X5.changhua_lever_model.v1/report.json",
+     "results/dataprep/reports/X5.n2c_reading.v1/result.json"
     ],
     "manifests": []
    },
    "outcome_display": {
-    "declared": "2026-10-29 (round 5), committed with the ledger before any N2C look and before N2C's assert_can_score; narrower than N2C.page_mapping",
+    "declared": "2026-10-29 (round 5), committed with the ledger before any N2C look and before N2C's assert_can_score; narrower than N2C.page_mapping; amended 2026-11-01 (fourth set (b), (c)) before any N2C look: cap_F and reading only narrow it",
     "before_scoring": "W; every mention labelled 'untested (N2C registered, scored not before 2028-01-15)'; no number shown",
-    "response_supported": "only with the same-session order kept: R1c's all-class relative head lever only (x0.7 all-class cut, mean over N2C's 74 Changhua wells, each in its own layer), shown with R1c's gate failures (I1.R1c Changhua head-anomaly RMSE 1.318 vs 1.074 m; G2 k-fold R2 0.646; Changhua county-mean RMSE 0.643 m) and N2C's beta, its 90 % interval and the RMSEs of PR, ZR and CL; never as the page model's answer",
+    "response_supported": "only with the same-session order kept: R1c's all-class relative head lever only (x0.7 all-class cut, mean over N2C's 74 Changhua wells, each in its own layer), shown with R1c's gate failures (I1.R1c Changhua head-anomaly RMSE 1.318 vs 1.074 m; G2 k-fold R2 0.646; Changhua county-mean RMSE 0.643 m) and N2C's beta, its 90 % interval and the RMSEs of PR, ZR and CL; never as the page model's answer; subject to cap_F and reading below, which can only narrow it",
     "direction_supported_size_not": "evidence line only (direction, beta and its interval); the lever is not shown; C13a stays W",
     "not_supported": "W, with N2C's wording 'not supported'",
     "not_informative": "W, labelled 'undecided (N2C not informative)'",
     "session_order_breached": "the result is reported, the lever is not shown",
-    "never": "C13b and C13c stay W under every outcome; no Changhua subsidence lever, no absolute pumping volume, no claim about the page model"
+    "never": "C13b and C13c stay W under every outcome; no Changhua subsidence lever, no absolute pumping volume, no claim about the page model",
+    "cap_F": "X5.changhua_lever_model.v1, F = the gain of N2C's per-well-demeaned slope estimator on R1c's response to replayed pre-origin county anomaly series, relative to the steady-state lever per unit fractional cut: F < 0.5 caps an N2C 'response supported' at N for C13a (the evidence line reports N2C's verdict, beta and interval; no lever is shown); 0.5 <= F < 0.8 words a shown lever 'N2C decides the first-year part'; F >= 0.8 'the window exercises most of the lever'. F < 0.5 is the only cap (user ruling 2026-11-01 fifth set): L_ccz < 0.05 m in a window removes that window's spread and transfer lines; F not evaluable gives no F wording; neither caps anything (prereg_chlever thresholds.evaluable_if and C13a_F).",
+    "reading": "X5.n2c_reading.v1: P(supported | k = 0, rho = -0.83) >= 0.25 makes an N2C pass 'reported, not shown' (C13a stays W); P(supported | k in {0.5, 2}) >= 0.25 or 90 % coverage at k = 1 below 0.80 prints the measured rates with any shown lever; power is printed beside a non-pass verdict; the verdict word never changes. N2C step (1) uses the shared N2/N2C block-bootstrap scorer whose sha that declaration records.",
+    "model_internal_spread": "X5.changhua_lever_model.v1 output (i): 'model-internal lever spread (L)' of the all-class lever ratio to R1c across the held Changhua-pumping runs (failed-gate arms marked; cpw and b1 excluded); a labelled internals line only, never an answer, no 'N2C speaks for the family' clause"
    },
    "text_keys": [
     "doc:MODEL_CARD.md",
@@ -650,7 +720,12 @@
     "i18n:evc_pr_ch_head",
     "i18n:pol_caveat_ch",
     "i18n:pol_caveat_ch_np",
+    "i18n:pr_ch_cap_f",
+    "i18n:pr_ch_cap_f_res",
+    "i18n:pr_ch_cap_rd",
     "i18n:pr_ch_nopump",
+    "i18n:pr_ch_rd_held",
+    "i18n:pr_ch_rd_res",
     "i18n:pr_ch_slope",
     "i18n:pr_ch_untested"
    ]
@@ -698,7 +773,7 @@
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (d)",
-   "notes": "",
+   "notes": "Rank 12 result (N3.posthoc_pile_conversion.v1, run 2026-11-01, report results/dataprep/reports/N3_posthoc/report.json sha 1c6b1982): 'coefficient not identifiable from held piles' at the Yunlin piles and at 溪州 (N3 G0 failure; no pile row read, no look). Capped at N, no correction applied, label 'after-the-fact on a spent site; cannot promote'; worded in README Limits only, never on the page.",
    "doc_anchors": {},
    "id": "C13c",
    "where": "page Changhua subsidence-lever line + lever caveat; README/MODEL_CARD",
@@ -706,12 +781,13 @@
    "status_before": "W",
    "status_current": "W",
    "changes": true,
-   "wording_en": "'Changhua subsidence lever: withdrawn under every outcome': step B came out opposite in sign (-0.50 vs +0.80 cm/yr per GWh/yr), step C's leveling lost to no change, every held subsidence unit there is spent, and N2C.page_mapping.never excludes it.",
+   "wording_en": "'Changhua subsidence lever: withdrawn under every outcome': step B came out opposite in sign (-0.50 vs +0.80 cm/yr per GWh/yr), step C's leveling lost to no change, every held subsidence unit there is spent, and N2C.page_mapping.never excludes it. Fourth set (a): N3's report-only 溪州國小 arm (season-aggregate elastic coefficient) never gates and adds C13c wording only; the lever stays withdrawn under every outcome.",
    "cites": {
     "registrations": [
      "N1.policy_response.v1",
      "N1.changhua_fix.v1",
-     "N2C.changhua_response.prospective_2026-11.v1"
+     "N2C.changhua_response.prospective_2026-11.v1",
+     "N3.piles_prospective.v1"
     ],
     "tests": [
      "N1P.B_dose_changhua",
@@ -726,7 +802,8 @@
     "i18n:evc_pr_ch_subs",
     "i18n:pol_caveat_ch",
     "i18n:pol_caveat_ch_np"
-   ]
+   ],
+   "ruling_also": "user ruling 2026-11-01 (fourth set) (a)"
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (a)",
@@ -888,7 +965,7 @@
    "status_before": "L",
    "status_current": "L",
    "changes": false,
-   "wording_en": "Unchanged (post hoc, model-only).",
+   "wording_en": "Unchanged (post hoc, model-only). Linked to C31 as context only, never attached to a world test (fourth set, rank 9).",
    "ruling": null,
    "cites": {
     "registrations": [],
@@ -1246,7 +1323,7 @@
    "status_before": "N",
    "status_current": "N",
    "changes": false,
-   "wording_en": "Unchanged.",
+   "wording_en": "Unchanged on the page and in the README ('whether a cut changes long-run sinking is untested'). Fourth set (rank 9): the errors-in-variables route (N3S-N) is killed, so the long-run response is untested and no bound is stated; a delay-bed form range may be cited only as 'model form uncertainty, not a bound'.",
    "ruling": null,
    "cites": {
     "registrations": [],
@@ -1257,7 +1334,7 @@
     ],
     "manifests": []
    },
-   "notes": "Candidate wordings from other routes (delay-bed form range x1.3-10; 'leveling not yet a valid bound') are NOT usable until their errors-in-variables check passes.",
+   "notes": "The leveling sustained-level regression is not a valid bound (its errors-in-variables check was not run: route killed in round 6). The delay-bed form range (x1.3-10) is model form uncertainty, not a bound.",
    "text_keys": [
     "i18n:pol_caveat"
    ],
@@ -1274,13 +1351,14 @@
    "where": "README Limits",
    "claim": "Coastal forecasts and coastal benefit not reliable",
    "status_before": "N",
-   "status_current": "N",
-   "changes": false,
-   "wording_en": "Unchanged; enforced in the page by C03, C05, C09 and C30.",
-   "ruling": null,
+   "status_current": "N+D",
+   "changes": true,
+   "wording_en": "README Limits line kept; enforced in the page by C03, C05, C09 and C30. Fourth set (f): D sub-label 'coastal sinking classes decided by N3S-L L1 on ROC116/117' (informative only with at least 3 listed coastal townships; the physics is near no change on the coast, so L1 is effectively a test of the statistical layer SL against no change). SL's page role is fixed now, before registration, as report_only (ruling (f) 'fix SL's page role now'): SL's L1 and L2 readings are reported beside ZR under every outcome and no claim, tile or page line comes from SL; there is no C26b. The registration must pass --sl-role report_only; eligible_ds would need the user's explicit choice and a C26b row with its own page text declared here first; under every outcome C26 itself stays N (no S: the claim is a narrowing). Page line evc_n3sl; README names N3S-L only once it is registered.",
+   "ruling": "user ruling 2026-11-01 (fourth set) (f)",
    "cites": {
     "registrations": [
-     "I1.X5NH.v1"
+     "I1.X5NH.v1",
+     "N3SL.township_prospective_roc116-117.v1"
     ],
     "tests": [],
     "reports": [
@@ -1289,9 +1367,10 @@
     ],
     "manifests": []
    },
-   "notes": "A coastal statistical background layer is a candidate (subsidence_stat_layer route) and stays out of the page until it is registered.",
+   "notes": "subsidence_public_reports/prospective/v1 (survey intervals ending after registration, prospective_scorer allowed; selection, design and calibration forbidden; ROC115 excluded) is the only scorer product; the postorigin/preorigin versions stay validator / after_the_fact_analysis only. The 2023-25 listings were seen before the thresholds (disclosed in N3S-L). L3 report-only, L4 dropped.",
    "text_keys": [
-    "doc:README.md"
+    "doc:README.md",
+    "i18n:evc_n3sl"
    ],
    "doc_anchors": {
     "README.md": {
@@ -1307,32 +1386,60 @@
    "claim": "1-3 yr subsidence size not supported",
    "status_before": "N",
    "status_current": "N",
-   "changes": false,
-   "wording_en": "Unchanged.",
-   "ruling": null,
+   "changes": true,
+   "wording_en": "Verdict line kept (1-3 yr size not supported). Fourth set (rank 9) decomposition, page line evc_subs_decomp: 'In this model the avoided subsidence is the head rise times the column's compaction per metre of head change (elastic). Head factor: decided in Yunlin by N2 (pending). Conversion factor: decided by N3 at the 2 Yunlin deep-pile cells only (pending); neither factor decides a cut's subsidence size.' The conversion clause names N3 only once the build finds it in the registry with a gating conversion role (12 or 24 months; viewer_app PAGE_ROLE_FLAGS); before N3 is registered, or if G0 fails at both horizons and N3 is not registered, it reads 'Conversion factor: untested (no registered test).'; if N3 is registered with the conversion test report-only (G0 failed, level-only on a user ruling, 2026-11-01 fifth set) it reads 'Conversion factor: not identifiable at the 2 Yunlin deep-pile cells by design (N3's synthetic check G0); reported only, not tested.' 'Coast: not identifiable from held leveling (I1.X5SC.gate0.v1). Changhua: no subsidence factor is tested (C13c).'",
+   "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
-     "N1.policy_response.v1"
+     "N1.policy_response.v1",
+     "N2.policy_response.prospective_2026-11.v1",
+     "N3.piles_prospective.v1",
+     "I1.X5SC.gate0.v1"
     ],
     "tests": [
      "N1P.B_dose_yunlin",
      "N1P.C_lev_yunlin",
-     "N1P.C_lev_changhua"
+     "N1P.C_lev_changhua",
+     "N2P.heads_yunlin_response"
     ],
     "reports": [
      "results/dataprep/reports/N1_policy/SUMMARY.md",
-     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+     "results/dataprep/reports/N1_policy/page_labels_v2.json",
+     "README.md",
+     "results/twin/mechanism/mechanism.json",
+     "results/twin/deep_pile_holdout/report.json"
     ],
     "manifests": []
    },
-   "notes": "",
+   "notes": "Rank 12 result (N3.posthoc_pile_conversion.v1, run 2026-11-01, report results/dataprep/reports/N3_posthoc/report.json sha 1c6b1982): 'coefficient not identifiable from held piles' at the Yunlin piles and at 溪州 (N3 G0 failure; no pile row read, no look). Capped at N, no correction applied, label 'after-the-fact on a spent site; cannot promote'; worded in README Limits only, never on the page.",
    "text_keys": [
+    "doc:README.md",
+    "i18n:decomp_conv_g0",
+    "i18n:decomp_conv_n3",
+    "i18n:decomp_conv_un",
+    "i18n:evc_pile_n3",
     "i18n:evc_pr_subs",
     "i18n:evc_pr_subs_ok",
+    "i18n:evc_subs_decomp",
     "i18n:pol_caveat",
     "i18n:pr_stepb"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "the avoided subsidence is the head rise times the column's compaction per"
+     ]
+    }
+   },
+   "ruling_also": [
+    "user ruling 2026-11-01 (fourth set) (a)",
+    "user ruling 2026-11-01 (fourth set) (e)",
+    "user ruling 2026-11-01 (fifth set) (N3.level_only)"
+   ],
+   "coverage": {
+    "intended": "the 1-3 yr avoided subsidence under a cut, fan-wide",
+    "scoped": "head factor: N2's 84 Yunlin wells; conversion factor: 2 Yunlin deep-pile cells (N3); coast and Changhua: no factor tested"
+   }
   },
   {
    "id": "C28",
@@ -1371,12 +1478,13 @@
    "status_before": "U",
    "status_current": "L",
    "changes": true,
-   "wording_en": "dsubs is no longer the default layer (dhead is); its legend reads 'Model internals: subsidence avoided ..., cm (size untested)'.",
+   "wording_en": "dsubs is no longer the default layer (dhead is); its legend reads 'Model internals: subsidence avoided ..., cm (size untested)'. Code fact (rank 9, under ruling 2026-10-29 (1)): the internals note says the subsidence column is driven by the model's own free-running heads, so after Dec 2022 it starts from the model's simulated December 2022 heads and the 2022 head recovery the model missed (E11) is not in it. Fourth set (f): ledger sub-label 'coastal cells: see N3S-L' (N3S-L before_scoring mapping); C29 stays L under every N3S-L outcome. No page text is added for it: N3S-L scores the status quo, not avoided subsidence, and its page line evc_n3sl is under C05/C26/C30.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
      "N1.policy_response.v1",
-     "I1.X5NH.v1"
+     "I1.X5NH.v1",
+     "N3SL.township_prospective_roc116-117.v1"
     ],
     "tests": [
      "N1P.C_lev_yunlin"
@@ -1392,11 +1500,15 @@
     "i18n:aria_map",
     "i18n:cmp_mini",
     "i18n:ly_dsubs",
+    "i18n:mi_note",
     "i18n:sec_avoided",
     "i18n:sec_avoided_s",
     "i18n:st6_b"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": [
+    "user ruling 2026-11-01 (fourth set) (f)"
+   ]
   },
   {
    "id": "C30",
@@ -1405,30 +1517,40 @@
    "status_before": "N",
    "status_current": "N+D",
    "changes": true,
-   "wording_en": "Legend 'Projected value, not validated' unchanged; the baseline headline and the internals note add the coast flag (distal zone does not sink in the model; 2016-21 next-year leveling about 2.5 cm/yr faster). Round 5: the legend adds 'no uncertainty band, since no held data can calibrate one' (U1.no_band.v1); the heads part is decided by E02c's strict level rule (beat climatology and climatology plus trend), pending.",
+   "wording_en": "Legend 'Projected value, not validated' unchanged; the baseline headline and the internals note add the coast flag (distal zone does not sink in the model; 2016-21 next-year leveling about 2.5 cm/yr faster). Round 5: the legend adds 'no uncertainty band, since no held data can calibrate one' (U1.no_band.v1); the heads part is decided by E02c's strict level rule (beat climatology and climatology plus trend), pending. Fourth set: (a) D sub-label 'pile-anchored status-quo compaction at 2 Yunlin cells decided by N3 (not before 2028-01-15)' (page line evc_pile_n3); (d) if FV.decidability.v1 reads 'weak by design' (P(pass | right-ish truth) <= 0.5), the heads part stays N whatever E02c's 2028 level outcome (page line evc_pro_fv); code fact (rank 9, under ruling 2026-10-29 (1)): the subsidence fields are driven by the model's own free-running heads, so after Dec 2022 they start from the model's simulated December 2022 heads and the missed 2022 recovery (E11) is not in them (mi_note). Fourth set (f): the coastal part carries the D sub-label 'coastal part decided by N3S-L L1 on ROC116/117' (stays N under every outcome: passed / failed / undecided N3S-L L1). FV.decidability.v1 was scored not evaluable on 2026-11-01 (superposition failed), so clause (d) does not apply: the heads part is decided by E02c's level rule as registered (page line evc_pro_fv_ne).",
    "ruling": "user ruling 2026-10-29 (third set) (b)",
    "cites": {
     "registrations": [
      "E02c.prospective_2026-11.v1",
      "I1.X5NH.v1",
-     "U1.no_band.v1"
+     "U1.no_band.v1",
+     "N3.piles_prospective.v1",
+     "FV.decidability.v1",
+     "N3SL.township_prospective_roc116-117.v1"
     ],
     "tests": [],
     "reports": [
      "README.md",
-     "results/dataprep/reports/I1_X5NH/report.json"
+     "results/dataprep/reports/I1_X5NH/report.json",
+     "results/dataprep/reports/FV.decidability.v1/report.json"
     ],
     "manifests": []
    },
-   "notes": "",
+   "notes": "The FV line (evc_pro_fv before the report, evc_pro_fv_ne once FV's report exists; FV scored not evaluable 2026-11-01, E02 notes) is shown only in builds with --prospective, beside the E02/E02c lines it interprets (E21 notes).",
    "text_keys": [
     "card:kv_proj",
     "i18n:aria_map",
+    "i18n:evc_n3sl",
+    "i18n:evc_pile_n3",
     "i18n:evc_pro_e02c",
+    "i18n:evc_pro_fv",
+    "i18n:evc_pro_fv_ne",
+    "i18n:fv_why_sup",
     "i18n:lg_proj",
     "i18n:ly_abs",
     "i18n:ly_fwd",
     "i18n:ly_head",
+    "i18n:mi_note",
     "i18n:rail_cum",
     "i18n:rail_cum_s",
     "i18n:sbase",
@@ -1443,7 +1565,75 @@
     "i18n:tw_base_val"
    ],
    "doc_anchors": {},
-   "ruling_also": "user ruling 2026-10-29 (1)"
+   "ruling_also": [
+    "user ruling 2026-10-29 (1)",
+    "user ruling 2026-11-01 (fourth set) (a)",
+    "user ruling 2026-11-01 (fourth set) (d)",
+    "user ruling 2026-11-01 (fourth set) (f)"
+   ]
+  },
+  {
+   "id": "C31",
+   "where": "page evidence lines evc_pile_n3 and the decomposition's conversion clause (decomp_conv_n3 / decomp_conv_g0), shown only once the build finds the N3 id in the registry and worded from the conversion test's registered role (viewer_app PAGE_ROLE_FLAGS); README Limits",
+   "claim": "Compaction per metre of head change at the 2 Yunlin deep-pile cells (土庫國中 400 m, the 300 m sensor as the declared fallback; 中科虎尾 300 m)",
+   "status_before": "D",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "Row added in the fourth set (a): 'compaction per metre of head change at the 2 Yunlin deep-pile cells'. N3's synthetic gate G0 failed at 12 and 24 months (result sha 80e260d0: with 2 piles the conversion test calls rho = 2 'supported' 93-100 % of the time), and on the user's ruling (2026-11-01, fifth set, N3.level_only) N3.piles_prospective.v1 is registered level-only: its conversion tests (N3G: rho = g_obs / g_mod with g_mod per metre of the page's DISPLAYED (restarted) ZR head change at the pile cells; the column runs on the unsaved free projection; N2's ratio-band rule) are report-only by declaration (roles N3P.conversion_12m and N3P.conversion_24m = report_only), so C31 is N, 'conversion not identifiable at the piles by design (N3 G0)', and no N3 outcome makes it S. Only the level sub-claim of C09/C30 is decided by N3, on 2026-12..2027-11 (not before 2028-01-15). Page: 'Deep-pile test N3, registered on the deep piles printed in the WRA monthly reports ... over December 2026 to November 2027 ... {conv} It covers those 2 cells only, not the fan, the coast or Changhua.', where {conv} is pile_conv_12, pile_conv_24 or pile_conv_ro by the conversion test's registered role (viewer_app PAGE_ROLE_FLAGS reads only the registered document's roles; the registered roles give pile_conv_ro), and C27's conversion clause reads 'not identifiable at the 2 Yunlin deep-pile cells by design (N3's synthetic check G0)' (decomp_conv_g0). Before N3 was registered the conversion factor read 'untested (no registered test)'. README Limits and MODEL_CARD word the level-only registration; tests/test_twin_claims.py fails if the registered conversion role is gating while they still word it level-only, or report-only while they word a gating window.",
+   "ruling": "user ruling 2026-11-01 (fourth set) (a)",
+   "ruling_also": [
+    "user ruling 2026-10-29 (4)",
+    "user ruling 2026-11-01 (fifth set) (N3.level_only)"
+   ],
+   "cites": {
+    "registrations": [
+     "N3.piles_prospective.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "results/twin/mechanism/mechanism.json",
+     "results/twin/deep_pile_holdout/report.json"
+    ],
+    "manifests": []
+   },
+   "coverage": {
+    "intended": "the page column's compaction per metre of head change, fan-wide (every cell's conversion in the avoided-subsidence numbers)",
+    "scoped": "2 mid-fan Yunlin deep-pile cells (土庫國中, 中科虎尾); not the fan, the coast or Changhua; seasonal (monthly) elastic conversion, not the 1-3 yr or the inelastic response"
+   },
+   "outcome_display": {
+    "declared": "2026-11-01 (fourth set (a)), committed with the ledger before N3 is registered and before any pile month after 2026-01 is fetched; equal to or narrower than N3's page mapping (dataprep_staging/n3_piles/prereg_n3.py page_mapping); amended 2026-11-01 by the review before registration to equal that mapping on conversion_pass_only, level_pass and g0_failed",
+    "before_scoring": "D; named on the page only once N3 is in the registry",
+    "g0_failed": "G0 (declaration N3.G0.v1, result hashed in N3) fixes the conversion test's role before registration. Fails at 12 months, passes at 24: the 24-month conversion test gates (2026-12..2028-11, not before 2029-01-15; page pile_conv_24) and every row here applies to it. Fails at both: by default N3 is not registered (prereg_n3.py refuses): C31 reads 'untested: the synthetic gate G0 failed', C27's conversion factor reads 'untested (no registered test)', and C09/C30 lose the N3 sub-label. On a user ruling (2026-11-01 fifth set; --g0-fail-mode level-only) is N3 registered with the conversion tests report-only: C31 is N, 'conversion not identifiable at the piles by design (N3 G0)'; C27 reads 'not identifiable by design' (page decomp_conv_g0, pile_conv_ro); C09/C30 keep the N3 sub-label because the level test still gates. The page follows the registered roles without a hand edit (rg.n3_conv12 / rg.n3_conv24)",
+    "joint_pass": "N2 'response supported' (Yunlin) AND N3G 'conversion supported': C31 becomes S ('seasonal elastic conversion at 2 pile cells, prospective'); the ledger adds 'both model links tested at the seasonal scale at 2 pile cells'; C03 stays W with 'links tested, cut size untested'; no cut number becomes S",
+    "conversion_pass_only": "N3G 'conversion supported' without an N2 'response supported': C31 stays N, worded 'conversion consistent at 2 pile cells (prospective); head link: N2 <verdict>'; C03 stays W; only a joint pass makes C31 S",
+    "direction_supported_size_not": "N with N3's wording ('direction supported, size not'); no correction factor follows",
+    "not_supported": "decided N: 'not supported at the 2 pile cells'; no correction factor follows (ruling 2026-10-29 (4))",
+    "not_informative": "N, labelled 'undecided (N3 not informative)'",
+    "level_pass": "N3 level 'supported' (M beats zero and the pre-origin leveling-cell rate at both primary piles): the C09/C30 narrowed sub-claim 'pile-anchored status-quo compaction at 2 Yunlin cells' reads 'passed N3 (prospective)' at status N, a decided label; it does not become S (only C31 can become S); fan-wide C09 stays W and C30 stays N",
+    "level_fail": "the C09/C30 N3 sub-label is decided N with the verdict printed; no correction factor",
+    "never": "the 溪州國小 (Changhua) arm never gates and reaches only C13c/C27 wording; no Changhua subsidence lever under any outcome (C13c); no cut number becomes S; C15 stays L and is linked to C31 as context only",
+    "report_only_role": "any verdict of a report-only conversion line (G0 failed, or the 24-month continuation when the 12-month test gates) is evidence text only; C31 stays N",
+    "level_not_evaluable": "'undecided (WRA reports not published)'",
+    "registered_state": "2026-11-01: g0_failed applies (G0 failed at both horizons; level-only registration on the user's ruling, fifth set N3.level_only): C31 is N; the conversion rows (joint_pass, conversion_pass_only, direction_supported_size_not, not_supported, not_informative) can only be report text under report_only_role; level_pass, level_fail and level_not_evaluable apply to the C09/C30 sub-label."
+   },
+   "notes": "Pile months after 2026-01 move from N2's report-only arm to N3's gating role (N2's arm stays as report text); scoring order N2, N2C step (1), N3, with the 溪州 arm after N2C. Competitor for the level part: zero and the pre-origin leveling-cell rate (printed-pile persistence is not used). The future-month product deep_benchmarks_printed v3 must list prospective_scorer before any window month is read. Disclosed priors, both and never one alone: the ring median seasonal slope 3.4 mm/m against the column's 9.3 mm/m on its own heads (mechanism.json, rings to 2025) and the 2024-25 pile R² 0.92 on the 3 piles anchored below 200 m, used to choose the column (E06, U7); earlier pile looks S1a, S2, S5 and G4; site-selection contamination. C15 is context only. Test ids to cite once registered (citing them before would fail the registry check a second time): N3P.conversion_12m, N3P.level_12m (primary), N3P.conversion_24m, N3P.level_24m (24-month continuation unit, primary only if G0 fails at 12 months, decided before registration), N3P.xizhou_report_only (never gates). The synthetic gate G0 is the declaration N3.G0.v1, run before N3 is registered; its result sha is frozen in N3. Status 2026-11-01: N3 G0 failed at both horizons (result sha 80e260d0); by user ruling (fifth set) N3 is registered level-only, so the conversion test is report-only and C31 is N, 'conversion not identifiable at the piles by design (N3 G0)'; only the level sub-claim of C09/C30 is decided by N3.",
+   "text_keys": [
+    "doc:README.md",
+    "i18n:decomp_conv_g0",
+    "i18n:decomp_conv_n3",
+    "i18n:evc_pile_n3",
+    "i18n:pile_conv_12",
+    "i18n:pile_conv_24",
+    "i18n:pile_conv_ro"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "`N3.piles_prospective.v1` was registered level-only"
+     ]
+    }
+   }
   },
   {
    "id": "E01",
@@ -1480,28 +1670,36 @@
    "status_before": "D",
    "status_current": "D",
    "changes": true,
-   "wording_en": "'Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm) ...' Round 5: a second line names the per-well 90 % head interval as decided by this registered test, with the U7 disclosure 'the interval family was chosen after its 2023-26 coverage was seen; the window is untouched' (EN/ZH), only when the build bound the files by hash.",
+   "wording_en": "'Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm) ...' Round 5: a second line names the per-well 90 % head interval as decided by this registered test, with the U7 disclosure 'the interval family was chosen after its 2023-26 coverage was seen; the window is untouched' (EN/ZH), only when the build bound the files by hash. Fourth set (d): interpretation line evc_pro_fv, shown once FV.decidability.v1 is in the registry, for E02c's level rule (also carried on E02's level line) and E02c's per-county coverage gates (E02's own pooled coverage check is report-only in the study and gets no reading): if P(pass | right-ish truth) <= 0.5 the test is 'weak by design' (a fail would not refute, and C30 stays N whatever the 2028 level outcome); otherwise 'not shown weak'. One-sided: there is no 'a fail is informative' reading. Scored 2026-11-01: not evaluable (superposition failed, 0.28 m against 0.02 m), so the study gives E02 and E02c no interpretation line and both are read as registered; the page shows the declared not-evaluable sentence (evc_pro_fv_ne) instead of evc_pro_fv. The rule above stays the registered rule; no reading of it was produced.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
-     "N2.policy_response.prospective_2026-11.v1"
+     "N2.policy_response.prospective_2026-11.v1",
+     "FV.decidability.v1"
     ],
     "tests": [],
     "reports": [
-     "results/twin/prospective_2026-11/manifest.json"
+     "results/twin/prospective_2026-11/manifest.json",
+     "results/dataprep/reports/FV.decidability.v1/report.json"
     ],
     "manifests": [
      "results/twin/prospective_2026-11/manifest.json"
     ]
    },
-   "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm.",
+   "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm. Rank 11 result (FV.decidability.v1, scored once 2026-11-01T05:54Z, report results/dataprep/reports/FV.decidability.v1/report.json sha 35a5b72f): status not_evaluable, why 'superposition failed'. Gate S: the largest |basis - full| over the 5 check forwards (158 wells, window months) is 0.2845 m (check 4: truth R0, draw 1) against the 0.02 m tolerance; the engineering gate E passed (X5R1 hindcast reproduced within 0.0 m; evaluate self-check identical on 2 worlds). No P and no level or coverage reading exists (readings.level and readings.coverage are null). Declared page_mapping.not_evaluable: 'no interpretation line; E02/E02c read as registered'. The page shows the declared not-evaluable sentence (readings.wording.not_evaluable, EN/ZH; page key evc_pro_fv_ne, {why} = fv_why_sup with the two superposition numbers) in place of evc_pro_fv whenever the report exists (viewer_app PAGE_RESULTS reads only status, why and the superposition numbers); evc_pro_fv, the rule fixed beforehand, stays only for a build without the report. 'A fail is informative' is never written.",
    "text_keys": [
     "i18n:evc_pro",
+    "i18n:evc_pro_fv",
+    "i18n:evc_pro_fv_ne",
     "i18n:evc_pro_iv",
-    "i18n:evc_pro_nodates"
+    "i18n:evc_pro_nodates",
+    "i18n:fv_why_sup"
    ],
    "doc_anchors": {},
-   "ruling_also": "user ruling 2026-10-29 (third set) (a)"
+   "ruling_also": [
+    "user ruling 2026-10-29 (third set) (a)",
+    "user ruling 2026-11-01 (fourth set) (d)"
+   ]
   },
   {
    "id": "E03",
@@ -1597,7 +1795,7 @@
     ],
     "manifests": []
    },
-   "notes": "Observation-scored world claim: N with the U7 report-only label (draft had L).",
+   "notes": "Observation-scored world claim: N with the U7 report-only label (draft had L). Fourth set (a): pile months after 2026-01 belong to N3's gating role (C31); the 2024-25 scores stay report-only (U7) and are disclosed in N3 as a prior beside the ring seasonal slope.",
    "text_keys": [
     "i18n:evc_pile",
     "i18n:evc_pile_ro"
@@ -2178,7 +2376,7 @@
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (b)",
-   "notes": "Binds E02 (not N2), uses no X1, only tightens. Pass on T-level makes C30's heads part S-limited; pass on T-cov makes C14a S for that county ('passed its registered gate').",
+   "notes": "Binds E02 (not N2), uses no X1, only tightens. Pass on T-level makes C30's heads part S-limited; pass on T-cov makes C14a S for that county ('passed its registered gate'). evc_pro_fv sits inside the page's prospective block with the E02/E02c lines it interprets, so a build without --prospective omits it even when FV is registered (no reading is shown without the line it reads). FV.decidability.v1 scored not evaluable on 2026-11-01 (E02 notes): evc_pro_fv_ne takes evc_pro_fv's place in the same block, under the same --prospective condition.",
    "doc_anchors": {},
    "id": "E21",
    "where": "page evidence line under the prospective test",
@@ -2186,22 +2384,28 @@
    "status_before": "D",
    "status_current": "D",
    "changes": true,
-   "wording_en": "New row (round 5): 'Stricter companion test E02c, registered on the same wells and window: 90 % coverage of the per-well combined-spread head interval by county ... decided not before 2028-01-15.' Shown only once E02c.prospective_2026-11.v1 is in the registry (viewer_app registrations.e02c). Unit I1:prospective_heads_2026-11_2027-10_R0wells (no new unit id).",
+   "wording_en": "New row (round 5): 'Stricter companion test E02c, registered on the same wells and window: 90 % coverage of the per-well combined-spread head interval by county ... decided not before 2028-01-15.' Shown only once E02c.prospective_2026-11.v1 is in the registry (viewer_app registrations.e02c). Unit I1:prospective_heads_2026-11_2027-10_R0wells (no new unit id). Fourth set (d): interpretation line evc_pro_fv, shown once FV.decidability.v1 is in the registry, for E02c's level rule (also carried on E02's level line) and E02c's per-county coverage gates (E02's own pooled coverage check is report-only in the study and gets no reading): if P(pass | right-ish truth) <= 0.5 the test is 'weak by design' (a fail would not refute, and C30 stays N whatever the 2028 level outcome); otherwise 'not shown weak'. One-sided: there is no 'a fail is informative' reading. Scored 2026-11-01: not evaluable (superposition failed, 0.28 m against 0.02 m), so the study gives E02 and E02c no interpretation line and both are read as registered; the page shows the declared not-evaluable sentence (evc_pro_fv_ne) instead of evc_pro_fv. The rule above stays the registered rule; no reading of it was produced.",
    "cites": {
     "registrations": [
-     "E02c.prospective_2026-11.v1"
+     "E02c.prospective_2026-11.v1",
+     "FV.decidability.v1"
     ],
     "tests": [],
     "reports": [
-     "results/twin/prospective_2026-11/manifest.json"
+     "results/twin/prospective_2026-11/manifest.json",
+     "results/dataprep/reports/FV.decidability.v1/report.json"
     ],
     "manifests": [
      "results/twin/prospective_2026-11/manifest.json"
     ]
    },
    "text_keys": [
-    "i18n:evc_pro_e02c"
-   ]
+    "i18n:evc_pro_e02c",
+    "i18n:evc_pro_fv",
+    "i18n:evc_pro_fv_ne",
+    "i18n:fv_why_sup"
+   ],
+   "ruling_also": "user ruling 2026-11-01 (fourth set) (d)"
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (c)",
@@ -2225,6 +2429,37 @@
    "text_keys": [
     "i18n:evc_pro_ext"
    ]
+  },
+  {
+   "id": "E23",
+   "where": "page tile tW definition (fs_pass) and the start note (start_note_fs); ledger",
+   "claim": "Start-state invariance of the page's head lever (N2 unit; cut30 and retire_aqua; starts 2026-01 and 2030-01): model-internal check",
+   "status_before": "L",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "New row (FS.start_invariance.v1 evidence_and_ledger_mapping.on_pass; model-only, moves no status): 'does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1)', quoted with the measured largest |R - 1|, 9.74e-06 %, which the page prints as '< 0.001 %' (a departure below the display unit is printed as a bound, never as a rounded 0.0); the start note may add that the 2022-12 start moves the head levels only in the first months after it (gone by December 2026), not the policy differences. Not evidence about the aquifer: it says nothing about whether the response size is right (N2) or about the level (E02c).",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "FS.start_invariance.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/FS.start_invariance.v1/report.json"
+    ],
+    "manifests": []
+   },
+   "notes": "FS.start_invariance.v1 (registered 2026-11-01, sha 9f8a7115; scored once, report results/dataprep/reports/FS.start_invariance.v1/report.json sha 6130a3bf): verdict pass, wording case 'pass'. Largest |R - 1| over the 20 gated cells 9.74e-06 % (S1 free-run start 3.42e-06 %, S2 old untapered field restart 9.74e-06 %); largest per-well p90 deviation 9.07e-07; no failing arm. The invariance holds to numerical precision, as expected because the head solver is linear in the start state; this is a different property from FV.decidability.v1's failed pumping superposition (0.28 m), which concerned nonlinearity in the pumping multipliers. The start moves the levels only early (N2-unit baseline shift, arm minus S0: Jan 2023 -0.23 m for S1 and +0.77 m for S2; Dec 2026 about 1e-06 m; Dec 2032 0), not the policy differences. Run record: the S0 reproduction passed (rc 0) before any arm ran; S1's first attempt was killed when the lead stopped the chain-wrapper tmux session to run S2, S3 and S3ref in parallel, was archived unopened at results/twin_runs/fs_start/archive/20261101T090851Z and rerun as attempt 1 (exit 0).",
+   "text_keys": [
+    "i18n:fs_arm_s1",
+    "i18n:fs_arm_s2",
+    "i18n:fs_fail",
+    "i18n:fs_p90",
+    "i18n:fs_pass",
+    "i18n:fs_s2_only",
+    "i18n:start_note_fs"
+   ],
+   "doc_anchors": {}
   },
   {
    "id": "Z04",
@@ -2545,6 +2780,10 @@
    "dec": [
     "Z01"
    ],
+   "decomp_conv_n3": [
+    "C27",
+    "C31"
+   ],
    "def_of": [
     "Z01"
    ],
@@ -2643,6 +2882,11 @@
    "evc_hyb_reg": [
     "E04"
    ],
+   "evc_n3sl": [
+    "C05",
+    "C26",
+    "C30"
+   ],
    "evc_nc_fail": [
     "E01"
    ],
@@ -2652,8 +2896,25 @@
    "evc_pile": [
     "E06"
    ],
+   "evc_pile_n3": [
+    "C31",
+    "C09",
+    "C30",
+    "C27"
+   ],
    "evc_pile_ro": [
     "E06"
+   ],
+   "evc_pr_ch_class": [
+    "C13b"
+   ],
+   "evc_pr_ch_head": [
+    "C13a",
+    "E20",
+    "C16"
+   ],
+   "evc_pr_ch_subs": [
+    "C13c"
    ],
    "evc_pr_heads": [
     "C16"
@@ -2671,6 +2932,24 @@
    "evc_pro": [
     "E02"
    ],
+   "evc_pro_e02c": [
+    "E21",
+    "C14a",
+    "C30"
+   ],
+   "evc_pro_ext": [
+    "E22"
+   ],
+   "evc_pro_fv": [
+    "E02",
+    "E21",
+    "C30"
+   ],
+   "evc_pro_iv": [
+    "E02",
+    "C14a",
+    "C14b"
+   ],
    "evc_pro_nodates": [
     "E02"
    ],
@@ -2680,6 +2959,9 @@
    ],
    "evc_ring_ref": [
     "E05"
+   ],
+   "evc_subs_decomp": [
+    "C27"
    ],
    "facts": [
     "E12"
@@ -2824,6 +3106,7 @@
     "C03",
     "C05",
     "C09",
+    "C29",
     "C30"
    ],
    "more_metrics": [
@@ -2872,6 +3155,16 @@
     "C27",
     "C25"
    ],
+   "pol_caveat_ch": [
+    "C13b",
+    "C13c",
+    "E20"
+   ],
+   "pol_caveat_ch_np": [
+    "C13b",
+    "C13c",
+    "E20"
+   ],
    "pol_current": [
     "Z01"
    ],
@@ -2897,6 +3190,14 @@
     "C16"
    ],
    "pr_ch_nopump": [
+    "C13a"
+   ],
+   "pr_ch_slope": [
+    "C13a",
+    "C16"
+   ],
+   "pr_ch_untested": [
+    "E20",
     "C13a"
    ],
    "pr_irr30": [
@@ -3261,47 +3562,62 @@
    "zero_ref": [
     "Z01"
    ],
-   "evc_pr_ch_head": [
-    "C13a",
-    "E20",
-    "C16"
+   "pile_conv_12": [
+    "C31"
    ],
-   "pr_ch_slope": [
-    "C13a",
-    "C16"
+   "pile_conv_24": [
+    "C31"
    ],
-   "pr_ch_untested": [
-    "E20",
-    "C13a"
+   "decomp_conv_g0": [
+    "C27",
+    "C31"
    ],
-   "evc_pr_ch_subs": [
-    "C13c"
-   ],
-   "evc_pr_ch_class": [
-    "C13b"
-   ],
-   "pol_caveat_ch": [
-    "C13b",
-    "C13c",
-    "E20"
-   ],
-   "pol_caveat_ch_np": [
-    "C13b",
-    "C13c",
-    "E20"
-   ],
-   "evc_pro_iv": [
+   "evc_pro_fv_ne": [
     "E02",
-    "C14a",
-    "C14b"
-   ],
-   "evc_pro_e02c": [
     "E21",
-    "C14a",
     "C30"
    ],
-   "evc_pro_ext": [
-    "E22"
+   "fv_why_sup": [
+    "E02",
+    "E21",
+    "C30"
+   ],
+   "pr_ch_cap_f_res": [
+    "C13a"
+   ],
+   "pr_ch_rd_res": [
+    "C13a"
+   ],
+   "pr_ch_rd_held": [
+    "C13a"
+   ],
+   "fs_pass": [
+    "C01",
+    "E23"
+   ],
+   "fs_s2_only": [
+    "C01",
+    "E23"
+   ],
+   "fs_fail": [
+    "C01",
+    "E23"
+   ],
+   "fs_arm_s1": [
+    "C01",
+    "E23"
+   ],
+   "fs_arm_s2": [
+    "C01",
+    "E23"
+   ],
+   "fs_p90": [
+    "C01",
+    "E23"
+   ],
+   "start_note_fs": [
+    "C01",
+    "E23"
    ]
   },
   "card_rows": {
@@ -3426,6 +3742,12 @@
     "E13",
     "C15"
    ],
+   "chCapF": [
+    "C13a"
+   ],
+   "chCapRd": [
+    "C13a"
+   ],
    "covLine": [
     "C14c"
    ],
@@ -3450,13 +3772,28 @@
     "C14a",
     "C14b",
     "E21",
-    "E22"
+    "E22",
+    "C27",
+    "C31",
+    "C09",
+    "C30",
+    "C05",
+    "C26"
    ],
    "fastClause": [
     "C10"
    ],
    "fastWords": [
     "C10"
+   ],
+   "fsWords": [
+    "C01",
+    "E23"
+   ],
+   "fvLine": [
+    "E02",
+    "E21",
+    "C30"
    ],
    "gwhTieWords": [
     "C12"
@@ -4891,6 +5228,37 @@
    "modelcard.record_years": [
     "E12"
    ],
+   "modelcard.results.fs.max_abs_ratio_dev_pct": [
+    "E23"
+   ],
+   "modelcard.results.fs.per_arm.S1.max_abs_ratio_dev_pct": [
+    "E23"
+   ],
+   "modelcard.results.fs.per_arm.S1.x_pct": [
+    "E23"
+   ],
+   "modelcard.results.fs.per_arm.S2.max_abs_ratio_dev_pct": [
+    "E23"
+   ],
+   "modelcard.results.fs.per_arm.S2.x_pct": [
+    "E23"
+   ],
+   "modelcard.results.fv.superposition.max_abs_window_m": [
+    "E02",
+    "E21",
+    "C30"
+   ],
+   "modelcard.results.fv.superposition.tolerance_m": [
+    "E02",
+    "E21",
+    "C30"
+   ],
+   "modelcard.results.x5clm.F": [
+    "C13a"
+   ],
+   "modelcard.results.x5n2c.false_pass": [
+    "C13a"
+   ],
    "modelcard.ring_holdout.gnss.n_sites": [
     "E19"
    ],
@@ -5381,6 +5749,18 @@
    "release.sources.rescore.bytes": [
     "E18"
    ],
+   "release.sources.result_fs.bytes": [
+    "E18"
+   ],
+   "release.sources.result_fv.bytes": [
+    "E18"
+   ],
+   "release.sources.result_x5clm.bytes": [
+    "E18"
+   ],
+   "release.sources.result_x5n2c.bytes": [
+    "E18"
+   ],
    "release.sources.rheology.bytes": [
     "E18"
    ],
@@ -5608,6 +5988,12 @@
   "I1.X5SC.gate0.v1": "cb1ffc261aef6edae5895674a997210b69bb64ac4fd36bc6dd763f62b6d1d68e",
   "U1.no_band.v1": "3da3db81aaf14c1e7ddc6246b09795b497030df1b177936d521c279fa204a0ca",
   "E02c.prospective_2026-11.v1": "cc5b970f4bd009cd1f84ae3c702e7d057bd6325f724c38ecdd710ab2a62dd468",
-  "N3F.ext_level.prospective_2026-11.v1": "17c826ee0a774ed7466946c51b97c1f283fc4172389d6e71a366c43745df0106"
+  "N3F.ext_level.prospective_2026-11.v1": "17c826ee0a774ed7466946c51b97c1f283fc4172389d6e71a366c43745df0106",
+  "N3.piles_prospective.v1": "afa017d76f974c4edb3b34bba38aa23ab9242d76b6d384f6a4d9e786b62df5c5",
+  "N3SL.township_prospective_roc116-117.v1": "be95c6e25dc5047670161d0adfa067f1c6a4c1ada9ec0a0cb5682eb505c9d6c8",
+  "FV.decidability.v1": "cf2adf0d0c9b9fe5f70f5e6ee6cd1bc133964811c2b944eaf2cce344b4d3f61d",
+  "X5.changhua_lever_model.v1": "3a07b26666b5913c37da80e0545835aa72df30bbf08ceb2f298aff1a33bfefa3",
+  "X5.n2c_reading.v1": "9da07c371f0028a8dac828f621097d5061694bbfacf69e495b0767a9468f2aef",
+  "FS.start_invariance.v1": "9f8a71155cc9be83c0e23a9d61212ff95203d6d52934dab60d7f77b6a035d7b4"
  }
 }

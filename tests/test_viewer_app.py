@@ -1037,14 +1037,31 @@ def test_pending_registrations_are_named_only_once_in_the_registry(tmp_path, qui
     """Claims E21, E22 and the U1 narrowing: the build flags each pending registration only when
     its id is in the registry index (only ids are read); no index names none."""
     index = tmp_path / "INDEX.jsonl"
-    assert va._registrations_block(str(index)) == {"e02c": False, "ext": False, "no_band": False}
+    none = dict.fromkeys([*va.PAGE_REGISTRATIONS, *va.PAGE_ROLE_FLAGS], False)
+    assert set(none) == {"e02c", "ext", "no_band", "n3", "n3sl", "fv", "x5clm", "x5n2c", "fs",
+                         "n3_conv12", "n3_conv24"}
+    assert va._registrations_block(str(index)) == none
+    n3 = va.PAGE_REGISTRATIONS["n3"][-1]
     index.write_text(json.dumps({"id": "N3F.ext_level.prospective_2026-12.v1", "sha256": "f"})
-                     + "\n\n" + json.dumps({"id": "U1.no_band.v1", "sha256": "e"}) + "\n")
-    assert va._registrations_block(str(index)) == {"e02c": False, "ext": True, "no_band": True}
+                     + "\n\n" + json.dumps({"id": "U1.no_band.v1", "sha256": "e"}) + "\n"
+                     + json.dumps({"id": n3, "sha256": "d"}) + "\n")
+    with pytest.raises(ValueError, match="registered document"):   # no guessing a role
+        va._registrations_block(str(index))
+    roles = {"N3P.conversion_12m": "gating", "N3P.conversion_24m": "report_only"}
+    (tmp_path / f"{n3}.json").write_text(json.dumps({"id": n3, "roles": roles}))
+    want = {**none, "ext": True, "no_band": True, "n3": True, "n3_conv12": True}
+    assert va._registrations_block(str(index)) == want
+    # G0 decides the role: 24-month unit gating, or both report-only (level-only registration)
+    for r12, r24, w12, w24 in (("report_only", "gating", False, True),
+                               ("report_only", "report_only", False, False)):
+        (tmp_path / f"{n3}.json").write_text(json.dumps(
+            {"roles": {"N3P.conversion_12m": r12, "N3P.conversion_24m": r24}}))
+        got = va._registrations_block(str(index))
+        assert (got["n3"], got["n3_conv12"], got["n3_conv24"]) == (True, w12, w24), (r12, r24)
+    (tmp_path / f"{n3}.json").write_text(json.dumps({"id": n3, "roles": roles}))
     monkeypatch.setattr(va, "PREREG_INDEX", str(index))
     _, out, _ = _build(tmp_path)
-    assert _payload(out)["modelcard"]["registrations"] == {"e02c": False, "ext": True,
-                                                          "no_band": True}
+    assert _payload(out)["modelcard"]["registrations"] == want
 
 
 def test_ring_holdout_block_is_absent_until_the_report_exists(tmp_path):
@@ -1538,16 +1555,236 @@ def test_evidence_names_the_interval_and_pending_tests_only_when_bound(tmp_path,
     js = ("() => { const mc = D.modelcard; mc.prospective = {registered_on: '2026-10-11', "
           "stations: 158, test_start: '2026-11-01', test_end: '2027-10-31', result: 'pending', "
           "interval_bound: false}; mc.registrations = {e02c: false, ext: false, no_band: false}; "
+          "mc.results = {}; "
           "const txt = () => evidenceItems().map(x => x[1]).join(' | '); const none = txt(); "
           "mc.prospective.interval_bound = true; const iv = txt(); "
-          "mc.registrations = {e02c: true, ext: true, no_band: true}; const all = txt(); "
-          "delete mc.registrations; return {none, iv, all, absent: txt()}; }")
+          "mc.registrations = {e02c: true, ext: true, no_band: true, fv: true, n3: true, "
+          "n3sl: true, n3_conv12: true}; const all = txt(); "
+          "mc.registrations = {n3: true, n3_conv24: true}; const c24 = txt(); "
+          "mc.registrations = {n3: true}; const ro = txt(); "
+          "mc.registrations = {fv: true}; mc.results = {fv: {status: 'not_evaluable', "
+          "why: 'superposition failed', superposition: {pass: false, max_abs_window_m: 0.2845, "
+          "tolerance_m: 0.02}}}; const fvne = txt(); "
+          "mc.registrations = {}; const fvunreg = txt(); mc.results = {}; "
+          "delete mc.registrations; return {none, iv, all, c24, ro, fvne, fvunreg, "
+          "absent: txt()}; }")
     got = _page_text(tmp_path, _v1(), js)
     iv = "per-well 90 % head interval"
     assert iv not in got["none"] and iv in got["iv"]
     assert "chosen after its 2023–26 coverage was seen" in got["iv"]
-    for key in ("Stricter companion test E02c", "never used in calibration", "U1.no_band.v1"):
+    for key in ("Stricter companion test E02c", "never used in calibration", "U1.no_band.v1",
+                "FV.decidability.v1", "Deep-pile test N3", "Township-summary test N3S-L",
+                "Conversion factor: decided by N3"):
         assert key not in got["iv"] and key in got["all"] and key not in got["absent"], key
+    # claims C27/C31: the decomposition is always there; N3 is named only once registered
+    for k in ("none", "iv", "absent"):
+        assert "head rise times the column's compaction per metre" in got[k]
+        assert "Conversion factor: untested (no registered test)." in got[k], k
+    assert "Conversion factor: untested" not in got["all"]
+    # fourth set (a), G0: the conversion clause and window follow N3's registered role
+    assert "over the same months, decided not before 2028-01-15" in got["all"]
+    assert "December 2026 to November 2027" in got["c24"]            # the level window
+    assert "over December 2026 to November 2028, decided not before 2029-01-15" in got["c24"]
+    assert "Conversion factor: decided by N3" in got["c24"]
+    assert "Conversion factor: decided by N3" not in got["ro"]
+    assert "not identifiable at the 2 Yunlin deep-pile cells by design" in got["ro"]
+    assert "is reported only, not tested" in got["ro"] and "Deep-pile test N3" in got["ro"]
+    for k in ("all", "c24"):
+        assert "is reported only, not tested" not in got[k], k
+    # FV.decidability.v1: the rule fixed beforehand until the report exists; then the declared
+    # not-evaluable sentence and no reading (page_mapping.not_evaluable)
+    rule = "if a model of the right kind passes a rule with probability 0.5 or less"
+    assert rule in got["all"] and "not evaluable" not in got["all"]
+    ne = ("Synthetic decidability study (FV.decidability.v1) not evaluable (superposition "
+          "failed: 0.28 m against a 0.02 m tolerance); E02 and E02c gain no interpretation line "
+          "from it.")
+    assert ne in got["fvne"] and rule not in got["fvne"] and "weak by design" not in got["fvne"]
+    assert "FV.decidability.v1" not in got["fvunreg"]          # the result needs the registration
+
+
+def test_changhua_caps_wait_for_their_declarations(tmp_path, quiet):
+    """Claim C13a: the two display caps join the Changhua head line only once their model-only
+    declarations are registered; the line keeps the N2C untested label either way."""
+    v2 = PL2.build_v2(_v1(), _step_b(), _step_c())
+    js = ("() => { const mc = D.modelcard; "
+          "const line = () => policyResponseLines(mc.policy_response).map(x => x[1])"
+          ".filter(t => t.startsWith('Changhua head response'))[0]; "
+          "mc.results = {}; mc.registrations = {}; const off = line(); "
+          "mc.registrations = {x5clm: true, x5n2c: true}; const on = line(); "
+          "mc.registrations = {x5clm: true}; const one = line(); "
+          "mc.registrations = {x5clm: true, x5n2c: true}; "
+          "mc.results = {x5clm: {evaluable: true, F: 0.4933, caps_c13a_at_N: true}, "
+          "x5n2c: {status: 'estimated', false_pass: 0.116}}; const res = line(); "
+          "mc.results.x5n2c.false_pass = 0.3; const held = line(); "
+          "mc.results = {x5clm: {evaluable: true, F: 0.7, caps_c13a_at_N: false}, "
+          "x5n2c: {status: 'not_evaluable', false_pass: null}}; const nocap = line(); "
+          "mc.registrations = {}; mc.results = {x5clm: {F: 0.4933, caps_c13a_at_N: true}}; "
+          "const unreg = line(); "
+          "return {off, on, one, res, held, nocap, unreg}; }")
+    got = _page_text(tmp_path, v2, js)
+    lab = "untested (N2C registered, scored not before 2028-01-15)"
+    for k in ("off", "on", "one"):
+        assert lab in got[k], k
+    for key in ("X5.changhua_lever_model.v1", "X5.n2c_reading.v1"):
+        assert key not in got["off"] and key in got["on"], key
+    assert "X5.changhua_lever_model.v1" in got["one"] and "X5.n2c_reading.v1" not in got["one"]
+    assert "less than half" in got["on"] and "reported, not shown" in got["on"]
+    # once scored: the measured F (0.49 < 0.5 caps C13a at N) and the measured false-pass rate
+    for k in ("res", "held", "nocap", "unreg"):
+        assert lab in got[k], k
+    assert "exercises 0.49 of R1c's head response (below 0.5)" in got["res"]
+    assert "first-year response only, no number shown" in got["res"]
+    assert "less than half" not in got["res"]
+    assert "passes it 0.12 of the time (below 0.25)" in got["res"]
+    assert "reported, not shown" not in got["res"]
+    assert "passes it 0.30 of the time (0.25 or more), so a pass is reported, not shown" in got[
+        "held"]
+    # no cap (F >= 0.5) and a reading that was not estimated add no clause
+    assert "X5.changhua_lever_model.v1" not in got["nocap"]
+    assert "X5.n2c_reading.v1" not in got["nocap"]
+    assert "X5.changhua_lever_model.v1" not in got["unreg"]   # results need the registration
+
+
+# --- scored model-only studies (viewer_app.PAGE_RESULTS) ------------------------------------
+def _fs_report(case: str, s1: dict, s2: dict) -> dict:
+    def arm(a):
+        return {"pass": a.get("pass", False), "max_abs_ratio_dev_pct": a.get("r"),
+                "max_p90_rel_dev": a.get("p90"), "ratio_band_fails": a.get("rf", 0),
+                "p90_fails": a.get("pf", 0)}
+    verdict = {"pass": "pass", "not_evaluable": "not_evaluable"}.get(case, "fail")
+    return {"prereg_id": "FS.start_invariance.v1", "verdict": verdict,
+            "summary": {"max_abs_ratio_dev_pct": max(x for x in (s1.get("r"), s2.get("r"), 0)
+                                                     if x is not None),
+                        "wording_case": case, "per_arm": {"S1": arm(s1), "S2": arm(s2)}},
+            "table": {"S1": {"cut30@2026/2026-27": {"ratio": 0.99}}}}
+
+
+def _results_paths(tmp_path, **reports) -> dict:
+    out = {}
+    for key, (reg, _) in va.PAGE_RESULTS.items():
+        path = tmp_path / f"{key}.json"
+        if key in reports:
+            path.write_text(json.dumps(reports[key]))
+        out[key] = (reg, str(path))
+    return out
+
+
+def test_results_block_reads_only_what_the_page_quotes(tmp_path):
+    """FV, the two C13a studies and FS: absent reports give nothing; present ones give their
+    status and the numbers the page quotes, and nothing else."""
+    assert va._results_block(_results_paths(tmp_path)) == {}
+    fv = {"id": "FV.decidability.v1", "status": "not_evaluable", "why": "superposition failed",
+          "superposition": {"pass": False, "max_abs_window_m": 0.2845, "tolerance_m": 0.02,
+                            "checks": [{"truth": "R0"}]},
+          "readings": {"level": None, "coverage": None}, "truths": {"R0": "x"}}
+    clm = {"prereg_id": "X5.changhua_lever_model.v1", "F": {"F": 0.4933, "evaluable": True,
+                                                            "caps_c13a_at_N": True,
+                                                            "per_replay_report_only": {}},
+           "spread": {"by_window": {}}}
+    rd = {"id": "X5.n2c_reading.v1", "reading": {"status": "estimated",
+                                                 "false_pass_k0_rho_m083": 0.116,
+                                                 "power_k1_rho0": 0.93}, "cells": [{}]}
+    got = va._results_block(_results_paths(tmp_path, fv=fv, x5clm=clm, x5n2c=rd))
+    assert got == {"fv": {"status": "not_evaluable", "why": "superposition failed",
+                          "superposition": {"pass": False, "max_abs_window_m": 0.2845,
+                                            "tolerance_m": 0.02}},
+                   "x5clm": {"evaluable": True, "F": 0.4933, "caps_c13a_at_N": True},
+                   "x5n2c": {"status": "estimated", "false_pass": 0.116}}
+    # a P reading has no page wording yet: refuse rather than show the rule fixed beforehand
+    with pytest.raises(ValueError, match="no page wording"):
+        va._results_block(_results_paths(tmp_path, fv={**fv, "status": "weak_by_design"}))
+    with pytest.raises(ValueError, match="not FV.decidability.v1"):
+        va._results_block(_results_paths(tmp_path, fv={**fv, "id": "FV.decidability.v2"}))
+
+
+@pytest.mark.parametrize("case, s1, s2, want", [
+    ("pass", {"pass": True, "r": 1.2, "p90": 0.04}, {"pass": True, "r": 3.1, "p90": 0.06},
+     {"S1": (1.2, "ratio"), "S2": (3.1, "ratio")}),
+    ("S2_only", {"pass": True, "r": 2.0, "p90": 0.05},
+     {"r": 12.5, "p90": 0.3, "rf": 4, "pf": 6}, {"S1": (2.0, "ratio"), "S2": (12.5, "ratio")}),
+    # S1 fails on the per-well p90 only: its x is the p90 in %
+    ("S1_only", {"r": 3.0, "p90": 0.14, "pf": 2}, {"pass": True, "r": 1.0, "p90": 0.02},
+     {"S1": (14.0, "p90"), "S2": (1.0, "ratio")}),
+    ("S1_and_S2", {"r": 6.0, "p90": 0.2, "rf": 1, "pf": 3}, {"r": 9.0, "p90": 0.12, "rf": 2},
+     {"S1": (6.0, "ratio"), "S2": (9.0, "ratio")}),
+])
+def test_results_block_words_fs_by_its_declared_case(tmp_path, case, s1, s2, want):
+    got = va._results_block(_results_paths(tmp_path, fs=_fs_report(case, s1, s2)))["fs"]
+    assert got["wording_case"] == case and set(got) == {"verdict", "wording_case",
+                                                        "max_abs_ratio_dev_pct", "per_arm"}
+    for arm, (x, kind) in want.items():
+        assert got["per_arm"][arm]["x_pct"] == pytest.approx(x), arm
+        assert got["per_arm"][arm]["x_kind"] == kind, arm
+
+
+def test_results_block_refuses_an_undeclared_fs_case(tmp_path):
+    rep = _fs_report("pass", {"pass": True, "r": 1.0}, {"pass": True, "r": 1.0})
+    rep["summary"]["wording_case"] = "S3_only"
+    with pytest.raises(ValueError, match="not one it declared"):
+        va._results_block(_results_paths(tmp_path, fs=rep))
+
+
+def test_fs_line_follows_the_report_case_and_needs_the_report(tmp_path, quiet, monkeypatch):
+    """C01 (FS.start_invariance.v1, evidence_and_ledger_mapping): no report, no FS line; each
+    declared case gives its own wording in the head tile's definition; not evaluable gives no
+    page text."""
+    rep = {c: va._results_block(_results_paths(tmp_path, fs=_fs_report(c, s1, s2)))["fs"]
+           for c, s1, s2 in (
+               ("pass", {"pass": True, "r": 1.23}, {"pass": True, "r": 3.14}),
+               ("S2_only", {"pass": True, "r": 2.04}, {"r": 12.5, "p90": 0.3, "rf": 4}),
+               ("S1_only", {"r": 3.0, "p90": 0.14, "pf": 2}, {"pass": True, "r": 1.0}),
+               ("S1_and_S2", {"r": 6.0, "p90": 0.2, "rf": 1}, {"r": 9.0, "rf": 2}),
+               ("not_evaluable", {}, {}))}
+    # the scored report's size (2026-11-01: |R - 1| 3.4e-06 % and 9.7e-06 %): a bound, not 0.0
+    rep["tiny"] = va._results_block(_results_paths(tmp_path, fs=_fs_report(
+        "pass", {"pass": True, "r": 3.42e-6}, {"pass": True, "r": 9.74e-6})))["fs"]
+    none = tmp_path / "none"
+    none.mkdir()
+    monkeypatch.setattr(va, "PAGE_RESULTS", _results_paths(none))          # no report at build
+    js = ("(rep) => { const mc = D.modelcard; const def = () => tileDefHtml('tW'); "
+          "const out = {}; mc.registrations = {fs: true}; delete mc.results; out.none = def(); "
+          "for (const c of Object.keys(rep)) { mc.results = {fs: rep[c]}; out[c] = def(); } "
+          "mc.registrations = {}; mc.results = {fs: rep.pass}; out.unreg = def(); return out; }")
+    _, out, _ = _build(tmp_path)
+    assert "results" not in _payload(out)["modelcard"]
+    pw, browser = _browser()
+    try:
+        page = browser.new_page()
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(js, rep)
+    finally:
+        browser.close()
+        pw.stop()
+    for k in ("none", "unreg", "not_evaluable"):
+        assert "FS.start_invariance.v1" not in got[k], k
+    assert ("does not depend on the 2022-12 start state (within 5 %, model-only declaration "
+            "FS.start_invariance.v1): largest departure 3.1 %") in got["pass"]
+    assert "FS.start_invariance.v1): largest departure < 0.001 %." in got["tiny"]
+    assert "0.0 %" not in got["tiny"]
+    assert "free-run start S1 within 5 %, model-only; largest departure 2.0 %" in got["S2_only"]
+    assert "by up to 12.5 % only under the superseded untapered field restart" in got["S2_only"]
+    assert ("depends on the 2022-12 start state by up to 14.0 % (per-well 90th percentile) "
+            "(model-only declaration FS.start_invariance.v1): free-run start S1, 14.0 % "
+            "(per-well 90th percentile).") in got["S1_only"]
+    assert "old field restart S2" not in got["S1_only"]
+    assert "by up to 9.0 %" in got["S1_and_S2"]
+    assert "free-run start S1, 6.0 % and old field restart S2, 9.0 %" in got["S1_and_S2"]
+    for k in ("S1_only", "S1_and_S2"):
+        assert "does not depend" not in got[k], k
+
+
+def test_built_page_carries_the_results_and_their_provenance(tmp_path, quiet, monkeypatch):
+    fs = _fs_report("pass", {"pass": True, "r": 1.2}, {"pass": True, "r": 3.1})
+    paths = _results_paths(tmp_path, fs=fs)
+    monkeypatch.setattr(va, "PAGE_RESULTS", paths)
+    _, out, _ = _build(tmp_path)
+    pl = _payload(out)
+    assert pl["modelcard"]["results"]["fs"]["wording_case"] == "pass"
+    assert set(pl["modelcard"]["results"]) == {"fs"}
+    src = pl["release"]["sources"]
+    assert src["result_fs"]["sha256"] == va.sha256(paths["fs"][1])
+    assert "result_fv" not in src
 
 
 def test_paired_head_spread_waits_for_model_internals(tmp_path, quiet):

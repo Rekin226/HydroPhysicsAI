@@ -128,13 +128,52 @@ RINGS_CSV = "results/twin/stage2_vep_mlcw.csv"
 TAU_ALT_GLOB = "results/twin_runs/*/coupled_leveling_tau*/vep_*.json"
 HSR_REACH_KM = 1.5          # half the 2 km smoothing plus half the 1 km distortion window
 # Registrations the page names only once they are in the registry (claims E21, E22 and the
-# U1.no_band.v1 narrowing; ruling 2026-10-29 third set). Only the index's ids are read.
+# U1.no_band.v1 narrowing; ruling 2026-10-29 third set; C31, C27, C13a, E02/E21 and C05/C26
+# under the rulings of 2026-11-01, fourth set). Only the index's ids are read.
 PREREG_INDEX = "results/dataprep/preregistration/INDEX.jsonl"
 PAGE_REGISTRATIONS = {
     "e02c": ("E02c.prospective_2026-11.v1",),
     # ruling (c): the external-well test may move to its pre-declared 2026-12 fallback window
     "ext": ("N3F.ext_level.prospective_2026-11.v1", "N3F.ext_level.prospective_2026-12.v1"),
     "no_band": ("U1.no_band.v1",),
+    # fourth set (a): the deep-pile test (level window 2026-12..2027-11, registered by
+    # 2026-11-30T16:00Z); it carries C31, and names N3 as the conversion decider (C27) only
+    # under a gating conversion role (PAGE_ROLE_FLAGS)
+    "n3": ("N3.piles_prospective.v1",),
+    # fourth set (f): the township-summary test on ROC116/117
+    "n3sl": ("N3SL.township_prospective_roc116-117.v1",),
+    # fourth set (d): the decidability study that fixes how E02c's level rule (also carried on
+    # E02's level line) and E02c's county coverage gates are read
+    "fv": ("FV.decidability.v1",),
+    # fourth set (b) and (c): the two studies that can only narrow an N2C pass (C13a)
+    "x5clm": ("X5.changhua_lever_model.v1",),
+    "x5n2c": ("X5.n2c_reading.v1",),
+    # rank 7: the model-only start-state check of the head lever (C01); worded only from its
+    # report (PAGE_RESULTS), never from the registration alone
+    "fs": ("FS.start_invariance.v1",),
+}
+# Results of the registered model-only studies that change what the page may say (claims E02,
+# E21, C30: FV; C13a: the two Changhua studies; C01: FS). A file is read only when it exists,
+# and only the fields _results_block names are kept (a status and the few numbers the page
+# quotes); none of them holds an observation. key -> (registered id, report path).
+PAGE_RESULTS = {
+    "fv": ("FV.decidability.v1", "results/dataprep/reports/FV.decidability.v1/report.json"),
+    "x5clm": ("X5.changhua_lever_model.v1",
+              "results/dataprep/reports/X5.changhua_lever_model.v1/report.json"),
+    "x5n2c": ("X5.n2c_reading.v1", "results/dataprep/reports/X5.n2c_reading.v1/result.json"),
+    "fs": ("FS.start_invariance.v1",
+           "results/dataprep/reports/FS.start_invariance.v1/report.json"),
+}
+# FS.start_invariance.v1's pre-declared wording cases (evidence_and_ledger_mapping)
+FS_CASES = ("pass", "S2_only", "S1_only", "S1_and_S2", "not_evaluable")
+# Roles a registration fixes before it is written, which change what the page may say (claims
+# C31 and C27; ruling 2026-11-01 fourth set (a)): N3's synthetic gate G0 makes its conversion
+# test gating at 12 months, gating at 24 months, or report-only. flag -> (registration flag,
+# test id); the flag is true only when that test's role in the registered document is
+# "gating". Only the ``roles`` field of the registered document is read.
+PAGE_ROLE_FLAGS = {
+    "n3_conv12": ("n3", "N3P.conversion_12m"),
+    "n3_conv24": ("n3", "N3P.conversion_24m"),
 }
 # the fast estimate superposes a per-class response basis. When the basis misses a solved
 # run of the forward model by more than this share of its fan-mean response (before any
@@ -1421,6 +1460,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         if block is not None:
             modelcard[key] = block
     modelcard["registrations"] = _registrations_block()
+    results = _results_block()
+    if results:
+        modelcard["results"] = results
     if rheo_npz == "auto":
         rheo_npz = forward_npz if len(f.rheo_labels) > 1 else None
     rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
@@ -1494,6 +1536,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "deep_piles": deep_piles_json if deep_piles_json and os.path.exists(deep_piles_json) else None,
         "policy_response": policy_response_json,
         "posthoc": posthoc_json,
+        **{f"result_{k}": p for k, (_, p) in PAGE_RESULTS.items() if k in results},
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
         "rheology": rheo_npz, "rheology_column": rheo_column_csv,
@@ -1560,13 +1603,91 @@ def _registrations_block(index: str | None = None) -> dict[str, bool]:
     """Which of :data:`PAGE_REGISTRATIONS` the pre-registration index (default
     :data:`PREREG_INDEX`) lists. The page names a pending test as registered only when its id
     is there; an absent index (CI, a checkout without the gitignored registry) names none.
-    Only the ``id`` of each index row is read."""
+    Only the ``id`` of each index row is read, plus, for :data:`PAGE_ROLE_FLAGS`, the
+    ``roles`` field of the registered document."""
     index = PREREG_INDEX if index is None else index
     ids: set[str] = set()
     if index and os.path.exists(index):
         with open(index, encoding="utf-8") as handle:
             ids = {json.loads(ln)["id"] for ln in handle if ln.strip()}
-    return {k: any(i in ids for i in v) for k, v in PAGE_REGISTRATIONS.items()}
+    out = {k: any(i in ids for i in v) for k, v in PAGE_REGISTRATIONS.items()}
+    for flag, (key, test_id) in PAGE_ROLE_FLAGS.items():
+        out[flag] = any(_registered_role(index, i, test_id) == "gating"
+                        for i in PAGE_REGISTRATIONS[key] if i in ids)
+    return out
+
+
+def _registered_role(index: str, reg_id: str, test_id: str) -> str | None:
+    """The role a registered document gives one of its tests (``roles[test_id]``). The document
+    sits beside the index as ``<id>.json`` (harness.prereg3.write_prereg); an indexed id whose
+    document is missing refuses the build rather than guessing a role. Only ``roles`` is read."""
+    path = os.path.join(os.path.dirname(index), f"{reg_id}.json")
+    if not os.path.exists(path):
+        raise ValueError(f"{reg_id} is in {index} but its registered document {path} is missing")
+    with open(path, encoding="utf-8") as handle:
+        roles = json.load(handle).get("roles") or {}
+    return roles.get(test_id)
+
+
+def _fs_arm(arm: dict) -> dict:
+    """One FS arm as its declared wording quotes it: x is the arm's largest |R - 1| in %, or its
+    largest per-well p90 in % when only co-primary 2 (the p90) fails for that arm."""
+    r, p90 = arm.get("max_abs_ratio_dev_pct"), arm.get("max_p90_rel_dev")
+    p90_only = not arm.get("ratio_band_fails") and bool(arm.get("p90_fails"))
+    x = (None if p90 is None else 100.0 * float(p90)) if p90_only else r
+    return {"pass": bool(arm.get("pass")),
+            "max_abs_ratio_dev_pct": None if r is None else float(r),
+            "x_pct": None if x is None else float(x), "x_kind": "p90" if p90_only else "ratio"}
+
+
+def _results_block(paths: dict | None = None) -> dict:
+    """What the scored model-only studies of :data:`PAGE_RESULTS` let the page say: per study
+    whose report exists, its status and the numbers the page quotes, nothing else. A report
+    naming another registration refuses the build, and so does a reading the page has no
+    wording for (the page would otherwise fall back to the rule it fixed beforehand)."""
+    paths = PAGE_RESULTS if paths is None else paths
+    out: dict = {}
+    for key, (reg_id, path) in paths.items():
+        if not path or not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as handle:
+            rep = json.load(handle)
+        got = rep.get("id") or rep.get("prereg_id")
+        if got != reg_id:
+            raise ValueError(f"{path} reports {got!r}, not {reg_id}")
+        if key == "fv":
+            # FV.decidability.v1 page_mapping: only 'not_evaluable' has happened; a P reading
+            # needs its own wording (readings.wording.level / coverage), not wired here
+            if rep.get("status") != "not_evaluable":
+                raise ValueError(f"{reg_id} status {rep.get('status')!r} has no page wording; "
+                                 "wire its declared reading into the page first")
+            sup = rep.get("superposition") or {}
+            out[key] = {"status": "not_evaluable", "why": str(rep.get("why") or ""),
+                        "superposition": {
+                            "pass": bool(sup.get("pass")),
+                            "max_abs_window_m": float(sup["max_abs_window_m"]),
+                            "tolerance_m": float(sup["tolerance_m"])} if sup else None}
+        elif key == "x5clm":
+            f = rep.get("F") or {}
+            out[key] = {"evaluable": bool(f.get("evaluable")),
+                        "F": None if f.get("F") is None else float(f["F"]),
+                        "caps_c13a_at_N": bool(f.get("caps_c13a_at_N"))}
+        elif key == "x5n2c":
+            rd = rep.get("reading") or {}
+            out[key] = {"status": str(rd.get("status")),
+                        "false_pass": None if rd.get("false_pass_k0_rho_m083") is None
+                        else float(rd["false_pass_k0_rho_m083"])}
+        elif key == "fs":
+            s = rep.get("summary") or {}
+            case = s.get("wording_case")
+            if case not in FS_CASES:
+                raise ValueError(f"{reg_id} wording case {case!r} is not one it declared")
+            per = s.get("per_arm") or {}
+            out[key] = {"verdict": str(rep.get("verdict")), "wording_case": case,
+                        "max_abs_ratio_dev_pct": None if s.get("max_abs_ratio_dev_pct") is None
+                        else float(s["max_abs_ratio_dev_pct"]),
+                        "per_arm": {a: _fs_arm(per[a]) for a in ("S1", "S2") if a in per}}
+    return out
 
 
 def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:

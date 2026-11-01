@@ -168,7 +168,7 @@ Subsidence:
   - In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.
 - **Fitted record.** The column is fitted to the cumulative 2012-2022 leveling, not to a policy difference. The deep piles of 2024-25 are report-only.
 - **Step A (model-only).** A leveling-fitted column compensates for damped heads fan-wide (fitted/true avoided 0.93 at twice the damping), not zone by zone: 0.75 in proximal Yunlin and 0.77 in mid Changhua. Step A1 ran on R0 and R1c, not on the page's run. Step A2's lever ranking was computed on a superseded response basis (`response_basis.npz`, 2026-09-20, commit `2f21f81`), so its "ranking robust" is withdrawn as a statement about the page's levers; A2's result is left as written.
-- **Pending.** The only fully prospective scores are the 2026-11 to 2027-10 registrations.
+- **Pending.** The only fully prospective scores are the 2026-11 to 2027-10 registrations. The conversion link of the avoided subsidence (head rise times the column's compaction per metre of head change, elastic) is not identifiable at the 2 Yunlin deep-pile cells (土庫國中, 中科虎尾) by design: N3's synthetic check G0 failed, so `N3.piles_prospective.v1` is registered level-only (user ruling 2026-11-01) and decides only pile-anchored status-quo compaction at those cells (window 2026-12 to 2027-11, scored not before 2028-01-15, at best 'passed N3 (prospective)'); its conversion lines are report-only, and the after-the-fact pre-origin diagnostic `N3.posthoc_pile_conversion.v1` finds the coefficient not identifiable from held piles. The head link is N2's. No registered test decides a cut's subsidence size, so the avoided-subsidence number stays withdrawn under every outcome. The synthetic decidability study of E02c's level rule (also carried on E02's level line) and E02c's county coverage gates (`FV.decidability.v1`, scored 2026-11-01) was not evaluable: its superposition check failed (0.28 m against a 0.02 m tolerance), so it adds no interpretation line, and E02 and E02c are read as registered.
 
 Post-hoc model-only checks (2026-10-24; `results/dataprep/reports/N1_gaps_2026-10-24/`).
 Each is post hoc, model-only and not a test: model outputs only, no observation read,
@@ -189,6 +189,12 @@ Changhua subsidence lever. Neither R0 nor the page's model has Changhua pumping.
 2007-10 dose-response came out opposite in sign to the leveling (observed -0.50 against
 +0.80 cm/yr per GWh/yr). Neither registered fix closed the gap: F1 failed its design gate
 and F2 changed nothing.
+Two model-only declarations can only narrow how an N2C pass is shown; both were scored on
+2026-11-01. N2C's estimator exercises 0.49 of R1c's head response
+(`X5.changhua_lever_model.v1`, below 0.5), so even an N2C pass stays narrowed wording
+(first-year response only, no number shown). A confounded synthetic world with no true response
+passes N2C's rule 0.12 of the time (`X5.n2c_reading.v1`, below 0.25), so a pass would not be
+held back on that ground; N2C's verdict word never changes.
 
 Known defects in the head targets. Every cited fit (the page's run, R0, the G1 and step C
 refits, R1c) uses the historical defaults of `heads.build_head_field` and
