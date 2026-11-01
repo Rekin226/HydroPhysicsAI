@@ -188,3 +188,16 @@ def test_eval_found_rules_bugs(b):
                                                    "start": 2026, "year": 2032}}
     r = R.route("那如果再加上養殖減10%呢？", prev)
     assert r.preset == "rail_internals" and len(r.params["cuts"]) == 2
+
+
+@pytest.mark.parametrize("q", ["What would a 30% irrigation cut do to heads in Huwei township by 2032?",
+                               "土庫鎮在養殖全面停抽的情境下，2030年水位會怎麼變化？",
+                               "虎尾鎮的地下水位未來會怎麼變？"])
+def test_township_water_level_is_refused_per_d3(b, q):
+    r = RulesRouter(b).route(q)
+    assert r.refusal == "township_head" and r.confidence == 1.0
+
+
+def test_township_subsidence_and_what_happens_stay_internals(b):
+    for q in ("What happens to Tuku if we retire aquaculture?", "土庫鎮如果灌溉減半，地層下陷會少幾公分？"):
+        assert RulesRouter(b).route(q).preset == "township_internals"

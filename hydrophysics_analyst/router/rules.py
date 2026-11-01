@@ -62,6 +62,8 @@ FROM = (r"(?:from|starting(?:\s+in)?|start(?:s|ed|ing)?\s+(?:in\s+)?|beg(?:an|un
 HOWSURE = [r"how\s+(?:sure|confident|reliable|trustworthy|certain)", r"can\s+(?:we|i)\s+trust", r"\bvalidat\w*",
            r"how\s+(?:well\s+)?tested", r"when\s+(?:is|will)\s+(?:it|this)\s+(?:be\s+)?(?:tested|scored)", r"\buncertain\w*",
            "可信", "可靠", "多準", "信心", "驗證", "檢驗", "不確定"]
+HEADQ = [r"water[\s-]*levels?", r"\bheads?\b", r"groundwater\s+(?:level|table)", r"water\s+table",
+         "水位", "水頭", "地下水位"]
 VAGUE_TIME = [r"a\s+few\s+years", r"some\s+years", r"in\s+the\s+future", r"eventually", r"down\s+the\s+road",
               "幾年後", "未來幾年", "以後", "將來"]
 ADD = [r"\balso\b", r"\bplus\b", r"\bon\s+top\b", r"\badd(?:ing)?\b", r"as\s+well", r"\btoo\b",
@@ -225,6 +227,12 @@ class RulesRouter:
             return Route(lang=lang, confidence=1.0, clarify={"reason": "out_of_grid", "candidates": c.starts})
         town = _town_of(b, s)
         follow = prev is not None and (_has(FOLLOW, s) or (len(s) < 30 and not _has(RAIL + RANK + SOLVED, s)))
+        # ruling D3: a single township's head / water level is not offered (the head answer is the
+        # mean at N2's registered wells); subsidence questions about a township stay internals
+        if ((town is not None or _has(TOWN_INTENT, s)) and _has(HEADQ, s) and not _has(SUBS, s)
+                and not _has(RAIL + RANK, s)):
+            return Route(preset="refuse", params={"reason": "township_head"}, refusal="township_head",
+                         lang=lang, confidence=1.0)
         # intent
         if _has(HOWSURE, s) and not cuts and not _has(RAIL + RANK, s):
             return Route(preset="how_sure", params={}, lang=lang, confidence=1.0)

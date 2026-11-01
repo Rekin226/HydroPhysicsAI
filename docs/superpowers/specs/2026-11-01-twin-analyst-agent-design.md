@@ -140,7 +140,7 @@ hydrophysics_analyst/
   static/          shell.html, shell.js, shell.css (no external requests; strict CSP on shell routes, §9)
   mcp_server.py    (phase 5, optional)
   bundle.py        private bundle build + gates (§9)
-  eval.py          local-only eval harness; data/eval_questions_v1.jsonl
+  eval.py          local-only eval harness; evalsets/eval_questions_v1.jsonl (+ held-out set)
   parity.py        Playwright parity report (local; bundle gate)
 tests/test_analyst_*.py
 ```
@@ -680,6 +680,13 @@ start-compare question with no cut is `clarify missing_cut`, never the baseline.
 **D5.** The patches were prepared and tested in a scratch copy of the working tree, not applied:
 a twin forward job was running. They are in `docs/analyst/d5/`, with `apply_d5.sh`, which refuses
 while a twin job runs. The analyst already emits `sel`/`tab`/`mi`, which older pages ignore.
+
+**Later rulings (2026-11-01, after the first build).**
+- D5: the lead applies `apply_d5.sh` themselves.
+- D3: township water-level questions are refused (`township_head`) by the rules and the LLM
+  alike.
+- The question sets are versioned under `evalsets/`.
+- D6: cheapest stays off.
 
 **Deployment config.** It is a JSON file (`docs/analyst/analyst_config.example.json`), not TOML,
 so Python 3.10 needs no extra parser. Users map to the sha256 of their token. Audit retention is

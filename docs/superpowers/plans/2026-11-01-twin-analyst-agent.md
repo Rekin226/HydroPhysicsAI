@@ -581,7 +581,7 @@ spec §8:
 
 ### Task 16: Golden question set
 
-**Files:** Create `hydrophysics_analyst/data/eval_questions_v1.jsonl` (synthetic, written by us).
+**Files:** Create `hydrophysics_analyst/evalsets/eval_questions_v1.jsonl` (synthetic, written by us; `data/` is gitignored).
 
 - About 150 items, about half in zh (Traditional, Taiwanese usage, typos, mixed en/zh).
 - Format: `{id, lang, question, prev?, expect: {preset | refusal | clarify, params}, tags}`.

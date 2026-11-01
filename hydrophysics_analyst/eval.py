@@ -31,7 +31,7 @@ from .page import PageBundle
 from .router import route
 from .router.rules import hard_refusal
 
-QUESTIONS = Path(__file__).with_name("data") / "eval_questions_v1.jsonl"
+QUESTIONS = Path(__file__).with_name("evalsets") / "eval_questions_v1.jsonl"
 ARMS = {"rules": None, "opus-low": "claude-opus-5-5", "opus-low-all": "claude-opus-5-5",
         "haiku-low": "claude-haiku-5-5"}
 
