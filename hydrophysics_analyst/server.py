@@ -36,9 +36,13 @@ from .render import S, strings
 from .session import Session
 
 STATIC = Path(__file__).with_name("static")
-CSP_SHELL = "default-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'"
+CSP_SHELL = "default-src 'self'; object-src 'none'; base-uri 'none'"
 CSP_PAGE = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-            "img-src data: blob:; connect-src 'none'; worker-src blob:; frame-ancestors 'self'")
+            "img-src data: blob:; connect-src 'none'; worker-src blob:")
+# Shared (non-loopback) installs also forbid framing by other origins (clickjacking). On a
+# loopback bind it is left off so an editor's built-in browser (VS Code "Preview in Editor",
+# which frames the page from its own origin) can show the shell instead of a blank tab.
+FRAME_SELF = "; frame-ancestors 'self'"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 
@@ -56,6 +60,7 @@ class App:
         self.sessions: dict[str, Session] = {}
         self.lock = threading.Lock()
         self._cur_mtime = self._mtime()
+        self.embeddable = True            # make_server: False for non-loopback binds
 
     def llm(self):
         if self._llm is None and self.use_llm:
@@ -194,7 +199,7 @@ def make_handler(app: App):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Content-Security-Policy", csp)
+            self.send_header("Content-Security-Policy", csp + ("" if app.embeddable else FRAME_SELF))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
@@ -207,6 +212,23 @@ def make_handler(app: App):
             self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
         def do_GET(self):  # noqa: N802
+            self._guard(self._get)
+
+        def do_POST(self):  # noqa: N802
+            self._guard(self._post)
+
+        def _guard(self, fn):
+            """A handler error answers 500 with a message (the shell shows it) instead of a dropped
+            connection that leaves the browser waiting; the traceback goes to the server log."""
+            try:
+                fn()
+            except Exception as e:  # noqa: BLE001
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                with contextlib.suppress(Exception):
+                    self._json(500, {"error": f"{type(e).__name__}: {str(e)[:200]}"})
+
+        def _get(self):
             app.maybe_reload()
             path = self.path.split("?", 1)[0]
             user = self._user()
@@ -230,7 +252,7 @@ def make_handler(app: App):
                 return self._json(200, app.meta())
             return self._send(404, b"not found", "text/plain; charset=utf-8")
 
-        def do_POST(self):  # noqa: N802
+        def _post(self):
             app.maybe_reload()
             user = self._user()
             if user is None:
@@ -267,6 +289,7 @@ def make_server(app: App, host: str = "127.0.0.1", port: int = 8765, *, allow_re
     if host not in LOOPBACK and not (allow_remote and (app.users or app.behind_proxy)):
         raise SystemExit("refusing a non-loopback bind without --allow-remote and auth "
                          "(--config users or --behind-proxy)")
+    app.embeddable = host in LOOPBACK
     return ThreadingHTTPServer((host, port), make_handler(app))
 
 
@@ -308,7 +331,8 @@ def main(argv=None) -> int:
     app = App(b, use_llm=use_llm, users=cfg.get("users", {}), behind_proxy=a.behind_proxy,
               audit_dir=audit_dir, bundles=a.bundles, llm_config=llm_cfg)
     srv = make_server(app, a.host, a.port, allow_remote=a.allow_remote)
-    print(f"analyst shell on http://{a.host}:{srv.server_address[1]}/  (page {b.page_sha256[:12]})")
+    print(f"analyst shell on http://{a.host}:{srv.server_address[1]}/  (page {b.page_sha256[:12]})",
+          flush=True)
     with contextlib.suppress(KeyboardInterrupt):
         srv.serve_forever()
     return 0

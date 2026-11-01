@@ -14,7 +14,14 @@ from hydrophysics_analyst.llm.backend import FakeBackend
 from hydrophysics_analyst.page import PageBundle
 from hydrophysics_analyst.router import routed_presets
 from hydrophysics_analyst.router.llm import LLMRouter
-from hydrophysics_analyst.server import CSP_PAGE, CSP_SHELL, App, hash_token, make_server
+from hydrophysics_analyst.server import (
+    CSP_PAGE,
+    CSP_SHELL,
+    FRAME_SELF,
+    App,
+    hash_token,
+    make_server,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +68,9 @@ def test_routes_and_csp(b, tmp_path):
     srv, base = _serve(app)
     try:
         st, h, body = _get(base + "/")
+        # loopback: no frame-ancestors, so an editor's built-in browser can show the shell
         assert st == 200 and h["Content-Security-Policy"] == CSP_SHELL and b"shell.js" in body
+        assert "frame-ancestors" not in h["Content-Security-Policy"]
         st, h, body = _get(base + f"/p/{b.page_sha256}/")
         assert h["Content-Security-Policy"] == CSP_PAGE and b'id="payload"' in body
         assert h["X-Content-Type-Options"] == "nosniff"
@@ -105,5 +114,30 @@ def test_token_auth(b, tmp_path):
         assert e.value.code == 401
         st, _, _ = _get(base + "/api/meta", {"X-Analyst-Token": "letmein"})
         assert st == 200
+    finally:
+        srv.shutdown()
+
+
+def test_shared_installs_forbid_framing(b, tmp_path):
+    app = App(b, use_llm=False, audit_dir=tmp_path, behind_proxy=True)
+    srv, base = _serve(app)
+    app.embeddable = False                       # what make_server sets for a non-loopback bind
+    try:
+        _, h, _ = _get(base + "/", {"X-Remote-User": "u"})
+        assert h["Content-Security-Policy"] == CSP_SHELL + FRAME_SELF
+        _, h, _ = _get(base + f"/p/{b.page_sha256}/", {"X-Remote-User": "u"})
+        assert h["Content-Security-Policy"] == CSP_PAGE + FRAME_SELF
+    finally:
+        srv.shutdown()
+
+
+def test_a_handler_error_answers_500_with_a_message(b, tmp_path, monkeypatch, capsys):
+    app = App(b, use_llm=False, audit_dir=tmp_path)
+    monkeypatch.setattr(app, "ask", lambda body, user: 1 / 0)
+    srv, base = _serve(app)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as e:
+            _post(base + "/api/ask", {"question": "x"})
+        assert e.value.code == 500 and "ZeroDivisionError" in json.loads(e.value.read())["error"]
     finally:
         srv.shutdown()

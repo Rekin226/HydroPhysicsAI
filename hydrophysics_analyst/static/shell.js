@@ -6,18 +6,45 @@ const $ = id => document.getElementById(id);
 const UI = {
   en: {title: "Twin analyst", send: "Ask", ph: "Ask about a policy, e.g. retire aquaculture from 2030 — head by 2032?",
        note: "Answers are the page's own numbers and sentences, with claim IDs. Edit the interpretation to correct it.",
-       lang: "中文", agree: "page agrees", disagree: "page differs", open: "Open in page", wait: "…"},
+       lang: "中文", agree: "page agrees", disagree: "page differs", open: "Open in page", wait: "…",
+       err: "Could not get an answer:", slow: "The page is still loading. If it never appears, open it directly:",
+       metaerr: "Cannot reach the analyst server. Is it still running?"},
   zh: {title: "雙生模型分析助理", send: "提問", ph: "例如：2030年起停止養殖抽水，2032年水位？",
        note: "答案為頁面本身的數值與文字，並附主張編號。可修改解讀以更正。",
-       lang: "English", agree: "與頁面一致", disagree: "與頁面不同", open: "在頁面中開啟", wait: "…"}};
+       lang: "English", agree: "與頁面一致", disagree: "與頁面不同", open: "在頁面中開啟", wait: "…",
+       err: "無法取得答案：", slow: "頁面仍在載入。若一直沒有出現，請直接開啟：",
+       metaerr: "無法連線到分析伺服器，請確認它仍在執行。"}};
 let META = null, LANG = (navigator.language || "en").startsWith("zh") ? "zh" : "en", NONCE = 0;
 const SESSION = Math.random().toString(36).slice(2);
 const t = k => UI[LANG][k];
 const S = k => (META.strings[LANG] || META.strings.en)[k] || k;
 
 async function post(url, body) {
-  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-  return r.json();
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 90000);
+  try {
+    const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body), signal: ctl.signal});
+    const v = await r.json();
+    if (!r.ok || v.error) throw new Error(v.error || ("HTTP " + r.status));
+    return v;
+  } finally { clearTimeout(to); }
+}
+function fail(li, e) {                     // never leave an answer spinning: say what went wrong
+  const body = li.querySelector(".body"); body.textContent = "";
+  body.appendChild(el("div", "blk refusal", t("err") + " " + (e && e.message ? e.message : e)));
+}
+function watchPage() {                     // the page is large; say so if it has not finished loading
+  const t0 = Date.now(), tick = () => {
+    let ok = false;
+    try { const d = $("page").contentDocument; ok = !!(d && d.body && d.body.dataset.ready === "1"); } catch (e) {}
+    if (ok) { $("note").textContent = t("note"); return; }
+    if (Date.now() - t0 > 45000) {
+      $("note").textContent = t("slow") + " ";
+      const a = el("a", "", META.page); a.href = META.page; a.target = "_blank"; a.rel = "noopener"; $("note").appendChild(a);
+      return;
+    }
+    setTimeout(tick, 1000);
+  };
+  tick();
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
@@ -73,8 +100,8 @@ function editor(view, li) {
   const go = el("button", "", t("send")); go.type = "button";
   go.onclick = async () => {
     p.cuts = Object.entries(cuts).filter(([, v]) => v).map(([k, v]) => ({class: k, pct: v}));
-    const v2 = await post("/api/answer", {preset, params: p, lang: LANG, session: SESSION});   // no LLM
-    show(v2, li);
+    try { show(await post("/api/answer", {preset, params: p, lang: LANG, session: SESSION}), li); }   // no LLM
+    catch (e) { fail(li, e); }
   };
   box.appendChild(go);
 }
@@ -106,16 +133,20 @@ async function ask(q) {
   const log = $("log"), qi = el("li", "q", q); log.appendChild(qi);
   const li = $("tplAnswer").content.firstElementChild.cloneNode(true); log.appendChild(li);
   li.querySelector(".body").textContent = t("wait");
-  const view = await post("/api/ask", {question: q, session: SESSION, lang: null});
+  let view;
+  try { view = await post("/api/ask", {question: q, session: SESSION, lang: null}); }
+  catch (e) { fail(li, e); return; }
   if (view.lang && view.lang !== LANG) setLang(view.lang);
   await show(view, li);
   li.scrollIntoView({block: "end"});
 }
 
 (async () => {
-  META = await (await fetch("/api/meta")).json();
+  try { const r = await fetch("/api/meta"); if (!r.ok) throw new Error("HTTP " + r.status); META = await r.json(); }
+  catch (e) { setLang(LANG); $("note").textContent = t("metaerr"); return; }
   $("page").src = META.page;
   setLang(LANG);
+  watchPage();
   $("langBtn").onclick = () => setLang(LANG === "zh" ? "en" : "zh");
   $("ask").onsubmit = e => { e.preventDefault(); const q = $("q").value.trim(); if (q) { $("q").value = ""; ask(q); } };
   $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("ask").requestSubmit(); } });
