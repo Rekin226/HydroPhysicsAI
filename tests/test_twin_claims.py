@@ -93,7 +93,8 @@ def test_status_changes_rest_on_a_user_ruling():
     for c in L()["claims"]:
         if c["status_before"] != c["status_current"]:
             assert c["ruling"] in rulings, f"{c['id']} changed status without a ruling"
-        for r in (c.get("ruling"), c.get("ruling_also")):
+        also = c.get("ruling_also")                 # one ruling id, or a list of them
+        for r in [c.get("ruling")] + (also if isinstance(also, list) else [also]):
             assert r is None or r in rulings, (c["id"], r)
 
 
@@ -492,13 +493,400 @@ def test_pending_lines_wait_for_their_registration():
 
     body = C.function_source("evidenceItems")
     for flag, key in (("e02c", "evc_pro_e02c"), ("ext", "evc_pro_ext"),
-                      ("no_band", "evc_band_none")):
+                      ("no_band", "evc_band_none"), ("n3sl", "evc_n3sl")):
         assert re.search(r"if \(rg\." + flag + r'\) out\.push\(\["", tr\("' + key + r'"\)\]\)',
                          body), key
         assert body.count(f'"{key}"') == 1, key
+    # FV's line waits for its registration too, then reads its report (fvLine)
+    assert 'if (rg.fv) out.push(["", fvLine()]);' in body and body.count("fvLine()") == 1
+    # N3's line also carries its conversion window, worded from the registered role
+    assert re.search(r'if \(rg\.n3\) out\.push\(\["", tr\("evc_pile_n3", \{conv: ', body)
+    assert body.count('"evc_pile_n3"') == 1
     regs = {r for ids in va.PAGE_REGISTRATIONS.values() for r in ids}
     cited = {r for c in L()["claims"] for r in c["cites"]["registrations"]}
     pend = set(C.pending_registrations(L()))
     assert pend <= regs, f"a pending registration the page does not gate: {sorted(pend - regs)}"
     assert {"E02c.prospective_2026-11.v1", "U1.no_band.v1"} <= cited
     assert va.PAGE_REGISTRATIONS["ext"][0] in cited or va.PAGE_REGISTRATIONS["ext"][1] in cited
+
+
+# ---- round 6 (user rulings 2026-11-01, fourth set) -------------------------------------------
+FOURTH = "user ruling 2026-11-01 (fourth set)"
+FIFTH = "user ruling 2026-11-01 (fifth set)"
+N3_SUB = "pile-anchored status-quo compaction at 2 Yunlin cells decided by N3"
+
+
+def _reg(flag: str) -> str:
+    """The ledger's id for a page registration flag (the first of viewer_app's ids it cites)."""
+    from hydrophysics.twin import viewer_app as va
+
+    cited = {r for c in L()["claims"] for r in c["cites"]["registrations"]}
+    hit = [r for r in va.PAGE_REGISTRATIONS[flag] if r in cited]
+    assert hit, f"the ledger cites none of viewer_app's ids for {flag}"
+    return hit[0]
+
+
+def _also(c: dict) -> set:
+    a = c.get("ruling_also")
+    return {c.get("ruling")} | set(a if isinstance(a, list) else [a])
+
+
+def test_fourth_set_rulings_are_recorded():
+    ids = {r["id"] for r in L()["rulings"]}
+    assert {f"{FOURTH} ({x})" for x in "abcdef"} <= ids
+    # and the fifth set (results/dataprep/rulings/user_rulings_2026-11-01.json)
+    assert {f"{FIFTH} ({x})" for x in ("N3.level_only", "N3SL.design", "scorer.literal_rule",
+                                         "chlever.per_window")} <= ids
+    text = {r["id"]: r["text"] for r in L()["rulings"]}
+    assert "after_the_fact_analysis" in text[f"{FOURTH} (e)"]
+    assert "ROC115 excluded" in text[f"{FOURTH} (f)"]
+
+
+def test_c31_is_decided_by_n3_and_no_cut_number_can_become_s():
+    """Fourth set (a): the narrowed page mapping. Only C31 can become S on a joint N2 + N3G
+    pass; the avoided-subsidence number stays W ('links tested, cut size untested'); the 溪州
+    arm never gates; C09 and C30 carry the N3 sub-label for the 2-cell sub-claim only."""
+    cl, n3 = CL(), _reg("n3")
+    c31 = cl["C31"]
+    # N3 is registered level-only (G0 failed; user ruling 2026-11-01, fifth set): C31 is N
+    assert _st("C31") == {"N"} and c31["cites"]["registrations"] == [n3]
+    assert f"{FIFTH} (N3.level_only)" in _also(c31) and f"{FIFTH} (N3.level_only)" in _also(
+        cl["C27"])
+    assert "registered level-only" in c31["wording_en"] and "C31 is N" in c31["wording_en"]
+    assert "C31 is N" in c31["outcome_display"]["registered_state"]
+    assert "compaction per metre of head change at the 2 Yunlin deep-pile cells" in c31["wording_en"]
+    t = c31["outcome_display"]
+    for k in ("before_scoring", "g0_failed", "joint_pass", "not_supported", "not_informative",
+              "level_pass", "level_fail", "never"):
+        assert t.get(k), k
+    assert "C31 becomes S" in t["joint_pass"] and "no cut number becomes S" in t["joint_pass"]
+    # equal to or narrower than N3's page mapping: only the joint pass reaches S
+    for k, v in t.items():
+        if k != "joint_pass":
+            assert not re.search(r"C31 becomes S|C31 -> S|S for", v), k
+    assert "C31 stays N" in t["conversion_pass_only"] and "head link: N2" in t["conversion_pass_only"]
+    assert "'passed N3 (prospective)' at status N" in t["level_pass"]
+    assert "only C31 can become S" in t["level_pass"]
+    assert "makes only the 2-cell sub-claim S" not in CL()["C09"]["wording_en"]
+    g0 = t["g0_failed"]
+    for k in ("24-month conversion test gates", "'untested: the synthetic gate G0 failed'",
+              "'conversion not identifiable at the piles by design (N3 G0)'",
+              "keep the N3 sub-label", "rg.n3_conv12"):
+        assert k in g0, k
+    assert "C31 stays N" in t["report_only_role"]
+    for rep in ("results/twin/mechanism/mechanism.json",
+                "results/twin/deep_pile_holdout/report.json"):
+        for cid in ("C27", "C31"):
+            assert rep in cl[cid]["cites"]["reports"], (cid, rep)
+    assert "links tested, cut size untested" in t["joint_pass"]
+    assert "never gates" in t["never"] and "no Changhua subsidence lever" in t["never"]
+    assert "no correction factor" in t["not_supported"]
+    assert {"intended", "scoped"} <= set(c31["coverage"]) and "2 " in c31["coverage"]["scoped"]
+    assert _st("C09") == {"W", "D"} and _st("C30") == {"N", "D"} and _st("C03") == {"W"}
+    for cid in ("C09", "C30"):
+        assert N3_SUB in cl[cid]["wording_en"] and n3 in cl[cid]["cites"]["registrations"], cid
+        assert f"{FOURTH} (a)" in _also(cl[cid]), cid
+    assert "links tested, cut size untested" in cl["C03"]["wording_en"]
+    # no other claim can be promoted by N3: every claim citing N3 is D, N or W now
+    for c in L()["claims"]:
+        if n3 in c["cites"]["registrations"]:
+            assert "S" not in _st(c["id"]), c["id"]
+    assert "context only" in cl["C15"]["wording_en"] and _st("C15") == {"L"}
+
+
+def test_c27_names_n3_only_through_the_registry_flag():
+    """Rank 9: the decomposition line names N3 as the conversion decider only when the build
+    found N3 in the registry; otherwise the conversion reads 'untested'."""
+    body = C.function_source("evidenceItems")
+    assert "const n3c = rg.n3_conv12 || rg.n3_conv24;" in body
+    assert ('tr(!rg.n3 ? "decomp_conv_un" : n3c ? "decomp_conv_n3" : "decomp_conv_g0")'
+            in body)
+    assert ('tr(rg.n3_conv12 ? "pile_conv_12" : rg.n3_conv24 ? "pile_conv_24" : '
+            '"pile_conv_ro")' in body)
+    assert body.count('"evc_subs_decomp"') == 1
+    for lang in ("en", "zh"):
+        d = C.i18n(lang=lang)
+        named = {k for k, v in d.items() if re.search(r"(?<![A-Za-z0-9])N3(?![A-Za-z0-9])", v)}
+        assert named == {"evc_pile_n3", "decomp_conv_n3", "decomp_conv_g0"}, (lang, named)
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "untested" in en["decomp_conv_un"] and "未經檢驗" in zh["decomp_conv_un"]
+    assert "head rise times the column's compaction per metre" in en["evc_subs_decomp"]
+    assert "neither factor decides a cut's subsidence size" in en["decomp_conv_n3"]
+    assert "by design" in en["decomp_conv_g0"] and "reported only" in en["pile_conv_ro"]
+    assert "December 2026 to November 2027" in en["evc_pile_n3"]     # the level window, always
+    assert "December 2026 to November 2028" in en["pile_conv_24"]
+    assert "2029-01-15" in en["pile_conv_24"] and "same months" in en["pile_conv_12"]
+    assert "2026 年 12 月至 2028 年 11 月" in zh["pile_conv_24"]
+    c27 = CL()["C27"]
+    assert _st("C27") == {"N"} and _reg("n3") in c27["cites"]["registrations"]
+    assert "N2.policy_response.prospective_2026-11.v1" in c27["cites"]["registrations"]
+    assert {"i18n:evc_subs_decomp", "i18n:decomp_conv_un",
+            "i18n:decomp_conv_g0"} <= set(c27["text_keys"])
+    assert {"intended", "scoped"} <= set(c27["coverage"])
+    assert "model form uncertainty, not a bound" in CL()["C25"]["wording_en"]
+
+
+def test_c13a_caps_can_only_narrow_an_n2c_pass():
+    """Fourth set (b), (c): F < 0.5 caps an N2C pass at N; a high confounded false-pass rate
+    makes it 'reported, not shown'; the verdict word never changes. The page clauses wait for
+    their registrations."""
+    c13a = CL()["C13a"]
+    t = c13a["outcome_display"]
+    assert "F < 0.5 caps an N2C 'response supported' at N for C13a" in t["cap_F"]
+    # fifth set (chlever.per_window): F < 0.5 is the only cap; F not evaluable caps nothing
+    assert "F < 0.5 is the only cap" in t["cap_F"] and "neither caps anything" in t["cap_F"]
+    assert "at N for C13a exactly as F < 0.5 does" not in t["cap_F"]
+    assert "reported, not shown" in t["reading"] and "verdict word never changes" in t["reading"]
+    assert "shared N2/N2C block-bootstrap scorer" in t["reading"]
+    assert "model-internal lever spread (L)" in t["model_internal_spread"]
+    assert "can only narrow it" in t["response_supported"]
+    for flag in ("x5clm", "x5n2c"):
+        assert _reg(flag) in c13a["cites"]["registrations"]
+    assert {f"{FOURTH} (b)", f"{FOURTH} (c)"} <= _also(c13a)
+    assert _st("C13a") == {"W"}
+    body = C.function_source("policyResponseLines")
+    assert 'rg.x5clm ? chCapF() : ""' in body and 'rg.x5n2c ? chCapRd() : ""' in body
+    en = C.i18n(lang="en")
+    assert "less than half" in en["pr_ch_cap_f"] and "reported, not shown" in en["pr_ch_cap_rd"]
+    # each clause states the rule until its report exists, then the measured value (both
+    # branches stay in the template; the result branch never loosens the rule)
+    f, rd = C.function_source("chCapF"), C.function_source("chCapRd")
+    assert 'if (!r) return tr("pr_ch_cap_f");' in f and '"pr_ch_cap_f_res"' in f
+    assert "r.caps_c13a_at_N" in f
+    assert 'if (!r) return tr("pr_ch_cap_rd");' in rd
+    assert 'tr(r.false_pass >= .25 ? "pr_ch_rd_held" : "pr_ch_rd_res"' in rd
+    assert "below 0.5" in en["pr_ch_cap_f_res"] and "first-year response only" in en[
+        "pr_ch_cap_f_res"]
+    assert "reported, not shown" in en["pr_ch_rd_held"] and "below 0.25" in en["pr_ch_rd_res"]
+    # the scored results are in the ledger: F 0.49 caps C13a at N; the confounded false-pass
+    # rate 0.116 does not fire; the rates and the power are recorded for a later N2C display
+    n = c13a["notes"]
+    for k in ("F = 0.49", "x1.04-1.30", "x0.96-1.27", "x1.31 (2026-27) and x1.33 (2030-32)",
+              "0.116", "0.744", "0.828", "0.93, 0.60 with the canal confounder",
+              "the N2C verdict word never changes"):
+        assert k in n, k
+    assert "SLOT (rank 8" not in n
+
+
+def test_the_decidability_reading_is_one_sided():
+    """Fourth set (d): P <= 0.5 means 'weak by design'; there is no 'a fail is informative'."""
+    cl, fv = CL(), _reg("fv")
+    for cid in ("E02", "E21", "C30"):
+        assert fv in cl[cid]["cites"]["registrations"], cid
+    for cid in ("E02", "E21"):
+        w = cl[cid]["wording_en"]
+        assert "<= 0.5" in w and "weak by design" in w and "no 'a fail is informative'" in w
+        # the study's scope: E02c's level rule and E02c's county gates, not E02's own coverage
+        assert "E02c's level rule (also carried on E02's level line)" in w, cid
+        assert "E02's own pooled coverage check is report-only" in w, cid
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "0.5 or less" in en["evc_pro_fv"] and "weak by design" in en["evc_pro_fv"]
+    assert "E02c's county coverage gates" in en["evc_pro_fv"]
+    assert "E02's and E02c's level and coverage verdicts" not in en["evc_pro_fv"]
+    assert "E02 與 E02c 的水位與涵蓋率判定" not in zh["evc_pro_fv"]
+    assert "informative" not in en["evc_pro_fv"] and "0.5" in zh["evc_pro_fv"]
+
+
+def test_the_decidability_study_was_not_evaluable_and_gives_no_reading():
+    """FV.decidability.v1 was scored not evaluable (superposition failed): by its page_mapping
+    there is no interpretation line and E02/E02c are read as registered. The page shows the
+    declared not-evaluable sentence once the report exists and the rule fixed beforehand only
+    without it; the ledger keeps the registered rule and records the result."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    want = {"en": "Synthetic decidability study (FV.decidability.v1) not evaluable ({why}); "
+                  "E02 and E02c gain no interpretation line from it.",
+            "zh": "合成可判定性研究（FV.decidability.v1）無法評估（{why}）；E02 與 E02c "
+                  "不因此增加解讀說明。"}
+    decl = C.PREREG / "FV.decidability.v1.json"
+    if decl.exists():                          # the registered wording, verbatim
+        w = json.loads(decl.read_text(encoding="utf-8"))["readings"]["wording"]
+        assert {k: w["not_evaluable"][k] for k in ("en", "zh")} == want
+    assert en["evc_pro_fv_ne"] == want["en"] and zh["evc_pro_fv_ne"] == want["zh"]
+    for d in (en, zh):
+        assert "weak by design" not in d["evc_pro_fv_ne"] and "informative" not in d[
+            "evc_pro_fv_ne"]
+    body = C.function_source("fvLine")
+    assert 'if (!r) return tr("evc_pro_fv");' in body and 'tr("evc_pro_fv_ne"' in body
+    assert "s.pass === false" in body and '"fv_why_sup"' in body
+    cl = CL()
+    assert "Rank 11 result" in cl["E02"]["notes"] and "SLOT (rank 11" not in cl["E02"]["notes"]
+    for k in ("not_evaluable", "superposition failed", "0.2845 m", "0.02 m",
+              "'no interpretation line; E02/E02c read as registered'"):
+        assert k in cl["E02"]["notes"], k
+    for cid in ("E02", "E21", "C30"):
+        c = cl[cid]
+        assert "i18n:evc_pro_fv_ne" in c["text_keys"], cid
+        assert "results/dataprep/reports/FV.decidability.v1/report.json" in c["cites"]["reports"]
+        assert "not evaluable" in c["wording_en"], cid
+    # the registered rule stays written; the result adds no reading of it
+    assert "weak by design" in cl["E02"]["wording_en"] and "<= 0.5" in cl["E02"]["wording_en"]
+    assert "clause (d) does not apply" in cl["C30"]["wording_en"]
+
+
+def test_fs_wording_follows_its_declaration_and_waits_for_its_report():
+    """FS.start_invariance.v1 (rank 7): registered, result pending. The page words C01 from the
+    report's summary.wording_case only (evidence_and_ledger_mapping); no report, no FS line; FS
+    is not cited until it is scored."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert ("does not depend on the 2022-12 start state (within 5 %, model-only declaration "
+            "FS.start_invariance.v1)") in en["fs_pass"]
+    assert ("does not depend on the start under the page's restart family (free-run start S1 "
+            "within 5 %, model-only") in en["fs_s2_only"]
+    assert ("depends on the start by up to {x} %{q} only under the superseded untapered field "
+            "restart (S2, model-only declaration FS.start_invariance.v1)") in en["fs_s2_only"]
+    assert "depends on the 2022-12 start state by up to {x} %{q} (model-only" in en["fs_fail"]
+    # the level shift is gone by 2026-12 (report baseline_level_shift_m): only the early levels
+    assert "first months after it (gone by December 2026), not these policy differences" in en[
+        "start_note_fs"]
+    for k in ("fs_pass", "fs_s2_only", "fs_fail", "start_note_fs"):
+        assert "FS.start_invariance.v1" in zh[k], k
+    gate = C.function_source("fsResult")
+    assert "return rg.fs && r ? r : null;" in gate
+    words = C.function_source("fsWords")
+    for case in ("pass", "S2_only", "S1_only", "S1_and_S2"):
+        assert f'"{case}"' in words, case
+    assert '"not_evaluable"' not in words                  # ledger note only
+    assert 'fs && fs.wording_case === "pass" ? tr("start_note_fs")' in C.function_source(
+        "renderStartNote")
+    assert "const fs = fsWords(); if (fs) p(fs);" in C.function_source("tileDefHtml")
+    # scored 2026-11-01: pass; C01 cites FS and the new L row (E23) the declaration calls for
+    cl, fs = CL(), "FS.start_invariance.v1"
+    assert _reg("fs") == fs and _st("E23") == {"L"} and _st("C01") == {"S", "D"}
+    for cid in ("C01", "E23"):
+        assert fs in cl[cid]["cites"]["registrations"], cid
+        assert "results/dataprep/reports/FS.start_invariance.v1/report.json" in cl[cid][
+            "cites"]["reports"], cid
+    for k in ("verdict pass", "9.74e-06 %", "numerical precision",
+              "linear in the start state", "FV.decidability.v1's failed pumping superposition"):
+        assert k in cl["E23"]["notes"], k
+    assert "archived unopened" in cl["E23"]["notes"]
+    for k in ("fs_pass", "start_note_fs"):
+        assert DM()["i18n"][k] == ["C01", "E23"], k
+    # a departure below the display unit is a bound, never a rounded 0.0
+    assert 'v < .001 ? "< 0.001"' in words
+
+
+def test_county_area_and_coast_get_the_n3sl_sub_label():
+    cl, sl = CL(), _reg("n3sl")
+    assert _st("C05") == {"W", "D"} and _st("C26") == {"N", "D"}
+    for cid in ("C05", "C26"):
+        assert sl in cl[cid]["cites"]["registrations"] and "i18n:evc_n3sl" in cl[cid]["text_keys"]
+    assert "SL's page role is fixed now, before registration, as report_only" in cl["C26"]["wording_en"]
+    assert "C26b" not in cl and "--sl-role report_only" in cl["C26"]["wording_en"]
+    assert "ROC115 excluded" in cl["C26"]["notes"]
+    # N3S-L's before_scoring mapping also names C29 (ledger only, no page text)
+    assert "'coastal cells: see N3S-L'" in cl["C29"]["wording_en"] and _st("C29") == {"L"}
+    assert sl in cl["C29"]["cites"]["registrations"] and f"{FOURTH} (f)" in _also(cl["C29"])
+    # timing: ROC116's interval starts before registration; only the summaries postdate it
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "registered before the summaries for the survey years it scores exist" in en["evc_n3sl"]
+    assert "在其評分的測量年度摘要出現之前登錄" in zh["evc_n3sl"]
+    readme = (C.REPO / "README.md").read_text(encoding="utf-8")
+    for bad in ("registered before the survey years it scores", "registered before those surveys"):
+        assert bad not in en["evc_n3sl"] and bad not in " ".join(readme.split()), bad
+    assert "已在其評分的測量年度之前登錄" not in zh["evc_n3sl"]
+
+
+def test_the_start_code_fact_is_in_the_internals_note():
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "free-running heads" in en["mi_note"] and "December 2022 heads" in en["mi_note"]
+    assert "2022 年 12 月水頭" in zh["mi_note"]
+    for cid in ("C29", "C30"):
+        assert "i18n:mi_note" in CL()[cid]["text_keys"], cid
+        assert cid in DM()["i18n"]["mi_note"], cid
+
+
+def _paragraphs(text: str) -> list[str]:
+    return [" ".join(p.split()) for p in re.split(r"\n\s*\n|\n(?=\s*[-*]\s)", text)]
+
+
+def test_pile_context_is_cited_together_and_only_in_the_docs():
+    """Fourth set (e): the ring-vs-column seasonal slope and the 2024-25 pile R² appear only
+    together, with the after-the-fact label, and never on the page."""
+    for doc in ("README.md", "MODEL_CARD.md", "docs/TWIN_EVIDENCE_2026-10.md"):
+        for par in _paragraphs((C.REPO / doc).read_text(encoding="utf-8")):
+            ring, pile = "9.3 mm/m" in par, "R² 0.92" in par
+            if ring or pile:
+                assert ring and pile, (doc, par[:160])
+                assert "after-the-fact" in par and "no correction applied" in par, (doc, par[:160])
+                assert "not a test" in par, (doc, par[:160])
+    src = C.template_src()
+    assert "9.3 mm" not in src and "R² 0.92" not in src
+
+
+def test_result_placeholders_stay_in_the_ledger():
+    """Ranks 7, 8, 11 and 12 are scored and their slots filled; the page, the README and the
+    model card never show a slot or a placeholder."""
+    cl = CL()
+    for cid in ("C27", "C13c"):
+        assert "coefficient not identifiable from held piles" in cl[cid]["notes"], cid
+        assert "Capped at N, no correction applied" in cl[cid]["notes"], cid
+        assert "PLACEHOLDER (rank 12" not in cl[cid]["notes"], cid
+    assert "Rank 7 result" in cl["C01"]["notes"] and "SLOT (rank 7" not in cl["C01"]["notes"]
+    assert "Rank 8 result" in cl["C13a"]["notes"] and "Rank 11 result" in cl["E02"]["notes"]
+    for c in L()["claims"]:                      # never in a displayed wording
+        assert "PLACEHOLDER" not in c["wording_en"] and "SLOT (" not in c["wording_en"], c["id"]
+    for p in (C.TEMPLATE, C.REPO / "README.md", C.REPO / "MODEL_CARD.md"):
+        text = p.read_text(encoding="utf-8")
+        for bad in ("PLACEHOLDER", "SLOT (", "<k>"):
+            assert bad not in text, (p.name, bad)
+
+
+# the 12-month window is worded statically in these places; G0 may make the 24-month unit gating
+# or leave the conversion report-only, and then each must be edited before the commit
+N3_CONV12_ANCHORS = {
+    "README.md": "is decided by `N3.piles_prospective.v1` on the deep piles printed in the WRA "
+                 "monthly reports for December 2026 to November 2027",
+    "MODEL_CARD.md": "is decided by `N3.piles_prospective.v1` only at the 2 Yunlin deep-pile "
+                     "cells (土庫國中, 中科虎尾; window 2026-12 to 2027-11",
+    "ledger:C31": "on the 2026-12..2027-11 window (not before 2028-01-15) when G0 makes the "
+                  "12-month conversion test gating",
+}
+
+
+def _n3_anchor_texts() -> dict[str, str]:
+    out = {d: " ".join((C.REPO / d).read_text(encoding="utf-8").split())
+           for d in ("README.md", "MODEL_CARD.md")}
+    out["ledger:C31"] = CL()["C31"]["wording_en"]
+    return out
+
+
+# G0 failed at both horizons and N3 is registered level-only (user ruling 2026-11-01, fifth set):
+# these places word that registration statically; the next test checks it against the roles
+N3_LEVEL_ONLY_ANCHORS = {
+    "README.md": "`N3.piles_prospective.v1` was registered level-only",
+    "MODEL_CARD.md": "`N3.piles_prospective.v1` is registered level-only",
+    "ledger:C31": "N3.piles_prospective.v1 is registered level-only",
+}
+
+
+def test_n3_docs_word_the_level_only_registration():
+    """The static level-only wording exists where the next test expects it (so that test
+    bites), and the 12-month conversion wording is gone."""
+    texts = _n3_anchor_texts()
+    for where, anchor in N3_LEVEL_ONLY_ANCHORS.items():
+        assert anchor in texts[where], where
+    for where, anchor in N3_CONV12_ANCHORS.items():
+        assert anchor not in texts[where], where
+
+
+@NEED_REGISTRY
+def test_n3_docs_follow_the_registered_conversion_role():
+    """Fourth set (a), G0: once N3 is registered, the README, the model card and C31 may word the
+    conversion as decided on December 2026 to November 2027 only if the registered document makes
+    the 12-month conversion test gating (the page follows the role by itself)."""
+    idx, _ = C.prereg_index()
+    n3 = _reg("n3")
+    if n3 not in idx:
+        pytest.skip(f"{n3} is not registered yet")
+    roles = json.loads((C.PREREG / f"{n3}.json").read_text(encoding="utf-8")).get("roles") or {}
+    texts = _n3_anchor_texts()
+    gating = [t for t in ("N3P.conversion_12m", "N3P.conversion_24m") if roles.get(t) == "gating"]
+    if gating:
+        level_only = [w for w, a in N3_LEVEL_ONLY_ANCHORS.items() if a in texts[w]]
+        assert not level_only, f"{gating} gate; {level_only} still word N3 level-only"
+    if roles.get("N3P.conversion_12m") == "gating":
+        return
+    stale = [w for w, a in N3_CONV12_ANCHORS.items() if a in texts[w]]
+    assert not stale, (f"N3's 12-month conversion test is {roles.get('N3P.conversion_12m')!r}; "
+                       f"reword the conversion window or role in {stale} (C31 g0_failed row)")
