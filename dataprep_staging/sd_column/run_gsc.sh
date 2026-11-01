@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # X5.gnss_seasonal_column.v1 (registered design-time test, round 7 rank 10): model side,
 # G0-OC, registration checks and the single scoring. CPU only; no forward runs here (the
-# model side reads the SD.cut_response_spread.v1 forwards' free hindcast months).
+# model side reads the SD forwards' free hindcast months: run under SD.cut_response_spread.v1,
+# scored by SD.cut_response_spread.v2, which reuses them after v1's engineering failure).
 #
 #   bash dataprep_staging/sd_column/run_gsc.sh model-side   BEFORE registration, after SD
-#        is scored: freeze the model side (model_side.json + model_series.npz), no GNSS read
+#        v2 is scored: freeze the model side (model_side.json + model_series.npz), no GNSS read
 #   bash dataprep_staging/sd_column/run_gsc.sh check-model  G-eng: rebuild, byte for byte
 #   bash dataprep_staging/sd_column/run_gsc.sh g0oc         BEFORE registration: G0-OC on
 #        the frozen model side (synthetic worlds; pass judged on the SCORED rule, both
@@ -13,7 +14,7 @@
 #   bash dataprep_staging/sd_column/run_gsc.sh score        ONCE: assert_can_score logs the
 #        looks, then the GNSS daily values are opened (design_time_evidence)
 #
-# Order: SD scored -> model-side -> check-model -> g0oc (lead logs it as an integrity_check
+# Order: SD v2 scored -> model-side -> check-model -> g0oc (lead logs it as an integrity_check
 # look on X5GSC:g0oc_synthetic with g0oc.json's sha256 in the note; prereg_gsc checks it)
 # -> prereg_gsc.py --validate / --write -> check -> score. A failure before score is an
 # engineering retry (free, logged); score runs once and its report is final.
@@ -23,7 +24,7 @@ REPO=${DATAPREP_REPO:-$(cd "$X/../.." && pwd)}
 cd "$REPO"
 ID=X5.gnss_seasonal_column.v1
 DECL=results/dataprep/preregistration/$ID.json
-SD_REPORT=results/dataprep/reports/SD.cut_response_spread.v1/report.json
+SD_REPORT=results/dataprep/reports/SD.cut_response_spread.v2/report.json
 OUT=results/dataprep/reports/$ID
 MODEL=$OUT/model_side
 REPORT=$OUT/report.json
@@ -39,7 +40,7 @@ note() { mkdir -p "$OUT"; printf '{"event": "%s", "rc": %s, "time": "%s"}\n' "$1
 
 case "${1:-}" in
     model-side)
-        [ -f "$SD_REPORT" ] || die "score SD.cut_response_spread.v1 first (its forwards are sealed until then)"
+        [ -f "$SD_REPORT" ] || die "score SD.cut_response_spread.v2 first (its forwards are sealed until then)"
         [ ! -e "$DECL" ] || die "$ID is registered; the model side is frozen in it"
         [ ! -e "$MODEL/model_side.json" ] || die "$MODEL exists (archive it to rebuild)"
         rc=0; "$HPY" "$MS" build --out-dir "$MODEL" || rc=$?; note model_side "$rc"; exit "$rc" ;;

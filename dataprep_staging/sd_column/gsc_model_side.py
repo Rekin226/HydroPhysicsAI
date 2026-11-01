@@ -9,11 +9,12 @@ GNSS value is read, and the G0-OC synthetic check built on it.
 Inputs (no observation): stations.csv of gnss_clean/preorigin/v4 read with its FIRST TEN
 columns only (family, station, coordinates, twin_cell, role, note, first/last day, n_days:
 metadata; rate_m_yr, annual_amp_m and the noise columns are never opened), the 1 km grid
-and county/zone masks, and the SD.cut_response_spread.v1 forwards (main parameter set, free
-hindcast 2012-01..2022-12, gain 0, no --data) of every column that passed SD's engineering
-checks (SD's report.json must exist: SD's sealed-output policy forbids reading its forwards
-before). The page column d290c592 is the primary arm; every other column is a report-only
-arm, hashed at the same time. The storage-capped column SC (round 7 rank 17) is omitted.
+and county/zone masks, and the SD forwards (main parameter set, free hindcast
+2012-01..2022-12, gain 0, no --data; run under SD.cut_response_spread.v1 and scored, reused,
+by SD.cut_response_spread.v2 after v1's engineering failure) of every column that passed
+SD v2's engineering checks (SD v2's report.json must exist: SD's sealed-output policy forbids
+reading its forwards before). The page column d290c592 is the primary arm; every other
+column is a report-only arm, hashed at the same time. The storage-capped column SC (round 7 rank 17) is omitted.
 
 Station rule (metadata only): twin_cell != -1; role not 'off-fan reference'; window = NGL
 2012-01..2019-12 or WRA 2020-01..2022-12 intersected with the station's first/last day,
@@ -69,7 +70,10 @@ NGL_STRATUM_WINDOW = ("2014-08-01", "2019-12-31")
 NGL_CHANGHUA_ARM = ("ERLN", "FUNY", "LUKN", "PUS2")
 NGL_OTHER_REASON = "NGL station not named in the judge's design (rank 10): report-only"
 OUT_DIR = f"results/dataprep/reports/{L.GSC_ID}/model_side"
-SD_REPORT = f"results/dataprep/reports/{L.SD_ID}/report.json"
+#: SD.cut_response_spread.v2 scores v1's forwards (v1 stopped on an engineering failure;
+#: sdlib.SD_ID is v1's frozen id)
+SD_ID = "SD.cut_response_spread.v2"
+SD_REPORT = f"results/dataprep/reports/{SD_ID}/report.json"
 PRIMARY_ARM = L.PAGE_COLUMN
 
 
@@ -188,9 +192,15 @@ def model_series(subs: np.ndarray, cell: int, window) -> tuple[np.ndarray, np.nd
 def build(repo: Path) -> tuple[dict, dict]:
     """(model_side document, {key: array} for model_series.npz). Deterministic."""
     rep = json.loads((repo / SD_REPORT).read_text())
+    if rep.get("id") != SD_ID:
+        raise SystemExit(f"{SD_REPORT} is not {SD_ID}'s report")
     passed = sorted(c for c, v in rep["columns_checks"].items() if v.get("pass"))
     if PRIMARY_ARM not in passed:
         raise SystemExit("the page column did not pass SD's engineering checks")
+    for c in passed:          # SD v2 maps rheology labels; the index must be the declared order
+        if rep["columns_checks"][c].get("rheology_index") != \
+                L.FORWARDS[L.forward_of(c)]["columns"].index(c):
+            raise SystemExit(f"{c}: SD's rheology index is not the declared column order")
     gm = L.grid_and_masks(repo)
     st = station_rule(read_station_metadata(repo / STATIONS_CSV), gm["grid"],
                       gm["changhua"], gm["zone"])
