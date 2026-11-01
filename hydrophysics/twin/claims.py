@@ -23,10 +23,32 @@ LEDGER = HERE / "claims_v1.json"
 TEMPLATE = HERE / "app" / "template.html"
 PREREG = REPO / "results" / "dataprep" / "preregistration"
 CODES = set("SDNLUXW")
+PENDING = "PENDING"
 
 
-def load_ledger(path: Path = LEDGER) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+class PendingRegistrationError(RuntimeError):
+    """The ledger cites a registration whose hash is still the literal ``PENDING``."""
+
+
+def pending_registrations(ledger: dict) -> list[str]:
+    """Registry ids whose ``registry_hashes`` entry is still the literal ``PENDING``."""
+    return sorted(k for k, v in ledger.get("registry_hashes", {}).items() if v == PENDING)
+
+
+def load_ledger(path: Path = LEDGER, *, allow_pending: bool = False) -> dict:
+    """The ledger. Refuses (``PendingRegistrationError``) while any cited registration is
+    still ``PENDING``: the page would then cite a test that is not in the registry. Only a
+    check of the ledger's structure may pass ``allow_pending=True``."""
+    ledger = json.loads(path.read_text(encoding="utf-8"))
+    pend = pending_registrations(ledger)
+    if pend and not allow_pending:
+        raise PendingRegistrationError(
+            f"claims ledger {path.name}: registry_hashes is still PENDING for {', '.join(pend)}. "
+            "These registrations are cited by the page but are not registered yet: register "
+            "each one (harness.prereg3 write_prereg), then replace every PENDING with its "
+            "sha256 from results/dataprep/preregistration/INDEX.jsonl. Do not publish or "
+            "commit the page while any PENDING remains.")
+    return ledger
 
 
 def codes(status: str) -> list[str]:
@@ -233,6 +255,30 @@ def js_names_leaf(js: str, path: str) -> bool:
     segs = [s for s in path.replace("[]", "").split(".") if s and not s.isdigit()]
     return bool(segs) and re.search(r"(?<![A-Za-z0-9_])" + re.escape(segs[-1])
                                     + r"(?![A-Za-z0-9_])", js) is not None
+
+
+# ---- Changhua lever mentions (N2C page_mapping.before_scoring) -------------------------------
+# A sentence ends at '.', '!' or '?' followed by white space (so 'x0.7' or 'e.g.' inside a
+# word does not end one), at '。', '！' or '？', at a blank line, or before a list item or a
+# table row. Hard-wrapped lines inside a paragraph stay one sentence.
+_SENTENCE = re.compile(r"(?<=[.!?])\s+|(?<=[。！？])|\n\s*\n|\n(?=\s*(?:[-*|]|\d+\.)\s)")
+
+
+def sentences(text: str) -> list[str]:
+    """``text`` cut into sentences (see ``_SENTENCE``), each with its white space collapsed."""
+    return [s for s in (" ".join(p.split()) for p in _SENTENCE.split(text)) if s]
+
+
+def lever_mentions(text: str, rule: dict, lang: str = "en") -> list[str]:
+    """Sentences of ``text`` (one i18n string, or a whole document) that mention a Changhua
+    lever (``rule["mention"][lang]``, a regex) and carry none of the accepted labels
+    (``rule["labels"][lang]``: the N2C untested label, the C13b/C13c withdrawal wording, or
+    C02's spillover wording). The check is per sentence, so one labelled mention in a long
+    paragraph does not cover an unlabelled one beside it."""
+    pat = re.compile(rule["mention"][lang], re.I | re.S)
+    labels = rule["labels"][lang]
+    return [s[:200] for s in sentences(text)
+            if pat.search(s) and not any(lab in s for lab in labels)]
 
 
 # ---- the registry (gitignored) ---------------------------------------------------------------

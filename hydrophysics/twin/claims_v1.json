@@ -1,7 +1,7 @@
 {
  "schema": "twin-claims-ledger/1",
  "created": "2026-10-29",
- "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29 (user ruling). Not a registration; no look logged.",
+ "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29 and the round-5 amendment (user rulings 2026-10-29, third set). Not a registration; no look logged. Registrations still to be written are cited with the hash PENDING, and claims.load_ledger refuses the ledger until each is replaced by its registry sha256.",
  "status_codes": {
   "S": "supported by a registered test (window flagged when design-time)",
   "D": "decided by a registered prospective test (pending)",
@@ -40,13 +40,29 @@
   {
    "id": "defaults kept 2026-10-29",
    "text": "Both-county PR primary; the C09 baseline total stays withdrawn; C06 and C07 stay in Model internals."
+  },
+  {
+   "id": "user ruling 2026-10-29 (third set) (a)",
+   "text": "E02's combined-sigma 90 % head interval (form chosen 2026-10-11 after its 2023-26 coverage 0.92-0.93 was seen) may be labelled 'decided by a registered prospective test', with an EN/ZH disclosure of that design selection (U7)."
+  },
+  {
+   "id": "user ruling 2026-10-29 (third set) (b)",
+   "text": "Register companion E02c on I1's unit (I1:prospective_heads_2026-11_2027-10_R0wells): per-county 90 % coverage with coverage3 gate-3, clusters = well, pooled-vs-county outcomes declared; strict level rule (the frozen forecast must beat both climatology and climatology plus trend, baselines from pre-origin months). Only tightens; no X1 use; binds E02, not N2. Before 2026-10-31T16:00Z."
+  },
+  {
+   "id": "user ruling 2026-10-29 (third set) (c)",
+   "text": "Add a prospective level test at the never-calibrated external wells (N1:ext_wells), scored after E02c in the same session; fallback window 2026-12 if not ready."
+  },
+  {
+   "id": "user ruling 2026-10-29 (third set) (d)",
+   "text": "Approved narrowings: C13 split into C13a/b/c (Changhua head vs subsidence lines; only R1c's all-class lever may ever be shown, and only under an N2C 'response supported' pass); C14 split into C14a-e; subsidence bands permanently Model internals; the paired run spread moved off the head-response tiles into Model internals."
   }
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "9c0293e29651f68134ad3a09cd45345ec74b0b32fd53bff5502be60bf307f790",
-  "html": "results/twin/twin_app_20261029d.html",
-  "html_note": "gitignored build (round-3 fixes plus Townships-tab model-internals labels, 2026-10-29), promoted to the tracked results/twin/twin_app.html on 2026-10-29; the previous page is kept as twin_app_20261024e.html",
+  "template_sha256": "85cbd2d8402daf0c89d8e39b2bedb6a2f3855ae444a9e93528a1ba8bf452861f",
+  "html": "results/twin/twin_app_20261029e.html",
+  "html_note": "gitignored build of the round-5 template (C13a-c, C14a-e, N2C labels, E02 U7 disclosure, E02c and external-well lines); built with the command of docs/TWIN_EVIDENCE_2026-10.md section 17; promotion to results/twin/twin_app.html is the lead's decision",
   "forward": "datum_gate_innov.npz",
   "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
   "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
@@ -89,7 +105,13 @@
    "rank_unit_cm",
    "sec_avoided",
    "sec_avoided_s",
-   "ly_dsubs"
+   "ly_dsubs",
+   "bn_normal",
+   "dn_scaled",
+   "bn_runs",
+   "bn_constructed",
+   "dn_yr",
+   "dn_con"
   ],
   "template_absent": [
    "size decided by N2",
@@ -97,7 +119,9 @@
    "same {v} cm by {H}",
    "registered beforehand",
    "pre-registered",
-   "事先登錄"
+   "事先登錄",
+   "Changhua levers: not supported",
+   "彰化的政策槓桿：證據不支持"
   ],
   "template_anchors": {
    "def_tW": {
@@ -113,7 +137,46 @@
    "hl_rheo_ft"
   ],
   "default_layer": "dhead",
-  "default_series": "head"
+  "default_series": "head",
+  "changhua_lever_rule": {
+   "source": "N2C.changhua_response.prospective_2026-11.v1 page_mapping.before_scoring: 'wherever the page or its evidence mentions it, it is labelled untested (N2C registered, scored not before 2028-01-15)'",
+   "mention": {
+    "en": "Changhua(?:[^.;]|\\.(?=\\S))*\\b(?:lever|cut)s?\\b|\\b(?:lever|cut)s?\\b(?:[^.;]|\\.(?=\\S))*Changhua",
+    "zh": "彰化[^。；]*(?:槓桿|減抽)|(?:槓桿|減抽)[^。；]*彰化"
+   },
+   "labels": {
+    "en": [
+     "untested (N2C registered, scored not before 2028-01-15)",
+     "withdrawn under every outcome",
+     "not a Changhua lever"
+    ],
+    "zh": [
+     "未經檢驗（N2C 已登錄，最早 2028-01-15 評分）",
+     "在任何結果下均撤回",
+     "並非彰化槓桿"
+    ]
+   },
+   "labels_note": "the N2C label (C13a), the C13b/C13c withdrawal wording, or C02's spillover label; checked sentence by sentence (claims.sentences), so one labelled mention does not cover another in the same paragraph; a lever is named by 'lever' or 'cut' (zh 槓桿 or 減抽)",
+   "docs": [
+    "README.md",
+    "MODEL_CARD.md",
+    "docs/TWIN_EVIDENCE_2026-10.md"
+   ],
+   "docs_note": "every document is checked whole: sections 1-16 of the evidence update carry the label inline at each earlier Changhua-lever mention (section 17 records why)"
+  },
+  "answer_must_not_use_band_keys": [
+   "bn_runs",
+   "bn_constructed",
+   "dn_yr",
+   "dn_con",
+   "rng_p",
+   "rng_scaled",
+   "rng_h_only",
+   "tA_runs",
+   "evc_pro_iv",
+   "bn_normal",
+   "dn_scaled"
+  ]
  },
  "claims": [
   {
@@ -170,7 +233,7 @@
    "status_before": "U",
    "status_current": "N",
    "changes": true,
-   "wording_en": "Per-cell layer-2 head difference; Changhua cells labelled on the map 'pooled; values are spillover, untested' when the model carries no Changhua pumping.",
+   "wording_en": "Per-cell layer-2 head difference; Changhua cells labelled 'spillover of a Yunlin cut in a model with no Changhua pumping; not a Changhua lever' (the map label is the short form 'Yunlin-cut spillover, not a Changhua lever').",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
@@ -185,13 +248,18 @@
     ],
     "manifests": []
    },
-   "notes": "Cell hatching of Changhua was not added; the map label carries it.",
+   "notes": "Cell hatching of Changhua was not added; the map label and the township readouts carry it.",
    "text_keys": [
     "i18n:aria_map",
+    "i18n:conf_np",
     "i18n:ly_dhead",
-    "i18n:sec_note"
+    "i18n:map_changhua_np",
+    "i18n:pooled_np",
+    "i18n:sec_note",
+    "i18n:tw_pooled_np"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-10-29 (third set) (d)"
   },
   {
    "id": "C03",
@@ -303,14 +371,16 @@
    "wording_en": "Rail tile moved to Model internals; the rail tab says 'model internals, untested ... an illustrative screening value, not a better/worse verdict'; the (worse)/(better) words are gone.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
-    "registrations": [],
+    "registrations": [
+     "U1.no_band.v1"
+    ],
     "tests": [],
     "reports": [
      "README.md"
     ],
     "manifests": []
    },
-   "notes": "No registered test of differential settlement exists.",
+   "notes": "No registered test of differential settlement exists. Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals.",
    "text_keys": [
     "i18n:def_tH",
     "i18n:rail_dist",
@@ -335,14 +405,16 @@
    "wording_en": "Unchanged text; the tile moved to Model internals (it counts sign agreement of the withdrawn subsidence quantity).",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
-    "registrations": [],
+    "registrations": [
+     "U1.no_band.v1"
+    ],
     "tests": [],
     "reports": [
      "hydrophysics/twin/viewer_app.py"
     ],
     "manifests": []
    },
-   "notes": "",
+   "notes": "Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals.",
    "text_keys": [
     "card:kv_perrun",
     "i18n:agree_all",
@@ -402,7 +474,8 @@
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
-     "I1.X5NH.v1"
+     "I1.X5NH.v1",
+     "U1.no_band.v1"
     ],
     "tests": [],
     "reports": [
@@ -411,7 +484,7 @@
     ],
     "manifests": []
    },
-   "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used.",
+   "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used. Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals.",
    "text_keys": [
     "i18n:hl_base",
     "i18n:hl_runs",
@@ -514,16 +587,94 @@
    "doc_anchors": {}
   },
   {
-   "id": "C13",
-   "where": "page Changhua levers + Changhua evidence line",
-   "claim": "Changhua class levers",
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "Replaces C13 (W). The step C Changhua slope 0.85 [0.63, 1.05] is the registered N1P.C_heads_changhua result on ccz_m1618 (design-time window), shown from the page labels, not recomputed.",
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "untested (N2C registered, scored not before 2028-01-15)",
+      "`N2C.changhua_response.prospective_2026-11.v1`"
+     ],
+     "absent": [
+      "the Changhua levers are not supported",
+      "Changhua levers are not supported"
+     ]
+    },
+    "MODEL_CARD.md": {
+     "present": [
+      "untested (N2C registered, scored not before 2028-01-15)"
+     ],
+     "absent": [
+      "Changhua levers: **not supported.**"
+     ]
+    }
+   },
+   "id": "C13a",
+   "where": "page Changhua head evidence line + lever caveat; README/MODEL_CARD Limits",
+   "claim": "Changhua all-class head lever, x0.7 cut, model R1c (stage3_datum_gate_ccz); unit = mean over N2C's 74 Changhua wells, each in its own layer",
    "status_before": "W",
    "status_current": "W",
-   "changes": false,
-   "wording_en": "Unchanged: 'not available in this model'; Changhua levers not supported.",
-   "ruling": null,
+   "changes": true,
+   "wording_en": "Withdrawn from the answer until N2C is scored; no number is shown. Every mention on the page and in README/MODEL_CARD carries 'untested (N2C registered, scored not before 2028-01-15)'. Head line: 'Changhua head response: design-time support only for the R1c recipe refitted with 2016-18 masked (ccz_m1618, step C slope 0.85 [0.63, 1.05]), not for R1c itself; R1c failed its own Changhua gates and is not the page model; untested (N2C registered, scored not before 2028-01-15)'. The pending decision is the D evidence row E20 (never a bare D on a withdrawn lever).",
+   "ruling_also": "user ruling 2026-10-29 (second set)",
    "cites": {
     "registrations": [
+     "N2C.changhua_response.prospective_2026-11.v1",
+     "N1.policy_response.v1",
+     "I1.R1c.county_zones.v1",
+     "X5.lever_class_share.v1"
+    ],
+    "tests": [
+     "N1P.C_heads_changhua",
+     "N2CP.heads_changhua_response"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/page_labels_v2.json",
+     "results/dataprep/reports/X5.lever_class_share.v1/report.json"
+    ],
+    "manifests": []
+   },
+   "outcome_display": {
+    "declared": "2026-10-29 (round 5), committed with the ledger before any N2C look and before N2C's assert_can_score; narrower than N2C.page_mapping",
+    "before_scoring": "W; every mention labelled 'untested (N2C registered, scored not before 2028-01-15)'; no number shown",
+    "response_supported": "only with the same-session order kept: R1c's all-class relative head lever only (x0.7 all-class cut, mean over N2C's 74 Changhua wells, each in its own layer), shown with R1c's gate failures (I1.R1c Changhua head-anomaly RMSE 1.318 vs 1.074 m; G2 k-fold R2 0.646; Changhua county-mean RMSE 0.643 m) and N2C's beta, its 90 % interval and the RMSEs of PR, ZR and CL; never as the page model's answer",
+    "direction_supported_size_not": "evidence line only (direction, beta and its interval); the lever is not shown; C13a stays W",
+    "not_supported": "W, with N2C's wording 'not supported'",
+    "not_informative": "W, labelled 'undecided (N2C not informative)'",
+    "session_order_breached": "the result is reported, the lever is not shown",
+    "never": "C13b and C13c stay W under every outcome; no Changhua subsidence lever, no absolute pumping volume, no claim about the page model"
+   },
+   "text_keys": [
+    "doc:MODEL_CARD.md",
+    "doc:README.md",
+    "i18n:evc_pr_ch_head",
+    "i18n:pol_caveat_ch",
+    "i18n:pol_caveat_ch_np",
+    "i18n:pr_ch_nopump",
+    "i18n:pr_ch_slope",
+    "i18n:pr_ch_untested"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "X5.lever_class_share.v1's scope clause required a user ruling for any C13 change: ruling 2026-10-29 third set (d).",
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "(`X5.lever_class_share.v1`, model-only)"
+     ]
+    }
+   },
+   "id": "C13b",
+   "where": "page Changhua class-lever line + lever caveat; README/MODEL_CARD",
+   "claim": "Changhua class-specific levers (one water-use class cut)",
+   "status_before": "W",
+   "status_current": "W",
+   "changes": true,
+   "wording_en": "'Changhua class-specific levers: withdrawn under every outcome': an irrigation-only lever differs x1.39 between two energy-to-volume conversions whose hindcasts correlate 0.98, while all-class levers differ x1.03-1.05 (X5.lever_class_share.v1, model-only declaration). No N2C verdict changes it.",
+   "cites": {
+    "registrations": [
+     "X5.lever_class_share.v1",
      "N1.policy_response.v1",
      "N1.changhua_fix.v1"
     ],
@@ -532,30 +683,119 @@
      "N1F.F2_lev_changhua"
     ],
     "reports": [
-     "results/dataprep/reports/N1_policy/SUMMARY.md",
-     "results/dataprep/reports/N1_policy/page_labels_v2.json"
+     "results/dataprep/reports/X5.lever_class_share.v1/report.json",
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
     ],
     "manifests": []
    },
-   "notes": "Candidate wording from the changhua_inference route (class-share factor x[1.0, 1.4]) is NOT usable until its model-only declaration is run.",
    "text_keys": [
-    "i18n:evc_pr_ch",
+    "i18n:evc_pr_ch_class",
     "i18n:levers_sub_np",
-    "i18n:pr_ch_nopump"
-   ],
-   "doc_anchors": {}
+    "i18n:pol_caveat_ch",
+    "i18n:pol_caveat_ch_np",
+    "i18n:pr_ch_np"
+   ]
   },
   {
-   "id": "C14",
-   "where": "page tile ranges, time-series bands, coverage line",
-   "claim": "'90 % band' of the runs",
-   "status_before": "U",
-   "status_current": "N",
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "",
+   "doc_anchors": {},
+   "id": "C13c",
+   "where": "page Changhua subsidence-lever line + lever caveat; README/MODEL_CARD",
+   "claim": "Changhua subsidence lever",
+   "status_before": "W",
+   "status_current": "W",
    "changes": true,
-   "wording_en": "'The runs' 90 % spread (a parameter spread, not a predictive interval; no registered coverage test) covered {a} of {span} observations, measured after the fact'; tile ranges read 'run spread p10-p90'.",
-   "ruling": "user ruling 2026-10-29 (1)",
+   "wording_en": "'Changhua subsidence lever: withdrawn under every outcome': step B came out opposite in sign (-0.50 vs +0.80 cm/yr per GWh/yr), step C's leveling lost to no change, every held subsidence unit there is spent, and N2C.page_mapping.never excludes it.",
    "cites": {
     "registrations": [
+     "N1.policy_response.v1",
+     "N1.changhua_fix.v1",
+     "N2C.changhua_response.prospective_2026-11.v1"
+    ],
+    "tests": [
+     "N1P.B_dose_changhua",
+     "N1P.C_lev_changhua"
+    ],
+    "reports": [
+     "results/dataprep/reports/N1_policy/SUMMARY.md"
+    ],
+    "manifests": []
+   },
+   "text_keys": [
+    "i18n:evc_pr_ch_subs",
+    "i18n:pol_caveat_ch",
+    "i18n:pol_caveat_ch_np"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (a)",
+   "notes": "U7: prospective.py records that the combined family was chosen because it covered 92 % of the 2023-26 observations; the fresh window is untouched. A pass is worded 'passed its registered gate', never 'calibrated'; a fail withdraws the interval wording (nothing is widened). The aggregate half-width summary is not on the page.",
+   "doc_anchors": {},
+   "id": "C14a",
+   "where": "page evidence line under the prospective test (text only)",
+   "claim": "Per-well registered 90 % head interval (combined spread) at the monitoring wells, in the 2026-11..2027-10 window",
+   "status_before": "N",
+   "status_current": "N+D",
+   "changes": true,
+   "wording_en": "Text only, no band: 'Its per-well 90 % head interval (combined spread, at the monitoring wells, in the window only) is decided by this registered prospective test. Disclosure: the interval family was chosen after its 2023-26 coverage was seen; the window is untouched.' Emitted only when the build bound the manifest, predictions and protocol by hash to the page's forward run (viewer_app _prospective_block interval_bound). Per-county coverage (gate-3, clusters = well) decided by E02c, pending.",
+   "ruling_also": "user ruling 2026-10-29 (third set) (b)",
+   "cites": {
+    "registrations": [
+     "U1.no_band.v1",
+     "E02c.prospective_2026-11.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/twin/prospective_2026-11/manifest.json",
+     "hydrophysics/twin/prospective.py"
+    ],
+    "manifests": [
+     "results/twin/prospective_2026-11/manifest.json"
+    ]
+   },
+   "text_keys": [
+    "i18n:evc_pro_e02c",
+    "i18n:evc_pro_iv"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "",
+   "doc_anchors": {},
+   "id": "C14b",
+   "where": "page evidence line under the prospective test",
+   "claim": "The same interval recipe outside the registered window",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "'Outside that window the recipe is untested.'",
+   "cites": {
+    "registrations": [
+     "U1.no_band.v1"
+    ],
+    "tests": [],
+    "reports": [],
+    "manifests": []
+   },
+   "text_keys": [
+    "i18n:evc_pro_iv"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "The rename stands on pre-origin grounds alone: the band is a parameter spread with no registered coverage test (coverage.py: 'not a preregistered prospective validation'). The 2023-26 coverage is an after-the-fact measurement already published; it did not drive the rename (U7). The registered synthetic coverage tests A1.coverage_confirm.v1 and A1r2.coverage3_confirm.v1 concern recovery on synthetic data, not this band's coverage of observations, so they are context, not support.",
+   "doc_anchors": {},
+   "id": "C14c",
+   "where": "page head time-series bands, coverage line, evidence lines",
+   "claim": "Aggregate run spreads (N2-unit mean, township, fan layer-2, cells without a well)",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "'run spread, a parameter spread, not a predictive interval': an interval for a mean of correlated wells is untested, and the band is 'not tested by E02 (a different interval)' (E02c page_mapping.before_scoring.C14_run_spread) and a cell without a well has no datum. The runs' 2023-26 coverage stays an after-the-fact measurement ('covered {a} of {span} observations, measured after the fact'); 'no band ... for averages over N2's wells or townships ... no held data can calibrate one (registered narrowing U1.no_band.v1)', shown only once U1.no_band.v1 is in the registry (viewer_app registrations.no_band); the fan average is not listed there, because its head run spread stays on the head series under this wording.",
+   "cites": {
+    "registrations": [
+     "U1.no_band.v1",
      "A1.coverage_confirm.v1",
      "A1r2.coverage3_confirm.v1"
     ],
@@ -568,20 +808,78 @@
     "manifests": [],
     "context_only": true
    },
-   "notes": "The rename stands on pre-origin grounds alone: the band is a parameter spread with no registered coverage test (coverage.py: 'not a preregistered prospective validation'). The 2023-26 coverage is an after-the-fact measurement already published; it did not drive the rename (U7). The registered synthetic coverage tests A1.coverage_confirm.v1 and A1r2.coverage3_confirm.v1 concern recovery on synthetic data, not this band's coverage of observations, so they are context, not support.",
+   "text_keys": [
+    "i18n:bn_head",
+    "i18n:cov_line",
+    "i18n:evc_band_none",
+    "i18n:evc_cov"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "Reasons (U1.no_band.v1): A0, calibration data do not pin the response size; the model_averaging synthetic exploration (scratch, model output only), where the paired spread covers 0 % of the true contrast.",
+   "doc_anchors": {},
+   "id": "C14d",
+   "where": "page head difference panel (policy minus baseline)",
+   "claim": "Head-contrast run spreads (the paired runs' spread of the head change)",
+   "status_before": "N",
+   "status_current": "L",
+   "changes": true,
+   "wording_en": "Removed from the head response: drawn only with Model internals open and labelled 'Model internals ... A parameter spread; it excludes response-size error'; otherwise 'not drawn ... sits under Model internals'. The tile tW shows no spread; no x0.67-1.5 band is drawn; C01's range line keeps N2's wording.",
+   "cites": {
+    "registrations": [
+     "U1.no_band.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/N1_gaps_2026-10-24/A0"
+    ],
+    "manifests": []
+   },
+   "text_keys": [
+    "i18n:dn_con",
+    "i18n:dn_head_off",
+    "i18n:dn_yr"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "Every scorer route closed by current-release use (U1.no_band.v1): b2 preorigin piles_printed validator/after_the_fact only; deep_benchmarks_printed v2 not in allowed_uses for prospective_scorer; gnss_clean forbids it; subsidence_public_reports and insar_* validator-only; subsidence_fused v5 after_the_fact only; steps B and C disagree in direction; M1 gate 0 and I1.X5SC.gate0.v1 failed; U7 forbids 2023-26 residual calibration.",
+   "doc_anchors": {},
+   "id": "C14e",
+   "where": "page subsidence series, tile tA (Model internals)",
+   "claim": "Subsidence level and contrast bands",
+   "status_before": "N",
+   "status_current": "W+L",
+   "changes": true,
+   "wording_en": "None in the answer; permanently Model internals. Every subsidence band note starts 'Model internals': the fan-average series ('... a parameter spread, not a predictive interval; no held data can calibrate a subsidence band'), the constructed series, the per-cell, township, bench and well series (bn_normal) and the difference panel (dn_yr, dn_con, dn_scaled: 'A parameter spread; it excludes response-size error'); 'run spread p10-p90' on tile tA.",
+   "cites": {
+    "registrations": [
+     "U1.no_band.v1",
+     "N1.policy_response.v1",
+     "I1.X5SC.gate0.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "README.md",
+     "hydrophysics/twin/coverage.py",
+     "results/twin/coverage_datum_gate_innov/report.json"
+    ],
+    "manifests": []
+   },
    "text_keys": [
     "i18n:bn_constructed",
-    "i18n:bn_head",
+    "i18n:bn_normal",
     "i18n:bn_runs",
-    "i18n:cov_line",
     "i18n:dn_con",
+    "i18n:dn_scaled",
     "i18n:dn_yr",
-    "i18n:evc_cov",
+    "i18n:evc_band_none",
     "i18n:rng_h_only",
     "i18n:rng_p",
-    "i18n:rng_scaled"
-   ],
-   "doc_anchors": {}
+    "i18n:rng_scaled",
+    "tile:tA"
+   ]
   },
   {
    "id": "C15",
@@ -749,12 +1047,13 @@
    "status_before": "X",
    "status_current": "N",
    "changes": true,
-   "wording_en": "README Limits: Yunlin supported on R0 (design-time); Changhua only on R1c, which failed its own rung (I1.R1c) and is not the page model; no Changhua head lever.",
+   "wording_en": "README Limits: Yunlin supported on R0 (design-time); Changhua only on R1c, which failed its own rung (I1.R1c) and is not the page model; no Changhua head lever. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
+     "I1.R1c.county_zones.v1",
      "N1.policy_response.v1",
-     "I1.R1c.county_zones.v1"
+     "N2C.changhua_response.prospective_2026-11.v1"
     ],
     "tests": [
      "N1P.C_heads_changhua"
@@ -772,13 +1071,16 @@
    "doc_anchors": {
     "README.md": {
      "present": [
-      "In Changhua it passes only on the census\n  model R1c, which failed its own rung"
+      "In Changhua it passes only on the census\n  model R1c, which failed its own rung",
+      "untested (N2C registered, scored not before 2028-01-15)"
      ],
      "absent": [
-      "registered masked-refit tests in both\n  counties"
+      "registered masked-refit tests in both\n  counties",
+      "the page has no\n  Changhua head lever"
      ]
     }
-   }
+   },
+   "ruling_also": "user ruling 2026-10-29 (third set) (d)"
   },
   {
    "id": "C21",
@@ -787,12 +1089,13 @@
    "status_before": "X",
    "status_current": "N",
    "changes": true,
-   "wording_en": "MODEL_CARD: same narrowing as C20.",
+   "wording_en": "MODEL_CARD: same narrowing as C20. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
+     "I1.R1c.county_zones.v1",
      "N1.policy_response.v1",
-     "I1.R1c.county_zones.v1"
+     "N2C.changhua_response.prospective_2026-11.v1"
     ],
     "tests": [
      "N1P.C_heads_changhua"
@@ -809,13 +1112,16 @@
    "doc_anchors": {
     "MODEL_CARD.md": {
      "present": [
-      "In Changhua it is supported only on R1c, which failed its own rung"
+      "In Changhua it is supported only on R1c, which failed its own rung",
+      "untested (N2C registered, scored not before 2028-01-15)"
      ],
      "absent": [
-      "The verdict is supported in both counties"
+      "The verdict is supported in both counties",
+      "the page has no Changhua head lever"
      ]
     }
-   }
+   },
+   "ruling_also": "user ruling 2026-10-29 (third set) (d)"
   },
   {
    "id": "C22",
@@ -1097,13 +1403,15 @@
    "where": "page baseline maps/series after Dec 2022 (cumulative, forward, rate, head), township and rail baselines",
    "claim": "Baseline projection fields",
    "status_before": "N",
-   "status_current": "N",
+   "status_current": "N+D",
    "changes": true,
-   "wording_en": "Legend 'Projected value, not validated' unchanged; the baseline headline and the internals note add the coast flag (distal zone does not sink in the model; 2016-21 next-year leveling about 2.5 cm/yr faster).",
-   "ruling": "user ruling 2026-10-29 (1)",
+   "wording_en": "Legend 'Projected value, not validated' unchanged; the baseline headline and the internals note add the coast flag (distal zone does not sink in the model; 2016-21 next-year leveling about 2.5 cm/yr faster). Round 5: the legend adds 'no uncertainty band, since no held data can calibrate one' (U1.no_band.v1); the heads part is decided by E02c's strict level rule (beat climatology and climatology plus trend), pending.",
+   "ruling": "user ruling 2026-10-29 (third set) (b)",
    "cites": {
     "registrations": [
-     "I1.X5NH.v1"
+     "E02c.prospective_2026-11.v1",
+     "I1.X5NH.v1",
+     "U1.no_band.v1"
     ],
     "tests": [],
     "reports": [
@@ -1116,6 +1424,7 @@
    "text_keys": [
     "card:kv_proj",
     "i18n:aria_map",
+    "i18n:evc_pro_e02c",
     "i18n:lg_proj",
     "i18n:ly_abs",
     "i18n:ly_fwd",
@@ -1133,7 +1442,8 @@
     "i18n:ts_subs_short",
     "i18n:tw_base_val"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-10-29 (1)"
   },
   {
    "id": "E01",
@@ -1170,7 +1480,7 @@
    "status_before": "D",
    "status_current": "D",
    "changes": true,
-   "wording_en": "'Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm) ...'",
+   "wording_en": "'Prospective test registered by manifest hash on {reg}, before the current registry (N2 reuses its predictions as its zero-response arm) ...' Round 5: a second line names the per-well 90 % head interval as decided by this registered test, with the U7 disclosure 'the interval family was chosen after its 2023-26 coverage was seen; the window is untouched' (EN/ZH), only when the build bound the files by hash.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
@@ -1187,9 +1497,11 @@
    "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm.",
    "text_keys": [
     "i18n:evc_pro",
+    "i18n:evc_pro_iv",
     "i18n:evc_pro_nodates"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": "user ruling 2026-10-29 (third set) (a)"
   },
   {
    "id": "E03",
@@ -1834,6 +2146,87 @@
    "doc_anchors": {}
   },
   {
+   "ruling": "user ruling 2026-10-29 (third set) (d)",
+   "notes": "Unit N2C:heads_changhua_prospective_2026-11_2027-10 (74 Changhua wells); scored first in its session, not before 2028-01-15, by 2028-01-31.",
+   "doc_anchors": {},
+   "id": "E20",
+   "where": "page Changhua head evidence line + lever caveat; README/MODEL_CARD",
+   "claim": "Changhua head response test N2C registered 2026-10-29 (2026-11..2027-10), result pending",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "New row (round 5): 'untested (N2C registered, scored not before 2028-01-15)'. Decides C13a only through C13a's outcome_display table.",
+   "cites": {
+    "registrations": [
+     "N2C.changhua_response.prospective_2026-11.v1"
+    ],
+    "tests": [
+     "N2CP.heads_changhua_response"
+    ],
+    "reports": [
+     "results/dataprep/validation_units/v3/units.json"
+    ],
+    "manifests": []
+   },
+   "units_registry_sha256": "3df1b5dc690afad0674fc49d7123903953cb27265c97847ce227b083a0671310",
+   "text_keys": [
+    "i18n:evc_pr_ch_head",
+    "i18n:pol_caveat_ch",
+    "i18n:pol_caveat_ch_np",
+    "i18n:pr_ch_untested"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (b)",
+   "notes": "Binds E02 (not N2), uses no X1, only tightens. Pass on T-level makes C30's heads part S-limited; pass on T-cov makes C14a S for that county ('passed its registered gate').",
+   "doc_anchors": {},
+   "id": "E21",
+   "where": "page evidence line under the prospective test",
+   "claim": "E02c, the stricter companion of E02: per-county coverage gate-3 and the strict level rule, result pending",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "New row (round 5): 'Stricter companion test E02c, registered on the same wells and window: 90 % coverage of the per-well combined-spread head interval by county ... decided not before 2028-01-15.' Shown only once E02c.prospective_2026-11.v1 is in the registry (viewer_app registrations.e02c). Unit I1:prospective_heads_2026-11_2027-10_R0wells (no new unit id).",
+   "cites": {
+    "registrations": [
+     "E02c.prospective_2026-11.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/twin/prospective_2026-11/manifest.json"
+    ],
+    "manifests": [
+     "results/twin/prospective_2026-11/manifest.json"
+    ]
+   },
+   "text_keys": [
+    "i18n:evc_pro_e02c"
+   ]
+  },
+  {
+   "ruling": "user ruling 2026-10-29 (third set) (c)",
+   "notes": "Unit N3F:ext_heads_2026-11_2027-10 (dataprep_staging/e02c/prereg_e02c_ext.py); scored after E02c in the same session. If the test moves to its 2026-12 fallback window (registered by 2026-11-30), the id becomes N3F.ext_level.prospective_2026-12.v1: replace it here and in registry_hashes when that registration is written; until then the PENDING hash keeps test_no_cited_registration_is_pending failing and the page does not show the line (viewer_app accepts either id).",
+   "doc_anchors": {},
+   "id": "E22",
+   "where": "page evidence line under the prospective test",
+   "claim": "Level forecast at never-calibrated external wells (N1:ext_wells) against each well's own pre-origin climatology, result pending",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "New row (round 5): 'Level forecast at monitoring wells never used in calibration ... registered; decided not before 2028-01-15.' Shown only once the 2026-11 or the fallback 2026-12 registration is in the registry (viewer_app registrations.ext). A new evidence line, not mapped to E08 or C02.",
+   "cites": {
+    "registrations": [
+     "N3F.ext_level.prospective_2026-11.v1"
+    ],
+    "tests": [],
+    "reports": [],
+    "manifests": []
+   },
+   "text_keys": [
+    "i18n:evc_pro_ext"
+   ]
+  },
+  {
    "id": "Z04",
    "where": "page payload only",
    "claim": "Payload numbers the page never reads",
@@ -1865,7 +2258,8 @@
    ],
    "tA": [
     "C03",
-    "C09"
+    "C09",
+    "C14e"
    ],
    "tR": [
     "C05"
@@ -1941,13 +2335,13 @@
     "E11"
    ],
    "bn_constructed": [
-    "C14"
+    "C14e"
    ],
    "bn_head": [
-    "C14"
+    "C14c"
    ],
    "bn_runs": [
-    "C14"
+    "C14e"
    ],
    "boff": [
     "C28"
@@ -1969,7 +2363,7 @@
     "C29"
    ],
    "cov_line": [
-    "C14"
+    "C14c"
    ],
    "cut_pct": [
     "C08"
@@ -2212,10 +2606,12 @@
     "E07"
    ],
    "dn_con": [
-    "C14"
+    "C14d",
+    "C14e"
    ],
    "dn_yr": [
-    "C14"
+    "C14d",
+    "C14e"
    ],
    "ev_counts": [
     "E17"
@@ -2239,7 +2635,7 @@
     "E07"
    ],
    "evc_cov": [
-    "C14"
+    "C14c"
    ],
    "evc_hyb": [
     "E03"
@@ -2258,9 +2654,6 @@
    ],
    "evc_pile_ro": [
     "E06"
-   ],
-   "evc_pr_ch": [
-    "C13"
    ],
    "evc_pr_heads": [
     "C16"
@@ -2377,7 +2770,7 @@
     "C08"
    ],
    "levers_sub_np": [
-    "C13"
+    "C13b"
    ],
    "lg_beyond": [
     "Z02"
@@ -2504,7 +2897,7 @@
     "C16"
    ],
    "pr_ch_nopump": [
-    "C13"
+    "C13a"
    ],
    "pr_irr30": [
     "Z01"
@@ -2630,13 +3023,13 @@
     "C10"
    ],
    "rng_h_only": [
-    "C14"
+    "C14e"
    ],
    "rng_p": [
-    "C14"
+    "C14e"
    ],
    "rng_scaled": [
-    "C14"
+    "C14e"
    ],
    "sbase": [
     "C30"
@@ -2867,6 +3260,48 @@
    ],
    "zero_ref": [
     "Z01"
+   ],
+   "evc_pr_ch_head": [
+    "C13a",
+    "E20",
+    "C16"
+   ],
+   "pr_ch_slope": [
+    "C13a",
+    "C16"
+   ],
+   "pr_ch_untested": [
+    "E20",
+    "C13a"
+   ],
+   "evc_pr_ch_subs": [
+    "C13c"
+   ],
+   "evc_pr_ch_class": [
+    "C13b"
+   ],
+   "pol_caveat_ch": [
+    "C13b",
+    "C13c",
+    "E20"
+   ],
+   "pol_caveat_ch_np": [
+    "C13b",
+    "C13c",
+    "E20"
+   ],
+   "evc_pro_iv": [
+    "E02",
+    "C14a",
+    "C14b"
+   ],
+   "evc_pro_e02c": [
+    "E21",
+    "C14a",
+    "C30"
+   ],
+   "evc_pro_ext": [
+    "E22"
    ]
   },
   "card_rows": {
@@ -2992,7 +3427,7 @@
     "C15"
    ],
    "covLine": [
-    "C14"
+    "C14c"
    ],
    "driftMore": [
     "E07"
@@ -3007,11 +3442,15 @@
    "evidenceItems": [
     "E18",
     "E01",
-    "C14",
     "E02",
     "E03",
     "E04",
-    "E17"
+    "E17",
+    "C14c",
+    "C14a",
+    "C14b",
+    "E21",
+    "E22"
    ],
    "fastClause": [
     "C10"
@@ -3068,7 +3507,10 @@
     "C16",
     "C01",
     "C27",
-    "C13"
+    "C13a",
+    "C13b",
+    "C13c",
+    "E20"
    ],
    "pooledClause": [
     "E09"
@@ -3080,7 +3522,7 @@
     "C06"
    ],
    "rangeText": [
-    "C14"
+    "C14e"
    ],
    "rateList": [
     "C10"
@@ -3143,12 +3585,14 @@
     "C01"
    ],
    "renderTS": [
-    "C14",
     "C03",
     "C01",
     "C30",
     "E11",
-    "E13"
+    "E13",
+    "C14c",
+    "C14d",
+    "C14e"
    ],
    "renderTiles": [
     "C01",
@@ -3158,8 +3602,8 @@
     "C07",
     "C08",
     "C09",
-    "C14",
-    "E15"
+    "E15",
+    "C14e"
    ],
    "renderTowns": [
     "C11",
@@ -3182,9 +3626,10 @@
     "E10"
    ],
    "seriesFor": [
-    "C14",
     "E11",
-    "C30"
+    "C30",
+    "C14c",
+    "C14e"
    ],
    "setLang": [
     "Z01"
@@ -3284,7 +3729,7 @@
     "C30"
    ],
    "subsBand": [
-    "C14"
+    "C14e"
    ],
    "headBase": [
     "C30"
@@ -3605,16 +4050,16 @@
     "C05"
    ],
    "memberFields.baseBandYr[][]": [
-    "C14"
+    "C14e"
    ],
    "memberFields.baseFwd[]": [
     "C09"
    ],
    "memberFields.baseHeadBandYr[][]": [
-    "C14"
+    "C14c"
    ],
    "memberFields.fan.head.baseline[][]": [
-    "C14"
+    "C14c"
    ],
    "memberFields.fan.head.cut30[][]": [
     "Z04"
@@ -3623,7 +4068,7 @@
     "Z04"
    ],
    "memberFields.fan.subs.baseline[][]": [
-    "C14"
+    "C14e"
    ],
    "memberFields.fan.subs.cut30[][]": [
     "Z04"
@@ -3641,22 +4086,23 @@
     "C07"
    ],
    "members.base.end[]": [
-    "C14"
+    "C14e"
    ],
    "members.base.end_p[]": [
     "Z04"
    ],
    "members.base.fwd[]": [
-    "C14"
+    "C14e"
    ],
    "members.base.fwd_p[]": [
     "Z04"
    ],
    "members.base.head_p[]": [
-    "C14"
+    "C14c"
    ],
    "members.base.n": [
-    "C14"
+    "C14c",
+    "C14e"
    ],
    "meta.L": [
     "Z01"
@@ -3807,19 +4253,19 @@
     "E10"
    ],
    "modelcard.coverage.combined_picp_90": [
-    "C14"
+    "C14c"
    ],
    "modelcard.coverage.inflation_90": [
-    "C14"
+    "C14c"
    ],
    "modelcard.coverage.picp_90": [
-    "C14"
+    "C14c"
    ],
    "modelcard.coverage.scored_months": [
-    "C14"
+    "C14c"
    ],
    "modelcard.coverage.stations": [
-    "C14"
+    "C14c"
    ],
    "modelcard.deep_piles.after_feeds.base_continue.bias": [
     "E06"
@@ -4146,10 +4592,10 @@
     "E01"
    ],
    "modelcard.policy_response.changhua.dose_model_cm_per_gwh": [
-    "C13"
+    "C13c"
    ],
    "modelcard.policy_response.changhua.dose_obs_cm_per_gwh": [
-    "C13"
+    "C13c"
    ],
    "modelcard.policy_response.heads.changhua.rmse_cl_m": [
     "C16"
@@ -4182,28 +4628,28 @@
     "C16"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.ci_cl[]": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.n_wells": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.ratio_cl": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_cl_m": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_model_m": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.rmse_zr_m": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.slope_ci[]": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.secondary.changhua_heads_deliverable_recipe.slope_obs_on_model": [
-    "C13"
+    "C13a"
    ],
    "modelcard.policy_response.step_b.changhua.beta_model_cm_per_gwh": [
     "C27"
@@ -5029,10 +5475,10 @@
     "C05"
    ],
    "solved[].bandYrHead[][]": [
-    "C14"
+    "C14d"
    ],
    "solved[].bandYr[][]": [
-    "C14"
+    "C14e"
    ],
    "solved[].factors[]": [
     "Z01"
@@ -5156,6 +5602,12 @@
   "I1.hybrid_tf.prospective_2026-11.v1": "14b26ac889d319e665787be956c370c557ea43fd8540116ddc3c18c1fe0a2239",
   "N1.rings_designtime.v1": "ea357e5bbb96f4c7486e67d8e5e2ad065bf65d28fbceae771737ee9c043a1829",
   "results/twin/prospective_2026-11/manifest.json": "d7286551245644b7932fac98751bcd0e837611ffdfbc9a403dd096c8c51af056",
-  "results/twin/prospective_2026-11_hybrid/manifest.json": "8e28ac21a7d590da93875bb02a639399ab9b196661e779aa9dff3538b777b512"
+  "results/twin/prospective_2026-11_hybrid/manifest.json": "8e28ac21a7d590da93875bb02a639399ab9b196661e779aa9dff3538b777b512",
+  "N2C.changhua_response.prospective_2026-11.v1": "76853696bcd00c97c33c4dff1ac4d01a14e62a241a0b02938a76af6f20c44ee1",
+  "X5.lever_class_share.v1": "8209acc9544c3faf4de8c59329184cb2afdee3ea22755fb6d21b02bc18795f3a",
+  "I1.X5SC.gate0.v1": "cb1ffc261aef6edae5895674a997210b69bb64ac4fd36bc6dd763f62b6d1d68e",
+  "U1.no_band.v1": "3da3db81aaf14c1e7ddc6246b09795b497030df1b177936d521c279fa204a0ca",
+  "E02c.prospective_2026-11.v1": "cc5b970f4bd009cd1f84ae3c702e7d057bd6325f724c38ecdd710ab2a62dd468",
+  "N3F.ext_level.prospective_2026-11.v1": "17c826ee0a774ed7466946c51b97c1f283fc4172389d6e71a366c43745df0106"
  }
 }

@@ -606,7 +606,7 @@ cluster-bootstrap intervals.
   - Across places in 2007-10, Yunlin sank more than modelled, though inconclusively.
   - The two tests measure different things and disagree in direction, so the size is labelled "not supported", with no direction attached.
   - The column is fitted to the cumulative leveling record, not to a policy difference. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested (the post-hoc elastic split below shows why the model has no other kind of response under mean forcing).
-- **Changhua levers: not supported.** The page's model has no Changhua pumping. The census model's response failed step B, and neither fix closed the gap. Step B's exploratory follow-up is spent, so no further Changhua fix may be scored on the 2007-10 or 2016-18 data.
+- **Changhua levers: not supported** (2026-10-29: the head lever is untested (N2C registered, scored not before 2028-01-15); class-specific and subsidence levers are withdrawn under every outcome; section 17). The page's model has no Changhua pumping. The census model's response failed step B, and neither fix closed the gap. Step B's exploratory follow-up is spent, so no further Changhua fix may be scored on the 2007-10 or 2016-18 data.
 
 **Post-hoc model-only checks (2026-10-24).** Each item below is post hoc, model-only and
 not a test: it reads model outputs only (forward runs, member fields, response bases, the
@@ -709,7 +709,8 @@ results/twin/ring_holdout_ref2023/report.json` (sha `92e621d4`, caveat vii) and
 `--policy-response results/dataprep/reports/N1_policy/page_labels_v2.json`
 (`dataprep_staging/n1_policy/page_labels_v2.py`: the v1 verdicts plus the model each row
 was scored on, the design-time flag, step B and the declared secondary; nothing
-re-scored). It names the census model for the Changhua head result, labels the 2016-18
+re-scored). It names the census model for the Changhua head result (the Changhua head
+lever: untested (N2C registered, scored not before 2028-01-15); section 17), labels the 2016-18
 window design-time, shows the deep-pile line as report-only (U7), calls the policy gate a
 model-internal sanity check and leaves it out of the test count, counts only the
 N1 rows scored on the page model's recipe (a presentation choice, open for review), and says the levers act on Yunlin metered pumping only.
@@ -809,7 +810,9 @@ them. Hashes and file times: [`N1_CODE_PROVENANCE_2026-10.md`](N1_CODE_PROVENANC
 
 ## 14. Inferring what the data do not hold (2026-10-24/25)
 
-After section 13 two claims were open: the 1-3-year subsidence size and the Changhua levers.
+After section 13 two claims were open: the 1-3-year subsidence size and the Changhua levers
+(2026-10-29: the Changhua head lever is untested (N2C registered, scored not before 2028-01-15); class-specific and subsidence Changhua
+levers are withdrawn under every outcome; section 17).
 The user's direction (2026-10-24) was to try any technique that infers missing quantities
 from the data already held. Inferred values may enter only as model inputs, never as the
 observations a test is scored against. Four routes were tried:
@@ -952,10 +955,10 @@ Findings:
 | claim | status | decided by | what would close it |
 |---|---|---|---|
 | head response to a pumping change, Yunlin | supported on design-time masked refits (G1, step C); size not pinned by the calibration data (A0) | N2, registered, scored after 2027-10 | N2 decides |
-| head response, Changhua | supported only on the census model R1c; the page model has no Changhua pumping; rung B failed | no registered test | Changhua irrigation-office monthly diversions by intake; per-well public-supply abstraction |
+| head response, Changhua | supported only on the census model R1c; the page model has no Changhua pumping; rung B failed | no registered test (2026-10-29: N2C registered; the Changhua head lever is untested (N2C registered, scored not before 2028-01-15), section 17) | Changhua irrigation-office monthly diversions by intake; per-well public-supply abstraction |
 | 1-3-year subsidence size | not supported (steps B and C disagree in direction); M1 failed its synthetic gate | no unspent leveling decides it | a fresh WRA leveling campaign, or monthly compaction-well and GNSS series from 2026-11, registered before they are seen |
 | long-run sinking under a cut | untested; in this model the benefit is all elastic (section 13) | none | the same, over several years, including a dry year |
-| Changhua levers | not supported (step B, fixes F1 and F2, rungs R1-R4p, R* and B) | none before 2026-10-31 | the Changhua data above, plus pump-test energy-to-volume data |
+| Changhua levers | not supported (step B, fixes F1 and F2, rungs R1-R4p, R* and B); 2026-10-29: head lever untested (N2C registered, scored not before 2028-01-15), class-specific and subsidence levers withdrawn under every outcome (section 17) | none before 2026-10-31 | the Changhua data above, plus pump-test energy-to-volume data |
 
 ## 15. Claims ledger and page scoping (2026-10-29)
 
@@ -1016,14 +1019,66 @@ What changed on the page (`results/twin/twin_app_20261029c.html`; not promoted):
   registered 2026-10-29). R1c is the primary model by user ruling, with its earlier Changhua
   gate failures disclosed; q0c and x5r1 are report-only. Same decision rule, wells (74
   Changhua) and window as N2; scored first in its session, not before 2028-01-15. R1c's
-  Changhua head lever reaches the page only if the verdict is "response supported".
+  Changhua head lever, untested (N2C registered, scored not before 2028-01-15), reaches the page only if the verdict is "response
+  supported".
 - **Head levers that cut every pumping class do not depend on the energy-to-volume
   conversion** (`X5.lever_class_share.v1`, model-only declaration, scored once, pass). Two
   models whose conversions differ about twofold (q0c, x5r1) give an all-class x0.7 cut whose
   head-lever ratio at the well cells is 1.048/1.052 (Changhua, 2026-27/2030-32) and
   1.034/1.036 (Yunlin), inside the declared [0.9, 1.1] (the report-only [0.95, 1.05] is
-  exceeded narrowly in Changhua 2030-32). Class-specific levers are not invariant: the
+  exceeded narrowly in Changhua 2030-32; the Changhua head lever itself is untested (N2C registered, scored not before 2028-01-15)). Class-specific levers are not invariant: the
   irrigation-only cut differs 1.39 (Changhua) and 1.27 (Yunlin) between the two
-  conversions, because the classes' shares differ. The pumping-volume deficit (the twin
+  conversions, because the classes' shares differ (Changhua class-specific levers:
+  withdrawn under every outcome; section 17). The pumping-volume deficit (the twin
   pumps about half WRA's volume) therefore matters for class-specific levers, not for an
   across-the-board cut. This adds no page lever.
+
+## 17. Round-5 page and ledger amendment (2026-10-29)
+
+User rulings of 2026-10-29 (third set) narrowed the page further and named three pending tests.
+The ledger (`hydrophysics/twin/claims_v1.json`) cites the new registrations by id and their
+hashes from the registry index; `claims.load_ledger` refuses a ledger whose hash for a cited
+registration is the placeholder `PENDING`. The page names E02c, the external-well test and the
+`U1.no_band.v1` narrowing only when the build finds their ids in the registry index.
+
+- **Changhua levers (C13 split).** C13a, the all-class head lever (x0.7 cut, R1c, mean over
+  N2C's 74 Changhua wells): withdrawn, and everywhere the page, the README or the model card
+  mentions it, it reads "untested (N2C registered, scored not before 2028-01-15)". The
+  pending decision is a separate evidence row (E20, `N2C.changhua_response.prospective_2026-11.v1`).
+  The ledger fixes now which display each N2C outcome allows. Only "response supported", with
+  the session order kept, shows R1c's all-class relative lever, labelled with R1c's gate
+  failures and N2C's beta and RMSEs. C13b, class-specific Changhua levers: withdrawn under
+  every outcome (an irrigation-only lever differs x1.39 between two pumping conversions whose
+  hindcasts correlate 0.98; `X5.lever_class_share.v1`). C13c, the Changhua subsidence lever:
+  withdrawn under every outcome (step B opposite in sign, every held Changhua subsidence unit
+  spent, N2C never maps to it). The page's Changhua evidence is now a head line and a
+  subsidence line, and the map labels Changhua cells "spillover of a Yunlin cut in a model
+  with no Changhua pumping; not a Changhua lever". Each earlier Changhua-lever mention in
+  sections 13, 14 and 16 now carries the label inline (dated 2026-10-29): the Changhua head
+  lever is untested (N2C registered, scored not before 2028-01-15), and class-specific and subsidence Changhua levers are withdrawn under every
+  outcome. `tests/test_twin_claims.py` checks every sentence of this document, the README and
+  the model card for it.
+- **Bands (C14 split, `U1.no_band.v1`).** C14a, the per-well registered 90 % head interval
+  at the monitoring wells in the window: named in text only (no band). By ruling (a) it is
+  "decided by this registered prospective test", with the disclosure that the interval family
+  was chosen after its 2023-26 coverage was seen while the 2026-11..2027-10 window is
+  untouched. The build emits that line only when the manifest, predictions and protocol hash
+  to the page's forward run. C14b, the same recipe outside the window: untested. C14c, run
+  spreads of averages: "a parameter spread, not a predictive interval". C14d, the paired head
+  spread: off the head response, drawn only with Model internals open and labelled
+  "parameter spread; excludes response-size error". C14e, subsidence bands: permanently
+  Model internals, and every subsidence band note says so. The fan-average head run spread
+  is labelled "not tested by E02 (a different interval)". The baseline legend adds that no
+  held data can calibrate a band.
+- **Baseline heads (C30, N -> N+D).** The heads part of the baseline projection is decided
+  by E02c's strict level rule (ruling (b)), pending; nothing is promoted.
+- **Pending prospective lines.** E21: E02c (`E02c.prospective_2026-11.v1`), the stricter
+  companion of E02 on I1's unit: per-county coverage gate-3, clustered by well, and a level
+  rule the forecast passes only if it beats both climatology and climatology plus trend. E22:
+  the level forecast at the never-calibrated external wells, scored after E02c
+  (`N3F.ext_level.prospective_2026-11.v1`, or `..._2026-12.v1` on the fallback
+  window; the lead replaces the id if it changes). Both are decided not before
+  2028-01-15.
+- **Build.** The page is rebuilt with the command recorded in
+  `results/twin/twin_app_20261029d.build.log`, with `--out` changed to
+  `results/twin/twin_app_20261029e.html`. The ledger names that file, and it is not promoted.

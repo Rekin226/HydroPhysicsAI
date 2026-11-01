@@ -127,6 +127,15 @@ RINGS_CSV = "results/twin/stage2_vep_mlcw.csv"
 # columns fitted with a longer creep ceiling (``--tau-max-years``), for the creep caveat
 TAU_ALT_GLOB = "results/twin_runs/*/coupled_leveling_tau*/vep_*.json"
 HSR_REACH_KM = 1.5          # half the 2 km smoothing plus half the 1 km distortion window
+# Registrations the page names only once they are in the registry (claims E21, E22 and the
+# U1.no_band.v1 narrowing; ruling 2026-10-29 third set). Only the index's ids are read.
+PREREG_INDEX = "results/dataprep/preregistration/INDEX.jsonl"
+PAGE_REGISTRATIONS = {
+    "e02c": ("E02c.prospective_2026-11.v1",),
+    # ruling (c): the external-well test may move to its pre-declared 2026-12 fallback window
+    "ext": ("N3F.ext_level.prospective_2026-11.v1", "N3F.ext_level.prospective_2026-12.v1"),
+    "no_band": ("U1.no_band.v1",),
+}
 # the fast estimate superposes a per-class response basis. When the basis misses a solved
 # run of the forward model by more than this share of its fan-mean response (before any
 # rescaling), it was built for another model and is not shipped: only the full-model
@@ -1411,6 +1420,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                        ("posthoc", _posthoc_block(posthoc_json, forward_npz, basis_npz))):
         if block is not None:
             modelcard[key] = block
+    modelcard["registrations"] = _registrations_block()
     if rheo_npz == "auto":
         rheo_npz = forward_npz if len(f.rheo_labels) > 1 else None
     rheology = _rheology_block(rheo_npz, rheo_column_csv, column, log)
@@ -1546,18 +1556,49 @@ def _coverage_block(path: str | None, forward_npz: str | None) -> dict | None:
             "prospective_validation": bool(report.get("prospective_validation", False))}
 
 
+def _registrations_block(index: str | None = None) -> dict[str, bool]:
+    """Which of :data:`PAGE_REGISTRATIONS` the pre-registration index (default
+    :data:`PREREG_INDEX`) lists. The page names a pending test as registered only when its id
+    is there; an absent index (CI, a checkout without the gitignored registry) names none.
+    Only the ``id`` of each index row is read."""
+    index = PREREG_INDEX if index is None else index
+    ids: set[str] = set()
+    if index and os.path.exists(index):
+        with open(index, encoding="utf-8") as handle:
+            ids = {json.loads(ln)["id"] for ln in handle if ln.strip()}
+    return {k: any(i in ids for i in v) for k, v in PAGE_REGISTRATIONS.items()}
+
+
 def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:
-    """twin.prospective's manifest, with the test window from protocol.json beside it."""
+    """twin.prospective's manifest, with the test window from protocol.json beside it.
+
+    ``interval_bound`` says whether the page may name the registered per-well 90 % head
+    interval (claims C14a, E02; ruling 2026-10-29 third set): only when the manifest names this
+    forward run and the predictions and protocol beside it hash to the manifest's values. A
+    file present with a different hash refuses the build; only file hashes are read here."""
     manifest = _read_report(path, forward_npz, "prospective manifest")
     if manifest is None:
         return None
     out = {"registered_on": manifest["registered_on"], "stations": int(manifest["stations"]),
-           "test_start": None, "test_end": None, "result": "pending"}
-    protocol = os.path.join(os.path.dirname(path), "protocol.json")
+           "test_start": None, "test_end": None, "result": "pending", "interval_bound": False}
+    here = os.path.dirname(path)
+    protocol = os.path.join(here, "protocol.json")
     if os.path.exists(protocol):
         with open(protocol) as handle:
             proto = json.load(handle)
         out["test_start"], out["test_end"] = proto.get("test_start"), proto.get("test_end")
+    bound = [forward_npz is not None and manifest.get("model_sha256") == sha256(forward_npz)]
+    for name, key in (("predictions.csv", "predictions_sha256"), ("protocol.json",
+                                                                  "protocol_sha256")):
+        f = os.path.join(here, name)
+        if not manifest.get(key) or not os.path.exists(f):
+            bound.append(False)
+        elif sha256(f) != manifest[key]:
+            raise ValueError(f"The prospective {name} does not match its registered manifest "
+                             "hash; refusing to name the registered interval")
+        else:
+            bound.append(True)
+    out["interval_bound"] = all(bound)
     return out
 
 
