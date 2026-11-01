@@ -30,6 +30,7 @@ PRESET_DOCS = {
                       "Never a yes/no or a verdict.",
     "solved_compare": "The page's full-model runs side by side at a reporting year.",
     "cheapest_for_head": "Lowest-energy page lever setting that reaches a head target at the registered wells.",
+    "how_sure": "How far the result is tested and when the registered tests are scored (no parameters).",
 }
 REFUSAL_DOCS = {
     "changhua_lever": "any question about Changhua levers or cuts",
@@ -113,7 +114,9 @@ class LLMRouter:
         rt = from_llm_json(d, self.b)
         if rt.refusal:
             rt.preset, rt.params = "refuse", {"reason": rt.refusal}
-        if rt.preset and rt.preset not in self.presets:
+        elif rt.clarify:
+            pass                                   # answered as a clarification (answer_route)
+        elif rt.preset and rt.preset not in self.presets:
             rt.preset, rt.params, rt.refusal = "refuse", {"reason": "disabled"}, "disabled"
         if prev and rt.inherit:
             for k in rt.inherit:

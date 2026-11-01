@@ -643,7 +643,53 @@ then `bundle` does its own private-aware checks and leaves release.py untouched.
 - Internet deployment.
 - Editing the ledger: the analyst consumes it; rulings stay with the lead.
 
-## 13. References
+## 13. Amendments made while building (2026-11-01)
+
+**Rulings.** The lead decided:
+- D2: never state W numbers; link only.
+- D3: township head not offered.
+- D4: MCP built, internal only.
+- D5: both `hydrophysics/` changes approved.
+- D6: cheapest built, flagged off.
+- D7: the authority deployment targets the Anthropic API under ZDR.
+- D8: wait for the lead's 20261101a build.
+- Eval arms: rules plus Opus 5.5 low.
+- D1 and D9: defaults kept.
+
+**Citations.** These are the claims governing what is *stated*: the values shown, a refusal's own
+sentence, and the evidence lines of `how_sure`. W claims are excluded. Caveat sentences that only
+mention claims (`mi_note`, `rank_limit`) add none.
+
+**Clarifications.** These carry `preset: "clarify"`, so the reproduction rule does not re-run them
+as a preset.
+
+**Missing parameters.** These take the page's own defaults (`S.start` = first start,
+`S.year` = horizon, `S.rank` = head), the same for the rules and the LLM. A rail, township or
+start-compare question with no cut is `clarify missing_cut`, never the baseline.
+
+**Validator.**
+- The verdict and withheld lexicons are checked in both languages whatever the answer language.
+- A refusal frame may name the withdrawn quantity it refuses.
+
+**`how_sure`.** It ports a stable subset of `evidenceItems`: the evidence line, `ev_decision`,
+`tW_r`, the registered prospective-test lines and the registry-flag lines.
+- `evc_pro_iv` is excluded: it is a band key the ledger keeps out of answers.
+- Ring, pile, hybrid and coverage lines stay in the page's drawer.
+- Parity checks that every `how_sure` sentence appears in the page's evidence line, drawer or tiles.
+
+**D5.** The patches were prepared and tested in a scratch copy of the working tree, not applied:
+a twin forward job was running. They are in `docs/analyst/d5/`, with `apply_d5.sh`, which refuses
+while a twin job runs. The analyst already emits `sel`/`tab`/`mi`, which older pages ignore.
+
+**Deployment config.** It is a JSON file (`docs/analyst/analyst_config.example.json`), not TOML,
+so Python 3.10 needs no extra parser. Users map to the sha256 of their token. Audit retention is
+applied at server start.
+
+**Rules router.** It was tuned on `eval_questions_v1.jsonl`, so its numbers on that set are
+optimistic. The independent held-out set `eval_questions_heldout_v1.jsonl` was written without
+seeing v1 or the code. The eval report gives both (`docs/analyst/EVAL_2026-11-01.md`).
+
+## 14. References
 
 - Page: `hydrophysics/twin/viewer_app.py`, `hydrophysics/twin/app/template.html`, `hydrophysics/twin/app/prep.py`.
 - Specs: `docs/superpowers/specs/2026-09-23-twin-decision-app-redesign.md`, `2026-10-11-twin-app-minimal-redesign.md`.

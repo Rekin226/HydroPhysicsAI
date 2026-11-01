@@ -26,7 +26,7 @@ CLASS_WORDS = {
     "other": [r"other\s+(?:use|pumping|class)\w*", "其他"],
 }
 ALL_WORDS = [r"all\s+(?:pumping|classes|uses|water)", r"every\s+class", r"across\s+the\s+board",
-             "全部", "所有", "全面"]
+             "全部類別", "所有類別", "全部用水", "所有用水", "各類別", "全部抽水"]   # 全面停抽 = stop one class completely
 RETIRE = [r"retir\w*", r"\bstop\w*", r"\bban\w*", r"\bend\b", r"eliminat\w*", r"phase\s*out",
           "停止", "全面停", "禁止", "完全停"]
 HALF = [r"\bhalv\w*", r"\bhalf\b", "減半", "一半"]
@@ -44,19 +44,29 @@ MONEY = [r"\bmoney\b", r"\bnt\$", r"\$", r"dollars?", r"\bbudget\b", r"\bprice\b
 RECOMMEND = [r"recommend\w*", r"should\s+(?:we|i|the)", r"which\s+(?:policy|option)\s+(?:is\s+)?best",
              r"best\s+(?:policy|option|choice)", r"what\s+should", "建議", "應該", "最好的政策", "最佳方案",
              "該選"]
-OBS = [r"benchmark\w*", r"\bstation\s+\w*\d", r"which\s+well", r"specific\s+well", r"well\s+(?:no|#)",
-       "水準點", "單一觀測井", "哪一口井", "測站"]
+OBS = [r"benchmark\w*", r"\bstations?\b", r"\bgnss\b", r"\bgps\b", r"\breadings?\b", r"which\s+well",
+       r"specific\s+well", r"well\s+(?:no|#)", r"individual\s+wells?",
+       "水準點", "單一觀測井", "哪一口井", "測站", "觀測站", "監測站", "讀數"]
 RAIL = [r"\bhsr\b", r"high[-\s]speed\s+rail\w*", r"\bthsr\b", r"\brail\w*", r"\btrain\w*", "高鐵", "鐵路"]
 RANK = [r"\brank\w*", r"which\s+(?:class|lever|use|sector)", r"most\s+effective", r"biggest\s+(?:head\s+)?(?:rise|effect)",
         r"per\s+gwh", r"compare\s+(?:the\s+)?classes", "排序", "哪個類別", "哪一類", "效益最高", "最有效"]
-PER_GWH = [r"per\s+gwh", r"per\s+(?:unit\s+of\s+)?energy", r"efficien\w*", r"\bcheap\w*\s+class",
-           "每度電", "每單位", "用電效益", "最省電的類別"]
+PER_GWH = [r"per\s+gwh", r"每\s*gwh", r"per\s+(?:unit\s+of\s+)?energy", r"efficien\w*", r"\bcheap\w*\s+class",
+           "每度電", "每單位", "用電效益", "最省電的類別", "效率"]
 STARTCMP = [r"\bwait\w*", r"\bdelay\w*", r"\blater\b", r"\bor\s+(?:in\s+)?20\d\d", r"(?:20\d\d)\s+(?:vs\.?|versus)\s+(?:20\d\d)",
             r"start\s+(?:now|early|late)", "延後", "晚一點", "等到", "還是", "比較早", "提早"]
-SOLVED = [r"full[-\s]model\s+runs?", r"two\s+(?:full\s+)?runs", r"compare\s+(?:the\s+)?(?:two|both)\s+(?:policies|scenarios|runs)",
+SOLVED = [r"full[-\s]model", "完整模型", r"two\s+(?:full\s+)?runs", r"compare\s+(?:the\s+)?(?:two|both)\s+(?:policies|scenarios|runs)",
           r"solved", "完整模擬", "兩個方案", "兩個情境", "比較兩"]
 CHEAP = [r"cheapest", r"least\s+energy", r"lowest\s+energy", r"minimum\s+(?:cut|energy)", "最省電", "最少用電", "最低用電"]
-FROM = r"(?:from|starting(?:\s+in)?|start(?:s|ing)?\s+(?:in\s+)?|beginning(?:\s+in)?|begin(?:s|ning)?\s+(?:in\s+)?|as\s+of)\s*"
+FROM = (r"(?:from|starting(?:\s+in)?|start(?:s|ed|ing)?\s+(?:in\s+)?|beg(?:an|un|inning|ins?)\s+(?:in\s+)?|"
+        r"as\s+of|launched\s+in|implemented\s+in)\s*")
+HOWSURE = [r"how\s+(?:sure|confident|reliable|trustworthy|certain)", r"can\s+(?:we|i)\s+trust", r"\bvalidat\w*",
+           r"how\s+(?:well\s+)?tested", r"when\s+(?:is|will)\s+(?:it|this)\s+(?:be\s+)?(?:tested|scored)", r"\buncertain\w*",
+           "可信", "可靠", "多準", "信心", "驗證", "檢驗", "不確定"]
+VAGUE_TIME = [r"a\s+few\s+years", r"some\s+years", r"in\s+the\s+future", r"eventually", r"down\s+the\s+road",
+              "幾年後", "未來幾年", "以後", "將來"]
+ADD = [r"\balso\b", r"\bplus\b", r"\bon\s+top\b", r"\badd(?:ing)?\b", r"as\s+well", r"\btoo\b",
+       "再加上", "加上", "另外", "同時", "也"]
+DELAY_TO = r"(?:延後|等|delay\w*|wait\w*|postpon\w*|push\w*\s+back)[^，,。.;；]{0,6}?(?:到|until|to|till)?\s*"
 FOLLOW = [r"^\s*(?:and\s+|what\s+about\s+|how\s+about\s+)?(?:the\s+)?same\b", r"\binstead\b",
           r"^\s*(?:and|what about|how about)\b", "改成", "換成", "那", "同樣", "如果改", "呢"]
 
@@ -193,6 +203,14 @@ class RulesRouter:
     def __init__(self, b: PageBundle):
         self.b = b
 
+    def _both_starts(self, s: str) -> bool:
+        """Both page starts named, or one start against 'now' (立即 / 現在 / immediately)."""
+        c = Q.ctx(self.b)
+        named = {int(y) for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", s)} & set(c.starts)
+        now = _has([r"\bnow\b", r"immediately", r"right\s+away", r"\btoday\b", "現在", "立即", "馬上", "早做"], s)
+        cmp_ = _has([r"\bvs\.?\b", r"versus", r"compar\w*", r"\bor\b", r"\band\b", "比較", "跟", "和", "還是", "差"], s)
+        return cmp_ and (len(named) >= 2 or (len(named) == 1 and now))
+
     def route(self, question: str, prev: dict | None = None) -> Route:
         b = self.b
         c = Q.ctx(b)
@@ -203,9 +221,13 @@ class RulesRouter:
             return Route(preset="refuse", params={"reason": ref}, refusal=ref, lang=lang, confidence=1.0)
         cuts = parse_cuts(b, s)
         start, year = parse_years(b, s)
+        if start == -1:                       # an explicit start year the page does not have
+            return Route(lang=lang, confidence=1.0, clarify={"reason": "out_of_grid", "candidates": c.starts})
         town = _town_of(b, s)
         follow = prev is not None and (_has(FOLLOW, s) or (len(s) < 30 and not _has(RAIL + RANK + SOLVED, s)))
         # intent
+        if _has(HOWSURE, s) and not cuts and not _has(RAIL + RANK, s):
+            return Route(preset="how_sure", params={}, lang=lang, confidence=1.0)
         if _has(RAIL, s):
             preset = "rail_internals"
         elif _has(CHEAP, s) and _target_m(s) is not None:
@@ -215,7 +237,7 @@ class RulesRouter:
         elif _has(SOLVED, s) or (_has([r"compar\w*", "比較"], s)
                                   and any(x["name"].lower() in s.lower() for x in c.solved)):
             preset = "solved_compare"
-        elif _has(STARTCMP, s) and (cuts or follow) and not town:
+        elif ((_has(STARTCMP, s) or self._both_starts(s)) and (cuts or follow) and not town):
             preset = "start_compare"
         elif town is not None or _has(TOWN_INTENT, s):
             preset = "township_internals"
@@ -233,7 +255,10 @@ class RulesRouter:
                 and not re.search(r"(?:by|in|until|到|至)\s*" + str(year), s, re.I):
             start, year = year, None
         if preset in ("policy_head", "start_compare", "township_internals", "rail_internals"):
-            if cuts:
+            if cuts and follow and _has(ADD, s) and prevp.get("cuts"):
+                merged = {x["class"]: x["pct"] for x in prevp["cuts"]} | {x["class"]: x["pct"] for x in cuts}
+                params["cuts"] = [{"class": k, "pct": v} for k, v in merged.items()]
+            elif cuts:
                 params["cuts"] = cuts
             elif "cuts" in prevp:
                 params["cuts"], _ = prevp["cuts"], inherit.append("cuts")
@@ -244,9 +269,13 @@ class RulesRouter:
                 params["start"], _ = prevp["start"], inherit.append("start")
             else:
                 params["start"] = c.starts[0]
-        if preset == "start_compare" and year in c.starts and not re.search(
-                r"(?:by|in\s+dec\w*|到|至)\s*" + str(year), s, re.I):
+        if preset == "start_compare" and year in c.starts and (
+                re.search(DELAY_TO + str(year), s, re.I) or self._both_starts(s)
+                or not re.search(r"(?:by|in\s+dec\w*|到|至)\s*" + str(year), s, re.I)):
             year = None                       # "waiting until 2030": a start, not a reporting year
+        if preset == "start_compare" and year is None and self._both_starts(s):
+            ys = [int(y) for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", s) if int(y) not in c.starts]
+            year = ys[-1] if ys else None
         if preset != "refuse":
             if year:
                 params["year"] = year
@@ -271,7 +300,7 @@ class RulesRouter:
         if preset in ("policy_head", "start_compare", "township_internals", "rail_internals") and (
                 not params.get("cuts") or any(x["pct"] is None for x in params["cuts"])):
             conf = 0.4
-        if start == -1:
+        if start == -1 or (_has(VAGUE_TIME, s) and not year):
             conf = min(conf, 0.5)
         # a follow-up from which nothing new could be read ("...at the later date instead") is
         # not a confident patch: hand it to the LLM rather than repeat the previous answer

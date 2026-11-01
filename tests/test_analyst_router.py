@@ -162,3 +162,18 @@ def test_route_schema_is_enum_only(b):
         if inner.get("type") == "string":
             assert "enum" in inner, k
     assert json.dumps(sch).count('"oneOf"') == 0
+
+
+def test_llm_refusals_and_clarifications_are_not_overwritten(b):
+    for out, want in ((_out(refusal="out_of_domain"), ("refuse", "out_of_domain")),
+                      (_out(preset="township_internals", clarify="missing_cut"), (None, "missing_cut"))):
+        r, _ = route(b, "some unclear words here", llm=_llm(b, [out]))
+        if want[0] == "refuse":
+            assert r.preset == "refuse" and r.refusal == want[1]
+        else:
+            assert r.clarify["reason"] == want[1] and r.refusal is None
+
+
+def test_a_start_year_off_the_page_is_out_of_grid(b):
+    r = RulesRouter(b).route("從2027年開始畜牧業減少一半，水位會怎樣？")
+    assert r.clarify["reason"] == "out_of_grid" and r.confidence == 1.0

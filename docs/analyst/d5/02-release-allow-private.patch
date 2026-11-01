@@ -1,0 +1,38 @@
+--- a/hydrophysics/twin/release.py
++++ b/hydrophysics/twin/release.py
+@@ -63,8 +63,13 @@
+     return json.loads(match.group(1))
+ 
+ 
+-def check_payload(payload: dict) -> list[str]:
+-    """Hard release checks, separate from observational scientific validation."""
++def check_payload(payload: dict, *, allow_private: bool = False) -> list[str]:
++    """Hard release checks, separate from observational scientific validation.
++
++    ``allow_private`` is for the analyst's private deployment bundle only
++    (``hydrophysics_analyst.bundle``): a ``--private`` page with individual observations is
++    accepted there and must record ``public: false``. The public ``publish`` path never passes
++    it, so a private page can never become a public release."""
+     import numpy as np
+ 
+     from .app.prep import unpack
+@@ -75,10 +80,15 @@
+         errors.append("Missing versioned forward-input provenance")
+     if release.get("status") != "research-scenario":
+         errors.append("This publisher supports research scenarios only")
+-    if not release.get("public") or not payload["modelcard"].get("public"):
+-        errors.append("Individual observations cannot enter a public release")
+-    if payload.get("wells") is not None or payload.get("leveling") is not None:
+-        errors.append("Public payload contains individual observations")
++    if allow_private:
++        if release.get("public") or payload["modelcard"].get("public"):
++            if payload.get("wells") is not None or payload.get("leveling") is not None:
++                errors.append("A payload with individual observations must record public: false")
++    else:
++        if not release.get("public") or not payload["modelcard"].get("public"):
++            errors.append("Individual observations cannot enter a public release")
++        if payload.get("wells") is not None or payload.get("leveling") is not None:
++            errors.append("Public payload contains individual observations")
+     if not release.get("offline"):
+         errors.append("Release must include its renderer or explicitly omit 3D")
+     if meta.get("yTested", meta["yObs"]) > meta["yObs"]:

@@ -462,16 +462,24 @@ def boff_words(b: PageBundle, lang: str) -> str:
 
 
 def deep_link(b: PageBundle, p: Policy, year: int, *, layer: str = "dhead", lang: str = "en",
-              pins: tuple = (), nonce: int | None = None) -> str:
+              pins: tuple = (), nonce: int | None = None, sel: int | None = None,
+              tab: str | None = None, mi: bool = False) -> str:
     """The page's ``hashWrite`` (template.html:636): ``#p=..&s=..&y=..&l=..&lang=..``."""
     q = [("p", ",".join(J.js_num_str(float(J.to_fixed(v, 2))) for v in p.f)),
          ("s", str(p.start)), ("y", str(year)), ("l", layer), ("lang", lang)]
     if pins:
         q.append(("pins", "|".join(f"{nm}~{','.join(J.js_num_str(v) for v in f)}~{st}"
                                    for nm, f, st in pins)))
+    # view keys (spec D5): pages without them ignore unknown keys, so links degrade gracefully
+    if sel is not None:
+        q.append(("sel", f"t:{int(sel)}"))
+    if tab and tab != "towns":
+        q.append(("tab", tab))
+    if mi:
+        q.append(("mi", "1"))
     if nonce is not None:
         q.append(("n", str(nonce)))
-    return "#" + urlencode(q, safe=",~|")
+    return "#" + urlencode(q, safe=",~|:")
 
 
 def hash_read(b: PageBundle, h: str) -> dict:
@@ -489,6 +497,9 @@ def hash_read(b: PageBundle, h: str) -> dict:
     if q.get("y") and int(q["y"]) in c.years:
         out["year"] = int(q["y"])
     out["lang"] = "zh" if q.get("lang") == "zh" else "en"
+    for k in ("sel", "tab", "mi"):
+        if q.get(k):
+            out[k] = q[k]
     return out
 
 
@@ -785,3 +796,82 @@ def cheapest_for_head(b: PageBundle, target_m: float, year: int, start: int,
     return QueryResult(kind="cheapest", values=hl.values, snippets=hl.snippets, src=hl.src,
                        policy=best[0], year=year, deep_link=hl.deep_link, page_sha256=hl.page_sha256,
                        ledger_sha256=hl.ledger_sha256)
+
+
+# ---------------------------------------------------------------------------------------
+# evidence (how_sure, phase 5): a stable subset of the trust drawer's evidence list
+# ---------------------------------------------------------------------------------------
+MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+BESTK = {"clim": "best_clim", "clim_trend": "best_clim_trend", "persist": "best_persist"}
+
+
+def month_year(iso: str | None, lang: str) -> str:
+    """The page's ``monthYear``."""
+    if not iso:
+        return ""
+    y, m = str(iso).split("-")[:2]
+    return f"{y}年{int(m)}月" if lang == "zh" else f"{MON[int(m) - 1]} {y}"
+
+
+def nc_span(nc: dict) -> str:
+    """The page's ``ncSpan``: "2025–26" from forecast origin and exclusive end."""
+    a = str(nc.get("forecast_origin") or "").split("-")
+    b2 = str(nc.get("end_exclusive") or "").split("-")
+    y0 = (int(a[0]) + 1 if int(a[1]) == 12 else int(a[0])) if len(a) > 1 else None
+    y1 = (int(b2[0]) - 1 if int(b2[1]) == 1 else int(b2[0])) if len(b2) > 1 else None
+    return f"{y0}–{str(y1)[2:]}" if y0 and y1 else ""
+
+
+def _best_name(c: Ctx, lang: str, k) -> str:
+    return c.tr(lang, BESTK[k]) if k in BESTK else (k or "–")
+
+
+def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
+    """``evLineText``, ``ev_decision`` and the registered-test lines of ``evidenceItems`` whose
+    inputs are registry flags and dates (template.html ~1653, ~2634). Lines the bound page's
+    dictionary leaves empty (an older template) are skipped."""
+    c = ctx(b)
+    mc, sn = c.mc, []
+
+    def add(key, v=None):
+        t = c.tr(lang, key, v)
+        if t and t != key:
+            sn.append(Snippet(key, lang, t))
+    nc, tp = mc.get("new_data_challenge"), mc.get("temporal")
+    if nc:
+        add("ev_nc_pass" if nc.get("beats_best_baseline") else "ev_nc_fail",
+            {"r": J.f2(nc["metrics"]["model_datum"]["rmse_m"]),
+             "c": J.f2(nc["metrics"][nc["best_baseline"]]["rmse_m"]),
+             "b": _best_name(c, lang, nc["best_baseline"]), "span": nc_span(nc)})
+    elif tp and not tp.get("passed"):
+        add("ev_tp_fail", {"y": c.years[c.YO]})
+    else:
+        add("ev_tp_pass", {"y": c.years[c.YO]})
+    add("ev_decision")
+    add("tW_r")
+    rg = mc.get("registrations") or {}
+    q = mc.get("prospective")
+    if q:
+        qa = month_year(str(q["test_start"])[:7], lang) if q.get("test_start") else ""
+        qb = month_year(str(q["test_end"])[:7], lang) if q.get("test_end") else ""
+        if q.get("test_start") and q.get("test_end"):
+            add("evc_pro", {"reg": q["registered_on"], "a": qa, "b": qb, "n": q["stations"]})
+        else:
+            add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
+        # evc_pro_iv (the per-well interval line) is a band key the ledger keeps out of answers
+        # (page_scoping.answer_must_not_use_band_keys); it stays in the page's drawer only
+        for flag, key in (("e02c", "evc_pro_e02c"), ("ext", "evc_pro_ext"), ("fv", "evc_pro_fv")):
+            if rg.get(flag):
+                add(key)
+    if rg.get("no_band"):
+        add("evc_band_none")
+    n3c = rg.get("n3_conv12") or rg.get("n3_conv24")
+    conv = c.tr(lang, "decomp_conv_un" if not rg.get("n3") else "decomp_conv_n3" if n3c else "decomp_conv_g0")
+    if conv and not conv.startswith("decomp_"):
+        add("evc_subs_decomp", {"conv": conv})
+    if rg.get("n3"):
+        add("evc_pile_n3", {"conv": c.tr(lang, "pile_conv_12" if rg.get("n3_conv12") else
+                                          "pile_conv_24" if rg.get("n3_conv24") else "pile_conv_ro")})
+    if rg.get("n3sl"):
+        add("evc_n3sl")
+    return _result(b, "evidence", [], sn, "base", None, None, lang)

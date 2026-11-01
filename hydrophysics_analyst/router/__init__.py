@@ -13,7 +13,7 @@ from .rules import RulesRouter, detect_lang, hard_refusal
 from .schemas import Route
 
 V1_ROUTED = ("policy_head", "start_compare", "lever_rank", "township_internals", "rail_internals",
-             "solved_compare")
+             "solved_compare", "how_sure")
 
 
 def routed_presets() -> tuple[str, ...]:

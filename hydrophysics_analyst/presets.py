@@ -106,12 +106,19 @@ def resolve_town(b: PageBundle, town) -> int:
     raise ParamError("ambiguous_town", [c.towns[i]["en"] for i in hits] or [t["en"] for t in c.towns])
 
 
+NEEDS = {"policy_head": ("start", "year"), "start_compare": ("year",), "lever_rank": ("year", "by"),
+         "township_internals": ("start", "year"), "rail_internals": ("start", "year"),
+         "solved_compare": ("year",), "cheapest_for_head": ("start", "year"), "how_sure": ()}
+
+
 def _check(b: PageBundle, preset: str, p: dict) -> dict:
     c = Q.ctx(b)
-    p = dict(p)
+    p = {k: v for k, v in dict(p).items() if v is not None}
+    # the page's own defaults (S.start = first start, S.year = horizon, S.rank = "head")
+    defaults = {"start": c.starts[0], "year": c.years[-1], "by": "head"}
+    for k in NEEDS.get(preset, ()):
+        p.setdefault(k, defaults[k])
     if "year" in p:
-        if p["year"] is None:
-            raise ParamError("missing_year")
         if int(p["year"]) > c.years[-1]:
             raise ParamError("beyond_horizon")
         if int(p["year"]) not in c.years:
@@ -121,7 +128,12 @@ def _check(b: PageBundle, preset: str, p: dict) -> dict:
         if int(p["start"]) not in c.starts:
             raise ParamError("out_of_grid", c.starts)
         p["start"] = int(p["start"])
+    if preset in ("township_internals", "rail_internals", "start_compare") and not p.get("cuts"):
+        raise ParamError("missing_cut")                   # never fall through to the baseline
     if "cuts" in p:
+        raw = p["cuts"] if isinstance(p["cuts"], list) else [{"class": k, "pct": v} for k, v in p["cuts"].items()]
+        if any(x.get("pct") is None for x in raw):
+            raise ParamError("missing_cut")               # a class named without a size
         d = cuts_dict(p["cuts"], b)
         if not any(d.values()) and preset in ("township_internals", "rail_internals", "start_compare"):
             raise ParamError("missing_cut")            # policy_head without cuts = the baseline
@@ -143,7 +155,7 @@ def _policy(b: PageBundle, p: dict, start: int | None = None) -> Q.Policy:
 
 def _head_spans(res: Q.QueryResult) -> list[Span]:
     out = spans_from(res, keys=("hl_",))
-    out += spans_from(res, keys=("tW_r",))
+    out += spans_from(res, keys=("tW_r",), block="meta")
     out += spans_from(res, keys=("prov_",), block="meta")
     return out
 
@@ -227,7 +239,7 @@ def lever_rank(b, p, lang):
               for v in res.values]
     spans += spans_from(res, keys=("rank_limit",), block="internals")
     spans.append(Span("snippet", c.tr(lang, "ev_decision"), key="ev_decision", block="internals"))
-    link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), p["year"], lang=lang)
+    link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), p["year"], lang=lang, tab="rank")
     return _answer(b, "lever_rank", p, lang, spans, [res], link, table=res.table)
 
 
@@ -239,7 +251,8 @@ def township_internals(b, p, lang):
     if not res.values:
         return refuse(b, {"reason": "no_run"}, lang)
     spans = spans_from(res, keys=("mi_note", "town_name", "tw_"), block="internals")
-    return _answer(b, "township_internals", p, lang, spans, [res], res.deep_link)
+    link = Q.deep_link(b, pol, p["year"], lang=lang, sel=p["town"], tab="towns", mi=True)
+    return _answer(b, "township_internals", p, lang, spans, [res], link)
 
 
 def rail_internals(b, p, lang):
@@ -249,7 +262,8 @@ def rail_internals(b, p, lang):
     rail = BD.bind(Q.rail(b, pol, p["year"], lang), b)
     spans.append(Span("frame", S(lang, "frame_rail_verdict"), key="frame_rail_verdict", block="internals"))
     spans += spans_from(rail, keys=("rail_note", "no_rail"), block="internals")
-    return _answer(b, "rail_internals", p, lang, spans, [head, rail], head.deep_link)
+    link = Q.deep_link(b, pol, p["year"], lang=lang, tab="hsr")
+    return _answer(b, "rail_internals", p, lang, spans, [head, rail], link)
 
 
 def solved_compare(b, p, lang):
@@ -278,6 +292,29 @@ def cheapest_for_head(b, p, lang):
     return _answer(b, "cheapest_for_head", q, lang, spans, [res], res.deep_link)
 
 
+def how_sure(b, p, lang):
+    """How far the result is tested: the page's evidence line and registered-test lines. W
+    claims these lines merely mention are not cited (a W claim is never listed beside an answer)."""
+    import dataclasses as dc
+    import datetime as dt
+
+    from hydrophysics.twin import claims as C
+    c = Q.ctx(b)
+    res = BD.bind(Q.evidence(b, lang), b)
+    st = {x["id"]: x["status_current"] for x in b.ledger["claims"]}
+    spans = []
+    for s in spans_from(res, block="evidence"):
+        keep = tuple(x for x in s.claims if "W" not in C.codes(st.get(x, "")))
+        spans.append(dc.replace(s, claims=keep))
+    today = dt.date.fromisoformat(os.environ.get("ANALYST_TODAY", dt.date.today().isoformat()))
+    due = [cid for cid, sc in BD.scoring().items()
+           if "D" in C.codes(st.get(cid, "")) and today >= dt.date.fromisoformat(sc["not_before"])]
+    if due:
+        spans.append(Span("frame", S(lang, "frame_scoring_due"), key="frame_scoring_due", block="meta"))
+    link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1], lang=lang, tab="trust")
+    return _answer(b, "how_sure", p, lang, spans, [res], link)
+
+
 REFUSE_PAGE = {   # the page's own sentence shown with a refusal, and the claims it cites
     "changhua_lever": ("ledger:changhua_label", ("C13a", "E20")),
     "subsidence_size": ("more_metrics", ("C03",)),
@@ -302,7 +339,8 @@ def refuse(b, p, lang):
     elif key:
         spans.append(Span("snippet", c.tr(lang, key), key=key, claims=cl, block="refusal"))
     layer = "dsubs" if reason in ("subsidence_size", "area") else "dhead"
-    link = (Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1], layer=layer, lang=lang)
+    link = (Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1], layer=layer, lang=lang,
+                        mi=reason in ("subsidence_size", "area"))
             if reason in ("subsidence_size", "area", "recommendation", "beyond_horizon") else "")
     return _answer(b, "refuse", p, lang, spans, [], link, refusal=reason)
 
@@ -326,7 +364,8 @@ class Preset:
 PRESETS: dict[str, Preset] = {n: Preset(n, f) for n, f in (
     ("policy_head", policy_head), ("start_compare", start_compare), ("lever_rank", lever_rank),
     ("township_internals", township_internals), ("rail_internals", rail_internals),
-    ("solved_compare", solved_compare), ("cheapest_for_head", cheapest_for_head), ("refuse", refuse))}
+    ("solved_compare", solved_compare), ("cheapest_for_head", cheapest_for_head), ("how_sure", how_sure),
+    ("refuse", refuse))}
 
 
 def run(b: PageBundle, preset: str, params: dict, lang: str = "en") -> Answer:

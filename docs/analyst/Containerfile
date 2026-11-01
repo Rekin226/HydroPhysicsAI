@@ -1,0 +1,17 @@
+# Twin analyst service (web shell). Build from the repo root:
+#   podman build -f docs/analyst/Containerfile -t twin-analyst .
+# Run with a published bundle root mounted read-only and the config outside the image:
+#   podman run --rm -p 127.0.0.1:8765:8765 -v /srv/twin/bundles:/bundles:ro \
+#     -v /srv/twin/config.json:/config.json:ro -v /srv/twin/audit:/srv/twin/audit \
+#     -e ANTHROPIC_API_KEY twin-analyst
+# No torch, no GPU: the analyst needs numpy, pandas and (for the LLM router) anthropic.
+FROM python:3.11-slim
+WORKDIR /app
+COPY pyproject.toml README.md LICENSE ./
+COPY hydrophysics ./hydrophysics
+COPY hydrophysics_analyst ./hydrophysics_analyst
+RUN pip install --no-cache-dir ".[analyst]" && useradd -r -u 10001 analyst
+USER analyst
+EXPOSE 8765
+CMD ["python", "-m", "hydrophysics_analyst", "serve", "--bundles", "/bundles", "--config", "/config.json", \
+     "--host", "0.0.0.0", "--allow-remote", "--behind-proxy"]

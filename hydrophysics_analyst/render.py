@@ -97,7 +97,7 @@ def citations_of(spans) -> tuple[str, ...]:
     """The claims that govern what is stated: the numbers shown (value spans) and, for a
     refusal, the claims it refuses on. Caveat sentences that merely mention other claims
     (``mi_note``, ``rank_limit``) add no citation, so a W claim is never listed beside an answer."""
-    return tuple(dict.fromkeys(c for s in spans if s.kind == "value" or s.block == "refusal"
+    return tuple(dict.fromkeys(c for s in spans if s.kind == "value" or s.block in ("refusal", "evidence")
                                for c in s.claims))
 
 
@@ -140,6 +140,8 @@ def cuts_dict(cuts, b: PageBundle | None = None) -> dict[int, int]:
     out: dict[int, int] = {}
     items = cuts.items() if isinstance(cuts, dict) else [(x["class"], x["pct"]) for x in cuts]
     for k, pct in items:
+        if pct is None:
+            continue
         idx = k if isinstance(k, int) else keys.index(k)
         out[int(idx)] = int(pct)
     return out

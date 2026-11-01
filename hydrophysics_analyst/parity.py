@@ -48,6 +48,8 @@ _DOM = """() => {
   const sn = document.getElementById("startNote");
   return {headline: q("#headline"), tW: q("#tW .vn"), tC: q("#tC .vn"),
           startNote: sn && !sn.hidden ? sn.textContent : ""}; }"""
+_EVIDENCE = """() => { renderCard(); const q = id => (document.getElementById(id) || {}).textContent || "";
+  return [q("evLine"), q("cardBody"), q("tiles")].join("\\n"); }"""
 _RANK = """(by) => { S.rank = by; setTab("rank"); renderRank();
   return document.getElementById("rankTbl").textContent; }"""
 
@@ -156,6 +158,20 @@ def run_parity(page_html: Path, b: PageBundle | None = None, *, n_random: int = 
                 nonce += 1
                 page.evaluate(_SET_HASH, Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]),
                                                      c.years[-1], lang=lang, nonce=nonce))
+                # how_sure: every sentence must be in the page's evidence line, drawer list or the
+                # answer tiles (tW_r shows only under a policy, so set the first full-model run)
+                if c.solved:
+                    nonce += 1
+                    x = c.solved[0]
+                    page.evaluate(_SET_HASH, Q.deep_link(b, Q.Policy(tuple(float(v) for v in x["factors"]),
+                                                                     int(x["start"])), c.years[-1],
+                                                         lang=lang, nonce=nonce))
+                page_ev = page.evaluate(_EVIDENCE)
+                for sn in Q.evidence(b, lang).snippets:
+                    rep.n_cases += 1
+                    if J.strip_tags(sn.text) not in page_ev:
+                        rep.mismatches.append({"what": "evidence", "key": sn.key, "lang": lang,
+                                               "py": J.strip_tags(sn.text)[:200]})
                 for year in (c.years[-1], c.years[-3]):
                     page.evaluate(f"() => setYear({c.yidx(year)})")
                     for by in ("head", "gwh"):

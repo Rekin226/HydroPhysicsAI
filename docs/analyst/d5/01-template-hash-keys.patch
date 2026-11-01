@@ -1,0 +1,46 @@
+--- a/hydrophysics/twin/app/template.html
++++ b/hydrophysics/twin/app/template.html
+@@ -638,6 +638,10 @@
+   h.set("p", S.f.map(v => +v.toFixed(2)).join(","));
+   h.set("s", M.starts[S.start]); h.set("y", M.years[S.year]); h.set("l", S.layer); h.set("lang", LANG);
+   if (S.pins.length) h.set("pins", S.pins.map(p => encodeURIComponent(p.name) + "~" + p.f.join(",") + "~" + p.start).join("|"));
++  // view state for deep links (the analyst shell): selected township, open tab, Model internals open
++  if (S.sel && S.sel.k === "town") h.set("sel", "t:" + S.sel.t);
++  if (S.tab && S.tab !== "towns") h.set("tab", S.tab);
++  if (S.more) h.set("mi", "1");
+   try { history.replaceState(null, "", "#" + h.toString()); } catch (e) {}
+ }
+ function hashRead() {
+@@ -650,8 +654,14 @@
+   if (h.get("lang")) LANG = h.get("lang") === "zh" ? "zh" : "en";
+   if (h.get("pins")) S.pins = h.get("pins").split("|").slice(0, 4).map(s => { const [n, f, st] = s.split("~");
+     return {name: decodeURIComponent(n), f: f.split(",").map(Number), start: +st}; }).filter(p => p.f.length === K);
++  const sm = /^t:(\d+)$/.exec(h.get("sel") || "");
++  if (sm && +sm[1] < D.towns.length) S.sel = {k: "town", t: +sm[1]};
++  if (h.get("tab") && Object.values({tTowns: "towns", tHsr: "hsr", tSec: "sec", tCmp: "cmp", tTrust: "trust", tRank: "rank"}).includes(h.get("tab"))) S.tab = h.get("tab");
++  if (h.get("mi") === "1") S.more = true;
+   return policy;
+ }
++// apply the view keys of the hash (tab, Model internals, township) after the DOM exists
++function hashApplyView() { setTab(S.tab); $("tilesMore").hidden = !S.more; tileLabels(); if (S.sel && S.sel.k === "town") select(S.sel); }
+ function storeSave() { try { localStorage.setItem("twinPins", JSON.stringify(S.pins)); } catch (e) {} }
+ function storeLoad() { try { const v = JSON.parse(localStorage.getItem("twinPins") || "null"); if (Array.isArray(v) && !S.pins.length) S.pins = v.slice(0, 4); } catch (e) {} }
+ 
+@@ -3238,7 +3248,7 @@
+     if (e.key === "Escape") { if (popOpen) { closePop(); e.preventDefault(); return; } if (S.drawing && !document.querySelector("dialog[open]")) { endDrawing(true); e.preventDefault(); return; } }
+     if (e.key === "?" && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && !document.querySelector("dialog[open]")) { $("kbDlg").showModal(); e.preventDefault(); } });
+   // a share link pasted into an already open page: history.replaceState never fires this, a new link does
+-  addEventListener("hashchange", () => { const pol = hashRead(); syncLevers(); refreshAB(); setLang(LANG); $("layerSel").value = S.layer; setYear(S.year); update(false); });
++  addEventListener("hashchange", () => { const pol = hashRead(); syncLevers(); refreshAB(); setLang(LANG); $("layerSel").value = S.layer; setYear(S.year); hashApplyView(); update(false); });
+   let rt = null; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { buildMapDom(); INV.all = true; schedule(); }, 150); });
+ }
+ 
+@@ -3259,7 +3269,7 @@
+   P = newPolicy(); policyInto(P, S.f, S.start); P.ver = 1; KP = kpis(P, S.year);
+   $("loading").hidden = true; $("app").hidden = false;
+   buildTiles(); buildLevers(); wire(); buildMapDom(); loadImages();
+-  setLang(LANG); $("layerSel").value = S.layer; setTab("towns");
++  setLang(LANG); $("layerSel").value = S.layer; hashApplyView();
+   $("year").max = Y - 1; $("year").value = S.year; $("thrSel").value = String(S.thr); $("hsrThr").value = String(S.hsrThr);
+   $("themeBtn").setAttribute("aria-pressed", S.theme === "dark");
+   clearTimeout(rafId); cancelAnimationFrame(rafId); rafId = 0; INV.all = true; flush();

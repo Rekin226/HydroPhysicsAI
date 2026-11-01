@@ -65,6 +65,7 @@ PRESET_PARAMS = {
     "rail_internals": ("cuts", "start", "year"),
     "solved_compare": ("year",),
     "cheapest_for_head": ("target_m", "start", "year"),
+    "how_sure": (),
 }
 
 
