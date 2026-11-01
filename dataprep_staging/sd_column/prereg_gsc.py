@@ -3,7 +3,9 @@ one GNSS seasonal hold-out of the page column's elastic response, design-time (w
 flagged). Merges subsidence lens A R1 G2, lens B R1 and lens C R1 into ONE declaration with
 ONE scored look; every other column is a report-only arm hashed before the look.
 
-Ready only after: SD.cut_response_spread.v1 is scored; ``run_gsc.sh model-side`` froze the
+Ready only after: SD.cut_response_spread.v2 is scored (it scores the forwards run under
+SD.cut_response_spread.v1, whose scoring stopped on an engineering failure, reused by sha256);
+``run_gsc.sh model-side`` froze the
 model side; ``run_gsc.sh check-model`` reproduced it byte for byte; ``run_gsc.sh g0oc``
 passed under the SCORED rule (both observation scales) on that model side; and the lead
 logged G0-OC as a look on unit G0_LOOK_UNIT whose note carries g0oc.json's sha256::
