@@ -20,7 +20,8 @@ from .page import BindingError, PageBundle
 def _common(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--page", type=Path, required=True)
     ap.add_argument("--ledger", type=Path, default=None)
-    ap.add_argument("--lang", choices=["en", "zh"], default="en")
+    ap.add_argument("--lang", choices=["en", "zh"], default=None,
+                    help="answer language (default: the question's; en for presets)")
     ap.add_argument("--mode", choices=["dev", "deploy"], default="dev")
     ap.add_argument("--allow-pending", action="store_true")
     ap.add_argument("--unbound", action="store_true", help="skip the page/ledger pins (dev only)")
@@ -82,7 +83,7 @@ def main(argv=None) -> int:
                 params[k] = getattr(a, k)
         if a.target_m is not None:
             params["target_m"] = a.target_m
-        ans = PR.run(b, a.name, params, a.lang)
+        ans = PR.run(b, a.name, params, a.lang or "en")
         return _print(ans, a.json, validate(ans, b))
     from .ask import ask
     ans, violations, _ = ask(b, a.question, lang=a.lang, use_llm=not a.no_llm, no_api=a.no_api,

@@ -312,8 +312,8 @@ def clarification(b: PageBundle, preset: str | None, params: dict, reason: str, 
     if reason == "beyond_horizon":
         return refuse(b, {"reason": "beyond_horizon"}, lang)
     spans = [Span("frame", S(lang, f"clarify_{key}"), key=f"clarify_{key}", block="meta")]
-    return Answer(preset=preset or "clarify", lang=lang, params=params, echo=(), spans=tuple(spans),
-                  citations=(), deep_link="", banners=tuple(banners(b)),
+    return Answer(preset="clarify", lang=lang, params=dict(params) | {"for_preset": preset},
+                  echo=(), spans=tuple(spans), citations=(), deep_link="", banners=tuple(banners(b)),
                   clarify={"reason": key, "candidates": list(candidates or [])})
 
 
