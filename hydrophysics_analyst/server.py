@@ -108,6 +108,7 @@ class App:
                           for i, t in enumerate(c.towns)],
                 "years": c.years[c.YR + 1:], "starts": c.starts, "pct": PR.PCT,
                 "presets": list(routed_presets()), "page": f"/p/{self.b.page_sha256}/",
+                "examples": PR.examples(self.b),
                 "strings": strings(), "llm": bool(self.use_llm)}
 
     def view(self, ans, rec: dict | None, violations=()) -> dict:
@@ -127,7 +128,23 @@ class App:
                 blocks.append({"block": s.block, "text": txt})
         from .binding import topics
         tp = topics()                      # digit-free tags; never the ledger one-liners (W numbers)
-        return {"preset": ans.preset, "params": ans.params, "lang": ans.lang,
+        from .render import resolve
+        charts = []
+        for ch in ans.charts:
+            ser = []
+            for sr in ch.series:
+                pts = []
+                for xi, ref in enumerate(sr.refs):
+                    v = resolve(ans, ref)            # the answer's own value: number + page text
+                    if v.value is None or v.value != v.value:
+                        continue
+                    pts.append({"x": ch.x[xi] if xi < len(ch.x) else xi, "y": float(v.value),
+                                "text": v.text})
+                ser.append({"label": sr.label, "points": pts})
+            charts.append({"kind": ch.kind, "title": strip_tags(ch.title), "unit": ch.unit,
+                           "block": ch.block, "x": list(ch.x),
+                           "marker": [{"x": m[0], "label": m[1]} for m in ch.marker], "series": ser})
+        return {"preset": ans.preset, "params": ans.params, "lang": ans.lang, "charts": charts,
                 "echo": [strip_tags(s.text) for s in ans.echo], "blocks": blocks,
                 "citations": [{"id": c, "status": s, "topic": tp.get(c, "")} for c, s in ans.citations],
                 "table": [list(r) for r in ans.table], "deep_link": ans.deep_link, "values": vals,

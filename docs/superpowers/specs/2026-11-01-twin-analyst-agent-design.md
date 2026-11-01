@@ -688,6 +688,23 @@ while a twin job runs. The analyst already emits `sel`/`tab`/`mi`, which older p
 - The question sets are versioned under `evalsets/`.
 - D6: cheapest stays off.
 
+**Shell UX (lead's request, 2026-11-01).**
+- **Example-question chips** come from `presets.examples(b)`: preset plus params, with labels
+  built from page strings. They are answered without the LLM.
+- **Clarification candidates** are clickable.
+- **In-chat SVG charts** are a `Chart` that holds only references (`r<i>:<value key>`) into the
+  answer's own bound values.
+  - Head change at N2's wells by year (one line per policy or start; start-year hairlines).
+  - Ranking bars (internals box).
+  - Full-run comparison bars (head, cost).
+  - A cost share bar.
+- **What charts never show:** subsidence (W) and bands (`evc_band_none`).
+- **Validator rule 9:** points resolve to answer values, no withheld value, claims cited, titles
+  are page strings, internals only in the internals block.
+- **Style:** the dataviz method. Palette slots 1-2 validated (CVD ΔE 24.7, contrast ≥ 3:1), 2 px
+  lines, ringed end-dots, bars ≤ 24 px with 4 px data-ends, a legend for ≥ 2 series, hover
+  tooltips, a screen-reader table per chart.
+
 **Deployment config.** It is a JSON file (`docs/analyst/analyst_config.example.json`), not TOML,
 so Python 3.10 needs no extra parser. Users map to the sha256 of their token. Audit retention is
 applied at server start.

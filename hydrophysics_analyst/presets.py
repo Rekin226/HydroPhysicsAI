@@ -20,7 +20,17 @@ from dataclasses import dataclass
 from . import binding as BD
 from . import query as Q
 from .page import PageBundle
-from .render import Answer, S, Span, citations_of, cuts_dict, render_echo, spans_from
+from .render import (
+    Answer,
+    Chart,
+    ChartSeries,
+    S,
+    Span,
+    citations_of,
+    cuts_dict,
+    render_echo,
+    spans_from,
+)
 
 PCT = list(range(0, 101, 5))
 REFUSALS = ("changhua_lever", "subsidence_size", "area", "recommendation", "volumes_money",
@@ -173,14 +183,53 @@ def _cost_spans(b: PageBundle, res: Q.QueryResult, lang: str) -> list[Span]:
 
 
 def _answer(b: PageBundle, preset: str, params: dict, lang: str, spans: list[Span],
-            results: list[Q.QueryResult], link: str, *, refusal=None, table=(), clarify=None) -> Answer:
+            results: list[Q.QueryResult], link: str, *, refusal=None, table=(), clarify=None,
+            charts=()) -> Answer:
     cites = citations_of(spans)
     st = {c["id"]: c["status_current"] for c in b.ledger["claims"]}
     return Answer(preset=preset, lang=lang, params=params,
                   echo=render_echo(b, preset, params, lang) if preset != "refuse" else (),
                   spans=tuple(spans), citations=tuple((cid, st[cid]) for cid in cites),
                   deep_link=link, banners=tuple(banners(b)), refusal=refusal,
-                  results=tuple(results), table=tuple(table), clarify=clarify)
+                  results=tuple(results), table=tuple(table), clarify=clarify, charts=tuple(charts))
+
+
+# ---------------------------------------------------------------------------------------
+# charts: drawn by the shell from the answer's own values (no numbers of their own)
+# ---------------------------------------------------------------------------------------
+def _series_refs(res: Q.QueryResult, i: int, prefix: str) -> tuple[tuple[int, ...], tuple[str, ...]]:
+    vs = [v for v in res.values if v.key.startswith(prefix) and v.key[len(prefix):].isdigit()]
+    return tuple(int(v.key[len(prefix):]) for v in vs), tuple(f"r{i}:{v.key}" for v in vs)
+
+
+def head_line(b: PageBundle, results: list[Q.QueryResult], lang: str, *, starts=None) -> list[Chart]:
+    """Head change at N2's wells by year: one series per policy result (or per start)."""
+    c = Q.ctx(b)
+    series, xs, marks = [], (), []
+    for i, res in enumerate(results):
+        for s0 in (starts or [None]):
+            prefix = f"head_{s0}_y" if s0 else "head_y"
+            x, refs = _series_refs(res, i, prefix)
+            if not refs:
+                continue
+            xs = x
+            st = s0 or (res.policy.start if res.policy else None)
+            label = c.tr(lang, "from_y", {"y": st}) if starts else c.tr(lang, "jan", {"y": st})
+            series.append(ChartSeries(label, refs))
+            if st and (st, c.tr(lang, "jan", {"y": st})) not in marks:
+                marks.append((st, c.tr(lang, "jan", {"y": st})))
+    if not series:
+        return []
+    key = "tHead" if c.n2u else "tHead_l2"
+    return [Chart("line", c.tr(lang, key), key, "m", tuple(series), x=xs, marker=tuple(marks))]
+
+
+def cost_share(b: PageBundle, res: Q.QueryResult, i: int, lang: str) -> list[Chart]:
+    c = Q.ctx(b)
+    if not any(v.key == "gwh_pct" for v in res.values) or res.src in ("base", "none"):
+        return []
+    return [Chart("share", c.tr(lang, "tCost"), "tCost", "%", (ChartSeries("", (f"r{i}:gwh_pct",)),),
+                  block="cost")]
 
 
 def banners(b: PageBundle) -> list[str]:
@@ -212,7 +261,8 @@ def policy_head(b, p, lang):
         return _answer(b, "policy_head", p, lang, spans_from(res, keys=("hl_none", "prov_")), [res],
                        res.deep_link)
     spans = _head_spans(res) + _cost_spans(b, res, lang)
-    return _answer(b, "policy_head", p, lang, spans, [res], res.deep_link)
+    charts = head_line(b, [res], lang) + cost_share(b, res, 0, lang)
+    return _answer(b, "policy_head", p, lang, spans, [res], res.deep_link, charts=charts)
 
 
 def start_compare(b, p, lang):
@@ -227,7 +277,13 @@ def start_compare(b, p, lang):
     spans += spans_from(note, keys=("start_note",))
     if results[0].src != "none":
         spans += spans_from(results[0], keys=("tW_r",))
-    return _answer(b, "start_compare", p, lang, spans, results, results[0].deep_link)
+    charts = head_line(b, [note], lang, starts=c.starts)
+    # the note result is last in ``results``; re-index its refs
+    charts = [Chart(ch.kind, ch.title, ch.title_key, ch.unit,
+                    tuple(ChartSeries(sr.label, tuple(r.replace("r0:", f"r{len(results) - 1}:", 1)
+                                                      for r in sr.refs)) for sr in ch.series),
+                    x=ch.x, marker=ch.marker, block=ch.block) for ch in charts]
+    return _answer(b, "start_compare", p, lang, spans, results, results[0].deep_link, charts=charts)
 
 
 def lever_rank(b, p, lang):
@@ -240,7 +296,16 @@ def lever_rank(b, p, lang):
     spans += spans_from(res, keys=("rank_limit",), block="internals")
     spans.append(Span("snippet", c.tr(lang, "ev_decision"), key="ev_decision", block="internals"))
     link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), p["year"], lang=lang, tab="rank")
-    return _answer(b, "lever_rank", p, lang, spans, [res], link, table=res.table)
+    cats = tuple(row[0] for row in res.table[1:])
+    order = [k for k in range(c.K) if c.CN(k, lang) in cats]
+    order.sort(key=lambda k: cats.index(c.CN(k, lang)))
+    series = tuple(ChartSeries(c.tr(lang, "from_y", {"y": s0}),
+                               tuple(f"r0:rank_{k}_{s0}" for k in order)) for s0 in c.starts)
+    unit_snip = next((s.text for s in res.snippets if s.key.startswith("rank_unit")), "")
+    unit_key = next((s.key for s in res.snippets if s.key.startswith("rank_unit")), "")
+    charts = [Chart("bars", unit_snip, unit_key, "m" if p["by"] == "head" else "m/100 GWh/yr", series,
+                    x=cats, block="internals")]
+    return _answer(b, "lever_rank", p, lang, spans, [res], link, table=res.table, charts=charts)
 
 
 def township_internals(b, p, lang):
@@ -276,7 +341,15 @@ def solved_compare(b, p, lang):
         spans += _head_spans(res) + _cost_spans(b, res, lang)
     if not results:
         return refuse(b, {"reason": "no_run"}, lang)
-    return _answer(b, "solved_compare", p, lang, spans, results, results[0].deep_link)
+    cats = tuple(Q.policy_phrase(b, x["factors"], lang) for x in c.solved)
+    charts = [Chart("bars", c.tr(lang, "tHead" if c.n2u else "tHead_l2"), "tHead" if c.n2u else "tHead_l2",
+                    "m", (ChartSeries(c.tr(lang, "dec", {"y": p["year"]}),
+                                      tuple(f"r{i}:head" for i in range(len(results)))),), x=cats)]
+    if all(any(v.key == "gwh" for v in r.values) for r in results):
+        charts.append(Chart("bars", c.tr(lang, "tCost"), "tCost", "GWh/yr",
+                            (ChartSeries("", tuple(f"r{i}:gwh" for i in range(len(results)))),),
+                            x=cats, block="cost"))
+    return _answer(b, "solved_compare", p, lang, spans, results, results[0].deep_link, charts=charts)
 
 
 def cheapest_for_head(b, p, lang):
@@ -289,7 +362,8 @@ def cheapest_for_head(b, p, lang):
     spans = [Span("frame", S(lang, "frame_cheapest"), key="frame_cheapest")]
     spans += _head_spans(res) + _cost_spans(b, res, lang)
     q = dict(p) | {"factors": res.policy.f}
-    return _answer(b, "cheapest_for_head", q, lang, spans, [res], res.deep_link)
+    charts = head_line(b, [res], lang) + cost_share(b, res, 0, lang)
+    return _answer(b, "cheapest_for_head", q, lang, spans, [res], res.deep_link, charts=charts)
 
 
 def how_sure(b, p, lang):
@@ -353,6 +427,47 @@ def clarification(b: PageBundle, preset: str | None, params: dict, reason: str, 
     return Answer(preset="clarify", lang=lang, params=dict(params) | {"for_preset": preset},
                   echo=(), spans=tuple(spans), citations=(), deep_link="", banners=tuple(banners(b)),
                   clarify={"reason": key, "candidates": list(candidates or [])})
+
+
+def examples(b: PageBundle) -> list[dict]:
+    """Clickable example questions for the shell, built from the bound page: each is a preset with
+    parameters (answered without the LLM) and a label made of page strings in en and zh."""
+    c = Q.ctx(b)
+    keys = [cl["key"] for cl in c.classes]
+    Y, s0 = c.years[-1], c.starts[0]
+    s1 = c.starts[1] if len(c.starts) > 1 else s0
+
+    def cut(k, pct):
+        return [{"class": keys[k], "pct": pct}] if k < len(keys) else []
+    towns = [i for i, t in enumerate(c.towns) if not t.get("pooled")]
+    town = next((i for i in towns if c.towns[i]["en"] == "Tuku"), towns[0] if towns else None)
+    ex = [("policy_head", {"cuts": cut(0, 30), "start": s0, "year": Y}),
+          ("policy_head", {"cuts": cut(1, 100), "start": s0, "year": Y}),
+          ("policy_head", {"cuts": cut(1, 30), "start": s1, "year": Y}),
+          ("policy_head", {"cuts": [{"class": k, "pct": 20} for k in keys], "start": s0, "year": Y}),
+          ("start_compare", {"cuts": cut(1, 100), "year": Y}),
+          ("lever_rank", {"year": Y, "by": "head"}),
+          ("lever_rank", {"year": Y, "by": "gwh"}),
+          ("rail_internals", {"cuts": cut(0, 30), "start": s0, "year": Y}),
+          ("solved_compare", {"year": Y}),
+          ("how_sure", {})]
+    if town is not None:
+        ex.insert(7, ("township_internals", {"cuts": cut(1, 100), "start": s0, "year": Y, "town": town}))
+    out = []
+    for preset, params in ex:
+        lab = {}
+        for lang in ("en", "zh"):
+            echo = render_echo(b, preset, params, lang)
+            parts = [_strip(sp.text.split(": ", 1)[-1]) for sp in echo[1:] if sp.key not in ("tHead",)]
+            lab[lang] = " · ".join(parts) if parts else S(lang, f"preset_{preset}")
+        out.append({"preset": preset, "params": params, "label": lab,
+                    "group": {lg: S(lg, f"preset_{preset}") for lg in ("en", "zh")}})
+    return out
+
+
+def _strip(t: str) -> str:
+    from .jsport import strip_tags
+    return strip_tags(t)
 
 
 @dataclass(frozen=True)
