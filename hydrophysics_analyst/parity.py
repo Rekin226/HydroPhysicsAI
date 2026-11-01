@@ -106,7 +106,7 @@ def _python_dom(b: PageBundle, f, start, year, lang) -> dict:
     c = Q.ctx(b)
     if year == c.years[-1] and src not in ("base", "none"):
         r2 = Q.start_compare(b, f, year, lang)
-        sn = next((s.text for s in r2.snippets if s.key == "start_note"), "")
+        sn = next((s.text for s in r2.snippets if s.key.startswith("start_note")), "")
     return {"headline": J.strip_tags(hl.text), "tW": tW, "tC": tC, "startNote": sn}
 
 

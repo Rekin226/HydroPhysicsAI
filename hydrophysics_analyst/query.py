@@ -635,9 +635,17 @@ def start_compare(b: PageBundle, f, year: int, lang: str = "en") -> QueryResult:
             and c.n2u and all(p.hasW for p in pols)):
         a = [float(p.dW[H]) for p in pols]
         if abs(a[0] - a[1]) <= max(.01, .03 * abs(a[0])):
-            snippets.append(Snippet("start_note", lang, c.tr(lang, "start_note", {
-                "s0": c.starts[0], "s1": c.starts[1], "v": J.sg(a[0]), "n": c.n2u["n"],
-                "H": c.years[-1]}), (f"head_{c.starts[0]}_horizon",)))
+            # FS.start_invariance.v1 pass (renderStartNote): the 2022-12 start moves the levels
+            fs = (c.mc.get("results") or {}).get("fs")
+            fs_ok = bool((c.mc.get("registrations") or {}).get("fs") and fs
+                         and fs.get("wording_case") == "pass")
+            tail = c.tr(lang, "start_note_fs") if fs_ok else ""
+            tail = "" if tail == "start_note_fs" else tail          # key absent: older template
+            snippets.append(Snippet("start_note+start_note_fs" if tail else "start_note", lang,
+                                    c.tr(lang, "start_note", {
+                                        "s0": c.starts[0], "s1": c.starts[1], "v": J.sg(a[0]),
+                                        "n": c.n2u["n"], "H": c.years[-1]}) + tail,
+                                    (f"head_{c.starts[0]}_horizon",)))
     p0 = Policy(tuple(f), c.starts[0])
     return _result(b, "start_compare", values, snippets, pols[0].src, p0, year, lang)
 
@@ -826,6 +834,12 @@ def _best_name(c: Ctx, lang: str, k) -> str:
     return c.tr(lang, BESTK[k]) if k in BESTK else (k or "–")
 
 
+def _esc(v) -> str:
+    """The page's ``esc``: ``String(v)`` (so a missing value reads "undefined") with &<>" escaped."""
+    t = "undefined" if v is None else (v if isinstance(v, str) else J.js_num_str(v))
+    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
 def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
     """``evLineText``, ``ev_decision`` and the registered-test lines of ``evidenceItems`` whose
     inputs are registry flags and dates (template.html ~1653, ~2634). Lines the bound page's
@@ -860,9 +874,21 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
             add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
         # evc_pro_iv (the per-well interval line) is a band key the ledger keeps out of answers
         # (page_scoping.answer_must_not_use_band_keys); it stays in the page's drawer only
-        for flag, key in (("e02c", "evc_pro_e02c"), ("ext", "evc_pro_ext"), ("fv", "evc_pro_fv")):
+        for flag, key in (("e02c", "evc_pro_e02c"), ("ext", "evc_pro_ext")):
             if rg.get(flag):
                 add(key)
+        if rg.get("fv"):
+            # fvLine: the rule fixed beforehand until FV's report exists, then its declared
+            # not-evaluable line (the only scored outcome the page build accepts)
+            fv = (mc.get("results") or {}).get("fv")
+            sup = (fv or {}).get("superposition") or {}
+            if not fv:
+                add("evc_pro_fv")
+            else:
+                why = (c.tr(lang, "fv_why_sup", {"x": J.f2(sup["max_abs_window_m"]),
+                                                 "t": J.f2(sup["tolerance_m"])})
+                       if sup and sup.get("pass") is False else _esc(fv.get("why")))
+                add("evc_pro_fv_ne", {"why": why})
     if rg.get("no_band"):
         add("evc_band_none")
     n3c = rg.get("n3_conv12") or rg.get("n3_conv24")
