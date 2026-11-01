@@ -142,7 +142,7 @@ Head skill:
 - **Fitted period.** Out-of-fold k-fold R² is 0.643 on the design folds and 0.718 on a fresh partition. It sits below inverse-distance interpolation on anomalies.
 - **Masked test (`N1.G1_mask_E2015`).** Refitted without the Jan-May 2015 targets, it reproduces the 2015 drought-spring anomaly better than climatology (RMSE 1.49 against 2.06 m, ratio 0.72) and better than its own zero-response counterfactual (1.75 m), at 135 wells.
 - **Damped amplitude.** The modelled head response is smaller than observed; by how much depends on the test. The observed-on-modelled slope is 2.13 (90 % interval 1.93-2.39) in the 2015 drought spring (G1). That event mixes canal water and rain with pumping, so 2.13 is not a correction factor. On the masked 2016-18 refits (step C, design-time) it is 1.21 (1.06-1.36) in Yunlin and 0.85 (0.63-1.05) in Changhua. The Changhua value was scored on the census model R1c, and its interval includes 1.
-- **Policy response, heads (`N1.policy_response.v1`, step C).** Masked 2016-18 refits beat both no change and reference-year pumping in Yunlin (R0; 75 wells, RMSE 1.38 against 2.21 and 2.29 m) and in Changhua (R1c census model, because R0 carries no Changhua pumping; 59 wells, 1.07 against 1.19 and 1.21 m). The verdict is supported in Yunlin on R0, on a design-time window. In Changhua it is supported only on R1c, which failed its own rung (I1.R1c) and is not the page model; the page has no Changhua head lever.
+- **Policy response, heads (`N1.policy_response.v1`, step C).** Masked 2016-18 refits beat both no change and reference-year pumping in Yunlin (R0; 75 wells, RMSE 1.38 against 2.21 and 2.29 m) and in Changhua (R1c census model, because R0 carries no Changhua pumping; 59 wells, 1.07 against 1.19 and 1.21 m). The verdict is supported in Yunlin on R0, on a design-time window. In Changhua it is supported only on R1c, which failed its own rung (I1.R1c) and is not the page model; the Changhua head lever is withdrawn from the page and untested (N2C registered, scored not before 2028-01-15).
 
 Reported by county, because they differ:
 
@@ -178,7 +178,14 @@ nothing scored.
 - **Hot-spot stability** (post hoc, model-only, not a test). The cut30 headline leader Baozhong leads in 83 % of the page model's 36 runs, 72 % of R0's and 57 % of the A2b draws; Baozhong, Beigang and Dongshi are the top three in every run. retire_aqua's leader Taixi leads in 61 % of the page's runs. Neither leader is stable by the check's rule; read each headline as a group of three.
 - **Elastic split** (post hoc, model-only, not a test). On ensemble-mean heads under mean forcing, no cell falls below its preconsolidation head after Jan 2026, so the avoided subsidence is all elastic (inelastic 0.000 cm of 0.94 cm for cut30 and of 1.31 cm for retire_aqua by 2032), 98-99 % of it arrives by Dec 2026, and none is left by 2032 if cut30 is lifted in Jan 2030 with the heads returned abruptly to the baseline (a splice of the ensemble-mean heads, not the flow model's own months-long return). A dry year below the 0.24 m (5th percentile) margin is not in the runs.
 
-Changhua levers: **not supported.** Neither R0 nor the page's model has Changhua pumping. The census model's
+Changhua levers: the all-class head lever is **untested (N2C registered, scored not before 2028-01-15)**:
+`N2C.changhua_response.prospective_2026-11.v1` scores R1c at 74 Changhua wells over
+November 2026 to October 2027, and only a "response supported" verdict can show R1c's
+all-class lever, labelled with R1c's gate failures. Class-specific and subsidence levers are
+**withdrawn under every outcome**: an irrigation-only lever differs x1.39 between two pumping
+conversions whose hindcasts correlate 0.98 (all-class levers x1.03-1.05;
+`X5.lever_class_share.v1`, model-only), and the subsidence evidence below rules out a
+Changhua subsidence lever. Neither R0 nor the page's model has Changhua pumping. The census model's
 2007-10 dose-response came out opposite in sign to the leveling (observed -0.50 against
 +0.80 cm/yr per GWh/yr). Neither registered fix closed the gap: F1 failed its design gate
 and F2 changed nothing.

@@ -1003,12 +1003,48 @@ def test_prospective_block_reads_the_window_from_the_protocol(tmp_path):
         {"registered_on": "2026-10-11", "stations": 158, "model_sha256": va.sha256(forward)}))
     block = va._prospective_block(str(tmp_path / "manifest.json"), forward)
     assert block == {"registered_on": "2026-10-11", "stations": 158, "test_start": None,
-                     "test_end": None, "result": "pending"}
+                     "test_end": None, "result": "pending", "interval_bound": False}
     (tmp_path / "protocol.json").write_text(json.dumps(
         {"test_start": "2026-11-01", "test_end": "2027-10-31"}))
     block = va._prospective_block(str(tmp_path / "manifest.json"), forward)
     assert (block["test_start"], block["test_end"], block["result"]) == (
         "2026-11-01", "2027-10-31", "pending")
+
+
+def test_prospective_interval_is_named_only_when_bound_by_hash(tmp_path):
+    """Claims C14a/E02 (ruling 2026-10-29 third set): the page may name the registered per-well
+    interval only when the manifest's forward, predictions and protocol hashes all match; a file
+    with another hash refuses the build. Only file hashes are read."""
+    forward = _fake_forward(tmp_path)
+    (tmp_path / "predictions.csv").write_text("station_id,month,pred\n")
+    (tmp_path / "protocol.json").write_text(json.dumps(
+        {"test_start": "2026-11-01", "test_end": "2027-10-31"}))
+    man = {"registered_on": "2026-10-11", "stations": 158, "model_sha256": va.sha256(forward),
+           "predictions_sha256": va.sha256(str(tmp_path / "predictions.csv")),
+           "protocol_sha256": va.sha256(str(tmp_path / "protocol.json"))}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(man))
+    assert va._prospective_block(str(path), forward)["interval_bound"] is True
+    assert va._prospective_block(str(path), None)["interval_bound"] is False
+    (tmp_path / "predictions.csv").write_text("station_id,month,pred\nX,2026-11,1.0\n")
+    with pytest.raises(ValueError, match="predictions.csv does not match"):
+        va._prospective_block(str(path), forward)
+    (tmp_path / "predictions.csv").unlink()
+    assert va._prospective_block(str(path), forward)["interval_bound"] is False
+
+
+def test_pending_registrations_are_named_only_once_in_the_registry(tmp_path, quiet, monkeypatch):
+    """Claims E21, E22 and the U1 narrowing: the build flags each pending registration only when
+    its id is in the registry index (only ids are read); no index names none."""
+    index = tmp_path / "INDEX.jsonl"
+    assert va._registrations_block(str(index)) == {"e02c": False, "ext": False, "no_band": False}
+    index.write_text(json.dumps({"id": "N3F.ext_level.prospective_2026-12.v1", "sha256": "f"})
+                     + "\n\n" + json.dumps({"id": "U1.no_band.v1", "sha256": "e"}) + "\n")
+    assert va._registrations_block(str(index)) == {"e02c": False, "ext": True, "no_band": True}
+    monkeypatch.setattr(va, "PREREG_INDEX", str(index))
+    _, out, _ = _build(tmp_path)
+    assert _payload(out)["modelcard"]["registrations"] == {"e02c": False, "ext": True,
+                                                          "no_band": True}
 
 
 def test_ring_holdout_block_is_absent_until_the_report_exists(tmp_path):
@@ -1301,18 +1337,26 @@ def test_page_names_the_census_model_and_the_design_time_window(tmp_path, quiet)
           "counts: testCounts(), lev: tr('levers_sub_np', {rec: 'x'}), "
           "cav: (polCaveat(), document.getElementById('polCaveat').textContent)}; }")
     got = _page_text(tmp_path, v2, js)
-    heads_y, heads_c, size, subs, ch = got["lines"]
+    heads_y, heads_c, size, subs, ch_subs, ch_class = got["lines"]
     assert "Yunlin" in heads_y and "design-time window" in heads_y and "R0 recipe" in heads_y
-    # both head-response slopes, the Changhua one named by its model
-    assert "1.21 (1.06–1.36" in size and "census model" in size and "No correction" in size
-    assert "census model" in heads_c and "not the one shown" in heads_c
+    # the Yunlin size line; the Changhua slope sits on the Changhua head line (claims C13a)
+    assert "1.21 (1.06–1.36" in size and "R0 recipe" in size and "No correction" in size
+    assert "Changhua" not in size
+    assert "ccz_m1618" in heads_c and "not for R1c itself" in heads_c
+    assert "not the page model" in heads_c and "1.21, 90 % interval 1.06–1.36" in heads_c
+    assert "untested (N2C registered, scored not before 2028-01-15)" in heads_c
     assert "marginal" in heads_c and "0.96" in heads_c          # the declared secondary
     assert "not supported" in subs and "census model" in subs and "the other way" in subs
-    assert "no Changhua pumping" in ch
+    # Changhua subsidence and class-specific levers: withdrawn under every outcome (C13c, C13b)
+    assert ch_subs.startswith("Changhua subsidence lever: withdrawn under every outcome")
+    assert "opposite in sign" in ch_subs
+    assert ch_class.startswith("Changhua class-specific levers: withdrawn under every outcome")
+    assert "no Changhua pumping" in ch_class
     # the census model's rows are shown but never counted as this model's tests
     assert [c for _, _, c in got["n1"]] == [True, False, True, False]
     assert all("not counted" in t for t, _, c in got["n1"] if not c)
     assert "not available in this model" in got["cav"]
+    assert "untested (N2C registered, scored not before 2028-01-15)" in got["cav"]
     # neutral subsidence wording, and the Yunlin head-gain caveat
     assert "elastic response that arrives within about a year" in got["cav"]
     assert "long-run sinking is untested" in got["cav"] and "likely understated" in got["cav"]
@@ -1486,3 +1530,42 @@ def test_page_shows_the_posthoc_labels_only_when_given(tmp_path, quiet):
     assert "not a test" in w["cv"] and "all elastic" in w["cv"] and "not separate" not in w["cv"]
     assert "long-run sinking is untested" in w["cv"]
     assert wo["hot"] == "" and "near-tie" not in wo["gwh"] and "all elastic" not in wo["cv"]
+
+
+def test_evidence_names_the_interval_and_pending_tests_only_when_bound(tmp_path, quiet):
+    """C14a: the E02 interval line needs the build's hash binding (interval_bound); E21, E22 and
+    the U1 narrowing need their registrations (modelcard.registrations)."""
+    js = ("() => { const mc = D.modelcard; mc.prospective = {registered_on: '2026-10-11', "
+          "stations: 158, test_start: '2026-11-01', test_end: '2027-10-31', result: 'pending', "
+          "interval_bound: false}; mc.registrations = {e02c: false, ext: false, no_band: false}; "
+          "const txt = () => evidenceItems().map(x => x[1]).join(' | '); const none = txt(); "
+          "mc.prospective.interval_bound = true; const iv = txt(); "
+          "mc.registrations = {e02c: true, ext: true, no_band: true}; const all = txt(); "
+          "delete mc.registrations; return {none, iv, all, absent: txt()}; }")
+    got = _page_text(tmp_path, _v1(), js)
+    iv = "per-well 90 % head interval"
+    assert iv not in got["none"] and iv in got["iv"]
+    assert "chosen after its 2023–26 coverage was seen" in got["iv"]
+    for key in ("Stricter companion test E02c", "never used in calibration", "U1.no_band.v1"):
+        assert key not in got["iv"] and key in got["all"] and key not in got["absent"], key
+
+
+def test_paired_head_spread_waits_for_model_internals(tmp_path, quiet):
+    """C14d: the head difference panel draws the paired runs' spread only with Model internals
+    open; the moreBtn toggle redraws it."""
+    js = ("async () => { S.ts = 'head'; S.sel = {k: 'fan'}; S.tsFit = false; S.more = false; "
+          "$('tilesMore').hidden = true; S.f = S.f.map(() => 0.7); policyInto(P, S.f, S.start); "
+          "KP = kpis(P, S.year); window.deltaBandYr = () => null; "
+          "window.deltaBand = () => [-0.1, null, null, 0.1]; renderTS(); "
+          "const note = () => [...document.querySelectorAll('#tsWrap p.note')].map(e => "
+          "e.textContent).join(' '); const off = note(); "
+          "$('moreBtn').click(); "
+          "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); "
+          "const on = note(); $('moreBtn').click(); "
+          "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); "
+          "return {src: P.src, off, on, again: note()}; }")
+    got = _page_text(tmp_path, _v1(), js)
+    assert got["src"] != "base", got
+    assert "not drawn" in got["off"] and "Model internals" in got["off"]
+    assert "not drawn" not in got["on"] and got["on"].startswith("Model internals")
+    assert "not drawn" in got["again"]
