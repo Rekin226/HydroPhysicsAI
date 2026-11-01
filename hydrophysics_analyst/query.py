@@ -613,7 +613,21 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
                 snippets.append(Snippet("tC_d0", lang, c.tr(lang, "tC_d0", {"yr": yr})))
         else:
             snippets.append(Snippet("no_energy", lang, c.tr(lang, "no_energy")))
+    if pol.hasW and pol.src in ("solved", "basis"):
+        values += _head_series(c, pol, "head_y")         # the chart's points: the same N2-unit arrays
     return _result(b, "headline", values, snippets, pol.src, p, year, lang)
+
+
+def _head_series(c: Ctx, pol: PolicyFields, prefix: str) -> list[Value]:
+    """N2-unit head change at every year-end from the reference year (0 there) to the horizon:
+    ``dW[y]``, the value the headline shows when the page's year slider is at ``y``."""
+    out = []
+    for yi in range(c.YR, c.Y):
+        v = float(pol.dW[yi])
+        out.append(Value(f"{prefix}{c.years[yi]}", v, J.sg(v), "m",
+                         paths=("n2Unit.solved[][]", "n2Unit.basis[][]"), functions=("headWhere",),
+                         quantity="head_change", region="n2_yunlin_wells", aggregation="mean_own_layer"))
+    return out
 
 
 def start_compare(b: PageBundle, f, year: int, lang: str = "en") -> QueryResult:
@@ -631,6 +645,8 @@ def start_compare(b: PageBundle, f, year: int, lang: str = "en") -> QueryResult:
             values.append(Value(f"head_{s}_{tag}", v, J.sg(v), "m", paths=("n2Unit.solved[][]", "n2Unit.basis[][]"),
                                 functions=("renderStartNote",), quantity="head_change",
                                 region="n2_yunlin_wells", aggregation="mean_own_layer"))
+        if pol.src in ("solved", "basis"):
+            values += _head_series(c, pol, f"head_{s}_y")
     if (len(c.starts) >= 2 and all(p.src in ("solved", "basis") for p in pols)
             and c.n2u and all(p.hasW for p in pols)):
         a = [float(p.dW[H]) for p in pols]

@@ -42,6 +42,26 @@ class Span:
     unit: str = ""
 
 
+@dataclass(frozen=True)
+class ChartSeries:
+    label: str                              # a page string (from_y, a policy phrase, a class name)
+    refs: tuple[str, ...]                   # "r<i>:<value key>" — one per x / category
+
+
+@dataclass(frozen=True)
+class Chart:
+    """A small chart drawn by the shell from values the answer already contains. It holds no
+    numbers of its own: every point is a reference into ``Answer.results`` (validator rule 9)."""
+    kind: str                               # line | bars | share
+    title: str                              # a page string (tHead, rank_unit_*, tCost)
+    title_key: str
+    unit: str
+    series: tuple[ChartSeries, ...]
+    x: tuple = ()                           # line: years; bars: category labels (page strings)
+    marker: tuple = ()                      # line: ((year, label), ...) start-year markers
+    block: str = "answer"                   # answer | cost | internals (internals: amber, labelled)
+
+
 @dataclass
 class Answer:
     preset: str
@@ -57,6 +77,7 @@ class Answer:
     clarify: dict | None = None
     results: tuple[QueryResult, ...] = field(default_factory=tuple, repr=False)
     table: tuple[tuple[str, ...], ...] = ()
+    charts: tuple[Chart, ...] = ()
 
     def text(self) -> str:
         """What the user reads (tags stripped), echo first."""
@@ -91,6 +112,12 @@ class Answer:
 
 def echo_text(spans, lang: str) -> str:
     return S(lang, "echo_preset") + ": " + S(lang, "echo_sep").join(J.strip_tags(s.text) for s in spans)
+
+
+def resolve(ans: Answer, ref: str):
+    """``"r<i>:<key>"`` -> the bound Value in ``ans.results[i]`` (KeyError if absent)."""
+    i, key = ref[1:].split(":", 1)
+    return ans.results[int(i)].value(key)
 
 
 def citations_of(spans) -> tuple[str, ...]:

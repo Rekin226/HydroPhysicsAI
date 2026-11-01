@@ -1,4 +1,5 @@
-:root { --ink:#1d2329; --ink2:#55606b; --line:#d7dce1; --bg:#fff; --soft:#f4f6f8; --acc:#1f5f99;
+:root { --s1:#2a78d6; --s2:#eb6834; --s1track:#dce9f9; --grid:#e3e2de; --surface:#fcfcfb; --t1:#0b0b0b; --t2:#52514e;
+  --ink:#1d2329; --ink2:#55606b; --line:#d7dce1; --bg:#fff; --soft:#f4f6f8; --acc:#1f5f99;
   --amber:#fff4dc; --amberline:#e3b85a; --grey:#eef0f2; --good:#1e7a3b; --bad:#a3262a;
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
 * { box-sizing: border-box; }
@@ -40,3 +41,24 @@ details { padding: 0 14px 10px; font-size: 12px; color: var(--ink2); }
 iframe { width: 100%; height: 100%; border: 0; }
 .sr { position: absolute; left: -9999px; }
 @media (max-width: 900px) { #app { grid-template-columns: 1fr; grid-template-rows: 60vh 40vh; } }
+
+/* example questions */
+#chipBox { padding: 0 14px 6px; max-height: 32vh; overflow-y: auto; border-bottom: 1px solid var(--line); }
+.cgroup { margin: 4px 0; }
+.cgroup h2 { font-size: 11px; font-weight: 600; color: var(--ink2); margin: 6px 0 3px; text-transform: none; }
+.chipq { font-size: 12px; border-radius: 14px; padding: 2px 10px; margin: 2px 4px 2px 0; background: #fff; }
+.chipq:hover, .chipq:focus-visible { border-color: var(--acc); background: var(--soft); }
+.cands { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+/* charts (dataviz method: thin marks, hairline grid, text in text tokens, legend for >= 2 series) */
+.charts { display: grid; gap: 8px; margin: 6px 0; }
+.chart { position: relative; background: var(--surface); border-radius: 6px; padding: 6px 8px; }
+.chart.internals { background: var(--amber); }
+.chart h3 { font-size: 12px; font-weight: 600; color: var(--t1); margin: 0 0 2px; }
+.chart .legend { display: flex; gap: 12px; font-size: 11px; color: var(--t2); margin: 2px 0; }
+.chart .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart svg text { font-size: 10px; fill: var(--t2); }
+.chart svg text.v { fill: var(--t1); font-weight: 600; }
+.chart .tip { position: absolute; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 6px; font-size: 11px; color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,.12); white-space: nowrap; }
+.chart .sr { position: absolute; left: -9999px; }

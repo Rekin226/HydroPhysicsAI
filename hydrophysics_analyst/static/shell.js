@@ -8,11 +8,13 @@ const UI = {
        note: "Answers are the page's own numbers and sentences, with claim IDs. Edit the interpretation to correct it.",
        lang: "中文", agree: "page agrees", disagree: "page differs", open: "Open in page", wait: "…",
        err: "Could not get an answer:", slow: "The page is still loading. If it never appears, open it directly:",
+       examples: "Try a question", year: "Year", value: "Value",
        metaerr: "Cannot reach the analyst server. Is it still running?"},
   zh: {title: "雙生模型分析助理", send: "提問", ph: "例如：2030年起停止養殖抽水，2032年水位？",
        note: "答案為頁面本身的數值與文字，並附主張編號。可修改解讀以更正。",
        lang: "English", agree: "與頁面一致", disagree: "與頁面不同", open: "在頁面中開啟", wait: "…",
        err: "無法取得答案：", slow: "頁面仍在載入。若一直沒有出現，請直接開啟：",
+       examples: "試試這些問題", year: "年份", value: "數值",
        metaerr: "無法連線到分析伺服器，請確認它仍在執行。"}};
 let META = null, LANG = (navigator.language || "en").startsWith("zh") ? "zh" : "en", NONCE = 0;
 const SESSION = Math.random().toString(36).slice(2);
@@ -57,6 +59,160 @@ function setLang(l) {
 function renderPresets() {
   const ul = $("presetList"); ul.textContent = "";
   for (const p of META.presets) ul.appendChild(el("li", "", S("preset_" + p)));
+  renderChips();
+}
+// ---- example questions: a click answers a preset directly (no LLM) ------------------------
+function renderChips() {
+  const box = $("chips"); box.textContent = "";
+  box.setAttribute("aria-label", t("examples"));
+  const groups = new Map();
+  for (const ex of META.examples || []) {
+    const g = ex.group[LANG] || ex.group.en;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(ex);
+  }
+  for (const [g, exs] of groups) {
+    const d = el("div", "cgroup"); d.appendChild(el("h2", "", g));
+    for (const ex of exs) {
+      const btn = el("button", "chipq", ex.label[LANG] || ex.label.en); btn.type = "button";
+      btn.onclick = () => askPreset(ex.preset, ex.params, btn.textContent);
+      d.appendChild(btn);
+    }
+    box.appendChild(d);
+  }
+}
+async function askPreset(preset, params, label) {
+  const log = $("log"); log.appendChild(el("li", "q", label));
+  const li = $("tplAnswer").content.firstElementChild.cloneNode(true); log.appendChild(li);
+  li.querySelector(".body").textContent = t("wait");
+  try { await show(await post("/api/answer", {preset, params, lang: LANG, session: SESSION}), li); }
+  catch (e) { fail(li, e); }
+  li.scrollIntoView({block: "end"});
+}
+
+// ---- charts: drawn from the answer's own values (each point carries its page text) --------
+const SVGNS = "http://www.w3.org/2000/svg";
+const COL = ["var(--s1)", "var(--s2)"];
+function sv(tag, attrs, text) { const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; }
+function niceMax(v) { if (v <= 0) return 0; const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+function srTable(ch) {                          // the table view for screen readers
+  const tb = el("table", "sr"), hr = el("tr"); hr.appendChild(el("th", "", ch.kind === "line" ? t("year") : ""));
+  for (const s of ch.series) hr.appendChild(el("th", "", s.label || t("value")));
+  tb.appendChild(hr);
+  const xs = ch.kind === "line" ? ch.series[0].points.map(p => p.x) : ch.x;
+  xs.forEach((x, i) => { const tr = el("tr"); tr.appendChild(el("th", "", String(x)));
+    for (const s of ch.series) { const p = ch.kind === "line" ? s.points.find(q => q.x === x) : s.points[i]; tr.appendChild(el("td", "", p ? p.text : "")); }
+    tb.appendChild(tr); });
+  return tb;
+}
+function legend(ch) {
+  const lg = el("div", "legend");
+  ch.series.forEach((s, i) => { const it = el("span"), sw = el("i"); sw.style.background = COL[i % 2]; it.appendChild(sw); it.appendChild(document.createTextNode(s.label)); lg.appendChild(it); });
+  return lg;
+}
+function tipAt(box, html, x, y) {
+  let tip = box.querySelector(".tip"); if (!tip) { tip = el("div", "tip"); box.appendChild(tip); }
+  tip.textContent = ""; html.forEach((line, i) => { if (i) tip.appendChild(el("br")); tip.appendChild(document.createTextNode(line)); });
+  tip.style.left = Math.max(0, x + 8) + "px"; tip.style.top = Math.max(0, y - 10) + "px"; tip.hidden = false;
+}
+function lineChart(ch, box) {
+  const W = 360, H = 150, m = {l: 34, r: 98, t: 14, b: 20};   // room for "+1.42 from 2030"
+  const all = ch.series.flatMap(s => s.points), xs = ch.series[0].points.map(p => p.x);
+  if (!all.length) return null;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const lo = Math.min(0, ...all.map(p => p.y)), hi = niceMax(Math.max(0, ...all.map(p => p.y)) * 1.05) || 1;
+  const X = x => m.l + (x - x0) / Math.max(1, x1 - x0) * (W - m.l - m.r);
+  const Yp = y => m.t + (hi - y) / Math.max(1e-9, hi - lo) * (H - m.t - m.b);
+  const g = sv("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": ch.title});
+  for (const v of [lo, hi]) {
+    g.appendChild(sv("line", {x1: m.l, x2: W - m.r, y1: Yp(v), y2: Yp(v), stroke: "var(--grid)", "stroke-width": 1}));
+    g.appendChild(sv("text", {x: m.l - 4, y: Yp(v) + 3, "text-anchor": "end"}, (v > 0 ? "+" : "") + v.toFixed(v && Math.abs(v) < 1 ? 2 : 1))); }
+  if (lo < 0) g.appendChild(sv("line", {x1: m.l, x2: W - m.r, y1: Yp(0), y2: Yp(0), stroke: "var(--grid)", "stroke-width": 1}));
+  for (const mk of ch.marker) {                  // the start year(s): a hairline, labelled
+    if (mk.x < x0 || mk.x > x1) continue;
+    g.appendChild(sv("line", {x1: X(mk.x), x2: X(mk.x), y1: m.t - 4, y2: H - m.b, stroke: "var(--t2)", "stroke-width": 1, "stroke-opacity": .35}));
+    g.appendChild(sv("text", {x: X(mk.x) + 3, y: m.t - 5}, mk.label)); }
+  for (const xv of [x0, x1]) g.appendChild(sv("text", {x: X(xv), y: H - 6, "text-anchor": xv === x0 ? "start" : "end"}, String(xv)));
+  const ends = [];
+  ch.series.forEach((s, i) => {
+    const d = s.points.map((p, j) => `${j ? "L" : "M"}${X(p.x).toFixed(1)},${Yp(p.y).toFixed(1)}`).join("");
+    g.appendChild(sv("path", {d, fill: "none", stroke: COL[i % 2], "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    const pe = s.points[s.points.length - 1];
+    g.appendChild(sv("circle", {cx: X(pe.x), cy: Yp(pe.y), r: 4, fill: COL[i % 2], stroke: "var(--surface)", "stroke-width": 2}));
+    ends.push({y: Yp(pe.y), text: pe.text + (ch.series.length > 1 ? " " + s.label : "")});
+  });
+  ends.sort((a, b) => a.y - b.y);                 // direct end labels, nudged apart when they collide
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 11) ends[i].y = ends[i - 1].y + 11;
+  for (const e of ends) g.appendChild(sv("text", {class: "v", x: W - m.r + 7, y: e.y + 3}, e.text));
+  const step = (W - m.l - m.r) / Math.max(1, xs.length - 1);   // hover: one column per year
+  xs.forEach((xv, j) => { const r = sv("rect", {x: X(xv) - step / 2, y: m.t, width: step, height: H - m.t - m.b, fill: "transparent"});
+    r.addEventListener("mouseenter", ev => { const lines = [String(xv)].concat(ch.series.map(s => (ch.series.length > 1 ? s.label + ": " : "") + (s.points[j] ? s.points[j].text + " " + ch.unit : "")));
+      const bb = box.getBoundingClientRect(), rb = r.getBoundingClientRect(); tipAt(box, lines, rb.left - bb.left + rb.width / 2, rb.top - bb.top); });
+    r.addEventListener("mouseleave", () => { const tp = box.querySelector(".tip"); if (tp) tp.hidden = true; });
+    g.appendChild(r); });
+  return g;
+}
+function barChart(ch, box) {
+  const W = 360, n = ch.x.length, k = ch.series.length, bh = k > 1 ? 10 : 14, gap = 2, lab = 13, rowGap = 8;
+  const all = ch.series.flatMap(s => s.points.map(p => p.y)); if (!all.length) return null;
+  const lo = Math.min(0, ...all), hi = Math.max(0, ...all) || 1, m = {l: 2, r: 70};
+  const X = v => m.l + (v - lo) / Math.max(1e-9, hi - lo) * (W - m.l - m.r);
+  const rowH = lab + k * bh + (k - 1) * gap + rowGap, H = n * rowH;
+  const g = sv("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": ch.title});
+  const labelValues = n * k <= 4;                 // selective labels: few bars only; the table has the rest
+  ch.x.forEach((cat, ci) => {
+    const y0 = ci * rowH;
+    g.appendChild(sv("text", {x: m.l, y: y0 + 10}, String(cat)));
+    ch.series.forEach((s, si) => {
+      const p = s.points[ci]; if (!p) return;
+      const y = y0 + lab + si * (bh + gap), xa = X(Math.min(0, p.y)), xb = X(Math.max(0, p.y)), w = Math.max(1, xb - xa), r = Math.min(4, w, bh / 2);
+      const pos = p.y >= 0;                        // 4px rounded data end, square at the baseline
+      const d = pos ? `M${xa},${y}H${xb - r}Q${xb},${y} ${xb},${y + r}V${y + bh - r}Q${xb},${y + bh} ${xb - r},${y + bh}H${xa}Z`
+                    : `M${xb},${y}H${xa + r}Q${xa},${y} ${xa},${y + r}V${y + bh - r}Q${xa},${y + bh} ${xa + r},${y + bh}H${xb}Z`;
+      const bar = sv("path", {d, fill: COL[si % 2]});
+      bar.addEventListener("mouseenter", () => { const bb = box.getBoundingClientRect(), rb = bar.getBoundingClientRect();
+        tipAt(box, [String(cat), (s.label ? s.label + ": " : "") + p.text + " " + ch.unit], rb.right - bb.left, rb.top - bb.top); });
+      bar.addEventListener("mouseleave", () => { const tp = box.querySelector(".tip"); if (tp) tp.hidden = true; });
+      g.appendChild(bar);
+      if (labelValues) g.appendChild(sv("text", {class: "v", x: (pos ? xb : xa) + 5, y: y + bh - 2}, p.text + " " + ch.unit));
+    });
+  });
+  if (lo < 0) g.appendChild(sv("line", {x1: X(0), x2: X(0), y1: 0, y2: H, stroke: "var(--grid)", "stroke-width": 1}));
+  return g;
+}
+function shareBar(ch) {
+  const p = ch.series[0].points[0]; if (!p) return null;
+  const W = 360, H = 22, w = Math.max(0, Math.min(100, p.y)) / 100 * (W - 60);
+  const g = sv("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": ch.title + ": " + p.text});
+  g.appendChild(sv("rect", {x: 0, y: 7, width: W - 60, height: 8, rx: 4, fill: "var(--s1track)"}));
+  if (w > 0) g.appendChild(sv("rect", {x: 0, y: 7, width: Math.max(8, w), height: 8, rx: 4, fill: "var(--s1)"}));
+  g.appendChild(sv("text", {class: "v", x: W - 54, y: 15}, p.text));
+  return g;
+}
+function renderCharts(view, li) {
+  const box = li.querySelector(".charts"); box.textContent = "";
+  for (const ch of view.charts || []) {
+    const c = el("div", "chart " + ch.block); c.appendChild(el("h3", "", ch.title + (ch.unit && ch.kind !== "share" ? " (" + ch.unit + ")" : "")));
+    if (ch.series.length > 1) c.appendChild(legend(ch));
+    const svg = ch.kind === "line" ? lineChart(ch, c) : ch.kind === "bars" ? barChart(ch, c) : shareBar(ch);
+    if (!svg) continue;
+    c.appendChild(svg); c.appendChild(srTable(ch)); box.appendChild(c);
+  }
+}
+// clarification candidates become one-click answers (towns, start years)
+function renderCands(view, li) {
+  const box = li.querySelector(".cands"); box.textContent = "";
+  const cl = view.clarify; if (!cl || !(cl.candidates || []).length) return;
+  const preset = view.params.for_preset; if (!preset) return;
+  for (const cand of cl.candidates.slice(0, 24)) {
+    const b = el("button", "chipq", String(cand)); b.type = "button";
+    b.onclick = () => { const p = Object.assign({}, view.params); delete p.for_preset;
+      if (cl.reason === "ambiguous_town") p.town = cand; else if (cl.reason === "out_of_grid" && META.starts.includes(+cand)) p.start = +cand;
+      askPreset(preset, p, String(cand)); };
+    box.appendChild(b);
+  }
 }
 
 // ---- the page iframe ----------------------------------------------------------------------
@@ -114,6 +270,7 @@ async function show(view, li) {
   const bn = li.querySelector(".banners"); bn.textContent = ""; for (const b of view.banners) bn.appendChild(el("div", "", b));
   const body = li.querySelector(".body"); body.textContent = "";
   for (const b of view.blocks) body.appendChild(el("div", "blk " + b.block, b.text));
+  renderCharts(view, li); renderCands(view, li);
   const tb = li.querySelector("table.rank"); tb.textContent = ""; tb.hidden = !view.table.length;
   view.table.forEach((row, i) => { const tr = el("tr"); row.forEach(c => tr.appendChild(el(i ? "td" : "th", "", c))); tb.appendChild(tr); });
   const ci = li.querySelector(".cites"); ci.textContent = "";

@@ -12,7 +12,9 @@ Rules (spec §8):
 5. Changhua — ``claims.lever_mentions`` is empty on the whole composed text, echo included;
 6. citations — exactly the claims of the values shown (and of a refusal's own sentence);
 7. dates — a D claim past its scoring date carries the stale-wording banner;
-8. reproduction — re-running the logged route gives the same text.
+8. reproduction — re-running the logged route gives the same text;
+9. charts — every plotted point is one of the answer's own bound values (never withheld, its
+   claims cited), titles are page strings, and internals are drawn only in the internals block.
 """
 from __future__ import annotations
 
@@ -133,6 +135,27 @@ def validate(ans: Answer, b: PageBundle, *, reproduce: bool = True,
                 and today >= dt.date.fromisoformat(sc["not_before"])
                 and "banner_stale_wording" not in ans.banners):
                 out.append(Violation("dates", None, f"{cid} is past its scoring date without the banner"))
+    # 9 charts: every point is a value this answer already states, under the same rules
+    from .render import resolve
+    cited = set(got)
+    for ci, ch in enumerate(ans.charts):
+        if ch.title_key and not _snippet_key_ok(b, ch.title_key):
+            out.append(Violation("charts", None, f"chart {ci} title {ch.title_key} is not a page string"))
+        classes = set()
+        for sr in ch.series:
+            for ref in sr.refs:
+                try:
+                    v = resolve(ans, ref)
+                except Exception:  # noqa: BLE001
+                    out.append(Violation("charts", None, f"chart {ci} point {ref} is not an answer value"))
+                    continue
+                classes.add(v.answer_class)
+                if v.answer_class == "withheld":
+                    out.append(Violation("charts", None, f"chart {ci} plots a withheld value {ref}"))
+                if not set(v.claims) <= cited:
+                    out.append(Violation("charts", None, f"chart {ci} point {ref} cites {v.claims} not in the answer"))
+        if "internal" in classes and ch.block != "internals":
+            out.append(Violation("charts", None, f"chart {ci} plots model internals outside the internals block"))
     # 8 reproduction
     if reproduce and ans.preset not in ("clarify",):
         from . import presets as PR

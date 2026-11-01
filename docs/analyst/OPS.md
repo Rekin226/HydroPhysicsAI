@@ -26,6 +26,15 @@ python -m hydrophysics_analyst serve --page <page.html>
 claude mcp add twin-analyst -- python -m hydrophysics_analyst mcp --page <page.html>
 ```
 
+**In the web shell**:
+- **Example questions** sit above the chat, grouped by preset. A click answers immediately,
+  without the LLM.
+- **Clarifications** (an ambiguous township, a start year off the page) offer their candidates as
+  one-click answers.
+- **Charts.** Answers with a head series, a ranking, a full-run comparison or a cost share include
+  small charts. They are drawn from the answer's own values (validator rule 9), and model-internal
+  charts appear only inside the amber Model-internals box.
+
 **Binding.** `--page` must be the page the claims ledger pins: the forward-run sha and the
 template sha. Otherwise the tool refuses to start. `--unbound` and `--allow-pending` are
 development switches, and every answer then carries a banner. `--mode deploy` refuses both.
