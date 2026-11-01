@@ -98,6 +98,8 @@ def look_logged(prereg_dir=None) -> bool:
 def timestamps(sid: str) -> np.ndarray:
     import pyarrow.parquet as pq
 
+    if "datetime" not in pq.read_schema(raw_path(sid)).names:
+        return np.array([], dtype="datetime64[ns]")   # no timestamps: the well is unavailable
     tab = pq.read_table(raw_path(sid), columns=["datetime"])
     return tab.column("datetime").to_numpy()
 
