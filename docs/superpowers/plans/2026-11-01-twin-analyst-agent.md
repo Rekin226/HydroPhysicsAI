@@ -23,6 +23,18 @@ LLM-written text at all. That rules out an LLM number, an LLM capability sentenc
 
 **Spec:** `docs/superpowers/specs/2026-11-01-twin-analyst-agent-design.md`
 
+**Status (2026-11-01, branch `twin/analyst-agent`):**
+- **Done:** Phases 0–5, plus the Phase-6 deployment pieces that need no authority input (ZDR
+  config, data-governance memo template, OPS, Containerfile).
+- **Results:** parity shows 0 mismatches on synthetic and real pages. Eval:
+  `docs/analyst/EVAL_2026-11-01.md` (held-out pipeline 90.0 % with 3 unsafe before the fixes; one
+  post-fix follow-up at 93.3 % with 0 unsafe).
+- **Waiting:**
+  - Tasks 23–24 (D5): prepared in `docs/analyst/d5/`, not applied, because a twin GPU job was
+    running.
+  - Real-page binding: waits for the lead's 20261101a build.
+  - Task 26: needs the authority.
+
 ## Global Constraints
 
 - **Never create or edit files under `hydrophysics/`** in Phases 0-4. `release.provenance` hashes the whole

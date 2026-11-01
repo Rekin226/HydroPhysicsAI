@@ -15,7 +15,8 @@ Routing only. The model reads the analyst's question and returns a choice from f
 
 It never computes a number and never writes text shown to the user. Every number and sentence
 comes from the bound decision page; a validator checks every answer. A question the rules
-parser can read is never sent to the model: about 70 % of the evaluation questions.
+parser can read is never sent to the model: 73–83 % of the evaluation questions
+(`EVAL_2026-11-01.md`).
 
 ## 2. What leaves the authority's network (per routed question)
 

@@ -39,7 +39,7 @@ LEVER_NEAR_CH = [r"(?:cut|reduc\w*|retir\w*|stop\w*|lower\w*|curb\w*)\s+(?:\w+\s
                  r"彰化[^。；？?]{0,8}(?:減|停止|抽水|灌溉|養殖|畜牧|工業|槓桿)"]
 SUBS = [r"subsid\w*", r"\bsink\w*", r"\bsank\b", r"\bcm\b", r"centimet\w*", "下陷", "沉陷", "公分", "地層"]
 AREA = [r"\barea\b", r"km²", r"km2", r"square\s+k", "面積", "平方公里"]
-MONEY = [r"\bmoney\b", r"\bnt\$", r"\$", r"dollars?", r"\bbudget\b", r"\bprice\b", r"\bnt\s*d\b",
+MONEY = [r"hectares?", r"\bacres?\b", r"land\s+area", "公頃", "甲地", "土地面積", r"\bmoney\b", r"\bnt\$", r"\$", r"dollars?", r"\bbudget\b", r"\bprice\b", r"\bnt\s*d\b",
          r"cubic", r"m³", r"m3\b", r"\bvolume\w*", r"\btons?\b", "元", "預算", "費用", "立方", "抽水量", "噸"]
 RECOMMEND = [r"recommend\w*", r"should\s+(?:we|i|the)", r"which\s+(?:policy|option)\s+(?:is\s+)?best",
              r"best\s+(?:policy|option|choice)", r"what\s+should", "建議", "應該", "最好的政策", "最佳方案",
@@ -186,7 +186,7 @@ def parse_years(b: PageBundle, s: str) -> tuple[int | None, int | None]:
         y = int(m.group(1))
         pre = s[max(0, m.start() - 22):m.start()].lower()
         post = s[m.end():m.end() + 6]
-        if (re.search(FROM + r"$", pre, re.I) or re.search(r"(?:年)?(?:開始|起|實施|啟動)", post)
+        if (re.search(FROM + r"$", pre, re.I) or re.match(r"\s*(?:年)?\s*(?:開始|起(?!來)|實施|啟動|上路)", post)
                 or re.search(r"(?:自|從)\s*$", pre)):
             start = y if y in c.starts else (start or -1)     # -1: a start not on the page
         else:
@@ -241,6 +241,8 @@ class RulesRouter:
             preset = "start_compare"
         elif town is not None or _has(TOWN_INTENT, s):
             preset = "township_internals"
+        elif follow and cuts and prev.get("preset") in ("start_compare", "township_internals", "rail_internals"):
+            preset = prev["preset"]           # "and also aquaculture 10%?" keeps the previous question type
         elif cuts:
             preset = "policy_head"
         elif follow:

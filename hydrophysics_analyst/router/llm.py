@@ -112,6 +112,8 @@ class LLMRouter:
         except (json.JSONDecodeError, TypeError):
             return Route(clarify={"reason": "unknown", "candidates": []}, source="llm")
         rt = from_llm_json(d, self.b)
+        if rt.refusal == "no_policy":          # same meaning as the rules' clarification: ask for the cut
+            rt.refusal, rt.clarify = None, {"reason": "missing_cut", "candidates": []}
         if rt.refusal:
             rt.preset, rt.params = "refuse", {"reason": rt.refusal}
         elif rt.clarify:

@@ -177,3 +177,14 @@ def test_llm_refusals_and_clarifications_are_not_overwritten(b):
 def test_a_start_year_off_the_page_is_out_of_grid(b):
     r = RulesRouter(b).route("從2027年開始畜牧業減少一半，水位會怎樣？")
     assert r.clarify["reason"] == "out_of_grid" and r.confidence == 1.0
+
+
+def test_eval_found_rules_bugs(b):
+    R = RulesRouter(b)
+    r = R.route("灌溉減30%跟養殖退場這兩個完整模型跑次，2028年比起來如何？")       # 比起來 is not 起
+    assert r.preset == "solved_compare" and r.params["year"] == 2028
+    assert hard_refusal("How many hectares of fish ponds would we have to retire?", b) == "volumes_money"
+    prev = {"preset": "rail_internals", "params": {"cuts": [{"class": "irrigation", "pct": 20}],
+                                                   "start": 2026, "year": 2032}}
+    r = R.route("那如果再加上養殖減10%呢？", prev)
+    assert r.preset == "rail_internals" and len(r.params["cuts"]) == 2
