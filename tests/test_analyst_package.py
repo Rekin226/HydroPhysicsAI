@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import setuptools
+import pytest
 
 
 def test_imports_without_anthropic(monkeypatch):
@@ -35,6 +35,7 @@ def test_outside_the_release_code_hash():
 
 
 def test_subpackages_are_found():
+    setuptools = pytest.importorskip("setuptools")     # not installed in every CI job
     root = Path(__file__).resolve().parents[1]
     found = setuptools.find_packages(where=str(root), include=["hydrophysics*"])
     assert {"hydrophysics_analyst", "hydrophysics_analyst.router",

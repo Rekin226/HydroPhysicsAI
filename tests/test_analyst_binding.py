@@ -34,8 +34,13 @@ def test_required_labels_exist_in_both_languages():
 
 
 def test_scoring_dates_appear_in_the_ledger_wording():
+    """Checked for every scoring claim the bound ledger has (the ledger moves: C31 arrives in
+    round 6). At least the N2 head claim must be present."""
     by = {c["id"]: c for c in LEDGER["claims"]}
-    for cid, s in BD.scoring().items():
+    present = [cid for cid in BD.scoring() if cid in by]
+    assert "C01" in present
+    for cid in present:
+        s = BD.scoring()[cid]
         blob = by[cid]["wording_en"] + json.dumps(by[cid].get("outcome_display", {}))
         assert s["not_before"] in blob, cid
 
