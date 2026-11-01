@@ -54,6 +54,8 @@ data = [
 dev = ["pytest>=7.0", "ruff>=0.1"]
 reference = ["flopy>=3.10,<4"]
 browser = ["playwright>=1.48"]
+# the twin analyst agent (hydrophysics_analyst): Claude API routing; presets work without it
+analyst = ["anthropic>=1.13"]
 
 [project.urls]
 Repository = "https://github.com/Rekin226/HydroPhysicsAI"
@@ -68,6 +70,7 @@ include = ["hydrophysics*"]
 [tool.setuptools.package-data]
 hydrophysics = ["sample_data/**/*.csv", "twin/app/template.html", "twin/claims_v1.json",
                 "twin/app/geodata/*.csv", "twin/app/vendor/*"]
+hydrophysics_analyst = ["rules_v1.json", "strings.json", "static/*", "data/*.jsonl"]
 
 [tool.ruff]
 line-length = 100
