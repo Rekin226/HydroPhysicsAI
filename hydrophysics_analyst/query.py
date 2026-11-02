@@ -888,25 +888,58 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
             add("evc_pro", {"reg": q["registered_on"], "a": qa, "b": qb, "n": q["stations"]})
         else:
             add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
-        # evc_pro_iv (the per-well interval line) is a band key the ledger keeps out of answers
-        # (page_scoping.answer_must_not_use_band_keys); it stays in the page's drawer only
-        for flag, key in (("e02c", "evc_pro_e02c"), ("ext", "evc_pro_ext")):
-            if rg.get(flag):
-                add(key)
+        # Band keys the ledger keeps out of answers (page_scoping.answer_must_not_use_band_keys)
+        # stay in the page's drawer only: evc_pro_iv (per-well interval), evc_pro_dr (DR drift),
+        # evc_fv2_rc_* (FV v2 forcing-year coverage). The rest follows evidenceItems()' order.
+        res = mc.get("results") or {}
+        if rg.get("e02c"):
+            add("evc_pro_e02c")
+        if rg.get("e02d"):
+            add("evc_pro_e02d")
+        fm = res.get("fm") if rg.get("fm") else None        # fmLine: only its declared case
+        if (fm and fm.get("case") == "within_first_year"
+                and fm.get("clause_case") == "window_beyond_memory" and qa and qb):
+            add("evc_pro_fm", {"m": fm["lstar_months"], "lm": month_year(fm["lstar_month"], lang),
+                               "a": qa, "b": qb, "f": J.f2(fm["floor_m"])})
+        if rg.get("ext"):
+            add("evc_pro_ext")
+            fx = res.get("fvext")                            # fvextLine
+            if rg.get("fvext") and fx and fx.get("status") == "scored":
+                add("evc_fvext_wbd" if fx.get("reading") == "weak_by_design" else "evc_fvext_nsw",
+                    {"p": J.f2(fx["p"])})
         if rg.get("fv"):
-            # fvLine: the rule fixed beforehand until FV's report exists, then its declared
-            # not-evaluable line (the only scored outcome the page build accepts)
-            fv = (mc.get("results") or {}).get("fv")
-            sup = (fv or {}).get("superposition") or {}
-            if not fv:
+            # fvLine: v2's post-failure exploratory level reading once scored; else v1's line
+            # fixed beforehand until its report exists, then its declared not-evaluable line
+            v2 = res.get("fv2") if rg.get("fv2") else None
+            fv = res.get("fv")
+            if v2 and v2.get("status") == "scored":
+                add("evc_fv2_lvl_wbd" if v2.get("level") == "weak_by_design" else "evc_fv2_lvl_nsw",
+                    {"p": J.f2(v2["p_level"])})
+            elif not fv:
                 add("evc_pro_fv")
             else:
+                sup = fv.get("superposition") or {}
                 why = (c.tr(lang, "fv_why_sup", {"x": J.f2(sup["max_abs_window_m"]),
                                                  "t": J.f2(sup["tolerance_m"])})
                        if sup and sup.get("pass") is False else _esc(fv.get("why")))
                 add("evc_pro_fv_ne", {"why": why})
+        if rg.get("fv2"):                                    # fv2Lines, without the band-key rc lines
+            w, y = res.get("fv2"), res.get("fv2fy")
+            if w and w.get("status") == "scored":
+                for cty in ("Yunlin", "Changhua"):
+                    v = (w.get("coverage") or {}).get(cty)
+                    if v and v.get("p") is not None:
+                        add("evc_fv2_cov_wbd" if v.get("reading") == "weak_by_design" else "evc_fv2_cov_nsw",
+                            {"cty": c.tr(lang, "cty_" + cty.lower()), "p": J.f2(v["p"])})
+            if y and y.get("status") == "scored" and (y.get("rc") or {}).get("Changhua"):
+                add("evc_fv2_ch_rep" if y.get("rain") == "replayed" else "evc_fv2_ch_clim")
     if rg.get("no_band"):
         add("evc_band_none")
+    res = mc.get("results") or {}
+    for k, key in (("chx", "evc_chx"), ("chb", "evc_chb")):  # chDirLines (E25/E26): direction only
+        r = res.get(k)
+        if rg.get(k) and r:
+            add(key, {"s": J.f2(r["beta"]), "lo": J.f2(r["lo"]), "hi": J.f2(r["hi"]), "n": r["n_wells"]})
     n3c = rg.get("n3_conv12") or rg.get("n3_conv24")
     conv = c.tr(lang, "decomp_conv_un" if not rg.get("n3") else "decomp_conv_n3" if n3c else "decomp_conv_g0")
     if conv and not conv.startswith("decomp_"):

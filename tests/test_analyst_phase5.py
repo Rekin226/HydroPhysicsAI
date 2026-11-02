@@ -137,3 +137,48 @@ def test_fs_pass_extends_the_start_note(tmp_path):
     assert note.key == "start_note+start_note_fs" and b.T["en"]["start_note_fs"].strip() in note.text
     a = PR.run(b, "start_compare", {"cuts": [{"class": "irrigation", "pct": 50}], "year": 2032}, "en")
     assert validate(a, b) == []
+
+
+R7_RESULTS = {
+    "dr": {"Yunlin": {"evaluable": True, "excess_drift_6y_m": 0.21, "include_drift": False}},
+    "fm": {"case": "within_first_year", "clause_case": "window_beyond_memory", "lstar_months": 11,
+           "lstar_month": "2023-11", "floor_m": 0.05},
+    "fvext": {"status": "scored", "reading": "weak_by_design", "p": 0.42},
+    "fv": {"why": "superseded"},
+    "fv2": {"status": "scored", "level": "not_shown_weak", "p_level": 0.03,
+            "coverage": {"Yunlin": {"reading": "weak_by_design", "p": 0.4},
+                         "Changhua": {"reading": "not_shown_weak", "p": 0.01}}},
+    "fv2fy": {"status": "scored", "rain": "climatology",
+              "rc": {"Yunlin": {"reading": "omits", "rc": 0.8, "t_lo": 0.85, "t_hi": 0.95, "lo": 0.7, "hi": 0.9},
+                     "Changhua": {"reading": "omits", "rc": 0.6, "t_lo": 0.85, "t_hi": 0.95, "lo": 0.5, "hi": 0.7}}},
+    "chx": {"beta": 0.31, "lo": 0.1, "hi": 0.52, "n_wells": 40},
+    "chb": {"beta": 0.27, "lo": 0.05, "hi": 0.49, "n_wells": 40},
+}
+
+
+def test_round7_evidence_lines_mirror_the_page(tmp_path):
+    """Round 7: E02d, FM (declared case only), FV.ext, FV v2 level and coverage, the Changhua FV v2
+    sentence, E25/E26 direction rows. DR drift and FV v2 forcing-year lines are band keys and stay
+    out of answers (page_scoping.answer_must_not_use_band_keys)."""
+    from hydrophysics.twin.release import read_payload
+    from hydrophysics_analyst import query as Q
+    page = testing.build_synthetic_page(tmp_path)
+    p = read_payload(page)
+    mc = p["modelcard"]
+    mc["registrations"] = dict(mc.get("registrations") or {}, e02c=True, e02d=True, ext=True, fm=True,
+                               fv=True, fv2=True, fvext=True, dr=True, chx=True, chb=True)
+    mc["prospective"] = {"registered_on": "2026-10-11", "stations": 158, "test_start": "2026-11-01",
+                         "test_end": "2027-10-31", "result": "pending", "interval_bound": True}
+    mc["results"] = R7_RESULTS
+    testing._write_payload(page, p)
+    b = PageBundle.load(page, testing.synthetic_ledger(tmp_path, page), allow_pending=True)
+    if "evc_fv2_lvl_nsw" not in b.T["en"]:
+        pytest.skip("template without the round-7 evidence lines")
+    keys = [s.key for s in Q.evidence(b, "en").snippets]
+    for k in ("evc_pro_e02d", "evc_pro_fm", "evc_fvext_wbd", "evc_fv2_lvl_nsw", "evc_fv2_cov_wbd",
+              "evc_fv2_cov_nsw", "evc_fv2_ch_clim", "evc_chx", "evc_chb"):
+        assert k in keys, k
+    banned = set(b.ledger["page_scoping"]["answer_must_not_use_band_keys"])
+    assert not banned & set(keys) and "evc_pro_fv_ne" not in keys      # v2 level replaces v1's line
+    for lang in ("en", "zh"):
+        assert validate(PR.run(b, "how_sure", {}, lang), b) == []
