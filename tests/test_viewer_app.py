@@ -1039,7 +1039,8 @@ def test_pending_registrations_are_named_only_once_in_the_registry(tmp_path, qui
     index = tmp_path / "INDEX.jsonl"
     none = dict.fromkeys([*va.PAGE_REGISTRATIONS, *va.PAGE_ROLE_FLAGS], False)
     assert set(none) == {"e02c", "ext", "no_band", "n3", "n3sl", "fv", "x5clm", "x5n2c", "fs",
-                         "n3_conv12", "n3_conv24"}
+                         "e02d", "e02y", "dr", "fm", "fv2", "fvext", "fw1", "fw2",
+                         "chx", "chb", "n3_conv12", "n3_conv24"}
     assert va._registrations_block(str(index)) == none
     n3 = va.PAGE_REGISTRATIONS["n3"][-1]
     index.write_text(json.dumps({"id": "N3F.ext_level.prospective_2026-12.v1", "sha256": "f"})
@@ -1806,3 +1807,183 @@ def test_paired_head_spread_waits_for_model_internals(tmp_path, quiet):
     assert "not drawn" in got["off"] and "Model internals" in got["off"]
     assert "not drawn" not in got["on"] and got["on"].startswith("Model internals")
     assert "not drawn" in got["again"]
+
+
+# --- round 7 (user rulings 2026-11-01, sixth to tenth sets) ----------------------------------
+def _r7_reports() -> dict:
+    """Minimal round-7 reports in the registered layouts (synthetic numbers)."""
+    rc = {"rc": 0.955, "sampling_11yr": {"t90": [0.949, 0.960]},
+          "range_over_sequences": [0.940, 0.969]}
+    fw = {"verdict": "scored", "wording_case": "mostly_elastic",
+          "summary": {"share": {"min": 0.0, "median": 0.0, "max": 0.0, "n": 11}},
+          "wording": {"C25": "x cm"}, "metrics": {"C": {}}}
+    return {
+        "fm": {"prereg_id": "FM.origin_memory.v1", "floor_m": 0.05,
+               "primary": {"lstar_months": 11, "lstar_month": "2023-11", "p90_m": {"S1": [1]},
+                           "wording": {"case": "within_first_year",
+                                       "E02_E21_clause_case": "window_beyond_memory"}}},
+        "dr": {"id": "DR.relative_drift.v1",
+               "counties": {c: {"evaluable": True, "page_numbers": {
+                   "excess_drift_over_6y_m": x, "report_only": {"rms_split_half_drift_m": 9.9}},
+                   "icc_county_month": {"icc": 0.2}} for c, x in (("Yunlin", 0.8166),
+                                                                    ("Changhua", 0.8475))},
+               "decisions": {"Yunlin": {"include_drift": True},
+                             "Changhua": {"include_drift": False}}},
+        "fv2": {"id": "FV.decidability.v2_postfailure", "status": "scored",
+                "readings": {"label": "post-failure, exploratory", "level": "not_shown_weak",
+                             "coverage": {"Yunlin": "weak_by_design",
+                                          "Changhua": "not_shown_weak"}},
+                "P": {"level": {"p": 0.964, "by_truth": {"R0": 0.99}},
+                      "coverage": {"Yunlin": {"p": 0.351}, "Changhua": {"p": 0.501}}},
+                "truth_worlds": {"R0": {}}},
+        "fv2fy": {"id": "FV.decidability.v2_postfailure", "status": "scored",
+                  "forcing": {"rain": "climatology", "pumping": "detrended_anomaly"},
+                  "readings": {"label": "post-failure, exploratory", "c14b": "stays_N",
+                               "rc": {"Yunlin": "not_shown_to_omit",
+                                      "Changhua": "not_represented"}},
+                  "rc": {"Yunlin": rc, "Changhua": dict(rc, rc=0.97)},
+                  "aggregates": {"47-58": {"n2_unit_mean": {"min_m": -0.564, "max_m": 0.614},
+                                           "fan_layer2_mean": {"min_m": -0.385,
+                                                               "max_m": 0.426}}},
+                  "lead_ratio": {"Yunlin": {}}},
+        "fvext": {"id": "FV.ext.v1", "status": "scored", "P": {"p": 0.592},
+                  "readings": {"ext_level": "not_shown_weak"}},
+        "fw1": dict(fw, prereg_id="FW.weather_replay.v1", replay_fields="energy"),
+        "fw2": dict(fw, prereg_id="FW.weather_replay.v2", replay_fields="energy+weather"),
+        "chx": {"prereg_id": "I1.CHX.v1", "verdict": "direction_supported_size_not",
+                "primary": {"beta_primary": {"beta": 0.1669, "ci90": [0.0243, 0.4369],
+                                             "n_wells": 23}, "rmse_primary_m": {}},
+                "placebo_report_only": {"verdict": "not_supported"}},
+        "chb": {"prereg_id": "I1.CH_backcast.v1", "verdict": "direction_supported",
+                "beta_primary": {"beta": 0.3688, "ci90": [0.1466, 1.3532], "n_wells": 12},
+                "report_only_detrended": {"beta": 1.2}},
+    }
+
+
+def test_results_block_reads_the_round7_reports_and_nothing_else(tmp_path):
+    """FM, DR, FV v2 (both readings), FV.ext and FW: only the case, the reading and the numbers
+    the page quotes; no FW number, no report-only DR number."""
+    got = va._results_block(_results_paths(tmp_path, **_r7_reports()))
+    assert got["fm"] == {"case": "within_first_year", "clause_case": "window_beyond_memory",
+                         "lstar_months": 11, "lstar_month": "2023-11", "floor_m": 0.05}
+    assert got["dr"] == {"Yunlin": {"evaluable": True, "excess_drift_6y_m": 0.8166,
+                                    "include_drift": True},
+                         "Changhua": {"evaluable": True, "excess_drift_6y_m": 0.8475,
+                                      "include_drift": False}}
+    assert got["fv2"] == {"status": "scored", "level": "not_shown_weak", "p_level": 0.964,
+                          "coverage": {"Yunlin": {"reading": "weak_by_design", "p": 0.351},
+                                       "Changhua": {"reading": "not_shown_weak", "p": 0.501}}}
+    fy = got["fv2fy"]
+    assert fy["rc"]["Changhua"] == {"reading": "not_represented"}          # no number kept
+    assert fy["rc"]["Yunlin"] == {"reading": "not_shown_to_omit", "rc": 0.955, "t_lo": 0.949,
+                                  "t_hi": 0.960, "lo": 0.940, "hi": 0.969}
+    assert fy["agg"] == {"n2_lo": -0.564, "n2_hi": 0.614, "l2_lo": -0.385, "l2_hi": 0.426}
+    assert got["fvext"] == {"status": "scored", "reading": "not_shown_weak", "p": 0.592}
+    for k in ("fw1", "fw2"):
+        assert got[k] == {"verdict": "scored", "wording_case": "mostly_elastic",
+                          "all_elastic": True}, k
+    assert got["chx"] == {"verdict": "direction_supported_size_not", "beta": 0.1669,
+                          "lo": 0.0243, "hi": 0.4369, "n_wells": 23}
+    assert got["chb"] == {"verdict": "direction_supported", "beta": 0.3688, "lo": 0.1466,
+                          "hi": 1.3532, "n_wells": 12}
+
+
+@pytest.mark.parametrize("key, edit, match", [
+    ("fm", lambda r: r["primary"]["wording"].update(case="beyond_first_year"), "no page wording"),
+    ("fv2", lambda r: r["readings"].update(label="fresh"), "no page wording"),
+    ("fv2", lambda r: r["readings"]["coverage"].update(Yunlin="other"), "no page wording"),
+    ("fv2fy", lambda r: r["readings"].update(c14b="L"), "no page wording"),
+    ("fvext", lambda r: r["readings"].update(ext_level="other"), "no page wording"),
+    ("fw1", lambda r: r.update(wording_case="inelastic_present"), "no page wording"),
+    ("fw1", lambda r: r.update(replay_fields="energy+weather"), "replay mode"),
+    ("fw2", lambda r: r.update(prereg_id="FW.weather_replay.v1"), "not FW.weather_replay.v2"),
+    ("chx", lambda r: r.update(verdict="response_supported"), "no page wording"),
+    ("chb", lambda r: r.update(verdict="not_supported"), "no page wording"),
+])
+def test_results_block_refuses_a_round7_reading_without_page_wording(tmp_path, key, edit, match):
+    reps = _r7_reports()
+    edit(reps[key])
+    with pytest.raises(ValueError, match=match):
+        va._results_block(_results_paths(tmp_path, **{key: reps[key]}))
+
+
+def test_not_evaluable_round7_studies_give_no_reading(tmp_path):
+    reps = {"fv2": {"id": "FV.decidability.v2_postfailure", "status": "not_evaluable"},
+            "fvext": {"id": "FV.ext.v1", "status": "not_evaluable"},
+            "fw1": {"prereg_id": "FW.weather_replay.v1", "replay_fields": "energy",
+                    "verdict": "not_evaluable", "wording_case": "not_evaluable"}}
+    got = va._results_block(_results_paths(tmp_path, **reps))
+    assert got == {"fv2": {"status": "not_evaluable"}, "fvext": {"status": "not_evaluable"},
+                   "fw1": {"verdict": "not_evaluable"}}
+
+
+def test_round7_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypatch):
+    """C14a-r and C14b need E02d/E02y in the registry; FM, DR, FV v2, FV.ext and FW need both
+    the registration and the report; FW's note on the page carries no number."""
+    none = tmp_path / "none"
+    none.mkdir()
+    monkeypatch.setattr(va, "PAGE_RESULTS", _results_paths(none))
+    res = va._results_block(_results_paths(tmp_path, **_r7_reports()))
+    js = ("(res) => { const mc = D.modelcard; mc.prospective = {registered_on: '2026-10-11', "
+          "stations: 158, test_start: '2026-11-01', test_end: '2027-10-31', result: 'pending', "
+          "interval_bound: true}; const txt = () => evidenceItems().map(x => x[1]).join(' | '); "
+          "const all = {e02c: true, ext: true, fv: true, e02d: true, e02y: true, dr: true, "
+          "fm: true, fv2: true, fvext: true, fw1: true, fw2: true, chx: true, chb: true}; "
+          "mc.registrations = {}; mc.results = res; const unreg = txt(), mi0 = fwNote(), "
+          "b0 = headBandNote(36); "
+          "mc.registrations = all; mc.results = {}; const noreport = txt(), mi1 = fwNote(), "
+          "b1 = headBandNote(36); "
+          "mc.results = res; const on = txt(), mi = fwNote(), band = headBandNote(36); "
+          "mc.results = {...res, fw1: undefined}; const v2only = fwNote(); "
+          "mc.results = {...res, fw2: {...res.fw2, all_elastic: false}}; const most = fwNote(); "
+          "return {unreg, noreport, on, mi0, mi1, mi, v2only, most, b0, b1, band}; }")
+    _, out, _ = _build(tmp_path)
+    pw, browser = _browser()
+    try:
+        page = browser.new_page()
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(js, res)
+    finally:
+        browser.close()
+        pw.stop()
+    keys = ("E02d, registered on the same 158 wells", "decided by registered tests for "
+            "2027-11..2029-10", "DR.relative_drift.v1", "FM.origin_memory.v1",
+            "FV.decidability.v2", "FV.ext.v1")
+    for k in keys:
+        assert k not in got["unreg"] and k in got["on"], k
+    assert "Outside that window the recipe is untested." in got["unreg"]
+    # registered but not yet scored: E02d and E02y are named, no model-only reading is
+    assert "E02d, registered" in got["noreport"] and "2027-11..2029-10" in got["noreport"]
+    for k in ("DR.relative_drift.v1", "FM.origin_memory.v1", "FV.decidability.v2",
+              "FV.ext.v1"):
+        assert k not in got["noreport"], k
+    assert "0.82 m in Yunlin and 0.85 m in Changhua (a lower bound); constant-width" in got["on"]
+    assert "after about 11 months (from Nov 2023)" in got["on"]
+    assert "passes E02c's level rule with probability 0.96" in got["on"]
+    assert "Yunlin: in the synthetic study" in got["on"] and "probability 0.35" in got["on"]
+    assert "so the coverage test is weak by design there" in got["on"]
+    assert "would cover 96% of the window's well-months" in got["on"]
+    assert "no Changhua forcing-year variation is represented" in got["on"]
+    assert "external-well level rule with probability 0.59" in got["on"]
+    # E25/E26 (ruling R7.changhua_page): direction only, with the slope; the lever label stays
+    for k in ("I1.CHX.v1", "I1.CH_backcast.v1"):
+        assert k not in got["unreg"] and k not in got["noreport"] and k in got["on"], k
+    assert "at 23 never-calibrated Changhua screens, slope 0.17 [0.02, 0.44]" in got["on"]
+    assert "slope 0.37 [0.15, 1.35] (90 % interval) at 12 wells" in got["on"]
+    assert "S (design-time), direction only; size not supported" in got["on"]
+    assert "Changhua head lever stays untested (N2C registered" in got["on"]
+    assert "Synthetic decidability study (FV.decidability.v1) not evaluable" not in got["on"]
+    assert "informative" not in got["on"].replace("not informative", "")
+    # FW: qualitative only, both modes, the gauge caveat on the weather mode, no number in cm
+    assert got["mi0"] == "" and got["mi1"] == ""
+    assert "all elastic in this model with pumping anomalies only" in got["mi"]
+    assert "no replayed dry year opens an inelastic (permanent) channel" in got["mi"]
+    assert "rf11 for all of 2021–22 and rf15 in 2015 H2" in got["mi"]
+    assert not re.search(r"\d\s*cm", got["mi"])
+    assert "FW.weather_replay.v1" not in got["v2only"] and "dry year" in got["v2only"]
+    assert "mostly elastic" in got["most"] and "dry year" not in got["most"]
+    # C14c: the band note is reworded only once FV v2's forcing-year reading is scored
+    assert "forcing-year range" not in got["b0"] and "forcing-year range" not in got["b1"]
+    assert "plus the model's own forcing-year range (−0.56 to +0.61 m" in got["band"]
+

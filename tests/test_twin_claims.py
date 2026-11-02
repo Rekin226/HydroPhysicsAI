@@ -890,3 +890,152 @@ def test_n3_docs_follow_the_registered_conversion_role():
     stale = [w for w, a in N3_CONV12_ANCHORS.items() if a in texts[w]]
     assert not stale, (f"N3's 12-month conversion test is {roles.get('N3P.conversion_12m')!r}; "
                        f"reword the conversion window or role in {stale} (C31 g0_failed row)")
+
+
+# ---- round 7 (user rulings 2026-11-01, sixth to tenth sets) ----------------------------------
+R7_SETS = {"sixth set": ("R7.gnss_seasonal_S", "R7.e02d_residual_read", "R7.heads_years23",
+                         "R7.n3_g0prime", "R7.l1_pre2012", "R7.fv_v2_page", "R7.forecast_mode_S"),
+           "seventh set": ("R7.fm_page_line", "R7.fw_wording", "R7.fw_budget", "R7.commit_first"),
+           "eighth set": ("R7.fw_v2_weather",), "ninth set": ("R7.fw_v1_pumping",),
+           "tenth set": ("R7.fw_both",)}
+
+
+def _r7(rid: str) -> str:
+    return next(f"user ruling 2026-11-01 ({s}) ({rid})" for s, ids in R7_SETS.items()
+                if rid in ids)
+
+
+def test_round7_rulings_are_recorded():
+    ids = {r["id"] for r in L()["rulings"]}
+    want = {f"user ruling 2026-11-01 ({s}) ({i})" for s, v in R7_SETS.items() for i in v}
+    assert want <= ids, sorted(want - ids)
+    text = {r["id"]: r["text"] for r in L()["rulings"]}
+    assert "Superseded" in text[_r7("R7.fw_v2_weather")]
+    assert "Not approved" in text[_r7("R7.forecast_mode_S")]
+
+
+def test_round7_interval_rows_follow_their_registrations():
+    """E02d: new sub-claim C14a-r (N+D, decisive by design); E02y: C14b N -> N+D on the
+    year-2/3 ruling; C14f: N3F's interval check relabelled (D, no new page text)."""
+    cl = CL()
+    a = cl["C14a-r"]
+    assert _st("C14a-r") == {"N", "D"}
+    assert a["cites"]["registrations"][0] == "E02d.decomposed_prospective_2026-12.v1"
+    assert a["cites"]["tests"] == ["E02dP.G_idio_2026-12"]
+    assert "decided by a registered test that is decisive by design (U1.decomp_power.v1)" in a[
+        "wording_en"]
+    assert a["text_keys"] == ["i18n:evc_pro_e02d"] and "calibrated" in a["notes"]
+    b = cl["C14b"]
+    assert b["status_before"] == "N" and _st("C14b") == {"N", "D"}
+    assert b["ruling"] == _r7("R7.heads_years23")
+    assert "E02y.years23_2027-11_2029-10.v1" in b["cites"]["registrations"]
+    assert {"E02yP.rel_2027-11", "E02yP.rel_2028-11"} <= set(b["cites"]["tests"])
+    assert "a lower bound" in b["wording_en"] and "report-only, never on the" in b["notes"]
+    f = cl["C14f"]
+    assert _st("C14f") == {"D"} and f["text_keys"] == ["i18n:evc_pro_ext"]
+    assert f["cites"]["tests"] == ["N3FP.ext_level_2026-11"] and "Relabel only" in f["wording_en"]
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "untested beyond" in en["pro_out_e02y"] and "2029-01-15" in zh["pro_out_e02y"]
+    assert en["pro_out_un"] == "Outside that window the recipe is untested."
+    body = C.function_source("evidenceItems")
+    assert 'if (rg.e02d) out.push(["", tr("evc_pro_e02d")]);' in body
+    assert 'tr(rg.e02y ? "pro_out_e02y" : "pro_out_un")' in body
+
+
+def test_round7_model_only_readings_are_worded_as_declared():
+    """FM (ruling R7.fm_page_line), FV v2 (post-failure, exploratory; R7.fv_v2_page) and FV.ext
+    carry their registered wording; FV v2's lines say 'post-failure exploratory' and no S
+    follows; the one-sided reading has no 'a fail is informative' line."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    cl = CL()
+    for k in ("evc_fv2_lvl_nsw", "evc_fv2_lvl_wbd", "evc_fv2_cov_nsw", "evc_fv2_cov_wbd",
+              "evc_fv2_rc_nso", "evc_fv2_rc_omits", "bn_head_fy"):
+        assert "post-failure exploratory" in en[k] and "FV.decidability.v2" in zh[k], k
+        assert "informative" not in en[k], k
+    assert "lies beyond the start memory" in en["evc_pro_fm"]
+    assert "FM.origin_memory.v1" in zh["evc_pro_fm"]
+    decl = C.PREREG / "FV.decidability.v2_postfailure.json"
+    if decl.exists():                                   # the registered text, verbatim
+        w = json.loads(decl.read_text(encoding="utf-8"))["readings"]["reading_1"]["wording"]
+        for lang, d in (("en", en), ("zh", zh)):
+            assert d["evc_fv2_lvl_nsw"] == w["level"]["not_shown_weak"][lang].replace(
+                "{p:.2f}", "{p}"), lang
+            assert d["evc_fv2_cov_wbd"] == w["coverage"]["weak_by_design"][lang].replace(
+                "{p:.2f}", "{p}").replace("{county}", "{cty}"), lang
+    for cid in ("E02", "E21", "C30"):
+        assert "FV.decidability.v2_postfailure" in cl[cid]["cites"]["registrations"], cid
+        assert "FM.origin_memory.v1" in cl[cid]["cites"]["registrations"], cid
+        assert _r7("R7.fv_v2_page") in _also(cl[cid]), cid
+    assert "FV.ext.v1" in cl["E22"]["cites"]["registrations"] and _st("E22") == {"D"}
+    assert "FV.stat.v1" in cl["E04"]["cites"]["registrations"]
+    assert "not evaluable (engineering)" in cl["E04"]["notes"]
+    assert "start memory" in cl["E23"]["wording_en"] and _st("E23") == {"L"}
+    for c in L()["claims"]:                            # model-only studies support nothing
+        regs = set(c["cites"]["registrations"])
+        if regs & {"FV.decidability.v2_postfailure", "FV.ext.v1", "FM.origin_memory.v1",
+                   "FH.forcing_sensitivity.v1", "FW.weather_replay.v1", "FW.weather_replay.v2",
+                   "SD.cut_response_spread.v2"}:
+            assert "S" not in _st(c["id"]), c["id"]
+
+
+def test_avoided_subsidence_numbers_of_round7_stay_off_the_page():
+    """FW's numbers and SD's spread are ledger and README only (rulings R7.fw_wording,
+    R7.fw_both; the SD tile display was not ruled): the page has only FW's qualitative note."""
+    src = C.template_src()
+    for bad in ("0.47-1.42", "x2.02", "2.4-3.2 cm", "lasting benefit", "SD.cut_response_spread"):
+        assert bad not in src, bad
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    for k in ("mi_fw_both", "mi_fw_v1", "mi_fw_v2"):
+        assert not re.search(r"\d\s*cm", en[k]) and "公分" not in zh[k], k
+    for k in ("mi_fw_both", "mi_fw_v2"):              # the gauge caveat on the weather mode
+        assert "rf11 for all of 2021–22 and rf15 in 2015 H2" in en[k], k
+        assert "rf11" in zh[k] and "rf15" in zh[k], k
+    assert "dry" not in en["mi_fw_v1"].replace("not dry", "")   # pumping-only: no dry year
+    cl = CL()
+    e24 = cl["E24"]
+    assert _st("E24") == {"L"} and e24["text_keys"] == ["doc:README.md"]
+    assert "model-form spread, not an interval" in e24["wording_en"]
+    for cid in ("C03", "C29", "C14e", "C11", "C27"):
+        assert "row E24" in cl[cid]["notes"], cid
+    assert _st("C03") == {"W"} and _st("C15") == {"L"} and _st("C25") == {"N"}
+    for cid in ("C15", "C25"):
+        assert {"FW.weather_replay.v1", "FW.weather_replay.v2"} <= set(
+            cl[cid]["cites"]["registrations"]), cid
+
+
+def test_changhua_direction_rows_follow_the_eleventh_set():
+    """User rulings 2026-11-02 (eleventh set): E25/E26 and the C20/C21 direction clause on the
+    page, README and model card as 'S (design-time), direction only; size not supported', with
+    the slopes; the Changhua lever stays untested and capped; C11 drops the leader wording
+    (Tier A+B); the census audit gets one README sentence and no page text."""
+    ids = {r["id"] for r in L()["rulings"]}
+    for rid in ("R7.changhua_page", "R7.sd_leader_tier", "R7.audit_readme"):
+        assert f"user ruling 2026-11-02 (eleventh set) ({rid})" in ids, rid
+    cl = CL()
+    for cid, test, key in (("E25", "I1CHX.direction_R1c_ext23", "evc_chx"),
+                           ("E26", "I1CHB.direction_R1c_2010_2011", "evc_chb")):
+        assert _st(cid) == {"S"} and cl[cid]["cites"]["tests"] == [test], cid
+        assert f"i18n:{key}" in cl[cid]["text_keys"] and DM()["i18n"][key][0] == cid, cid
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    for k in ("evc_chx", "evc_chb"):
+        assert "S (design-time), direction only; size not supported" in en[k], k
+        assert "僅方向；大小未獲支持" in zh[k], k
+    assert "untested (N2C registered, scored not before 2028-01-15) and capped" in en["evc_chx"]
+    body = C.function_source("chDirLines")
+    assert "rg[k] && r" in body and '"evc_chx"' in body and '"evc_chb"' in body
+    readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
+    card = " ".join((C.REPO / "MODEL_CARD.md").read_text(encoding="utf-8").split())
+    for text in (readme, card):
+        assert "0.17 [0.02, 0.44]" in text and "0.37 [0.15, 1.35]" in text
+        assert "direction only; size not supported" in text and "12 wells" in text
+    assert _st("C13a") == {"W"} and _st("E20") == {"D"}
+    for cid in ("C20", "C21"):
+        assert {"I1.CHX.v1", "I1.CH_backcast.v1"} <= set(cl[cid]["cites"]["registrations"])
+    # C11: Tier A+B decides; no township is named as leading
+    assert "column-dependent" in en["tn_pol"] and "no township is named as leading" in en["tn_pol"]
+    assert "{bias}" not in en["tn_pol"] and "headline" not in en["tn_pol"]
+    assert "居首" in zh["tn_pol"] and "R7.sd_leader_tier" in " ".join(_also(cl["C11"]))
+    # the audit: one README sentence, no page text
+    assert "`model_census` v1 as delivered" in readme and "(D1b)" in readme
+    assert "model_census" not in C.template_src()
+    assert "N3.G0prime.v1" in cl["C31"]["notes"] and _st("C31") == {"N"}
