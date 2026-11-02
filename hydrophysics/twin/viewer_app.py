@@ -151,6 +151,20 @@ PAGE_REGISTRATIONS = {
     # rank 7: the model-only start-state check of the head lever (C01); worded only from its
     # report (PAGE_RESULTS), never from the registration alone
     "fs": ("FS.start_invariance.v1",),
+    # round 7 (user rulings 2026-11-01, sixth to tenth sets): the decomposed per-well test
+    # (C14a-r) and the year-2/3 windows (C14b) are named once registered; the model-only
+    # studies below are worded only from their reports (PAGE_RESULTS)
+    "e02d": ("E02d.decomposed_prospective_2026-12.v1",),
+    "e02y": ("E02y.years23_2027-11_2029-10.v1",),
+    "dr": ("DR.relative_drift.v1",),
+    "fm": ("FM.origin_memory.v1",),
+    "fv2": ("FV.decidability.v2_postfailure",),
+    "fvext": ("FV.ext.v1",),
+    "fw1": ("FW.weather_replay.v1",),
+    "fw2": ("FW.weather_replay.v2",),
+    # user ruling 2026-11-02 (R7.changhua_page): the two Changhua direction rows (E25, E26)
+    "chx": ("I1.CHX.v1",),
+    "chb": ("I1.CH_backcast.v1",),
 }
 # Results of the registered model-only studies that change what the page may say (claims E02,
 # E21, C30: FV; C13a: the two Changhua studies; C01: FS). A file is read only when it exists,
@@ -163,9 +177,30 @@ PAGE_RESULTS = {
     "x5n2c": ("X5.n2c_reading.v1", "results/dataprep/reports/X5.n2c_reading.v1/result.json"),
     "fs": ("FS.start_invariance.v1",
            "results/dataprep/reports/FS.start_invariance.v1/report.json"),
+    # round 7: start memory (E02/E21/C30/E23), the design-time drift line (C14b), FV v2's two
+    # post-failure exploratory readings (E02/E21/C30; C14a/C14c), FV.ext (E22) and the two
+    # weather replays (C15/C25; the page gets only a qualitative internals note)
+    "fm": ("FM.origin_memory.v1", "results/dataprep/reports/FM.origin_memory.v1/report.json"),
+    "dr": ("DR.relative_drift.v1", "results/dataprep/reports/DR.relative_drift.v1/report.json"),
+    "fv2": ("FV.decidability.v2_postfailure",
+            "results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json"),
+    "fv2fy": ("FV.decidability.v2_postfailure",
+              "results/dataprep/reports/FV.decidability.v2_postfailure/report_forcing_year.json"),
+    "fvext": ("FV.ext.v1", "results/dataprep/reports/FV.ext.v1/report.json"),
+    "fw1": ("FW.weather_replay.v1", "results/dataprep/reports/FW.weather_replay.v1/report.json"),
+    "fw2": ("FW.weather_replay.v2", "results/dataprep/reports/FW.weather_replay.v2/report.json"),
+    # E25/E26 (user ruling 2026-11-02, R7.changhua_page): direction only, size not supported
+    "chx": ("I1.CHX.v1", "results/dataprep/reports/I1.CHX.v1/report.json"),
+    "chb": ("I1.CH_backcast.v1", "results/dataprep/reports/I1.CH_backcast.v1/report.json"),
 }
 # FS.start_invariance.v1's pre-declared wording cases (evidence_and_ledger_mapping)
 FS_CASES = ("pass", "S2_only", "S1_only", "S1_and_S2", "not_evaluable")
+# the declared readings the page has words for; any other reading refuses the build
+FV_READINGS = ("not_shown_weak", "weak_by_design")
+FV2_RC_READINGS = ("not_shown_to_omit", "omits", "not_represented")
+# FW.weather_replay v1/v2: the replay mode each declaration fixed (recipe.replay_fields)
+FW_MODES = {"fw1": "energy", "fw2": "energy+weather"}
+COUNTIES = ("Yunlin", "Changhua")
 # Roles a registration fixes before it is written, which change what the page may say (claims
 # C31 and C27; ruling 2026-11-01 fourth set (a)): N3's synthetic gate G0 makes its conversion
 # test gating at 12 months, gating at 24 months, or report-only. flag -> (registration flag,
@@ -1687,7 +1722,149 @@ def _results_block(paths: dict | None = None) -> dict:
                         "max_abs_ratio_dev_pct": None if s.get("max_abs_ratio_dev_pct") is None
                         else float(s["max_abs_ratio_dev_pct"]),
                         "per_arm": {a: _fs_arm(per[a]) for a in ("S1", "S2") if a in per}}
+        elif key in _ROUND7_READERS:
+            out[key] = _ROUND7_READERS[key](rep, reg_id)
     return out
+
+
+def _no_wording(reg_id: str, what: object) -> ValueError:
+    return ValueError(f"{reg_id} {what!r} has no page wording; wire its declared reading into "
+                      "the page first")
+
+
+def _fm_result(rep: dict, reg_id: str) -> dict:
+    """FM.origin_memory.v1 (E02/E21 clause under ruling R7.fm_page_line; C30, E23): the page
+    words only the declared case 'within_first_year' with the window beyond the start memory."""
+    p = rep.get("primary") or {}
+    w = p.get("wording") or {}
+    case, clause = w.get("case"), w.get("E02_E21_clause_case")
+    if case != "within_first_year" or clause != "window_beyond_memory":
+        raise _no_wording(reg_id, (case, clause))
+    return {"case": case, "clause_case": clause, "lstar_months": int(p["lstar_months"]),
+            "lstar_month": str(p["lstar_month"]), "floor_m": float(rep["floor_m"])}
+
+
+def _dr_result(rep: dict, reg_id: str) -> dict:
+    """DR.relative_drift.v1 (C14b design-time line, outputs.page_line): per county the
+    noise-corrected excess drift over ~6 years (a lower bound) and whether the drift rule
+    triggered; the report-only root mean square is never read."""
+    cs, dec = rep.get("counties") or {}, rep.get("decisions") or {}
+    out = {}
+    for c in COUNTIES:
+        if c not in cs:
+            continue
+        x = (cs[c].get("page_numbers") or {}).get("excess_drift_over_6y_m")
+        ev = bool(cs[c].get("evaluable")) and x is not None
+        out[c] = {"evaluable": ev, "excess_drift_6y_m": float(x) if ev else None,
+                  "include_drift": bool((dec.get(c) or {}).get("include_drift"))}
+    return out
+
+
+def _fv2_result(rep: dict, reg_id: str) -> dict:
+    """FV.decidability.v2_postfailure reading 1 (E02/E21/C30 level line, E02c's per-county
+    coverage lines), labelled 'post-failure, exploratory' (ruling R7.fv_v2_page)."""
+    if rep.get("status") == "not_evaluable":
+        return {"status": "not_evaluable"}          # page_mapping.not_evaluable: v1's line stays
+    rd, P = rep.get("readings") or {}, rep.get("P") or {}
+    if rep.get("status") != "scored" or rd.get("label") != "post-failure, exploratory":
+        raise _no_wording(reg_id, rep.get("status"))
+    if rd.get("level") not in FV_READINGS:
+        raise _no_wording(reg_id, rd.get("level"))
+    cov = {}
+    for c in COUNTIES:
+        r = (rd.get("coverage") or {}).get(c)
+        if r is None:
+            continue
+        if r not in FV_READINGS:
+            raise _no_wording(reg_id, r)
+        cov[c] = {"reading": r, "p": float(P["coverage"][c]["p"])}
+    return {"status": "scored", "level": rd["level"], "p_level": float(P["level"]["p"]),
+            "coverage": cov}
+
+
+def _fv2fy_result(rep: dict, reg_id: str) -> dict:
+    """FV.decidability.v2_postfailure reading 2, the forcing-year completeness of the frozen
+    interval (C14a per county, C14c reworded); C14b's lead curve stays in the ledger, so a
+    C14b move to L refuses the build until its line is wired."""
+    if rep.get("status") == "not_evaluable":
+        return {"status": "not_evaluable"}
+    rd = rep.get("readings") or {}
+    if rep.get("status") != "scored" or rd.get("label") != "post-failure, exploratory":
+        raise _no_wording(reg_id, rep.get("status"))
+    if rd.get("c14b") != "stays_N":
+        raise _no_wording(reg_id, ("c14b", rd.get("c14b")))
+    rain = (rep.get("forcing") or {}).get("rain")
+    if rain not in ("climatology", "replayed"):
+        raise _no_wording(reg_id, ("rain", rain))
+    rc = {}
+    for c in COUNTIES:
+        r = (rd.get("rc") or {}).get(c)
+        if r is None:
+            continue
+        if r not in FV2_RC_READINGS:
+            raise _no_wording(reg_id, r)
+        rc[c] = {"reading": r}
+        if r != "not_represented":
+            v = rep["rc"][c]
+            t, rng = v["sampling_11yr"]["t90"], v["range_over_sequences"]
+            rc[c].update(rc=float(v["rc"]), t_lo=float(t[0]), t_hi=float(t[1]),
+                         lo=float(rng[0]), hi=float(rng[1]))
+    a = rep["aggregates"]["47-58"]
+    return {"status": "scored", "rain": rain, "rc": rc,
+            "agg": {"n2_lo": float(a["n2_unit_mean"]["min_m"]),
+                    "n2_hi": float(a["n2_unit_mean"]["max_m"]),
+                    "l2_lo": float(a["fan_layer2_mean"]["min_m"]),
+                    "l2_hi": float(a["fan_layer2_mean"]["max_m"])}}
+
+
+def _fvext_result(rep: dict, reg_id: str) -> dict:
+    """FV.ext.v1 (E22): the one-sided reading of N3F's external-well level rule."""
+    if rep.get("status") == "not_evaluable":
+        return {"status": "not_evaluable"}          # page_mapping.not_evaluable: no line
+    r = (rep.get("readings") or {}).get("ext_level")
+    if rep.get("status") != "scored" or r not in FV_READINGS:
+        raise _no_wording(reg_id, (rep.get("status"), r))
+    return {"status": "scored", "reading": r, "p": float(rep["P"]["p"])}
+
+
+def _fw_result(key: str):
+    def read(rep: dict, reg_id: str) -> dict:
+        """FW.weather_replay v1/v2 (C15, C25, C27): the page gets only the qualitative
+        internals note (ruling R7.fw_wording, R7.fw_both), so only the case is kept, no
+        number; an inelastic channel has no page wording yet."""
+        if rep.get("replay_fields") != FW_MODES[key]:
+            raise ValueError(f"{reg_id} replay mode {rep.get('replay_fields')!r} is not "
+                             f"{FW_MODES[key]!r}")
+        case = rep.get("wording_case")
+        if rep.get("verdict") != "scored" or case == "not_evaluable":
+            return {"verdict": "not_evaluable"}
+        if case != "mostly_elastic":
+            raise _no_wording(reg_id, case)
+        share = (rep.get("summary") or {}).get("share") or {}
+        return {"verdict": "scored", "wording_case": case,
+                "all_elastic": share.get("max") == 0.0}
+    return read
+
+
+def _direction_result(verdict: str, block: str | None):
+    def read(rep: dict, reg_id: str) -> dict:
+        """I1.CHX.v1 / I1.CH_backcast.v1 (E25, E26; ruling R7.changhua_page): the page words
+        only a direction pass, as 'S (design-time), direction only; size not supported'; any
+        other verdict has no page wording yet. Only the slope, its interval and the count."""
+        if rep.get("verdict") != verdict:
+            raise _no_wording(reg_id, rep.get("verdict"))
+        b = (rep.get(block) or {}) if block else rep
+        beta = b["beta_primary"]
+        return {"verdict": verdict, "beta": float(beta["beta"]), "lo": float(beta["ci90"][0]),
+                "hi": float(beta["ci90"][1]), "n_wells": int(beta["n_wells"])}
+    return read
+
+
+_ROUND7_READERS = {"fm": _fm_result, "dr": _dr_result, "fv2": _fv2_result,
+                   "fv2fy": _fv2fy_result, "fvext": _fvext_result,
+                   "fw1": _fw_result("fw1"), "fw2": _fw_result("fw2"),
+                   "chx": _direction_result("direction_supported_size_not", "primary"),
+                   "chb": _direction_result("direction_supported", None)}
 
 
 def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:

@@ -682,8 +682,13 @@ committed afterwards in `6ea3b2b`.
   - lifting the cut30 policy in Jan 2030 (an abrupt return of the heads to the baseline)
     leaves none of the benefit by Dec 2032;
   - limits: ensemble-mean heads, not each run; mean forcing only. A dry year that drew heads
-    below that margin would add inelastic loading that a cut could avoid; that case is not
-    in the page's runs.
+    below that margin would add inelastic loading that a cut could avoid. Round 7 (section
+    20) replayed the 2012-22 forcing years in order: run under replayed 2012-22 pumping
+    anomalies only (rain at climatology); all elastic (FW.weather_replay.v1); a rain-year
+    replay was not run there. Run under replayed 2012-22 forcing years (weather and detrended
+    pumping); all elastic (FW.weather_replay.v2). Rain is the vendor cache the model was
+    calibrated on, which zero-fills gauge rf11 for all of 2021-22 and rf15 in 2015 H2
+    (zero-filled, not dry), so the replayed 2015, 2021 and 2022 carry that artefact.
   - Reading (wording chosen by the user, 2026-10-24): in this model the avoided
     subsidence is an elastic response that arrives within about a year; its 1-3-year size
     is not supported by the registered tests, and whether a cut changes long-run sinking is
@@ -1302,3 +1307,205 @@ registered FV rule in E02/E21's wording. The page is built with the command reco
 `results/twin/twin_app_20261029e.build.log`, with `--out` changed to
 `results/twin/twin_app_20261101a.html` (log beside it); the ledger names that file, and it is
 not promoted.
+
+## 20. Round-7 registrations and results (2026-11-01/02)
+
+User rulings of 2026-11-01, sixth to tenth sets (`results/dataprep/rulings/`
+`user_rulings_2026-11-01b.json` sha 5f53909b, `c` 339833ba, `d` f9c66aaf, `e` 08d30354, `f`
+7f9ba6ef), decided the round. Sixth set: the GNSS seasonal test may carry "S (design-time)" on
+a pass (R7.gnss_seasonal_S, moot because its gate failed); a pre-declared design-time read of
+the pre-origin fit residuals may set E02d's drift term and grouping (R7.e02d_residual_read);
+the frozen forecast's year-2 and year-3 windows are scored (R7.heads_years23); N3 may declare
+an attenuation-robust conversion estimator G0' (R7.n3_g0prime); the governed local product
+L1_pre2012 v1 may serve a 2010-11 Changhua backcast labelled design-time (R7.l1_pre2012); FV
+v2's single post-failure reading may reach the page labelled "post-failure, exploratory"
+(R7.fv_v2_page); a second estimand on the spent 2020-22 head block with an S label is not
+approved (R7.forecast_mode_S; rank 15 not run). Seventh set: FM's E02/E21 clause may go on
+the page, worded by FM's declared case (R7.fm_page_line); FW's lasting-benefit numbers go to
+the ledger and the README only, the page gets a qualitative note under Model internals
+(R7.fw_wording); FW runs in full (R7.fw_budget); the round-7 code was merged before
+registration (R7.commit_first). The eighth set (register FW v2 in weather mode and withdraw
+v1) was superseded by the ninth (run v1 pumping-only as registered), which the tenth narrowed:
+run both, v1 pumping-only and v2 in weather mode with the zero-filled gauge caveat on any
+weather-mode dry-year wording (R7.fw_both). Earlier rulings stay binding (C13a capped; N2C's
+before_scoring labels; the F < 0.5 cap; the avoided-subsidence number withdrawn from the
+page). The ledger records each as `user ruling 2026-11-01 (<set>) (<id>)`. User rulings of
+2026-11-02, eleventh set (`results/dataprep/rulings/user_rulings_2026-11-02.json`, sha
+9f1701ff), then decided three items this section had left open: the two Changhua direction rows
+E25 and E26 and the C20/C21 direction wording go on the page, in the README and in the model
+card as "S (design-time), direction only; size not supported" (R7.changhua_page); SD's Tier A+B
+decides C11, so the township leader wording is dropped (R7.sd_leader_tier); and the census
+audit's bookkeeping note goes to README Limits as one sentence, with no page change
+(R7.audit_readme). The only S rows are those two design-time direction rows.
+
+Registrations, with the registry sha256 prefix (`results/dataprep/preregistration/INDEX.jsonl`)
+and the result (each scored once):
+
+- **`DR.relative_drift.v1`** (f835af57), design-time, one logged look at the page model's
+  2012-22 fitted-month residuals (2026-11-01T13:48Z). Report
+  `results/dataprep/reports/DR.relative_drift.v1/report.json` (sha 32025941): grouping "zone"
+  and the drift term included in both counties. C14b gains the design-time line "over about 6
+  years each well's county-relative offset drifted by 0.82 m in Yunlin and 0.85 m in Changhua
+  (a lower bound); constant-width intervals are likely too narrow at 4-5-year leads
+  (pre-origin evidence)". The number is the noise-corrected excess (6 tau); the root mean
+  square of the split-half drift includes sampling noise and stays report-only.
+- **`U1.decomp_power.v1`** (9467e8af), synthetic P-gate of E02d (result sha c4ae0820): both
+  counties pass at 11 months (power at a 0.75 coverage truth 0.996 in Changhua and 1.000 in
+  Yunlin, false-fail at most 0.12) and at 12 months, so E02d is registrable and the year-2/3
+  relative test is primary in both counties.
+- **`E02d.decomposed_prospective_2026-12.v1`** (3dcdb468), test E02dP.G_idio_2026-12:
+  registered. New sub-claim C14a-r, the per-well spread of heads around the county-wide
+  departure at the 158 wells, 2026-12..2027-10, per county, N+D: "decided by a registered test
+  that is decisive by design (U1.decomp_power.v1); scored not before 2028-01-15". It is not the
+  level, the policy contrast or the full interval; a pass is never worded "calibrated".
+- **`E02y.years23_2027-11_2029-10.v1`** (4bf7d91f), tests E02yP.rel/abs for 2027-11 and
+  2028-11: registered. C14b moves N -> N+D: "outside the first window, decided by registered
+  tests for 2027-11..2029-10; untested beyond". A relative pass is S-limited per county and
+  lead; the absolute interval reads only "no gross under-coverage detected" or "failed its
+  registered gate", never S.
+- **C14f** (relabel only, round-7 rank 3): N3F's registered rule already decides the frozen
+  interval at the 66 never-calibrated external wells (coverage in [0.85, 0.95] is part of
+  N3FP.ext_level_2026-11), so the ledger names that interval check as its own D sub-claim. No
+  new registration and no new page text.
+- **`FM.origin_memory.v1`** (e2d261fb), model-only. Report (sha d93c0e6d): L* = 11 months
+  (2023-11; S1 9, S2 11), case "within_first_year", window_beyond_memory. E23 gains "start
+  memory: in this model the December 2022 start shapes the head levels for about 11 months
+  (until 2023-11)"; C30's heads part is narrowed to "after about 11 months (from 2023-11) the
+  head levels are the model's average-weather scenario, not a forecast from the observations;
+  the start shapes only the first year"; and under R7.fm_page_line the E02/E21 note reads "the
+  2026-11..2027-10 window lies beyond the start memory ... so the level rule tests the model's
+  average-weather level and datum, not the 2022-12 start". The page carries the three in one
+  evidence line.
+- **`FH.forcing_sensitivity.v1`** (e8ce627a), model-only. Report (sha 03628efa): L*_force = 1
+  month (case "within_first_year"): in this model, under the 2020-22 forcing history (which
+  includes the 2021 drought), the head level depends more on the following weather and
+  pumping than on anything known at the start from about the first month. Context notes on
+  C30, E01 and E07 only; no page text.
+- **`N3.G0prime.v1`** (0bc26d2d). Result `results/dataprep/reports/N3.G0prime.v1/g0prime/`
+  `result.json` (sha 0817e3f3): G0' failed for every estimator at 12 and 24 months (fail class
+  nest error: no estimator identifies the conversion at 2 piles even in N3 G0's own world;
+  harmonic ratio, 2SLS with calendar harmonics, 2SLS with the model's heads). No N3G is
+  registered; C31 keeps N with that note and C27 is unchanged. The declared ring attenuation
+  note has no output in the record, so none was added.
+- **`X5.gnss_seasonal_column.v1`**: not registered. Its synthetic gate G0-OC failed
+  (`results/dataprep/reports/X5.gnss_seasonal_column.v1/g0oc.json`, sha 35ebf516): under the
+  scored rule (band at both observation scales) a column of the right size reads "consistent"
+  0.11 of the time against the required 0.80 (the scale-1 reading, 0.92, is report-only). No S
+  label for subsidence follows; ruling R7.gnss_seasonal_S is moot.
+- **Changhua census bookkeeping audit** (`results/dataprep/reports/CH_audit/audit.json`, sha
+  cf0ec492; forcing only): D1 "model_census_v1_as_is" (R1c's forcing as delivered; the even
+  split damps the annual harmonic to 0.945 of the monthly-meter shape with the peak within a
+  day: a measured known bias), D1b "cap_member_required" (a report-only duty-cap-1.5 member on
+  every Changhua route), D2 "smooth2" for Changhua seasonal-amplitude gates.
+  `X5.CH_twfe_mirror.v1` was not registered: its readiness is blocked by D1b and it needs a
+  v2. README Limits carries one bookkeeping sentence from D1, D1b and D2 (R7.audit_readme); no
+  page change.
+- **`I1.CHX.v1`** (794f6a7e), design-time spatial holdout. Report (sha 9dc5938f): G0 decidable
+  (power 0.97, false pass 0.09); verdict "direction_supported_size_not": R1c's Changhua pumping
+  response has the right direction at 23 never-calibrated Changhua screens, slope 0.17 [0.02,
+  0.44] (twoway fixed effects, 90 % block bootstrap), while its RMSE does not beat the zero
+  response, so no size is supported. Report-only: the placebo on the Yunlin contrast is "not
+  supported"; CH-J was not run (its engineering was not delivered; the declared fallback
+  applies). Row E25 (S, design-time, direction only). The Changhua head lever stays untested
+  (N2C registered, scored not before 2028-01-15), and C13a, E20, the F < 0.5 cap and N2C's
+  clauses are unchanged.
+- **`I1.CH_backcast.v1`** (704ebcc6), design-time backcast on L1_pre2012 v1 (ruling
+  R7.l1_pre2012). Report (sha a62d43db): "direction_supported": slope 0.37 [0.15, 1.35] in
+  2010-11, months no model has fitted, at 12 wells (well x calendar-month and month-of-sample
+  effects); decide()'s verdict beside it is "direction_supported_size_not". Report-only
+  synthetic power P(direction | k = 1) is 0.35, and a dry year biases the slope toward a pass
+  (recharge is a 2012-22 climatology). Row E26 (S, design-time, direction only).
+  Both I1 registrations say their E-rows and the C20/C21 wording need the user's approval
+  (page_ruling); the user gave it on 2026-11-02 (R7.changhua_page). E25 and E26 are on the page
+  as evidence lines, and the README and the model card carry the direction clause, each worded
+  "S (design-time), direction only; size not supported" with its slope. The Changhua head lever
+  stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5).
+- **`FV.decidability.v2_postfailure`** (f7e35a17), post-failure, exploratory; every synthetic
+  world a full forward. Reading 1 (`report_worlds.json`, sha 320ac928): E02c's level rule "not
+  shown weak", P = 0.96 (per truth 0.90-0.99 for Q0, R0, R1c and X5R1); E02c's coverage gate
+  weak by design in Yunlin (P = 0.35: a fail would not refute the interval) and not shown weak
+  in Changhua (P = 0.50). Reading 2 (`report_forcing_year.json`, sha facf4a10; FW v1's
+  pumping-only forwards, rain at climatology): in Yunlin the frozen 90 % interval would cover
+  95 % of the window's well-months if the model were exactly right ("not shown to omit"
+  forcing-year variation; model-only, optimistic, damped amplitude about 0.73); Changhua is
+  "not represented" (no Changhua forcing-year variation in the page model). C14b stays N (47-58
+  month lead ratio 0.32 in Yunlin, 0.04 in Changhua, below 1.2); C14c's band note is reworded
+  with the model's own forcing-year range (-0.56 to +0.61 m for the N2-unit mean, -0.39 to
+  +0.43 m for the fan layer-2 mean in 2026-11..2027-10). The page shows the level line in place
+  of v1's not-evaluable sentence, the two county coverage lines and the forcing-year lines,
+  each labelled post-failure exploratory; the lead curve stays in the ledger, because its
+  closing clause ("outside the window the recipe stays untested") predates E02y's registered
+  wording. One-sided: no "a fail is informative" line.
+- **`FV.ext.v1`** (50108315), fresh first attempt. Report (sha b29f6cfc): N3F's external-well
+  level rule "not shown weak", P = 0.59 (0.54-0.64 per truth). E22 gains that line.
+- **`FV.stat.v1`** (95d201dc): not evaluable (engineering). The frozen self-check writes its
+  synthetic evaluation rows with model_sha256 "synthetic", which twin.validation.evaluate
+  rejects against the real E04 protocol, so the scorer stopped before any statistic
+  (`results/dataprep/reports/FV.stat.v1/engineering_failure.json`, sha ac83bd46). A fix would
+  need a new id, which edits prereg_fv2.py, an input of two registered declarations; FV.stat
+  was a report-only rider and is closed. No page effect.
+- **`SD.cut_response_spread.v2`** (aecb5a81), model-only, superseding v1 (0d05eb53). v1's
+  scorer exited 2 at its layout step before any cut30 quantity was formed: it expected each
+  column labelled by its directory name, while the forward labels a column with a creep
+  ceiling "tau<N>y" and a single column "column" (engineering_failure.json, sha 611498d4). v2
+  changes only the label mapping and reuses v1's 8 sealed forwards by sha. Report (sha
+  5cfc9ea7): "across 10 leveling-equivalent columns adding the Q0 family and R0 on their own
+  heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast
+  (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not
+  an interval)"; on the page's own heads (Tier A, 3 columns) 1.40-1.42 cm, inland Yunlin robust
+  within x1.5. New row E24 (L), cited by the C03, C29, C14e, C11 and C27 notes; ledger and
+  README only, because the user did not rule on showing it on the tile. The ranking reading
+  differs by tier (Tier A column-robust, Tier A+B column-dependent); by user ruling 2026-11-02
+  (R7.sd_leader_tier) Tier A+B decides, so the Townships note drops the leader wording and calls
+  the ranking of townships by avoided subsidence column-dependent. The
+  Changhua tier reaches only C13c wording; the Changhua subsidence lever is withdrawn under
+  every outcome.
+- **`FW.weather_replay.v1`** (91faaf6b, pumping-only) and **`FW.weather_replay.v2`** (f6719730,
+  weather and detrended pumping). Reports (sha dfdea63d and a53de00a): both "mostly_elastic"
+  with every share 0.0 (median inelastic share of the cut's avoided subsidence by 2032 0.0 %,
+  11 of 11 sequences evaluable); the page run reproduced to 0.0 m. Ledger and README: "all
+  elastic also under replayed 2012-22 pumping anomalies only (rain at climatology); the
+  mean-forcing caveat is closed for pumping anomalies only; a rain-year replay was not run" and
+  "all elastic also under replayed 2012-22 forcing years (weather and detrended pumping); the
+  mean-forcing caveat is closed", the second with the gauge caveat (the vendor rain cache
+  zero-fills rf11 for all of 2021-22 and rf15 in 2015 H2, zero-filled, not dry, so the replayed
+  2015, 2021 and 2022 carry that artefact). Forcing spread, model-internal, not an interval:
+  fan-mean baseline subsidence 2023-32 ranges 2.4-3.2 cm across the 11 replayed orders (mean
+  forcing 2.9 cm). The page gets only the qualitative internals note, with no number. Section
+  13's "that case is not in the page's runs" is replaced accordingly.
+
+Engineering record. SD v1 failed at its layout check (above) and was closed unscored; v2 is
+an engineering v2, not a post-failure follow-up. FW's first launch of the 2012-14 arms (W and
+RD, and v2's RW) ran in tmux sessions that inherited a server environment without
+HYDROMIND_GW_DATA: the forward fell back to the bundled sample data and crashed before writing
+output, the scorer exited 1, the arms were archived unopened
+(`results/twin_runs/fw_replay*/archive/20261102T005404Z`) and rerun, and score attempt 2
+exited 0. FW v1 is pumping-only because of a path bug at registration (the rain manifest
+recorded an absolute path, the declaration compared a repo-relative one); it ran as registered
+(R7.fw_v1_pumping, R7.fw_both) and feeds FV v2's forcing-year reading, and the weather replay
+is the separate v2. FV.stat's engineering fault is recorded above. (Round 6's FS S1 attempt,
+archived unopened, is in section 19.)
+
+Disclosures logged in the look ledger before the declarations they touch, none of which set
+anything: at 2026-11-01T11:14Z a planning agent saw the WRA GNSS station rows for ANES and CHSG
+(R7:gnss_anes_chsg_disclosure; report-only under R7.gnss_seasonal_S) and a forecast reviewer
+printed the 2020-22 temporal-holdout aggregates of `stage3_datum_gate_q0_temporal`
+(R7:q0_temporal_meta_disclosure); at 2026-11-01T14:19:53Z the FV v2 builder accidentally
+printed the statistical layer's parameters.json summary, one well's fitted row and the first
+row of the hybrid predictions (FV2:builder_accidental_e04_rows; the values are recorded only in
+the look ledger). FV.stat's K = 8 preview on the declared seed (FV2:stat_preview_k8_declared_seed)
+and FV.ext's design-time read of N3F's export (FV:ext_preorigin_derived_N3Fwells) are logged
+beside them.
+
+Page and ledger. `viewer_app.PAGE_REGISTRATIONS` adds e02d, e02y, dr, fm, fv2, fvext, fw1,
+fw2, chx and chb; `viewer_app.PAGE_RESULTS` reads, only where each report exists, FM's case and
+L*, DR's per-county page number and drift decision, FV v2's readings, P values, Yunlin
+forcing-year coverage and the 47-58-month aggregate range, FV.ext's reading and P, FW's wording
+case (no FW number), and the two Changhua direction verdicts with their slope, interval and
+count; nothing else and no observation, and a reading the page has no wording for refuses the
+build. The ledger adds C14a-r, C14f, E24, E25 and E26, moves C14b to N+D and fills the notes
+above. The page is built with the command recorded in
+`results/twin/twin_app_20261101a.build.log`, with `--out` changed to
+`results/twin/twin_app_20261102b.html` (log beside it; `twin_app_20261102a.html` is the build
+before the eleventh set); the ledger names the b file, and it is not promoted. Open: the
+analyst's mirror of the new evidence lines.

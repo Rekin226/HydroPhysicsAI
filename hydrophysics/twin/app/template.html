@@ -704,13 +704,33 @@ en: {
   evc_hyb: "Statistical layer (climatology plus the last observed anomaly, decayed): error {s} m against {c} m for climatology and {r} m for the physics alone, {span} ({y1}: {s1} vs {c1} m). The physics' own anomaly adds nothing (×{p}); the policy effect is still the physics' scenario difference.",
   evc_hyb_reg: "Statistical layer registered prospectively by manifest hash on {reg}, before the current registry, for {a}–{b} ({n} wells); result pending.",
   evc_pro_nodates: "Prospective test registered by manifest hash on {reg}, before the current registry ({n} wells); result pending.",
-  evc_pro_iv: "Its per-well 90 % head interval (combined spread, at the monitoring wells, in the window only) is decided by this registered prospective test. Disclosure: the interval family was chosen after its 2023–26 coverage was seen; the {a}–{b} window is untouched. Outside that window the recipe is untested.",
+  evc_pro_iv: "Its per-well 90 % head interval (combined spread, at the monitoring wells, in the window only) is decided by this registered prospective test. Disclosure: the interval family was chosen after its 2023–26 coverage was seen; the {a}–{b} window is untouched. {out}",
+  pro_out_un: "Outside that window the recipe is untested.",
+  pro_out_e02y: "Outside the first window it is decided by registered tests for 2027-11..2029-10 (E02y, scored not before 2029-01-15); untested beyond.",
+  evc_pro_dr: "Design-time, in-sample (DR.relative_drift.v1, pre-origin fit residuals): over about 6 years each well's county-relative offset drifted by {list} (a lower bound){trig}.",
+  dr_cty: "{x} m in {cty}", dr_ne: "{cty}: drift not evaluable",
+  pro_dr_trig: "; constant-width intervals are likely too narrow at 4–5-year leads (pre-origin evidence)",
+  evc_pro_e02d: "Per-well spread of heads around the county-wide departure (E02d, registered on the same 158 wells for December 2026 to October 2027): decided by a registered test that is decisive by design (U1.decomp_power.v1); scored not before 2028-01-15. It is not the level, the policy contrast or the full interval.",
+  evc_pro_fm: "Start memory (model-only declaration FM.origin_memory.v1): in this model, after about {m} months (from {lm}) the head levels are the model's average-weather scenario, not a forecast from the observations; the start shapes only the first year. The {a}–{b} window lies beyond the start memory (through it the start moves the heads by less than {f} m at 90 % of the screens), so the level rule tests the model's average-weather level and datum, not the 2022-12 start.",
   evc_pro_e02c: "Stricter companion test E02c, registered on the same wells and window: 90 % coverage of the per-well combined-spread head interval by county, clustered by well, and a level rule the forecast passes only if it beats both climatology and climatology plus trend (baselines from months before the forecast origin); decided not before 2028-01-15.",
   evc_pro_ext: "Level forecast at monitoring wells never used in calibration, against each well's own climatology (same frozen forecast, scored after E02c): registered; decided not before 2028-01-15.",
   evc_band_none: "No band is shown for subsidence, for averages over N2's wells or townships, or for policy contrasts: no held data can calibrate one (registered narrowing U1.no_band.v1). The subsidence runs' and the paired runs' spreads are parameter spreads and stay under Model internals.",
   evc_pro_fv: "How far E02c's level rule (also carried on E02's level line) and E02c's county coverage gates can be read is fixed beforehand by a synthetic decidability study (FV.decidability.v1, registered): if a model of the right kind passes a rule with probability 0.5 or less, that rule is weak by design and a fail would not refute; for the level rule, the baseline projection's head part then stays narrowed wording whatever the outcome.",
   evc_pro_fv_ne: "Synthetic decidability study (FV.decidability.v1) not evaluable ({why}); E02 and E02c gain no interpretation line from it.",
   fv_why_sup: "superposition failed: {x} m against a {t} m tolerance",
+  evc_fv2_lvl_nsw: "Synthetic decidability study, post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed): with every synthetic world run as a full forward, a model of the right kind passes E02c's level rule with probability {p} (optimistic: rain at climatology, noise independent between wells; not a strict bound); the study does not show the level test weak and adds no other reading.",
+  evc_fv2_lvl_wbd: "Synthetic decidability study, post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed): with every synthetic world run as a full forward, a model of the right kind passes E02c's level rule with probability {p} (optimistic: rain at climatology, noise independent between wells; not a strict bound), so the level test is weak by design. A fail would not refute the forecast, and the baseline projection's head part stays narrowed (N) whatever the 2028 level outcome.",
+  evc_fv2_cov_nsw: "{cty}: in the synthetic study (post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed)) a model of the right kind passes E02c's coverage gate with probability {p} (not a bound: rain variability and correlated noise could move coverage either way); not shown weak, no other reading.",
+  evc_fv2_cov_wbd: "{cty}: in the synthetic study (post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed)) a model of the right kind passes E02c's coverage gate with probability {p} (not a bound: rain variability and correlated noise could move coverage either way), so the coverage test is weak by design there; a fail would not refute the interval.",
+  evc_fv2_rc_nso: "{cty}: in the model's own replayed forcing years ({forcing}; post-failure exploratory, FV.decidability.v2), the frozen 90 % head interval would cover {rc} of the window's well-months if the model were exactly right (90 % interval over the 11 recorded years {tlo}-{thi}; single years {lo}-{hi}); its width is not shown to omit forcing-year variation. Model-only and optimistic: the model's amplitude is damped (about 0.73).",
+  evc_fv2_rc_omits: "{cty}: in the model's own replayed forcing years ({forcing}; post-failure exploratory, FV.decidability.v2), the frozen 90 % head interval would cover {rc} of the window's well-months even if the model were exactly right (90 % interval over the 11 recorded years {tlo}-{thi}; single years {lo}-{hi}). The interval leaves out the model's own forcing-year variation, so some under-coverage is expected from forcing-year variation alone. This is model-only and the model's amplitude is damped (about 0.73); the 92.6 % coverage measured after the fact on 2023-26 observations is a different quantity and is shown separately.",
+  evc_fv2_ch_clim: "Changhua: no Changhua forcing-year variation is represented in this reading (pumping-only replay with rain at climatology, and the page model carries no Changhua pumping), so Changhua gets no line from it.",
+  evc_fv2_ch_rep: "Changhua: rain-year range only; the page model carries no Changhua pumping.",
+  fv2_forcing_clim: "pumping years only, rain at climatology", fv2_forcing_rep: "rain and detrended pumping replayed from 2012-22",
+  evc_fvext_nsw: "Synthetic decidability study (FV.ext.v1, model-only): a model of the right kind passes the external-well level rule with probability {p} (optimistic: rain at climatology, noise independent between wells, every month observed; not a strict bound); the study does not show this test weak and adds no other reading.",
+  evc_chx: "Changhua direction test (I1.CHX.v1; S (design-time), direction only; size not supported): R1c's Changhua pumping response has the right direction at {n} never-calibrated Changhua screens, slope {s} [{lo}, {hi}] (90 % interval, two-way fixed effects, 2013–22); its error does not beat the zero response. The Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5).",
+  evc_chb: "Changhua backcast (I1.CH_backcast.v1; S (design-time), direction only; size not supported): direction of R1c's Changhua pumping response supported in years never used to fit any model (2010–11), slope {s} [{lo}, {hi}] (90 % interval) at {n} wells.",
+  evc_fvext_wbd: "Synthetic decidability study (FV.ext.v1, model-only): a model of the right kind passes the external-well level rule with probability {p} (optimistic: rain at climatology, noise independent between wells, every month observed; not a strict bound), so this test is weak by design; a fail would not refute the forecast at the never-calibrated wells.",
   evc_subs_decomp: "In this model the avoided subsidence is the head rise times the column's compaction per metre of head change (elastic). Head factor: decided in Yunlin by N2 (pending). {conv} Coast: not identifiable from held leveling. Changhua: no subsidence factor is tested.",
   decomp_conv_n3: "Conversion factor: decided by N3 at the 2 Yunlin deep-pile cells only (pending); neither factor decides a cut's subsidence size.",
   decomp_conv_un: "Conversion factor: untested (no registered test).",
@@ -770,6 +790,11 @@ en: {
   hw_yun: "in layer 2, on average over the {n} cells of the named Yunlin townships (Changhua cells left out: the model carries no Changhua pumping, so their change is spillover)", hw_fan: "in layer 2, on average over the fan", hw_n2: "on average at N2's {n} Yunlin monitoring wells, each in its own screened layer (N2's scoring unit)",
   mi_base: "Model internals: under business as usual the fan sinks a further <b>{v} cm</b>{rng} on average from Dec {y0} to Dec {year} (the model's own projected trend; its size is untested, and the distal coast does not sink in this model).{rh}",
   mi_note: "Model internals, not part of the answer. These numbers come from the model's subsidence column and are not supported by the registered tests: the 1–3-year size of the subsidence response is not supported, long-run sinking under a cut is untested, the coastal (distal, west of the 182 km line) benefit is not reliable because the distal zone does not sink in this model while the 2016–21 next-year leveling showed the coast sinking about 2.5 cm/yr faster than modelled, and Changhua values are spillover of a Yunlin cut in a model with no Changhua pumping, not a Changhua lever. They are shown so the model can be inspected, not to size a policy. The subsidence column is driven by the model's own free-running heads, so after Dec 2022 it starts from the model's simulated December 2022 heads, and the 2022 head recovery the model missed is not in it.",
+  mi_fw_both: " Replaying the 2012–22 forcing years in order instead of mean forcing leaves the avoided subsidence {how} in this model with pumping anomalies only (FW.weather_replay.v1, rain at climatology), and also with weather and detrended pumping (FW.weather_replay.v2){dry}. The replayed rain is the vendor cache, which zero-fills gauge rf11 for all of 2021–22 and rf15 in 2015 H2 (zero-filled, not dry). Model-only declarations: the model's form, not a test.",
+  mi_fw_v1: " Replaying the 2012–22 pumping anomalies in order (rain at climatology) instead of mean forcing leaves the avoided subsidence {how} in this model (FW.weather_replay.v1; a rain-year replay is not in it). Model-only declaration: the model's form, not a test.",
+  mi_fw_v2: " Replaying the 2012–22 forcing years in order (weather and detrended pumping) instead of mean forcing leaves the avoided subsidence {how} in this model (FW.weather_replay.v2){dry}. The replayed rain is the vendor cache, which zero-fills gauge rf11 for all of 2021–22 and rf15 in 2015 H2 (zero-filled, not dry). Model-only declaration: the model's form, not a test.",
+  fw_all: "all elastic", fw_most: "mostly elastic (below the declared 10 % rule)",
+  fw_dry_none: ": no replayed dry year opens an inelastic (permanent) channel that a cut could avoid",
   tW_r: "direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only",
   at_h: " (counted at {H})",
   prov_full: "Full model, {n} parameter sets × {k} initial fields", prov_fast: "Fast estimate: single-lever runs rescaled to the full model",
@@ -854,6 +879,7 @@ en: {
   bn_aux: "Dots: annual mean of the {n} layer-2 wells, observed; thin dashed line: the model at the same wells (on average {gap} m from the observed). Neither is the fan average.",
   bn_head: "Bands: p10–p90 and p25–p75 of the {n} runs' fan-average layer-2 head, every year. This is a run spread, a parameter spread, not a predictive interval: an interval for a mean of correlated wells is untested, and this band is not tested by E02 (a different interval).",
   bn_head_none: "The run spread of heads is not shipped with the page.",
+  bn_head_fy: "Bands: p10–p90 and p25–p75 of the {n} runs' fan-average layer-2 head, every year. This is a run spread, a parameter spread, plus the model's own forcing-year range ({n2lo} to {n2hi} m for the N2-unit mean and {l2lo} to {l2hi} m for the fan layer-2 mean in 2026-11..2027-10; {forcing}); not a predictive interval; the model's amplitude is damped (about 0.73) (post-failure exploratory, FV.decidability.v2). An interval for a mean of correlated wells is untested, and this band is not tested by E02 (a different interval).",
   ts_subs_label: "cumulative subsidence since {t0}, cm", ts_subs_short: "cm since {t0}", ts_head_label: "head, layer {l}{main}, m", ts_head_main: " (main production aquifer)", ts_head_fan: " · fan average, incl. Changhua spillover",
   z_fit: "{a}–{b} fitted to observations", z_fit_s: "fitted", z_proj: "model's own trend, not validated", z_proj_s: "not validated", down_sinking: " (down = sinking)",
   hop_run: "run {i} of {n}", hop_need: "Playing the runs one by one needs per-run yearly output (--save-members yearly), not yet available.",
@@ -895,7 +921,7 @@ en: {
   tw_base_val: "{v} cm baseline {a}–{b} (model internals, size untested)", tw_avoided_val: "{v} cm avoided (model internals, size untested)", tw_sets: "{a}/{n} sets: a benefit", tw_skill: "benchmarks n={n}{bias}{r2}", tw_bias: ", bias {v} cm", tw_r2: ", R² {v}",
   tw_pooled: "not split by township; ", tw_low: "low confidence: {s}", tw_off: "off scale", tw_off_b: "↓ off scale",
   tn_base: "Shared axis 0–{hi} cm since {a} (down = sinking); grey = the baseline and its run range. Low-confidence townships are kept out of the headline. Bias = hindcast minus leveling (negative: the model sinks too little).",
-  tn_pol: "Model internals, size untested. Blue = sinking avoided by the policy (up = benefit), shared axis ±{hi} cm. Townships west of the 182 km line (the distal zone) carry a coastal benefit that is not reliable. Low-confidence townships are kept out of the headline{bias}; {pooled}. Bias = hindcast minus leveling (negative: the model sinks too little). {agree}",
+  tn_pol: "Model internals, size untested. Blue = sinking avoided by the policy (up = benefit), shared axis ±{hi} cm. Townships west of the 182 km line (the distal zone) carry a coastal benefit that is not reliable. The ranking of townships by avoided subsidence is column-dependent: it changes across columns that fit the leveling equally well (model-form spread, not an interval), so no township is named as leading; {pooled}. Bias = hindcast minus leveling (negative: the model sinks too little). {agree}",
   ta_note: "“n/N sets”: the parameter sets in which the township's average sinking is reduced by {H}; below {p} % it is flagged.", ta_h_only: "Per-township run agreement is counted at {H}; move the year there to see it.",
   ta_full_only: "Per-township run agreement exists for the full-model runs only, not for a fast estimate.", ta_none: "Per-township run agreement needs per-run output, not yet available.",
   th_township: "Township", th_base_fwd: "Baseline {a}-{b} (cm)", th_avoided_pol: "Avoided by policy (cm)", th_bias: "bias", th_conf: "confidence", th_sets: "sets agreeing",
@@ -1059,13 +1085,33 @@ zh: {
   evc_cov: "{n} 次模擬的 90 % 分布（參數分布，不是預測區間；沒有已登錄的涵蓋率檢驗；不受 E02 檢驗，那是另一個區間）事後量測涵蓋了 {span} 觀測的 {a}（需擴大 ×{x}）；合併分布 {c}（{st} 口井，{m} 井月）。",
   cov_line: "{n} 次模擬的 90 % 分布（不是預測區間）事後量測涵蓋 {span} 觀測的 {a}（需擴大 ×{x}）；合併分布 {c}。",
   evc_pro: "前瞻性檢驗已於 {reg} 以檔案雜湊（manifest）登錄，早於現行登錄制度（N2 以其預測作為零反應組），期間 {a}–{b}（{n} 口井）；結果待定。", evc_pro_nodates: "前瞻性檢驗已於 {reg} 以檔案雜湊（manifest）登錄，早於現行登錄制度（{n} 口井）；結果待定。",
-  evc_pro_iv: "其各井 90 % 水位區間（合併分布，僅限觀測井、僅限檢驗期間）由這項已登錄的前瞻性檢驗判定。揭露：此區間形式是在看過其 2023–26 年涵蓋率之後選定的；{a}–{b} 的檢驗期間未被觸及。在該期間以外，此配方未經檢驗。",
+  evc_pro_iv: "其各井 90 % 水位區間（合併分布，僅限觀測井、僅限檢驗期間）由這項已登錄的前瞻性檢驗判定。揭露：此區間形式是在看過其 2023–26 年涵蓋率之後選定的；{a}–{b} 的檢驗期間未被觸及。{out}",
+  pro_out_un: "在該期間以外，此配方未經檢驗。",
+  pro_out_e02y: "第一個檢驗期間之外，由 2027-11..2029-10 的已登錄檢驗判定（E02y，最早於 2029-01-15 評分）；再往後未經檢驗。",
+  evc_pro_dr: "設計階段、樣本內（DR.relative_drift.v1，起點前的擬合殘差）：約 6 年間，各井相對於全縣的偏移漂移了{list}（下限）{trig}。",
+  dr_cty: "{cty} {x} 公尺", dr_ne: "{cty}：漂移無法評估",
+  pro_dr_trig: "；固定寬度的區間在 4–5 年的前置時間可能過窄（起點前的證據）",
+  evc_pro_e02d: "各井水位相對於全縣共同偏離的離散（E02d，已在相同的 158 口井登錄，期間 2026 年 12 月至 2027 年 10 月）：由一項在設計上即具判定力的已登錄檢驗判定（U1.decomp_power.v1）；最早於 2028-01-15 評分。它不涉及水位高低、政策差值或完整區間。",
+  evc_pro_fm: "起始記憶（僅模型的宣告 FM.origin_memory.v1）：在本模型中，約 {m} 個月後（自 {lm} 起）水位即為模型的平均天氣情境，而非由觀測出發的預測；起始狀態只影響第一年。{a}–{b} 的檢驗期間位於起始記憶之外（期間內起始狀態在 90 % 的井篩上使水位變動小於 {f} 公尺），因此水位規則檢驗的是模型的平均天氣水位與基準，而非 2022-12 的起始狀態。",
   evc_pro_e02c: "更嚴格的配套檢驗 E02c 已在相同的井與期間登錄：各井合併分布 90 % 水位區間依縣別、以井為群集的涵蓋率，以及水位規則——預測必須同時優於氣候值與氣候值加趨勢（基準只取預測起點之前的月份）才算通過；最早於 2028-01-15 判定。",
   evc_pro_ext: "在從未用於校準的觀測井上，以各井自身的氣候值檢驗水位預測（同一凍結預測，在 E02c 之後評分）：已登錄；最早於 2028-01-15 判定。",
   evc_band_none: "地層下陷、N2 觀測井或鄉鎮的平均值，以及政策差值，都不顯示帶狀：現有資料無法校準（已登錄的限縮宣告 U1.no_band.v1）。地層下陷各次模擬與配對模擬的分布屬參數分布，列於模型內部。",
   evc_pro_fv: "E02c 的水位規則（E02 的水位判定也沿用）與 E02c 各縣涵蓋率門檻能解讀到什麼程度，事先由一項合成可判定性研究（FV.decidability.v1，已登錄）固定：若正確類型的模型通過某項規則的機率不超過 0.5，該規則在設計上即屬弱檢驗，未通過也不足以否定；就水位規則而言，基準推估的水位部分此時不論結果如何都維持限縮措辭。",
   evc_pro_fv_ne: "合成可判定性研究（FV.decidability.v1）無法評估（{why}）；E02 與 E02c 不因此增加解讀說明。",
   fv_why_sup: "疊加檢查未通過：{x} 公尺，容許值 {t} 公尺",
+  evc_fv2_lvl_nsw: "合成可判定性研究，失敗後探索性後續研究（FV.decidability.v2；v1 因疊加近似失敗而無法評估）：每個合成情境皆以完整正演模擬計算，正確類型的模型通過 E02c 水位規則的機率為 {p}（偏樂觀：降雨取氣候值，各井雜訊彼此獨立；並非嚴格界限）；本研究未顯示該水位檢驗為弱檢驗，也不提供其他解讀。",
+  evc_fv2_lvl_wbd: "合成可判定性研究，失敗後探索性後續研究（FV.decidability.v2；v1 因疊加近似失敗而無法評估）：每個合成情境皆以完整正演模擬計算，正確類型的模型通過 E02c 水位規則的機率為 {p}（偏樂觀：降雨取氣候值，各井雜訊彼此獨立；並非嚴格界限），因此該水位檢驗在設計上即屬弱檢驗。未通過也不足以否定預測，且不論 2028 年水位結果如何，基準推估的水位部分都維持限縮措辭（N）。",
+  evc_fv2_cov_nsw: "{cty}：在合成研究中（失敗後探索性後續研究（FV.decidability.v2；v1 因疊加近似失敗而無法評估）），正確類型的模型通過 E02c 涵蓋率檢定的機率為 {p}（並非界限：降雨變異與井間相關雜訊可使涵蓋率往任一方向變動）；未顯示為弱檢驗，不提供其他解讀。",
+  evc_fv2_cov_wbd: "{cty}：在合成研究中（失敗後探索性後續研究（FV.decidability.v2；v1 因疊加近似失敗而無法評估）），正確類型的模型通過 E02c 涵蓋率檢定的機率為 {p}（並非界限：降雨變異與井間相關雜訊可使涵蓋率往任一方向變動），因此該處的涵蓋率檢驗在設計上即屬弱檢驗；未通過也不足以否定此區間。",
+  evc_fv2_rc_nso: "{cty}：在模型自身重播的逐年驅動下（{forcing}；失敗後探索性研究，FV.decidability.v2），若模型完全正確，凍結的 90% 水位區間涵蓋試驗期井月的 {rc}（11 個紀錄年的 90% 區間為 {tlo}-{thi}；單一年份為 {lo}-{hi}）；未顯示其寬度遺漏逐年驅動變異。此為純模型結果且偏樂觀：模型振幅偏小（約 0.73）。",
+  evc_fv2_rc_omits: "{cty}：在模型自身重播的逐年驅動下（{forcing}；失敗後探索性研究，FV.decidability.v2），即使模型完全正確，凍結的 90% 水位區間也只涵蓋試驗期井月的 {rc}（11 個紀錄年的 90% 區間為 {tlo}-{thi}；單一年份為 {lo}-{hi}）。此區間未納入模型自身的逐年驅動變異，因此僅逐年驅動變異即可能造成涵蓋不足。此為純模型結果，且模型振幅偏小（約 0.73）；事後以 2023-26 觀測量得的 92.6% 涵蓋率是不同的量，另行顯示。",
+  evc_fv2_ch_clim: "彰化：本解讀未呈現任何彰化逐年驅動變異（僅重播抽水、降雨取氣候值，且頁面模型不含彰化抽水），因此彰化不因此增加任何說明。",
+  evc_fv2_ch_rep: "彰化：僅含降雨年際範圍；頁面模型不含彰化抽水。",
+  fv2_forcing_clim: "僅抽水年際變化，降雨取氣候值", fv2_forcing_rep: "重播 2012-22 的降雨與去趨勢抽水",
+  evc_fvext_nsw: "合成可判定性研究（FV.ext.v1，純模型）：正確類型的模型通過外部井水位規則的機率為 {p}（偏樂觀：降雨取氣候值、各井雜訊彼此獨立、每月皆有觀測；並非嚴格界限）；本研究未顯示該檢驗為弱檢驗，也不提供其他解讀。",
+  evc_chx: "彰化方向檢驗（I1.CHX.v1；S（設計期），僅方向；大小未獲支持）：R1c 的彰化抽水反應在 {n} 個從未用於校準的彰化井篩上方向正確，斜率 {s} [{lo}, {hi}]（90 % 區間，雙向固定效果，2013–22）；其誤差未優於零反應。彰化水位槓桿仍未經檢驗（N2C 已登錄，最早 2028-01-15 評分），且受上限約束（F < 0.5）。",
+  evc_chb: "彰化回推檢驗（I1.CH_backcast.v1；S（設計期），僅方向；大小未獲支持）：在從未用於擬合任何模型的年份（2010–11），R1c 的彰化抽水反應方向獲得支持，斜率 {s} [{lo}, {hi}]（90 % 區間），{n} 口井。",
+  evc_fvext_wbd: "合成可判定性研究（FV.ext.v1，純模型）：正確類型的模型通過外部井水位規則的機率為 {p}（偏樂觀：降雨取氣候值、各井雜訊彼此獨立、每月皆有觀測；並非嚴格界限），因此該檢驗在設計上即屬弱檢驗；未通過也不足以否定在未參與率定之井的預測。",
   evc_subs_decomp: "在本模型中，避免的下陷量＝水頭上升 × 壓密柱每公尺水頭變化的壓密量（彈性）。水頭因子：雲林由 N2 判定（待定）。{conv}沿海：現有水準測量無法辨識。彰化：沒有任何下陷因子經過檢驗。",
   decomp_conv_n3: "轉換因子：僅在雲林 2 個深層樁網格由 N3 判定（待定）；兩個因子都不判定減抽的下陷大小。",
   decomp_conv_un: "轉換因子：未經檢驗（沒有已登錄的檢驗）。",
@@ -1132,6 +1178,11 @@ zh: {
   hw_yun: "在第二含水層、雲林已命名鄉鎮的 {n} 個網格平均（不含彰化網格：本模型不含彰化抽水，其變化為外溢）", hw_fan: "在第二含水層全扇平均", hw_n2: "在 N2 的 {n} 口雲林觀測井（各井於其篩管層，N2 的評分單位）平均",
   mi_base: "模型內部數值：維持現狀下，全扇平均自{y0}年12月至{year}年12月再下陷 <b>{v} 公分</b>{rng}（模型自身的推估趨勢；其大小未經檢驗，且本模型的遠端沿海不下陷）。{rh}",
   mi_note: "模型內部數值，不屬於答案。這些數值來自模型的壓密柱，未獲已登錄檢驗支持：1–3 年地層下陷反應的大小未獲支持，減少抽水對長期下陷的影響未經檢驗；沿海（182公里線以西的遠端區）效益不可靠，因為本模型的遠端區不下陷，而2016–21年的次年水準測量顯示沿海每年比模型多下陷約2.5公分；彰化的數值是在不含彰化抽水的模型中雲林減抽的外溢，並非彰化槓桿。列出它們是為了檢視模型，不是為了估計政策效果。壓密柱由模型自身自由模擬的水頭驅動，因此 2022 年 12 月之後從模型模擬的 2022 年 12 月水頭起算，不包含模型漏掉的 2022 年水頭回升。",
+  mi_fw_both: "依序重播 2012–22 年的驅動年份（而非平均驅動）時，僅重播抽水異常（FW.weather_replay.v1，降雨取氣候值），以及重播天氣與去趨勢抽水（FW.weather_replay.v2），本模型避免的地層下陷仍{how}{dry}。重播的降雨為廠商快取資料，其中雨量站 rf11 在 2021–22 年全年、rf15 在 2015 年下半年以零值填補（為填補值，並非乾旱）。僅模型的宣告：屬模型形式，並非檢驗。",
+  mi_fw_v1: "依序重播 2012–22 年的抽水異常（降雨取氣候值）而非平均驅動時，本模型避免的地層下陷仍{how}（FW.weather_replay.v1；未包含降雨年份重播）。僅模型的宣告：屬模型形式，並非檢驗。",
+  mi_fw_v2: "依序重播 2012–22 年的驅動年份（天氣與去趨勢抽水）而非平均驅動時，本模型避免的地層下陷仍{how}（FW.weather_replay.v2）{dry}。重播的降雨為廠商快取資料，其中雨量站 rf11 在 2021–22 年全年、rf15 在 2015 年下半年以零值填補（為填補值，並非乾旱）。僅模型的宣告：屬模型形式，並非檢驗。",
+  fw_all: "全為彈性", fw_most: "大致為彈性（低於宣告的 10 % 規則）",
+  fw_dry_none: "：重播的乾旱年沒有開啟可由減抽避免的非彈性（永久）通道",
   tW_r: "方向獲支持（設計期、R0 配方）；視窗內距平反應由 N2 判定，最早2028-01-15；水位高低僅供報告",
   agree_all: "{n}組參數中有{a}組認為是效益", agree_some: "{n}組參數中{lb}有{a}組認為是效益", at_least: "至少",
   agree_none: "模擬一致性未量測：{c}{late}完整模型模擬", agree_none_start: "沒有自{s}年起的", agree_none_plain: "沒有",
@@ -1200,6 +1251,7 @@ zh: {
   bn_normal: "模型內部：基準情境各網格的模擬標準差（常態近似）；屬參數分布，不是預測區間。",
   bn_aux: "點＝{n}口第二含水層觀測井的年平均；細虛線＝模型在同一批井的值（與觀測平均相差 {gap} 公尺）。兩者都不是全扇平均。",
   bn_head: "帶狀範圍：{n}次模擬的第二含水層全扇平均水頭，逐年第10–90與25–75百分位。這是各次模擬的分布，屬參數分布，不是預測區間：相關觀測井平均值的區間未經檢驗，此帶狀也不受 E02 檢驗（那是另一個區間）。", bn_head_none: "水頭的模擬分布未隨頁面提供。",
+  bn_head_fy: "帶狀範圍：{n}次模擬的第二含水層全扇平均水頭，逐年第10–90與25–75百分位。這是各次模擬的分布（參數分布）加上模型自身的逐年驅動範圍（2026-11..2027-10 期間 N2 單元平均 {n2lo} 至 {n2hi} m，扇地第 2 層平均 {l2lo} 至 {l2hi} m；{forcing}）；並非預測區間；模型振幅偏小（約 0.73）（失敗後探索性研究，FV.decidability.v2）。相關觀測井平均值的區間未經檢驗，此帶狀也不受 E02 檢驗（那是另一個區間）。",
   ts_subs_label: "累積下陷（自{t0}），公分", ts_subs_short: "自{t0}累積，公分", ts_head_label: "第{l}含水層水頭{main}，公尺", ts_head_main: "（主要抽水層）", ts_head_fan: "・全扇平均，含彰化外溢",
   z_fit: "擬合觀測資料", z_fit_s: "擬合", z_proj: "模型自身趨勢（未驗證）", z_proj_s: "未驗證", down_sinking: "（向下＝下陷）",
   hop_run: "第 {i}/{n} 次模擬", hop_need: "逐次模擬動畫需要每次模擬的年序列（--save-members yearly），尚未提供。",
@@ -1239,7 +1291,7 @@ zh: {
   tw_base_val: "{v} 公分 基準 {a}–{b}（模型內部數值，大小未經檢驗）", tw_avoided_val: "{v} 公分 減少（模型內部數值，大小未經檢驗）", tw_sets: "{a}/{n} 組參數認為是效益", tw_skill: "水準點 n={n}{bias}{r2}", tw_bias: "，偏差 {v} 公分", tw_r2: "，R² {v}",
   tw_pooled: "未分鄉鎮；", tw_low: "低可信度：{s}", tw_off: "超出刻度", tw_off_b: "↓超出刻度",
   tn_base: "共用縱軸 0–{hi} 公分（自{a}年，向下＝下陷）；灰＝基準及其範圍。低可信度鄉鎮不列入頁首。偏差＝回推減水準測量（負＝模型下陷太少）。",
-  tn_pol: "模型內部數值，大小未經檢驗。藍＝政策減少的下陷（向上＝效益），共用縱軸 ±{hi} 公分。182公里線以西（遠端區）鄉鎮的沿海效益不可靠。低可信度鄉鎮不列入頁首{bias}；{pooled}。偏差＝回推減水準測量（負＝模型下陷太少）。{agree}",
+  tn_pol: "模型內部數值，大小未經檢驗。藍＝政策減少的下陷（向上＝效益），共用縱軸 ±{hi} 公分。182公里線以西（遠端區）鄉鎮的沿海效益不可靠。鄉鎮依避免下陷量的排序取決於壓密柱：在同樣符合水準測量的各壓密柱之間會改變（模型形式離散，並非區間），因此不指名居首的鄉鎮；{pooled}。偏差＝回推減水準測量（負＝模型下陷太少）。{agree}",
   ta_note: "「n/N 組參數」：該鄉鎮平均下陷在{H}年減少的參數組數；少於{p}%者以紅字標示。", ta_h_only: "各鄉鎮的模擬一致性以{H}年計；請把年份移到該年。",
   ta_full_only: "每個鄉鎮的模擬一致性只有完整模型模擬才有；快速估算沒有。", ta_none: "每個鄉鎮的模擬一致性需要逐次輸出，尚未提供。",
   th_township: "鄉鎮", th_base_fwd: "基準 {a}-{b} (公分)", th_avoided_pol: "政策減少 (公分)", th_bias: "偏差", th_conf: "可信度", th_sets: "同意的參數組",
@@ -1705,8 +1757,16 @@ function tileLabels() {
   const lab = {tA: tr("tAvoid"), tR: tr("tArea", {t: S.thr}), tF: tr("tConf"), tH: tr("tHsr"), tW: tr(N2U() ? "tHead" : "tHead_l2"), tC: tr("tCost")};
   for (const id of TILE_IDS) { const el = $(id); setText(el.querySelector(".kl"), lab[id]); el.querySelector(".qbtn").setAttribute("aria-label", tr("def_of", {k: lab[id]})); }
   setText($("moreBtn"), tr(S.more ? "less_metrics" : "more_metrics", {n: TILE_IDS.length - PRIMARY}));
-  setText($("miNote"), tr("mi_note"));
+  setText($("miNote"), tr("mi_note") + fwNote());
   $("moreBtn").setAttribute("aria-expanded", S.more);
+}
+function fwNote() {                     // FW.weather_replay v1 (pumping only) and v2 (weather): a qualitative note under Model internals, no number
+  const mc = D.modelcard, rg = mc.registrations || {}, res = mc.results || {};
+  const ok = k => !!(rg[k] && res[k] && res[k].verdict === "scored" && res[k].wording_case === "mostly_elastic");
+  const a = ok("fw1"), b = ok("fw2"); if (!a && !b) return "";
+  const all = [a ? "fw1" : "", b ? "fw2" : ""].filter(Boolean).every(k => res[k].all_elastic === true);
+  const how = tr(all ? "fw_all" : "fw_most"), dry = b && all ? tr("fw_dry_none") : "";
+  return tr(a && b ? "mi_fw_both" : a ? "mi_fw_v1" : "mi_fw_v2", {how, dry});
 }
 function tset(id, num, unit, r, d, word) {
   const el = $(id); setText(el.querySelector(".vn"), num); setText(el.querySelector(".vu"), unit || "");
@@ -2091,9 +2151,15 @@ function seriesFor(sel, pol) {
     const gap = mean(aux.map((p, j) => p[1] - obs[j][1]));
     auxNote = tr("bn_aux", {n: wf.n_wells, gap: sg(gap, 1), gapa: f1(gap)}); }
   const hb = !cells && lay === 1 && MF() && MF().baseHeadBandYr ? MF().baseHeadBandYr : null;
-  const hNote = hb ? tr("bn_head", {n: MF().n}) : tr("bn_head_none");
+  const hNote = hb ? headBandNote(MF().n) : tr("bn_head_none");
   return {base, scen, band: hb ? [hb[0], hb[1], hb[3], hb[4]] : null, bandKind: hb ? "runs_head" : null, hop: lay === 1 ? hopSeries("head", cells) : null, aux, bandNote: hNote + (auxNote ? " " + auxNote : ""), obs, unit: "m",
     label: tr("ts_head_label", {l: lay + 1, main: lay === 1 ? tr("ts_head_main") : ""}) + (cells ? "" : tr("ts_head_fan")), invert: false};
+}
+function headBandNote(n) {              // C14c: the head run spread; with FV.decidability.v2's forcing-year range once scored (post-failure, exploratory)
+  const mc = D.modelcard, y = (mc.registrations || {}).fv2 ? (mc.results || {}).fv2fy : null;
+  if (!y || y.status !== "scored" || !y.agg) return tr("bn_head", {n});
+  const a = y.agg;
+  return tr("bn_head_fy", {n, n2lo: sg(a.n2_lo), n2hi: sg(a.n2_hi), l2lo: sg(a.l2_lo), l2hi: sg(a.l2_hi), forcing: tr(y.rain === "replayed" ? "fv2_forcing_rep" : "fv2_forcing_clim")});
 }
 function niceTicks(lo, hi, n = 5) { const span = hi - lo, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), st = [1, 2, 2.5, 5, 10].map(v => v * mag).find(v => span / v <= n) || raw;
   const out = []; for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(10)); return {ticks: out, step: st}; }
@@ -2318,7 +2384,7 @@ function renderTowns() {
       ${low ? `<span class="lc">${esc(pooled)}${esc(tr("tw_low", {s: skill}))}</span>` : `<span class="note">${esc(pooled)}${esc(skill)}</span>`}
     </button></li>`; }).join(""));
   setText($("townNote"), isB ? tr("tn_base", {hi: Math.round(hi), a: M.years[0]})
-    : tr("tn_pol", {hi: f2(hi), bias: biasClause(topTowns(kp)), pooled: pooledClause(), agree: townAgreeNote()}));
+    : tr("tn_pol", {hi: f2(hi), pooled: pooledClause(), agree: townAgreeNote()}));
   setHtml($("townTbl"), `<table class="t"><caption class="sr">${esc(tr("ttowns"))}</caption><thead><tr><th scope="col">${tr("th_township")}</th><th scope="col">${tr("th_base_fwd", {a: M.years[YR], b: M.years[y]})}</th><th scope="col">${tr("th_avoided_pol")}</th><th scope="col">n</th><th scope="col">${tr("th_bias")}</th><th scope="col">R²</th><th scope="col">${tr("th_conf")}</th><th scope="col">${tr("th_sets")}</th></tr></thead><tbody>${townRows().map(r => `<tr>${r.map((v, j) => `<td class="${j && j !== 6 ? "n" : ""}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
   setText($("sbaseOpt"), tr("sbase", {H: M.years[y]}));
 }
@@ -2678,11 +2744,17 @@ function evidenceItems() {              // what is known about how far to trust 
   if (mc.prospective) { const q = mc.prospective;
     const qa = q.test_start ? monthYear(String(q.test_start).slice(0, 7)) : "", qb = q.test_end ? monthYear(String(q.test_end).slice(0, 7)) : "";
     out.push(["", q.test_start && q.test_end ? tr("evc_pro", {reg: q.registered_on, a: qa, b: qb, n: q.stations}) : tr("evc_pro_nodates", {reg: q.registered_on, n: q.stations})]);
-    if (q.interval_bound && qa && qb) out.push(["", tr("evc_pro_iv", {a: qa, b: qb})]);
+    if (q.interval_bound && qa && qb) out.push(["", tr("evc_pro_iv", {a: qa, b: qb, out: tr(rg.e02y ? "pro_out_e02y" : "pro_out_un")})]);
+    // C14b's design-time drift line (DR.relative_drift.v1), worded only from its report
+    const dl = rg.dr ? drLine() : ""; if (dl) out.push(["", dl]);
     // E02c and the external-well test: named only once the build found them in the registry
     if (rg.e02c) out.push(["", tr("evc_pro_e02c")]);
+    if (rg.e02d) out.push(["", tr("evc_pro_e02d")]);
+    const fl = rg.fm ? fmLine(qa, qb) : ""; if (fl) out.push(["", fl]);
     if (rg.ext) out.push(["", tr("evc_pro_ext")]);
-    if (rg.fv) out.push(["", fvLine()]); }
+    const xl = rg.ext ? fvextLine() : ""; if (xl) out.push(["", xl]);
+    if (rg.fv) out.push(["", fvLine()]);
+    if (rg.fv2) out.push(...fv2Lines()); }
   if (rg.no_band) out.push(["", tr("evc_band_none")]);
   if (mc.hybrid) { const h = mc.hybrid, ys = Object.keys(h.per_year || {}), y1 = ys.length ? ys[0] : "";
     out.push([h.ratio_stat < 1 ? "ok" : "warn", tr("evc_hyb", {s: f2(h.rmse_stat), c: f2(h.rmse_clim), r: f2(h.rmse_model), span: ncSpan(h), y1, s1: y1 ? f2(h.per_year[y1].stat) : "", c1: y1 ? f2(h.per_year[y1].clim) : "", p: f2(h.ratio_phys)})]);
@@ -2690,6 +2762,7 @@ function evidenceItems() {              // what is known about how far to trust 
   const rl = ringLine(); if (rl) out.push(["", rl]);
   const pl = pileLine(); if (pl) out.push(["", pl]);
   if (mc.policy_response) out.push(...policyResponseLines(mc.policy_response));
+  out.push(...chDirLines());            // E25/E26: Changhua direction only, once registered and scored
   // claims C27/C31: the subsidence decomposition. N3 is named only once it is registered, and as
   // the conversion decider only when G0 made its conversion test gating (12 or 24 months)
   const n3c = rg.n3_conv12 || rg.n3_conv24;
@@ -2699,12 +2772,52 @@ function evidenceItems() {              // what is known about how far to trust 
   if (p + f) out.push([f ? "warn" : "ok", tr("ev_counts_long", {p, f})]);
   return out;
 }
-function fvLine() {                    // FV.decidability.v1 (E02, E21, C30): the reading fixed beforehand, until its report says otherwise
-  const r = (D.modelcard.results || {}).fv;
+function fvLine() {                    // FV (E02, E21, C30): v1's reading fixed beforehand, until its report says otherwise; then v2's post-failure exploratory level reading (ruling R7.fv_v2_page)
+  const res = D.modelcard.results || {}, r = res.fv, v2 = (D.modelcard.registrations || {}).fv2 ? res.fv2 : null;
+  if (v2 && v2.status === "scored") return tr(v2.level === "weak_by_design" ? "evc_fv2_lvl_wbd" : "evc_fv2_lvl_nsw", {p: f2(v2.p_level)});
   if (!r) return tr("evc_pro_fv");
   // not evaluable (the only scored outcome the build accepts): the declared line, no interpretation
   const s = r.superposition, why = s && s.pass === false ? tr("fv_why_sup", {x: f2(s.max_abs_window_m), t: f2(s.tolerance_m)}) : esc(r.why);
   return tr("evc_pro_fv_ne", {why});
+}
+function chDirLines() {                 // I1.CHX.v1 / I1.CH_backcast.v1 (E25, E26; ruling R7.changhua_page): S (design-time), direction only; size not supported
+  const mc = D.modelcard, rg = mc.registrations || {}, res = mc.results || {}, out = [];
+  const one = (k, key) => { const r = res[k]; if (rg[k] && r) out.push(["", tr(key, {s: f2(r.beta), lo: f2(r.lo), hi: f2(r.hi), n: r.n_wells})]); };
+  one("chx", "evc_chx"); one("chb", "evc_chb");
+  return out;
+}
+function fv2Lines() {                   // FV.decidability.v2 (post-failure, exploratory): E02c's coverage gate per county (C14a, E21) and the forcing-year reading (C14a)
+  const mc = D.modelcard, res = mc.results || {}, out = [], cty = c => tr("cty_" + c.toLowerCase());
+  if (!(mc.registrations || {}).fv2) return out;
+  const w = res.fv2, y = res.fv2fy;
+  if (w && w.status === "scored")
+    for (const c of ["Yunlin", "Changhua"]) { const v = (w.coverage || {})[c];
+      if (v && v.p != null) out.push(["", tr(v.reading === "weak_by_design" ? "evc_fv2_cov_wbd" : "evc_fv2_cov_nsw", {cty: cty(c), p: f2(v.p)})]); }
+  if (y && y.status === "scored") {
+    const forcing = tr(y.rain === "replayed" ? "fv2_forcing_rep" : "fv2_forcing_clim"), pc = v => pctf(100 * v);
+    for (const c of ["Yunlin", "Changhua"]) { const v = (y.rc || {})[c]; if (!v || v.reading === "not_represented") continue;
+      out.push(["", tr(v.reading === "omits" ? "evc_fv2_rc_omits" : "evc_fv2_rc_nso", {cty: cty(c), forcing, rc: pc(v.rc), tlo: pc(v.t_lo), thi: pc(v.t_hi), lo: pc(v.lo), hi: pc(v.hi)})]); }
+    // Changhua's sentence follows the replay's rain mode (no Changhua pumping in the page model)
+    if (y.rc && y.rc.Changhua) out.push(["", tr(y.rain === "replayed" ? "evc_fv2_ch_rep" : "evc_fv2_ch_clim")]);
+  }
+  return out;
+}
+function fvextLine() {                  // FV.ext.v1 (E22): the external-well level rule's one-sided reading, once registered and scored
+  const mc = D.modelcard, r = (mc.results || {}).fvext;
+  if (!(mc.registrations || {}).fvext || !r || r.status !== "scored") return "";
+  return tr(r.reading === "weak_by_design" ? "evc_fvext_wbd" : "evc_fvext_nsw", {p: f2(r.p)});
+}
+function fmLine(qa, qb) {               // FM.origin_memory.v1 (E02, E21, C30, E23): start memory, worded by its declared case (ruling R7.fm_page_line)
+  const r = (D.modelcard.results || {}).fm;
+  if (!r || r.case !== "within_first_year" || r.clause_case !== "window_beyond_memory" || !qa || !qb) return "";
+  return tr("evc_pro_fm", {m: r.lstar_months, lm: monthYear(r.lstar_month), a: qa, b: qb, f: f2(r.floor_m)});
+}
+function drLine() {                     // DR.relative_drift.v1 (C14b): the design-time, in-sample drift of each well's county-relative offset (a lower bound)
+  const r = (D.modelcard.results || {}).dr; if (!r) return "";
+  const cs = ["Yunlin", "Changhua"].filter(c => r[c]); if (!cs.length) return "";
+  const one = c => { const v = r[c], cty = tr("cty_" + c.toLowerCase());
+    return v.evaluable && v.excess_drift_6y_m != null ? tr("dr_cty", {cty, x: f2(v.excess_drift_6y_m)}) : tr("dr_ne", {cty}); };
+  return tr("evc_pro_dr", {list: cs.map(one).join(tr("list_and")), trig: cs.some(c => r[c].include_drift) ? tr("pro_dr_trig") : ""});
 }
 function prSpan(r) {                   // "2016-01..2018-12 (...)" -> "2016–18"
   const m = String(r.window).match(/^(\d{4})-\d{2}\.\.(\d{4})/); return m ? `${m[1]}–${m[2].slice(2)}` : "";
