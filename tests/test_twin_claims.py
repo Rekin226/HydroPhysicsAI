@@ -549,7 +549,8 @@ def test_c31_is_decided_by_n3_and_no_cut_number_can_become_s():
     cl, n3 = CL(), _reg("n3")
     c31 = cl["C31"]
     # N3 is registered level-only (G0 failed; user ruling 2026-11-01, fifth set): C31 is N
-    assert _st("C31") == {"N"} and c31["cites"]["registrations"] == [n3]
+    # N3.G0prime.v1 (failed for every estimator) is cited beside it since round 8 (F1)
+    assert _st("C31") == {"N"} and c31["cites"]["registrations"] == [n3, "N3.G0prime.v1"]
     assert f"{FIFTH} (N3.level_only)" in _also(c31) and f"{FIFTH} (N3.level_only)" in _also(
         cl["C27"])
     assert "registered level-only" in c31["wording_en"] and "C31 is N" in c31["wording_en"]

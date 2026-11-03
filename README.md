@@ -359,7 +359,19 @@ in `docs/GPU_SERVER.md`.
   (`FH.forcing_sensitivity.v1`, model-only). A post-failure exploratory synthetic study
   (`FV.decidability.v2_postfailure`) does not show E02c's level rule weak (P 0.96) but finds
   its coverage gate weak by design in Yunlin (P 0.35; not shown weak in Changhua, P 0.50); the
-  external-well level rule is not shown weak (`FV.ext.v1`, P 0.59). The decidability study of
+  external-well level rule is not shown weak (`FV.ext.v1`, P 0.59). Changhua's pooled 0.50
+  hides a split by truth family: a correct model without Changhua pumping (Q0 0.004, R0 0.012,
+  the page's own family) almost never passes that gate and one with it (R1c 0.992, X5R1 0.996)
+  almost always does (Yunlin 0.32-0.40 for every truth; E02's own checks split the same way,
+  0.468 / 0.492 / 0.992 / 0.992), and the pooled value sits 0.38 Monte Carlo SE above the 0.5
+  threshold. So in that study a Changhua coverage pass points to the pumping family. Its worlds
+  hold neither the per-well drift above nor a county-common year shock, and correlated noise
+  can fail a correct interval (`U1.HB.power.v1`, true coverage 0.90: false-fail rate already
+  0.52-0.53 with no year shock at ICC_month 0.3, and 0.83 in Yunlin and 0.82 in Changhua at
+  ICC_year 0.2 together with ICC_month 0.3). They are also less climatological than the
+  published record (climatology RMSE 2.21-2.25 m there; over 2023-26 the frozen run scored
+  2.048 m against climatology's 1.667 m), so a 2028 level fail is the expected outcome and the
+  level P 0.96 is not the chance of a pass. The decidability study of
   the statistical layer's test (`FV.stat.v1`) was not evaluable (an engineering fault in its
   frozen self-check).
 - At wells it never saw, the model is worse than interpolation on head changes (+0.34 vs
@@ -380,7 +392,13 @@ in `docs/GPU_SERVER.md`.
   show R1c's all-class lever, labelled with R1c's gate failures; no Changhua subsidence
   lever follows from any verdict. The 1-3-year size of the subsidence response
   does not: on 2016-18 a constant sinking rate partitions the leveling better than the
-  column, while the 2007-10 comparison across places points the other way in Yunlin. In this
+  column, while the 2007-10 comparison across places points the other way in Yunlin. In the
+  registered numbers: on the masked 2016-18 refits the Yunlin model lost to both no change and
+  reference-year pumping on leveling (observed-on-modelled slope 0.22 [0.17, 0.27]) and the
+  Changhua model R1c beat reference-year pumping but lost to no change on leveling (0.40
+  [0.30, 0.49]); across places in 2007-10 Yunlin is inconclusive (observed +0.66 against
+  modelled +0.26 cm/yr per GWh/yr; the interval of the modelled-over-observed ratio,
+  [0.21, 2.17], holds both the point ratio 0.40 and 1). In this
   model the avoided subsidence is an elastic response that arrives within about a year; its
   1-3-year size is not supported by the registered tests, and whether a cut changes
   long-run sinking is untested.
@@ -419,7 +437,17 @@ in `docs/GPU_SERVER.md`.
   screens over 2013-22 (`I1.CHX.v1`) the slope is 0.17 [0.02, 0.44] (90 % interval) and the
   modelled response's error does not beat a zero response; in 2010-11, years never used to fit
   any model (`I1.CH_backcast.v1`, on the governed local product L1_pre2012 v1), it is 0.37
-  [0.15, 1.35] on 12 wells, and a dry year there biases the slope toward a pass. The Changhua
+  [0.15, 1.35] on 12 wells, and a dry year there biases the slope toward a pass. They are
+  not two independent supports. The backcast is a weak test: in its synthetic check it
+  passes 35 % of the time if the model is right and 13 % of the time with no response
+  (likelihood ratio about 2.7); of its 13 eligible wells one was never placed on the grid, so
+  12 were scored. At the 23 screens, the same estimator on the Yunlin contrast (placebo,
+  report-only) is imprecise, not evidence of specificity: its slope is 1.01 [-0.16, 2.15] and
+  its detrended and demeaned forms (2.61 [1.41, 3.93], 1.24 [0.44, 3.32]) co-move with the
+  Yunlin contrast, so the direction pass does not separate Changhua pumping from Yunlin
+  spillover. 4 of the backcast's wells are among the 23 screens, and both checks share the
+  regional-rain confounder. Both read their heads as design-time evidence, not as a scoring
+  target. The Changhua
   head lever stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5).
 - Changhua census forcing bookkeeping (census audit, forcing only): every Changhua route uses
   `model_census` v1 as delivered (R1c's forcing, bimonthly meters split evenly), with its
@@ -432,7 +460,12 @@ in `docs/GPU_SERVER.md`.
   recalibration `stage3_datum_gate_cwa` (R0), within noise of it on every earlier test
   (section 11). The modelled head response is smaller than observed in Yunlin: the
   observed-on-modelled slope is 2.13 in the 2015 drought test, which mixes canal water and
-  rain with pumping, and 1.21 on 2016-18. No calibrated correction factor follows.
+  rain with pumping, and 1.21 on 2016-18. No calibrated correction factor follows. The
+  headline lever (irrigation x0.7, +1.19 m at N2's 84 Yunlin wells by December 2032) is
+  class-specific, and its size depends on the pumping energy-to-volume conversion: between two
+  conversions it differs about x1.27 in Yunlin (x1.26-1.28 by horizon), while a cut of all
+  pumping (all30) is invariant: gated ratios x1.03-1.05 (by horizon 1.02-1.06, report-only;
+  `X5.lever_class_share.v1`, model-only). N2 tests the response to total recorded pumping anomalies, not to a class.
 - Every cited fit uses the historical head-target defaults: sample-weighted monthly means
   (February 2019 shifts by up to 1.7 m at 13 Yunlin wells), coverage counted against hours,
   and back-filled gaps. The fixes exist only as opt-in flags; nothing was rescored (model
@@ -449,8 +482,11 @@ in `docs/GPU_SERVER.md`.
   the median inelastic share of the cut's avoided subsidence by 2032 is 0.0 % (0.0-0.0 % over
   11 evaluable sequences of 11); the mean-forcing caveat is closed. Rain is the vendor cache
   the model was calibrated on, which zero-fills gauge rf11 for all of 2021-22 and rf15 in 2015
-  H2 (zero-filled, not dry), so the replayed 2015, 2021 and 2022 carry that artefact. Forcing
-  spread, model-internal, not an interval: fan-mean baseline subsidence 2023-32 ranges 2.4-3.2
+  H2 (zero-filled, not dry), so the replayed 2015, 2021 and 2022 carry that artefact. Both
+  readings hold only in this model, whose coastal column is near-elastic by construction (see
+  the coast below; no slow coastal form is identifiable from held leveling,
+  `I1.X5SC.gate0.v1`), so an all-elastic result on the coast says little about the aquifer.
+  Forcing spread, model-internal, not an interval: fan-mean baseline subsidence 2023-32 ranges 2.4-3.2
   cm across the 11 replayed orders of 2012-22 (mean forcing: 2.9 cm). Whether a cut changes
   long-run sinking stays untested; the compaction rings did not show the running-minimum
   response (`X5.record_low_tf.v1`, design-time).

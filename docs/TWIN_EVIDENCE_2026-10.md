@@ -578,6 +578,17 @@ model-only checks" below) finds the two models' policy responses within 2-4 % fa
 - **Changhua: inconsistent.** Observed -0.50 against the census model's +0.80, below every model-world window. Entry and exit pumps explain only 24 % of the exposure variation.
 - The 2010-12 leveling is unspent by `looks.jsonl`: its pre-declared power rule failed. It is not a clean judge: the W3 looks of 2026-10-12 read 2011-21 leveling at benchmarks that overlap its 2011-12 surveys, step B's campaigns include May 2010, and step B's one exploratory follow-up is spent (status doc, N1 policy-response tests).
 - Declared secondaries (reported, never gating) are in the table under "Declared secondaries" below.
+- **Step B was scored twice on 2026-10-23 (engineering rerun; outcome fail).** The look ledger
+  holds two score looks for each arm, `N1P.B_dose_yunlin` and `N1P.B_dose_changhua` (prereg
+  sha `6c3a4e0c`), at 03:52:14-15Z and again at 04:01:21Z. The first run computed the Yunlin
+  arm to its verdict (inconclusive, printed in `step_b_run.failed1.log`, no result file
+  written) and then stopped on an engineering error before it produced or wrote any Changhua
+  output
+  (`python -I` loaded the main tree's twin code, which refused the Changhua column; see "Code
+  provenance" below). The 04:01 rerun, same frozen code and seeds, scored both arms and wrote
+  the only result (`step_b/results.json`): Yunlin inconclusive (the same verdict), Changhua
+  inconsistent. The outcome is a fail either way, so the repeat inflated nothing; it is listed
+  here as the attempt record requires.
 
 **Step C, masked 2016-18 refits.** Heads are masked, and the column is refitted with the May 2016-18 surveys withheld. Earlier looks touch this window, so it is labelled design-time.
 
@@ -1086,7 +1097,8 @@ registration is the placeholder `PENDING`. The page names E02c, the external-wel
   2028-01-15.
 - **Build.** The page is rebuilt with the command recorded in
   `results/twin/twin_app_20261029d.build.log`, with `--out` changed to
-  `results/twin/twin_app_20261029e.html`. The ledger names that file, and it is not promoted.
+  `results/twin/twin_app_20261029e.html`. The ledger named that file; it was promoted to
+  `results/twin/twin_app.html` in commit `4bea91f` (sha256 019b40e2).
 
 ## 18. Round-6 ledger and page amendment (2026-11-01)
 
@@ -1192,8 +1204,8 @@ moves to S, and no observation was opened for this amendment.
 - **Build.** Superseded by section 19: the round-6 page, with the results of section 19,
   is built with the command recorded in `results/twin/twin_app_20261029e.build.log`, with
   `--out` changed to `results/twin/twin_app_20261101a.html` (build log
-  `results/twin/twin_app_20261101a.build.log`). The ledger names that file; it is not
-  promoted.
+  `results/twin/twin_app_20261101a.build.log`). The ledger named that file; it was promoted
+  to `results/twin/twin_app.html` in commit `d37adf4` (section 19).
 
 ## 19. Round-6 registrations and results (2026-11-01)
 
@@ -1305,8 +1317,9 @@ case and per-arm numbers; nothing else, and no observation. The ledger fills the
 10 and 11 slots (C01 and the new row E23; C13a; E02, E21 and C30 notes) and keeps the
 registered FV rule in E02/E21's wording. The page is built with the command recorded in
 `results/twin/twin_app_20261029e.build.log`, with `--out` changed to
-`results/twin/twin_app_20261101a.html` (log beside it); the ledger names that file, and it is
-not promoted.
+`results/twin/twin_app_20261101a.html` (log beside it); the ledger named that file, and it was
+promoted to `results/twin/twin_app.html` in commit `d37adf4` (sha256 26f15e1b), later replaced
+by section 20's build.
 
 ## 20. Round-7 registrations and results (2026-11-01/02)
 
@@ -1404,17 +1417,24 @@ and the result (each scored once):
   (power 0.97, false pass 0.09); verdict "direction_supported_size_not": R1c's Changhua pumping
   response has the right direction at 23 never-calibrated Changhua screens, slope 0.17 [0.02,
   0.44] (twoway fixed effects, 90 % block bootstrap), while its RMSE does not beat the zero
-  response, so no size is supported. Report-only: the placebo on the Yunlin contrast is "not
-  supported"; CH-J was not run (its engineering was not delivered; the declared fallback
-  applies). Row E25 (S, design-time, direction only). The Changhua head lever stays untested
+  response, so no size is supported. Report-only: the placebo (the same estimator on the Yunlin
+  contrast at the same 23 screens) is imprecise; not evidence of specificity; its report-only
+  detrended/demeaned forms co-move with the Yunlin contrast: its verdict word "not supported"
+  comes from precision alone (twoway slope 1.01 [-0.16, 2.15], about 6 times the primary's),
+  while its detrended and demeaned slopes are 2.61 [1.41, 3.93] and 1.24 [0.44, 3.32]. The
+  direction pass therefore does not separate Changhua pumping from Yunlin spillover or a
+  regional pattern that tracks R1c's response. CH-J was not run (its engineering was not
+  delivered; the declared fallback applies), and its test `I1CHX.chj_externals` is not run and
+  report-only for good under the fallback. Row E25 (S, design-time, direction only). The Changhua head lever stays untested
   (N2C registered, scored not before 2028-01-15), and C13a, E20, the F < 0.5 cap and N2C's
   clauses are unchanged.
 - **`I1.CH_backcast.v1`** (704ebcc6), design-time backcast on L1_pre2012 v1 (ruling
   R7.l1_pre2012). Report (sha a62d43db): "direction_supported": slope 0.37 [0.15, 1.35] in
   2010-11, months no model has fitted, at 12 wells (well x calendar-month and month-of-sample
   effects); decide()'s verdict beside it is "direction_supported_size_not". Report-only
-  synthetic power P(direction | k = 1) is 0.35, and a dry year biases the slope toward a pass
-  (recharge is a 2012-22 climatology). Row E26 (S, design-time, direction only).
+  synthetic power P(direction | k = 1) is 0.35 against a synthetic false pass P(direction |
+  k = 0) of 0.13 (likelihood ratio about 2.7: a weak test), and a dry year biases the slope
+  toward a pass (recharge is a 2012-22 climatology). Row E26 (S, design-time, direction only).
   Both I1 registrations say their E-rows and the C20/C21 wording need the user's approval
   (page_ruling); the user gave it on 2026-11-02 (R7.changhua_page). E25 and E26 are on the page
   as evidence lines, and the README and the model card carry the direction clause, each worded
@@ -1428,8 +1448,9 @@ and the result (each scored once):
   pumping-only forwards, rain at climatology): in Yunlin the frozen 90 % interval would cover
   95 % of the window's well-months if the model were exactly right ("not shown to omit"
   forcing-year variation; model-only, optimistic, damped amplitude about 0.73); Changhua is
-  "not represented" (no Changhua forcing-year variation in the page model). C14b stays N (47-58
-  month lead ratio 0.32 in Yunlin, 0.04 in Changhua, below 1.2); C14c's band note is reworded
+  "not represented" (no Changhua forcing-year variation in the page model). FV v2 does not move
+  C14b (E02y does): its 47-58 month lead ratio is 0.32 in Yunlin and 0.04 in Changhua, below
+  1.2. C14c's band note is reworded
   with the model's own forcing-year range (-0.56 to +0.61 m for the N2-unit mean, -0.39 to
   +0.43 m for the fan layer-2 mean in 2026-11..2027-10). The page shows the level line in place
   of v1's not-evaluable sentence, the two county coverage lines and the forcing-year lines,
@@ -1507,5 +1528,138 @@ build. The ledger adds C14a-r, C14f, E24, E25 and E26, moves C14b to N+D and fil
 above. The page is built with the command recorded in
 `results/twin/twin_app_20261101a.build.log`, with `--out` changed to
 `results/twin/twin_app_20261102b.html` (log beside it; `twin_app_20261102a.html` is the build
-before the eleventh set); the ledger names the b file, and it is not promoted. Open: the
-analyst's mirror of the new evidence lines.
+before the eleventh set); the ledger names the b file, which was promoted to
+`results/twin/twin_app.html` at main `af97301` (PR #68, commit `ec5f171`; the two files are
+byte-identical, sha256 956ec5d1). Open: the analyst's mirror of the new evidence lines.
+
+Audit disclosures (round-8 step 0, 2026-11-03). Two audits of 2026-11-02 found facts that the
+records above held but did not state. Each is now in the ledger notes, and where noted in the
+README Limits and the model card; the page wording waits for a user ruling (R8.8). No status
+moves, no test is weakened, and no observation was read to write them (every number comes from
+an already-scored report or a registration).
+
+- **FV v2's Changhua coverage reading is a split, not a coin flip.** In `report_worlds.json`
+  (sha 320ac928) E02c's Changhua coverage pass rate by truth family is Q0 0.004, R0 0.012, R1c
+  0.992 and X5R1 0.996 (Yunlin 0.32-0.40 for every truth); E02's own checks (report-only) split
+  the same way (Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992). The pooled P = 0.501 sits 0.38
+  Monte Carlo SE above the 0.5 threshold, so "not shown weak" in Changhua is within Monte Carlo
+  noise of "weak by design". In FV's worlds a correct model without Changhua pumping (Q0, R0,
+  the page's own family) almost never passes, and one with it (R1c, X5R1) almost always does:
+  a Changhua coverage PASS points to the pumping family (model-only, not evidence about the
+  aquifer). FV's worlds carry neither the per-well relative drift that `DR.relative_drift.v1`
+  measured nor a county-common year shock, and `U1.HB.power.v1` (result sha 7dd2bcdb) shows
+  correlated noise can fail a correct interval: at true coverage 0.90 the false-fail rate is
+  already 0.52-0.53 with no year shock (ICC_month 0.3), and 0.83 in Yunlin and 0.82 in
+  Changhua at ICC_year 0.2 together with ICC_month 0.3.
+- **FV v2's worlds are less climatological than the published record (RC5).** Their median
+  climatology RMSE is 2.21-2.25 m across the four truths (ZR 1.87-1.98 m); over 2023-26 the
+  frozen run scored 2.048 m against climatology's 1.667 m (sections 1 and 7). On that record
+  an E02c level fail in 2028 is the expected outcome, and the level P = 0.96 is not the chance
+  of a pass. Disclosure only: no reading, threshold or selection changes (U7).
+- **E26 is a weak test.** Its synthetic false pass is 0.13 against a power of 0.35
+  (likelihood ratio about 2.7), and a dry year biases the slope toward a pass. Of the 13 wells
+  the registered availability rule found eligible, 12 were placed on the grid and scored; one
+  eligible well was never placed (`bc_panel.npz` field not_placed), which the report's empty
+  `dropped_wells` omits. A local addendum beside the report records it
+  (`results/dataprep/reports/I1.CH_backcast.v1/addendum_not_placed.json`); the scored
+  `report.json` is untouched.
+- **E25's placebo is not evidence of specificity** (reworded above), and FV.ext's design-time
+  read of the same 23 screens (look `FV:ext_preorigin_derived_N3Fwells` x
+  `I1CHX:ext_changhua_23`) is a post-registration look logged at 14:19:55Z, about 8 minutes
+  before CHX was scored (14:27:29Z); it could not change the frozen estimator.
+- **E25 and E26 are not independent.** 4 of E26's 12 wells are among E25's 23 screens, and
+  both carry the same regional-rain confounder (recharge at climatology). They are never counted
+  as two independent supports.
+- **Declared product use.** E25 read `heads/L1_clean` v3 and E26 read `heads/L1_pre2012` v1,
+  both under the use `design_time_evidence` (`score_chx.py`, `score_bc.py`), not
+  `scoring_target`: the design-time label comes from the registrations, the L1_pre2012 product
+  from ruling R7.l1_pre2012 and the page wording from ruling R7.changhua_page.
+- **The headline lever is conversion-dependent.** `X5.lever_class_share.v1` (report-only part,
+  model-only, measured between the q0c and x5r1 calibrations) puts the Yunlin irrigation-only
+  cut30 head lever x1.26-1.28 apart by horizon (about x1.27) between the two pumping
+  conversions, while the all-class all30 lever is invariant: gated ratios x1.03-1.05 (by
+  horizon 1.02-1.06, report-only). So the cut30 +1.19 m at N2's unit (C01) and the class ranking (C12) inherit that
+  conversion dependence; N2 tests total recorded anomalies, not classes.
+- **C27 in registered numbers only.** Step C (masked 2016-18 refits, leveling): in Yunlin the
+  model lost to both no change and reference-year pumping, observed-on-modelled slope 0.22
+  [0.17, 0.27]; in Changhua (R1c) it beat reference-year pumping but lost to no change, slope
+  0.40 [0.30, 0.49]. Step B (2007-10 across places): Yunlin inconclusive, observed +0.66
+  against modelled +0.26 cm/yr per GWh/yr, modelled-over-observed ratio interval [0.21, 2.17]
+  (point 0.40); Changhua inconsistent. No ratio of the kind "x too large" is stated.
+- **FW holds only in this model.** The coastal (distal) column is near-elastic by
+  construction, and no slow coastal form is identifiable from held leveling
+  (`I1.X5SC.gate0.v1`), so FW's "mean-forcing caveat closed" (C25, C27) says little about the
+  coast of the aquifer.
+- **C03's upgrade path is closed.** "Links tested, cut size untested" needs a registered N3G
+  conversion test; `N3.G0prime.v1` failed for every estimator (nest error), so none exists.
+- **Records and citations.** E22's stale "N3F hash PENDING" sentence is removed (the hash,
+  17c826ee, has been in the ledger since round 5). Cited now: `N3.G0prime.v1` on C31,
+  `U1.HB.power.v1` (which sets the pass_weak / fail_shock wording) on C14a and C14b,
+  `X1.hybrid_tf_tpc.prospective_2026-11.v1` on E04, and `N3.posthoc_pile_conversion.v1` on
+  C13c and C27, each with its registry sha256.
+
+## 21. How progress is scored (metric governance, 2026-11-03)
+
+The progress figures the project reports come from the claims ledger by a fixed rule, published
+here so that they can be recomputed and so that a change of rule is visible.
+
+Grade of a claim, by its status (`hydrophysics/twin/claims_v1.json`):
+
+| status | grade |
+|---|---|
+| S, supported by a prospective or fresh registered test | 1.0 |
+| S (design-time) | 0.9 |
+| S (design-time), direction only, on a claim about a size | 0.75 |
+| D, with measured decidability (a registered synthetic reading says the test can decide) | 0.7 |
+| D, decidability unknown | 0.6 |
+| D weak by design, or N | 0.5 |
+| L | 0.25 |
+| W | 0.15 |
+
+Weight of a claim: 2 for the page's answer rows (headline and answer tiles), 1 for evidence
+rows, 0.5 for rows shown only in the README or the model card; rows that only mirror another
+row (the analyst's mirror) and UI rows weigh 0. A part's score is the weighted mean grade of
+its claims, in percent.
+
+What is reported (user rulings R8.12a and R8.12b, 2026-11-03). The figures below always
+appear together; none is shown alone, and none is averaged into another silently:
+
+- **Headline: the 6-part mean** (R8.12a), the mean of the five science parts and claim
+  honesty, as the project has reported it. Audited at 2026-11-02 it is **53.6 %** (the lead's
+  earlier figure was about 57 %).
+- **Science trust**, always beside the headline: the mean of the five science parts (the first
+  five rows of the table below), **45.3 %** audited.
+- **Claim honesty**, always beside the headline: how well the page, the ledger and the docs
+  agree with the record, **95 %** audited, and about 98 once the step-0 disclosures of
+  2026-11-03 are in (an estimate, not a re-audit).
+- **Intended-output variant**, beside science trust: W and L rows graded 0 instead of 0.15 and
+  0.25, so only what the page is meant to answer counts. On the audited statuses it is
+  **35.7 %**.
+- **End-goal convention** (R8.12b, adopted as bookkeeping only): rows withdrawn under every
+  outcome with a stated reason, or closed by a registered undecidability or no-target
+  declaration, count as "honestly narrowed". It is bookkeeping, not evidence, and changes no
+  status. On the audited statuses it gives about **61-62 %** on the 6-part basis, and it is
+  always shown beside the official 53.6 % and beside the disclosure downgrades listed below,
+  never alone.
+
+A D that can be decided only after 2030-01-15 counts as D-pending under this rubric (0.6, or
+0.7 once its decidability is measured; ruling R8.4b).
+
+The audited figures at 2026-11-02 (both audits, lead-consistent rule):
+
+| part | lead's figure | audited |
+|---|---|---|
+| head response, Yunlin | 70 | 60 |
+| forecast start and validation | 57 | 56 |
+| uncertainty bands | 44 | 43 |
+| subsidence and cut response | 31 | 31 |
+| Changhua | 40 | 36.5 |
+| **science trust** (mean of the 5) | 48.4 | **45.3** |
+| **claim honesty** | 97 | **95** |
+| **6-part mean** (headline) | 57 | **53.6** |
+
+Disclosure downgrades. The audited science parts are lower than the lead's mainly because of
+disclosures that section 20 now states: E25's placebo and E26's weak synthetic power, and that
+the two are not independent; FV v2's Changhua split by truth family; and the x1.27 conversion
+dependence of the headline cut30 lever (C01, C12). A disclosure downgrade is always reported
+with any gain, and with the end-goal figure whenever that figure is shown.
