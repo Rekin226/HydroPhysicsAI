@@ -51,6 +51,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # full history: tests/test_calibrate_flow_chj_hook.py compares against the
+          # pre-patch commit with `git show` (it fails, not skips, on a shallow CI clone)
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:

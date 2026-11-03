@@ -1462,9 +1462,11 @@ and the result (each scored once):
 - **`FV.stat.v1`** (95d201dc): not evaluable (engineering). The frozen self-check writes its
   synthetic evaluation rows with model_sha256 "synthetic", which twin.validation.evaluate
   rejects against the real E04 protocol, so the scorer stopped before any statistic
-  (`results/dataprep/reports/FV.stat.v1/engineering_failure.json`, sha ac83bd46). A fix would
-  need a new id, which edits prereg_fv2.py, an input of two registered declarations; FV.stat
-  was a report-only rider and is closed. No page effect.
+  (`results/dataprep/reports/FV.stat.v1/engineering_failure.json`, sha ac83bd46). Correction
+  (round-8 audit, 2026-11-03): a fix does not need prereg_fv2.py edited. FV.stat.v2, an
+  engineering v2 in new files (`dataprep_staging/fv_stat_v2/`) with the self-check fixed, a
+  fresh seed and the v1 K=8 preview disclosed, is registered after its code is committed, so
+  E04's decidability reading is pending, not closed. No page effect.
 - **`SD.cut_response_spread.v2`** (aecb5a81), model-only, superseding v1 (0d05eb53). v1's
   scorer exited 2 at its layout step before any cut30 quantity was formed: it expected each
   column labelled by its directory name, while the forward labels a column with a creep
