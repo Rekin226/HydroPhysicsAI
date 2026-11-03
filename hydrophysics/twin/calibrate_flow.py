@@ -243,6 +243,116 @@ WELL_DATUM_SD_DEFAULT = 5.0
 # independent observations. A documented modelling constant, not a tuned one.
 WELL_DATUM_MONTHS_PER_OBS = 12.0
 
+# --- --freeze-from / --pump-layer-shares-county (CH-J, I1.CHX.v1; ruling R8.1, opt-in) ----
+# The registered patch is dataprep_staging/ch_x/chj_forcing.py CALIBRATE_FLOW_PATCH. Its
+# frozen helpers (FREE_RULE's partition, the pinned values, the county layer fractions) are
+# restated here, because a twin module does not import dataprep_staging;
+# tests/test_calibrate_flow_chj_hook.py checks them equal to chj_forcing's.
+FREEZE_SW_KEY = "log_sw_scale"
+FREEZE_SW_FRACTION_MAX = 1.0   # the free Changhua sw fractions: [0.01 (BOUNDS), 1]
+FREEZE_SW_FRACTION_MIN = 0.01  # = exp(BOUNDS["log_sw_scale"][0]), the registered 0.01 bound
+# a zero layer share written to the theta file as a logit: softmax gives exactly 0.0
+PUMP_FRAC_LOGIT_ZERO = -1000.0
+# a fold parent's theta meta names its fold (written by dataprep_staging/ch_x/run_chj.sh
+# parents): {"fold", "seed", "n_folds", "source", "source_sha256"}
+CHJ_FOLD_PARENT_KEY = "chj_fold_parent"
+
+
+def freeze_partition(keys, n_components: int = 2) -> tuple[list[str], list[str]]:
+    """(free, pinned) under chj_forcing.FREE_RULE: every Changhua copy (``*_changhua``) is
+    free, every other key pinned; ``log_sw_scale`` is split by entry (``log_sw_scale[i]``,
+    ``--sw-county-split`` order ``[c0 Changhua, c0 rest, c1 Changhua, ...]``): its Changhua
+    entries free, its rest-of-fan entries pinned."""
+    keys = list(keys)
+    free = sorted(k for k in keys if k.endswith(COUNTY_SUFFIX))
+    pinned = sorted(k for k in keys if k not in free and k != FREEZE_SW_KEY)
+    if FREEZE_SW_KEY in keys:
+        free += [f"{FREEZE_SW_KEY}[{2 * i}]" for i in range(n_components)]
+        pinned += [f"{FREEZE_SW_KEY}[{2 * i + 1}]" for i in range(n_components)]
+    return free, pinned
+
+
+def pin_frozen(keys, q0_theta: dict, n_components: int = 2,
+               sw_init=SW_SCALE_INIT_2) -> dict:
+    """{'pinned': {key: value}, 'start_free': {key: value}} (chj_forcing.pin_frozen): pinned
+    keys at ``q0_theta``'s value (the rest-of-fan sw entries at the initial value: Q0 has no
+    sw and their field is zero); a free Changhua copy starts at its own value in
+    ``q0_theta`` or else its parent's; a free Changhua sw entry at the initial value."""
+    free, pinned = freeze_partition(keys, n_components)
+    plain = [k for k in pinned if not k.startswith(f"{FREEZE_SW_KEY}[")]
+    miss = [k for k in plain if k not in q0_theta]
+    if miss:
+        raise KeyError(f"Q0's theta lacks pinned keys {miss}")
+    init = [float(np.log(v)) for v in sw_init]
+    out = {k: q0_theta[k] for k in plain}
+    start = {}
+    for k in free + [k for k in pinned if k.startswith(f"{FREEZE_SW_KEY}[")]:
+        if k.startswith(f"{FREEZE_SW_KEY}["):
+            v = init[(int(k[len(FREEZE_SW_KEY) + 1:-1]) // 2) % len(init)]
+            (start if k in free else out)[k] = v
+        elif k in q0_theta:
+            start[k] = q0_theta[k]
+        elif k[:-len(COUNTY_SUFFIX)] in q0_theta:
+            start[k] = q0_theta[k[:-len(COUNTY_SUFFIX)]]
+    return {"pinned": out, "start_free": start}
+
+
+def q0_rest_fractions(pump_split_logit: float | None, pump_layer: int = 1,
+                      n_layers: int = 4) -> np.ndarray:
+    """``(L,)`` (chj_forcing.q0_rest_fractions): a parent's own placement of every cell's
+    pumped volume -- with ``pump_split_logit`` and ``pump_layer != 0``, sigmoid(logit) in
+    layer 0 and the rest in ``pump_layer``; otherwise everything in ``pump_layer``."""
+    if not 0 <= pump_layer < n_layers:
+        raise ValueError("pump_layer outside the layers")
+    f = np.zeros(n_layers)
+    if pump_split_logit is None or pump_layer == 0:
+        f[pump_layer] = 1.0
+        return f
+    s = 1.0 / (1.0 + np.exp(-float(pump_split_logit)))
+    f[0], f[pump_layer] = s, 1.0 - s
+    return f
+
+
+def county_layer_fractions(changhua: np.ndarray, rest_fractions, shares,
+                           zero_shares_ok: bool = False) -> np.ndarray:
+    """``(L, A)`` (chj_forcing.county_layer_fractions): Changhua cells take ``shares``,
+    every other cell ``rest_fractions``. Columns sum to one. ``zero_shares_ok`` admits a
+    zero Changhua share (default: chj_forcing's rule, every share > 0); fit_flow's
+    Python API sets it, because the registered pre-gate gives the Changhua cells Q0's own
+    placement (``q0_rest_fractions``, zero in two layers); the CLI keeps the rule."""
+    ch = np.asarray(changhua, bool)
+    sh = np.asarray(shares, float)
+    rest = np.asarray(rest_fractions, float)
+    n_layers = sh.size
+    if ((sh < 0).any() if zero_shares_ok else (sh <= 0).any()) or abs(sh.sum() - 1.0) > 1e-9:
+        raise ValueError("shares must be positive values summing to 1")
+    if rest.shape != (n_layers,) or (rest < 0).any() or abs(rest.sum() - 1.0) > 1e-9:
+        raise ValueError(f"rest_fractions must be {n_layers} values >= 0 summing to 1")
+    F = np.empty((n_layers, ch.size))
+    F[:, ~ch] = rest[:, None]
+    F[:, ch] = sh[:, None]
+    return F
+
+
+def _freeze_sw_hits(hits: dict, sw: torch.Tensor, pinned: torch.Tensor) -> None:
+    """--freeze-from: ``bounds_hit``'s ``log_sw_scale`` entry over the FREE (Changhua)
+    entries only, against the hook's range [FREEZE_SW_FRACTION_MIN, FREEZE_SW_FRACTION_MAX]
+    (the hook clamps them to <= 1 every step, so BOUNDS' ceiling 2 is never reached; the
+    pinned rest-of-fan entries are not parameters). In place."""
+    lo = math.log(FREEZE_SW_FRACTION_MIN)
+    hi = math.log(FREEZE_SW_FRACTION_MAX)
+    v = sw.detach()[~pinned]
+    target = hits["global"] if isinstance(hits.get("global"), dict) else hits
+    target[FREEZE_SW_KEY] = {"lo": int((v <= lo + 1e-9).sum()),
+                             "hi": int((v >= hi - 1e-9).sum()), "n": int(v.numel())}
+
+
+def share_logits(fractions) -> list[float]:
+    """Layer shares as the theta file's ``pump_layer_logits`` (log share; a zero share at
+    PUMP_FRAC_LOGIT_ZERO), which ``pump_layer_fractions`` turns back into the shares."""
+    f = np.asarray(fractions, dtype="float64")
+    return [math.log(v) if v > 0.0 else PUMP_FRAC_LOGIT_ZERO for v in f]
+
 
 def _profile_well_datum(pred: torch.Tensor, obs_z: torch.Tensor, mask: torch.Tensor | None,
                         sd: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor,
@@ -1499,8 +1609,25 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
              return_lag: bool = False,
              changhua_cells: torch.Tensor | None = None,
              fix_pump_layer_shares: tuple[float, ...] | None = None,
-             eta_county: bool = False) -> dict:
+             eta_county: bool = False, freeze_from: dict | None = None,
+             pump_layer_shares_county: tuple | None = None) -> dict:
     """Fit log-parameters to observed head series by masked MSE.
+
+    CH-J hook (I1.CHX.v1, chj_forcing.CALIBRATE_FLOW_PATCH; both default off, and a run
+    without them builds the historical dict):
+
+    - ``freeze_from`` (``--freeze-from``, a parent's ``theta`` dict; county split only):
+      every key FREE_RULE does not free (``freeze_partition``) moves to ``fixed`` at the
+      parent's value, the free Changhua copies start at the parent's value (``pin_frozen``),
+      so epoch 0 is the parent. With ``--sw-county-split`` the rest-of-fan entries of
+      ``log_sw_scale`` are pinned at the initial value and its Changhua entries stay free,
+      bounded to fractions in [0.01, ``FREEZE_SW_FRACTION_MAX``].
+    - ``pump_layer_shares_county`` (``--pump-layer-shares-county``): ``(rest, shares)``,
+      each ``(L,)``; ``fixed["pump_layer_frac_cells"]`` = ``county_layer_fractions``
+      (``changhua_cells`` take ``shares``, every other cell ``rest``), passed to the
+      rollout as ``pump_layer_frac``. The theta carries it as ``pump_layer_logits`` (rest)
+      and ``pump_layer_logits_ch`` (shares), which every consumer already rebuilds on the
+      recorded county map.
 
     County-split options (``--zone-county-split`` only; both opt-in, both keep epoch 0 the
     unsplit model):
@@ -1812,12 +1939,22 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     for c in tied:
         theta.pop(c)
     free_copies = [(c, p) for c, p in copy_parent.items() if c in theta]
+    # --freeze-from: the pinned keys (also in `fixed`) and the pinned log_sw_scale entries
+    frozen: dict[str, torch.Tensor] = {}
+    sw_pin: tuple[torch.Tensor, torch.Tensor] | None = None
 
     def _view() -> dict:
-        """theta with every tied copy filled in from its parent (the rollout's view)."""
-        if not tied:
+        """theta with every tied copy filled in from its parent (the rollout's view), and
+        with --freeze-from every pinned key and log_sw_scale entry at its pinned value."""
+        if not tied and not frozen and sw_pin is None:
             return theta
-        return {**theta, **{c: theta[p] for c, p in tied.items()}}
+        if not frozen and sw_pin is None:
+            return {**theta, **{c: theta[p] for c, p in tied.items()}}
+        v = {**theta, **frozen}
+        v.update({c: v[p] for c, p in tied.items()})
+        if sw_pin is not None:
+            v[FREEZE_SW_KEY] = torch.where(sw_pin[0], sw_pin[1], theta[FREEZE_SW_KEY])
+        return v
     def _loss(pred: torch.Tensor) -> torch.Tensor:
         """``"level"``: plain MSE on heads (every gate before 2026-09-18). ``"anomaly"``:
         MSE on each well's departures from its own mean over the fitted months, plus
@@ -1896,6 +2033,57 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                              f"summing to 1, got {fix_pump_layer_shares}")
         theta.pop("pump_layer_logits")
         fixed["pump_layer_logits"] = torch.log(sh)
+    if pump_layer_shares_county is not None:
+        # CH-J: Changhua cells at the measured shares, every other cell at the parent's
+        # own placement; fixed, never fitted
+        if "pump_layer_logits" in theta or "pump_layer_logits" in fixed:
+            raise ValueError("--pump-layer-shares-county cannot be combined with "
+                             "--pump-layer-fractions / --pump-layer-shares")
+        if not use_pumping or changhua_cells is None:
+            raise ValueError("--pump-layer-shares-county needs the pumping driver and the "
+                             "county flags")
+        rest, shares = pump_layer_shares_county
+        frac = county_layer_fractions(np.asarray(torch.as_tensor(changhua_cells).cpu()),
+                                      rest, shares, zero_shares_ok=True)
+        if frac.shape != (model.n_layers, A):
+            raise ValueError(f"--pump-layer-shares-county: fractions {frac.shape}, the model "
+                             f"has ({model.n_layers}, {A})")
+        fixed["pump_layer_frac_cells"] = torch.tensor(frac, dtype=torch.float64, device=dev)
+    freeze_rec = None
+    if freeze_from is not None:
+        # CH-J: only FREE_RULE's keys stay free; everything else is the parent's
+        if not copy_parent:
+            raise ValueError("--freeze-from needs a county-split zonation")
+        sw_t = theta.get(FREEZE_SW_KEY)
+        if FREEZE_SW_KEY in fixed or (sw_t is not None and (sw_t.dim() != 1
+                                                           or sw_t.numel() % 2)):
+            raise ValueError("--freeze-from with surface water needs --sw-county-split "
+                             "(and no --fix-sw-scale)")
+        n_comp = 0 if sw_t is None else sw_t.numel() // 2
+        part = freeze_partition(theta, n_comp)
+        vals = pin_frozen(list(theta), freeze_from, n_comp)
+        both = {**vals["pinned"], **vals["start_free"]}
+        with torch.no_grad():
+            for k, v in both.items():
+                if k.startswith(f"{FREEZE_SW_KEY}["):
+                    sw_t[int(k[len(FREEZE_SW_KEY) + 1:-1])] = float(v)
+                    continue
+                t = torch.as_tensor(np.asarray(v, dtype="float64"), dtype=torch.float64,
+                                    device=dev)
+                if t.numel() != theta[k].numel():
+                    raise ValueError(f"--freeze-from: {k} has {t.numel()} values, the fit "
+                                     f"{theta[k].numel()}")
+                t = t.reshape(theta[k].shape)
+                if k in vals["pinned"]:
+                    theta.pop(k)
+                    fixed[k] = frozen[k] = t
+                else:
+                    theta[k].copy_(t)
+        if sw_t is not None:
+            mask = torch.zeros(sw_t.shape, dtype=torch.bool, device=dev)
+            mask[1::2] = True                      # the rest-of-fan entries
+            sw_pin = (mask, sw_t.detach().clone())
+        freeze_rec = {"free": part[0], "pinned": part[1]}
     free = list(theta.values())
     opt = torch.optim.Adam(free, lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -1906,8 +2094,10 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                     else torch.tensor(float(obs_h.numel()), dtype=torch.float64))
 
     def _copy_prior(data_loss: torch.Tensor) -> torch.Tensor:
-        """``--county-copy-sd``: the copies' Gaussian shrinkage toward their parents."""
-        dev2 = sum(((theta[c] - theta[p]) ** 2).sum() for c, p in free_copies)
+        """``--county-copy-sd``: the copies' Gaussian shrinkage toward their parents (a
+        parent pinned by --freeze-from at its pinned value)."""
+        th = _view()
+        dev2 = sum(((th[c] - th[p]) ** 2).sum() for c, p in free_copies)
         s2 = data_loss.detach() / n_loss_cells.to(data_loss.device)
         return s2 * dev2 / float(county_copy_sd) ** 2
 
@@ -1955,7 +2145,8 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             pump_layer_frac=(pump_layer_fractions(
                 theta.get("pump_layer_logits", fixed.get("pump_layer_logits")),
                 theta.get("pump_layer_logits_ch"), ch_t)
-                if "pump_layer_logits" in theta or "pump_layer_logits" in fixed else None),
+                if "pump_layer_logits" in theta or "pump_layer_logits" in fixed
+                else fixed.get("pump_layer_frac_cells")),
             ret_tau=(torch.exp(theta["log_tau_ret"]) if "log_tau_ret" in theta else None),
             spread_W=(spread_matrix(d2_km, theta["log_spread_km"])
                       if "log_spread_km" in theta else fixed_W),
@@ -1984,8 +2175,13 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             r2_trace.append((_ep + 1, _r))
             print(f"      epoch {_ep + 1:4d}: loss={float(loss.detach()):.4g} "
                   f"in-sample R2={_r:+.4f}", flush=True)
+        if sw_pin is not None:
+            with torch.no_grad():   # --freeze-from: the Changhua sw fractions stay <= 1
+                theta[FREEZE_SW_KEY].clamp_(max=math.log(FREEZE_SW_FRACTION_MAX))
         hits = (_zonal_bounds_hit(theta, zonation) if zone_t is not None
                 else _clamp_({k: v for k, v in theta.items() if k in BOUNDS}))
+        if sw_pin is not None:
+            _freeze_sw_hits(hits, theta[FREEZE_SW_KEY], sw_pin[0])
     with torch.no_grad():
         h = _forward()
         pred = h[obs_layer, obs_idx, 1:]
@@ -2001,9 +2197,9 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             model.log_S.copy_(theta["log_S"].expand(-1, A))
             if "log_L" in theta and model.n_layers > 1:
                 model.log_L.copy_(theta["log_L"].expand(-1, A))
-        if model.has_boundaries and "log_C_coast" in theta:
-            model.log_C_coast.copy_(theta["log_C_coast"])
-            model.log_C_apex.copy_(theta["log_C_apex"])
+        if model.has_boundaries and "log_C_coast" in theta_v:
+            model.log_C_coast.copy_(theta_v["log_C_coast"])
+            model.log_C_apex.copy_(theta_v["log_C_apex"])
         d_Sd, d_tau = _expand_zonal_delay(theta_v, zone_t, model.n_layers, A,
                                           layers=delay_layers)
         if d_Sd is not None:
@@ -2016,15 +2212,23 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
             model.aqt_log_Sa = a_Sa.detach().clone()
             model.aqt_log_G = a_G.detach().clone()
         if n_riv:
-            model.fit_log_C_riv = theta["log_C_riv"].detach().clone()
+            model.fit_log_C_riv = theta_v["log_C_riv"].detach().clone()
     n_params = sum(p.numel() for p in free)
+    if sw_pin is not None:
+        # --freeze-from: the pinned rest-of-fan log_sw_scale entries are not parameters
+        n_params -= int(sw_pin[0].sum())
     theta_out = {}
     # every key in its creation order, the tied copies (= their parents) included
     theta_v = _view()
     ordered = [(k, theta_v[k]) for k in key_order if k in theta_v]
-    for k, v in ordered + list(fixed.items()):
+    for k, v in ordered + [(k, v) for k, v in fixed.items() if k != "pump_layer_frac_cells"]:
         theta_out[k] = (float(v.detach().cpu()) if v.dim() == 0
                         else v.detach().clone().squeeze(-1).cpu().numpy().tolist())
+    if pump_layer_shares_county is not None:
+        # --pump-layer-shares-county: the fixed placement in the form forward.build_model,
+        # calibrate_coupled and _predict_homogeneous rebuild on the recorded county map
+        theta_out["pump_layer_logits"] = share_logits(pump_layer_shares_county[0])
+        theta_out["pump_layer_logits_ch"] = share_logits(pump_layer_shares_county[1])
     if "log_eta" in theta_out:
         theta_out["eta"] = (float(np.exp(theta_out["log_eta"]))
                             if np.ndim(theta_out["log_eta"]) == 0
@@ -2068,10 +2272,12 @@ def fit_flow(model: FlowModel, obs_h: torch.Tensor, obs_idx: torch.Tensor,
            "fixed": sorted(fixed), "loss_mode": loss_mode}
     if tied:
         out["county_tied"] = sorted(tied)
+    if freeze_rec is not None:
+        out["freeze_partition"] = freeze_rec
     if county_copy_sd is not None and free_copies:
         with torch.no_grad():
             out["county_copy_departure"] = {
-                c: float((theta[c] - theta[p]).abs().max()) for c, p in free_copies}
+                c: float((theta_v[c] - theta_v[p]).abs().max()) for c, p in free_copies}
     if use_datum:
         # the MAP datum at the FINAL parameters (the loop's last one lags a step)
         d, kappa, s2, n = _profile_well_datum(pred, obs_z, d_mask, well_datum_sd)
@@ -2525,6 +2731,8 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                 return_lag: bool = False, changhua_cells: torch.Tensor | None = None,
                 fix_pump_layer_shares: tuple[float, ...] | None = None,
                 eta_county: bool = False,
+                freeze_from: dict | None = None,
+                pump_layer_shares_county: tuple | None = None,
                 ic_zone_of_cell: np.ndarray | None = None,
                 proximal_layered: bool = False, ic_layered: bool = False,
                 well_datum: str = "off",
@@ -2606,6 +2814,11 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
     # all, so keep the raw predictions rather than only their pooled summary.
     if only_fold is not None and not 0 <= int(only_fold) < n_folds:
         raise ValueError(f"only_fold={only_fold} is outside 0..{n_folds - 1}")
+    if freeze_from is not None and only_fold is None:
+        # CH-J: one parent for every fold would pin each fold at a fit that saw its
+        # held-out wells; each fold takes its own parent (--only-fold K, ruling R8.1e)
+        raise ValueError("freeze_from needs only_fold: each fold is frozen at its own "
+                         "parent of the same partition, never the full-data one")
     # coordinates used for the nearest-training-entry distance
     dist_xy = (np.asarray(well_xy, dtype="float64") if well_xy is not None
                else grid.centroids()[obs_idx.cpu().numpy()])
@@ -2655,7 +2868,9 @@ def kfold_wells(grid, obs_h: torch.Tensor, obs_idx: torch.Tensor,
                        pump_layer_fractions_on=pump_layer_fractions_on,
                        pump_fractions_county=pump_fractions_county, return_lag=return_lag,
                        changhua_cells=changhua_cells,
-                       fix_pump_layer_shares=fix_pump_layer_shares, eta_county=eta_county)
+                       fix_pump_layer_shares=fix_pump_layer_shares, eta_county=eta_county,
+                       freeze_from=freeze_from,
+                       pump_layer_shares_county=pump_layer_shares_county)
         print(f"    fold {f + 1}/{n_folds}: n_held={len(held)} loss={fit['loss']:.4g} "
               f"({time.perf_counter() - t_fold:.1f}s)", flush=True)
         with torch.no_grad():
@@ -3275,6 +3490,20 @@ def main(argv=None) -> None:
     ap.add_argument("--pump-layer-shares", default=None,
                     help="(rung R4p) hold the layer shares of --pump-layer-fractions at these "
                          "comma-separated values, one per layer, summing to 1")
+    ap.add_argument("--freeze-from", default=None, metavar="THETA_JSON",
+                    help="(CH-J, I1.CHX.v1; needs --zone-county-split) start from the "
+                         "stage3_theta.json of a parent and pin every parameter at its value "
+                         "except the Changhua copies (which start at their parents' values, "
+                         "so epoch 0 is the parent) and, with --sw-county-split, the "
+                         "Changhua surface-water fractions (bounded to [0.01, 1]; the "
+                         "rest-of-fan ones pinned at the initial value). Default: off")
+    ap.add_argument("--pump-layer-shares-county", default=None, metavar="CH0,CH1,CH2,CH3",
+                    help="(CH-J; needs --freeze-from and --zone-county-split) hold the layer "
+                         "shares of the Changhua cells' pumped volume at these values and "
+                         "every other cell at the --freeze-from parent's own placement "
+                         "(sigmoid(pump_split_logit) in layer 0, the rest in its pump "
+                         "layer); fixed, not fitted. Excludes --pump-layer-fractions and "
+                         "--pump-layer-shares")
     ap.add_argument("--return-lag", action="store_true",
                     help="(rung R4) lag the return flow through a first-order store with a "
                          "learned time constant (needs --return-flow)")
@@ -3366,6 +3595,7 @@ def main(argv=None) -> None:
         raise SystemExit("--county-copy-sd must be > 0")
     if args.fold_site_tol_m < 0.0:
         raise SystemExit("--fold-site-tol-m must be >= 0")
+    chj_doc = _chj_check_args(args)
     if args.zone_county_split:
         if args.param_mode != "zonal":
             raise SystemExit("--zone-county-split splits the zones of --param-mode zonal")
@@ -3718,7 +3948,7 @@ def main(argv=None) -> None:
         from .zone_county import DEFAULT_MAP, county_sha256
         args.eta_county_map, args.eta_county_sha256 = DEFAULT_MAP, county_sha256(county_flags)
     if (args.pump_layer_fractions or args.pump_fractions_county or args.return_lag
-            or args.pump_layer_shares or args.eta_county):
+            or args.pump_layer_shares or args.eta_county or args.pump_layer_shares_county):
         if args.pump_fractions_county and county_flags is None:
             raise SystemExit("--pump-fractions-county needs --zone-county-split")
         r4_kw = {"pump_layer_fractions_on": args.pump_layer_fractions,
@@ -3729,6 +3959,8 @@ def main(argv=None) -> None:
                  "eta_county": args.eta_county,
                  "changhua_cells": (None if county_flags is None
                                     else torch.as_tensor(np.asarray(county_flags, dtype=bool)))}
+    # the CH-J hook's options (none for a default run, whose calls are unchanged)
+    chj_kw = _chj_fit_options(chj_doc)
     # one argument list for the sequential gate and a --only-fold job, so the two can
     # never drift apart
     kfold_kw = dict(n_layers=4, epochs=args.epochs, lr=args.lr, n_folds=args.n_folds,
@@ -3751,7 +3983,7 @@ def main(argv=None) -> None:
                     ic_layered=args.ic_layered_proximal,
                     well_datum=args.well_datum, well_datum_sd=args.well_datum_sd,
                     datum_mask=datum_mask, sids=sids_used,
-                    **county_fit_kw,
+                    **county_fit_kw, **chj_kw,
                     **({"site_tol_m": args.fold_site_tol_m}
                        if args.fold_site_tol_m > 0.0 else {}))
     if county_rec is not None:
@@ -3770,7 +4002,9 @@ def main(argv=None) -> None:
                            only_fold=args.only_fold, **kfold_kw)
         fpath = write_fold_file(args.out, gate, cfg, _cg_stats(),
                                 time.perf_counter() - t0, sids_used,
-                                dump=bool(args.dump_predictions))
+                                dump=bool(args.dump_predictions),
+                                **({"extra": _chj_fold_record(chj_doc, gate["per_fold"][0])}
+                                   if chj_doc is not None else {}))
         f = gate["per_fold"][0]
         print(f"  fold {args.only_fold}/{args.n_folds} (seed {args.seed}): n_held={f['n_held']} "
               f"R2 {f['r2_kfold']:+.3f} vs IDW {f['r2_idw']:+.3f}; anomaly R2 "
@@ -3792,7 +4026,7 @@ def main(argv=None) -> None:
                    aquitard=args.aquitard_storage, zone_w=zone_w,
                    proximal_layered=args.proximal_layered, well_datum=args.well_datum,
                    well_datum_sd=args.well_datum_sd, datum_mask=datum_mask,
-                   extra_q=extra_q, **county_fit_kw, **r4_kw)
+                   extra_q=extra_q, **county_fit_kw, **r4_kw, **chj_kw)
     t_fit = time.perf_counter() - t0
     datum_np = datum_meta = None
     if args.well_datum == "fit":
@@ -3967,7 +4201,9 @@ def main(argv=None) -> None:
                      if "county_copy_departure" in ins else {}),
                   # opt-in 2026-10-17: a physical-site fold grouping (absent by default)
                   **({"fold_site_tol_m": float(args.fold_site_tol_m)}
-                     if args.fold_site_tol_m > 0.0 else {})})
+                     if args.fold_site_tol_m > 0.0 else {}),
+                  # opt-in (CH-J hook): the parent, its sha256 and the fixed shares
+                  **_chj_meta(chj_doc, ins)})
 
     if args.fit_only:
         # Discriminator mode: the in-sample TRAJECTORY separates under-training from a
@@ -4034,6 +4270,151 @@ def main(argv=None) -> None:
     print(f"wrote {path}")
     if args.policy_response:
         _run_policy_gate(args)
+
+
+def _chj_check_args(args) -> dict | None:
+    """--freeze-from / --pump-layer-shares-county (CH-J): refuse a combination the hook does
+    not define, then read the parent's theta file. ``None`` when neither flag is set."""
+    freeze = getattr(args, "freeze_from", None)
+    shares = getattr(args, "pump_layer_shares_county", None)
+    if freeze is None and shares is None:
+        return None
+    if freeze is None:
+        raise SystemExit("--pump-layer-shares-county places every other cell as the "
+                         "--freeze-from parent does; pass --freeze-from")
+    if not args.zone_county_split:
+        raise SystemExit("--freeze-from frees the Changhua copies of --zone-county-split; "
+                         "pass it")
+    if not getattr(args, "fit_only", False) and getattr(args, "only_fold", None) is None:
+        # a sequential k-fold would hand every fold the full-data parent: the held-out
+        # wells would be inside every fold's pinned parameters (ruling R8.1e)
+        raise SystemExit("--freeze-from runs as --fit-only (parent: the full fit's theta) or "
+                         "--only-fold K (parent: Q0's own fold-K theta of the same "
+                         "partition, ruling R8.1e), never as a sequential k-fold, which "
+                         "would give every fold the full-data parent (held-out leakage)")
+    if args.sw_recharge and not args.sw_county_split:
+        raise SystemExit("--freeze-from with --sw-recharge needs --sw-county-split")
+    if args.fix_sw_scale is not None:
+        raise SystemExit("--freeze-from frees the Changhua sw fractions; drop --fix-sw-scale")
+    if shares is not None and (args.pump_layer_fractions or args.pump_layer_shares
+                               or args.pump_fractions_county):
+        raise SystemExit("--pump-layer-shares-county excludes --pump-layer-fractions, "
+                         "--pump-layer-shares and --pump-fractions-county")
+    try:
+        with open(freeze) as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"--freeze-from {freeze}: {exc}") from exc
+    if not isinstance(doc.get("theta"), dict):
+        raise SystemExit(f"--freeze-from {freeze}: no 'theta' dict")
+    fp = (doc.get("meta") or {}).get(CHJ_FOLD_PARENT_KEY)
+    if getattr(args, "only_fold", None) is not None:
+        want = {"fold": int(args.only_fold), "seed": int(args.seed),
+                "n_folds": int(args.n_folds)}
+        got = ({k: fp.get(k) for k in want} if isinstance(fp, dict) else None)
+        if got is None or any(got[k] is None or int(got[k]) != v for k, v in want.items()):
+            raise SystemExit(f"--only-fold {args.only_fold} --freeze-from {freeze}: the "
+                             f"parent must be Q0's own fold theta of this partition (meta."
+                             f"{CHJ_FOLD_PARENT_KEY} {want}), got {got}")
+    elif fp is not None:
+        raise SystemExit(f"--fit-only --freeze-from {freeze}: a fold parent "
+                         f"({CHJ_FOLD_PARENT_KEY} {fp}); the full fit's parent is the "
+                         "full-data theta")
+    sw = getattr(args, "sw_recharge", None)
+    rec = {"path": freeze, "sha256": _file_sha256(freeze), "theta": doc["theta"],
+           "shares": None, "rest": None, "fold_parent": fp,
+           "sw_recharge_sha256": _file_sha256(sw) if sw and os.path.isfile(sw) else None}
+    if shares is not None:
+        try:
+            sh = tuple(float(v) for v in shares.split(","))
+        except ValueError as exc:
+            raise SystemExit(f"--pump-layer-shares-county {shares!r}: {exc}") from exc
+        meta = doc.get("meta") or {}
+        if "pump_layer" not in meta:
+            raise SystemExit(f"--freeze-from {freeze}: meta has no pump_layer")
+        if int(meta["pump_layer"]) != int(args.pump_layer):
+            raise SystemExit(f"--pump-layer {args.pump_layer} differs from the parent's "
+                             f"{meta['pump_layer']}")
+        rest = q0_rest_fractions(doc["theta"].get("pump_split_logit"),
+                                 int(meta["pump_layer"]))
+        try:
+            county_layer_fractions(np.zeros(1, bool), rest, sh)
+        except ValueError as exc:
+            raise SystemExit(f"--pump-layer-shares-county {shares!r}: {exc}") from exc
+        rec.update(shares=sh, rest=rest)
+    return rec
+
+
+def _chj_fit_options(chj: dict | None) -> dict:
+    """fit_flow / kfold_wells keyword arguments of the CH-J hook ({} when it is off)."""
+    if chj is None:
+        return {}
+    kw = {"freeze_from": chj["theta"]}
+    if chj["shares"] is not None:
+        kw["pump_layer_shares_county"] = (chj["rest"], chj["shares"])
+    return kw
+
+
+def _chj_hook_markers(chj: dict, fit: dict | None) -> dict:
+    """``meta.chj_hook``: what a CH-J theta holds fixed, for every consumer. The pinned keys
+    and the county layer shares (``pump_layer_logits`` / ``_ch``, a zero share written as
+    PUMP_FRAC_LOGIT_ZERO) are NOT parameters of the fit; a posterior tool that perturbs or
+    clips them (uncertainty's bounded sampling clips logits to (-8, 8), n1_gaps'
+    identifiability flattens every theta key) would describe another model. The CH-J tools
+    refuse to hand a CH-J theta to one (dataprep_staging/ch_x/run_chj.sh, chj_produce.py)."""
+    part = (fit or {}).get("freeze_partition") or {}
+    pinned = [k for k in part.get("pinned", []) if not k.startswith(f"{FREEZE_SW_KEY}[")]
+    shares = chj["shares"] is not None
+    # --fix-eta / --fix-head-extra hold these too (fit_flow's own `fixed`)
+    held = [k for k in ("log_eta", "log_head_extra") if k in ((fit or {}).get("fixed") or [])]
+    keys = sorted(set(pinned + held
+                      + (["pump_layer_logits", "pump_layer_logits_ch"] if shares else [])))
+    return {"fixed_keys": keys,
+            "pinned_sw_entries": [k for k in part.get("pinned", [])
+                                  if k.startswith(f"{FREEZE_SW_KEY}[")],
+            "free": list(part.get("free", [])),
+            "fixed_pump_layer_shares": shares,
+            "pump_frac_logit_zero": PUMP_FRAC_LOGIT_ZERO if shares else None,
+            "posterior_tools_unsupported": True,
+            "sw_pinned_values": ("pin_frozen (chj_forcing, registered) pins the rest-of-fan "
+                                 "entries at the per-component initial values (0.15, 0.25) "
+                                 "-> log_sw_scale[1] = log 0.15 and [3] = log 0.25, where a "
+                                 "four-entry calibration starts [1] at 0.25; no numerical "
+                                 "effect: their field is identically zero"),
+            "rule": "I1.CHX.v1 CH-J (ruling R8.1): fixed keys are the parent's values, not "
+                    "fitted; posterior/uncertainty tools are unsupported on this theta"}
+
+
+def _chj_meta(chj: dict | None, fit: dict) -> dict:
+    """The theta meta of the CH-J hook ({} when it is off). ``fixed`` (the keys
+    uncertainty.py and n1_gaps' identifiability already hold fixed when a meta lists them)
+    is written only here, beside the ``chj_hook`` markers."""
+    if chj is None:
+        return {}
+    rec = {"freeze_from": chj["path"], "freeze_from_sha256": chj["sha256"]}
+    if "freeze_partition" in fit:
+        rec["freeze_partition"] = fit["freeze_partition"]
+    if chj["shares"] is not None:
+        rec["pump_layer_shares_county"] = list(chj["shares"])
+        rec["pump_layer_rest_fractions"] = [float(v) for v in chj["rest"]]
+    rec["chj_hook"] = _chj_hook_markers(chj, fit)
+    rec["fixed"] = list(rec["chj_hook"]["fixed_keys"])
+    if chj.get("sw_recharge_sha256"):
+        rec["sw_recharge_sha256"] = chj["sw_recharge_sha256"]
+    return rec
+
+
+def _chj_fold_record(chj: dict, fold: dict) -> dict:
+    """The CH-J hook's provenance in a ``--only-fold K`` job's fold file: its parent (path,
+    sha256 and the parent's ``chj_fold_parent`` record, which names Q0's fold file and its
+    held-out partition) and the posterior marker. merge_folds does not read it;
+    run_chj.sh's hook_applied does."""
+    return {"chj_parent": {"path": chj["path"], "sha256": chj["sha256"],
+                           CHJ_FOLD_PARENT_KEY: chj.get("fold_parent"),
+                           "fold": int(fold["fold"]),
+                           "sw_recharge_sha256": chj.get("sw_recharge_sha256")},
+            "chj_hook": {"posterior_tools_unsupported": True,
+                         "fixed_pump_layer_shares": chj["shares"] is not None}}
 
 
 def _input_opts_record(args) -> dict:
@@ -4107,7 +4488,12 @@ FOLD_FILE = "stage3_fold{k}.json"
 # file; nothing else of a record is needed to rebuild the sequential outputs
 # options that may differ between the --fit-only job and the --only-fold jobs of one run
 RECIPE_FREE_ARGS = ("out", "only_fold", "fit_only", "log_every", "device", "policy_response",
-                    "dump_predictions")
+                    "dump_predictions",
+                    # CH-J: each job's parent differs by design (the full fit Q0's theta, fold
+                    # K Q0's fold-K theta); its path and sha256 are provenance, recorded in the
+                    # theta meta and the fold file (``_chj_fold_record``), and the hook being
+                    # on is in the cfg (``chj_hook``), which merge_folds compares
+                    "freeze_from")
 FOLD_SCALAR_KEYS = ("fold", "n_held", "fit_loss", "r2_kfold", "r2_idw", "bounds_hit", "theta",
                     "fold_time_s")
 
@@ -4117,7 +4503,7 @@ FOLD_SCALAR_KEYS = ("fold", "n_held", "fit_loss", "r2_kfold", "r2_idw", "bounds_
 COUNTY_ARGS = ("zone_county_split", "zone_county_map", "county_tie", "county_copy_sd")
 # opt-in options kept out of the recipe at their default, so a default run's recipe is
 # unchanged by their addition
-OPTIN_ARG_DEFAULTS = {"fold_site_tol_m": 0.0}
+OPTIN_ARG_DEFAULTS = {"fold_site_tol_m": 0.0, "pump_layer_shares_county": None}
 # stage3_flow.csv columns of a county-split run (absent otherwise)
 COUNTY_CFG_KEYS = ("zone_county_split", "zone_county_map", "zone_county_sha256")
 
@@ -4160,7 +4546,10 @@ def _flow_cfg(args, n_cells: int, proximal_km, distal_km, split_km, zone_counts,
             "recipe": {k: v for k, v in sorted(vars(args).items())
                        if k not in RECIPE_FREE_ARGS and (county or k not in COUNTY_ARGS)
                        and not (k in OPTIN_ARG_DEFAULTS and v == OPTIN_ARG_DEFAULTS[k])},
-            **{k: county_rec[k] for k in COUNTY_CFG_KEYS if county_rec}}
+            **{k: county_rec[k] for k in COUNTY_CFG_KEYS if county_rec},
+            # CH-J hook on (its parent path is per job, so not in the recipe): equal in the
+            # full fit and every fold, so merge_folds refuses a fold run without the hook
+            **({"chj_hook": "freeze_from"} if getattr(args, "freeze_from", None) else {})}
 
 
 def _flow_fit_cols(ins: dict, temporal: dict | None, datum_meta: dict | None) -> dict:
@@ -4297,10 +4686,12 @@ def fold_record_from_json(obj: dict) -> dict:
 
 
 def write_fold_file(out: str, gate: dict, cfg: dict, cg: tuple, t_gate: float,
-                    sids: list[str], dump: bool = False) -> str:
+                    sids: list[str], dump: bool = False, extra: dict | None = None) -> str:
     """``stage3_fold{K}.json`` of a ``--only-fold K`` job: the fold record (theta, datum,
     held-out predictions), its per-well metrics, the partition it belongs to and the run
-    configuration ``merge_folds`` checks against the full fit and the other folds."""
+    configuration ``merge_folds`` checks against the full fit and the other folds.
+    ``extra`` (opt-in; the CH-J hook's ``chj_parent`` provenance) adds top-level keys,
+    which merge_folds does not read."""
     (rec,) = gate["per_fold"]
     path = os.path.join(out, FOLD_FILE.format(k=rec["fold"]))
     os.makedirs(out, exist_ok=True)
@@ -4310,7 +4701,8 @@ def write_fold_file(out: str, gate: dict, cfg: dict, cg: tuple, t_gate: float,
            "cfg": cfg, "cg_nonconverged": int(cg[0]), "cg_worst_residual": float(cg[1]),
            "gate_time_s": float(t_gate), "dump_predictions": bool(dump),
            "record": fold_record_to_json(rec),
-           "per_well": kfold_wells_frame(gate, sids).to_dict(orient="list")}
+           "per_well": kfold_wells_frame(gate, sids).to_dict(orient="list"),
+           **(extra or {})}
     with open(path + ".tmp", "w") as fh:
         json.dump(obj, fh)
     os.replace(path + ".tmp", path)          # a merge never reads a half-written fold
