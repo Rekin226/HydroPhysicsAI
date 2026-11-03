@@ -39,6 +39,10 @@ from hydrophysics.twin.zones import (  # noqa: E402
 )
 
 D = torch.float64
+#: cross-path rollout agreement: the pump_split and pump_layer_frac code paths sum in different
+#: orders, so they agree to float rounding (7.9e-9 m on CI hardware), not bitwise; this is the
+#: registered CH-J pre-gate tolerance, chx_const.CHJ_FREEZE_REPRO_TOL_M = 1e-6 m
+ROLLOUT_TOL_M = 1e-6
 ROOT = Path(__file__).resolve().parents[1]
 #: the last commit before the hook (round-7 merge, PR #68)
 PREPATCH = "af97301196a6ee816567f6e7c8a2fabedf6bf413"
@@ -435,7 +439,7 @@ def test_epoch0_of_the_frozen_fit_is_the_parent(monkeypatch):
     zero_sw = torch.zeros(4, g.n_active, 6, dtype=D)
     _fit(CF, g, P, epochs=1, county_copy_sd=0.5, sw=False, sw_field=zero_sw, sw_layer=0,
          freeze_from=q0, pump_layer_shares_county=(rest, rest))
-    assert float((seen[0] - ref).abs().max()) <= 1e-9
+    assert float((seen[0] - ref).abs().max()) <= ROLLOUT_TOL_M
     seen.clear()
     _fit(CF, g, P, epochs=1, county_copy_sd=0.5, sw=False, sw_field=zero_sw, sw_layer=0,
          freeze_from=q0, pump_layer_shares_county=(rest, np.asarray(X3)))
@@ -494,7 +498,7 @@ def test_county_shares_on_changhua_cells_and_the_parent_elsewhere(monkeypatch):
     h3 = CF._predict_homogeneous(m3, f3, P["h0"], 5, recharge_field=P["rf"], E=P["E"],
                                  ground_elev=P["ge"], sw_field=sw, sw_layer=0,
                                  changhua_cells=torch.as_tensor(ch))
-    assert float((h2 - h3).abs().max()) <= 1e-9
+    assert float((h2 - h3).abs().max()) <= ROLLOUT_TOL_M
 
 
 def test_theta_file_form_is_rebuilt_by_forward(tmp_path):
