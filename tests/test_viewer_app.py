@@ -1040,7 +1040,8 @@ def test_pending_registrations_are_named_only_once_in_the_registry(tmp_path, qui
     none = dict.fromkeys([*va.PAGE_REGISTRATIONS, *va.PAGE_ROLE_FLAGS], False)
     assert set(none) == {"e02c", "ext", "no_band", "n3", "n3sl", "fv", "x5clm", "x5n2c", "fs",
                          "e02d", "e02y", "dr", "fm", "fv2", "fvext", "fw1", "fw2",
-                         "chx", "chb", "n3_conv12", "n3_conv24"}
+                         "chx", "chb", "fvs2", "n2rd", "chx2c", "sd2", "n3_conv12",
+                         "n3_conv24"}
     assert va._registrations_block(str(index)) == none
     n3 = va.PAGE_REGISTRATIONS["n3"][-1]
     index.write_text(json.dumps({"id": "N3F.ext_level.prospective_2026-12.v1", "sha256": "f"})
@@ -1364,7 +1365,15 @@ def test_page_names_the_census_model_and_the_design_time_window(tmp_path, quiet)
     assert "not the page model" in heads_c and "1.21, 90 % interval 1.06–1.36" in heads_c
     assert "untested (N2C registered, scored not before 2028-01-15)" in heads_c
     assert "marginal" in heads_c and "0.96" in heads_c          # the declared secondary
-    assert "not supported" in subs and "census model" in subs and "the other way" in subs
+    assert "not supported" in subs and "census model" in subs
+    # claim C27 in its registered numbers (ruling R8.8, 2026-11-03): each county's verdict
+    # against no change and reference-year pumping, and step B's ratio interval; the earlier
+    # 'pointed the other way' reading is gone
+    assert "in Yunlin, scored on" in subs and "in Changhua, scored on" in subs
+    assert re.search(r"slope -?\d\.\d\d \[-?\d\.\d\d, -?\d\.\d\d\]", subs)
+    assert "Yunlin was inconclusive: observed +0.66 against modelled +0.26" in subs
+    assert "modelled ÷ observed ratio interval [0.20, 2.20]" in subs
+    assert "the other way" not in subs and "constant sinking rate fits better" not in subs
     # Changhua subsidence and class-specific levers: withdrawn under every outcome (C13c, C13b)
     assert ch_subs.startswith("Changhua subsidence lever: withdrawn under every outcome")
     assert "opposite in sign" in ch_subs
@@ -1986,4 +1995,162 @@ def test_round7_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypa
     # C14c: the band note is reworded only once FV v2's forcing-year reading is scored
     assert "forcing-year range" not in got["b0"] and "forcing-year range" not in got["b1"]
     assert "plus the model's own forcing-year range (−0.56 to +0.61 m" in got["band"]
+
+
+# --- round 8 (user rulings 2026-11-03, twelfth set: R8.8, R8.10, R8.11) ---------------------
+def _r8_reports() -> dict:
+    """Minimal round-8 reports in the registered layouts (synthetic numbers)."""
+    chb = _r7_reports()["chb"]
+    chb["report_only_synthetic_power"] = {"computed": True, "p_direction_k0": 0.13,
+                                          "p_direction_k1": 0.346, "reps": 500}
+    return {
+        "fvs2": {"id": "FV.stat.v2", "status": "scored",
+                 "P": {"p": 0.9296, "mc_se": 0.004, "by_rho": {"0.8": 0.9}},
+                 "readings": {"e04": "not_shown_weak", "wording": {"en": "x"}},
+                 "null_reading": {"report_only": True, "P": {"p": 0.4753}, "cells": []}},
+        "n2rd": {"id": "X5.n2_reading.v1",
+                 "reading": {"status": "estimated", "wording": "informative",
+                             "false_pass_max_over_rho": 0.202,
+                             "wrong_size_pass": {"k0.5": 0.752, "k2": 0.01},
+                             "coverage90_k1_rho0": 0.836, "power_k1_rho0": 0.948,
+                             "power_k1_rho_m087": 0.148,
+                             "power_k1_forcing_error_report_only": 0.504,
+                             "display_text": ["x"]},
+                 "cells": [{"k": 0.0}]},
+        "chx2c": {"id": "I1.CHX.v1.twocontrast", "cannot_promote": "narrowing only",
+                  "pregate": {"passed": True},
+                  "joint": {"changhua": {"beta": 0.1476, "ci90": [-0.0379, 0.4478]},
+                            "yunlin": {"beta": 0.85, "ci90": [-0.5, 2.24]}},
+                  "reading": {"key": "not_separable"}},
+        "sd2": {"id": "SD.cut_response_spread.v2", "label": "model-form spread, not an interval",
+                "evaluable": True,
+                "readings": {
+                    "A+B": {"columns": [f"c{i}" for i in range(10)],
+                            "2028-12": {"yunlin_cm_range": [0.4715, 1.421],
+                                        "yunlin_distal_share_range": [0.402, 0.7528],
+                                        "inland": {"ratio": 2.0228, "min_cm": 0.5401,
+                                                   "max_cm": 1.0924, "reading":
+                                                   "column-dependent x2.02 (0.540-1.092 cm)"}},
+                            "2032-12": {"yunlin_cm_range": [9.0, 9.9]}},
+                    "A": {"columns": ["page", "page_aquitard", "page_tau30"],
+                          "2028-12": {"yunlin_cm_range": [1.3979, 1.421],
+                                      "yunlin_distal_share_range": [0.5961, 0.6008],
+                                      "inland": {"ratio": 1.0096, "min_cm": 1.0765,
+                                                 "max_cm": 1.0868, "reading":
+                                                 "inland Yunlin robust within x1.5"}}}},
+                "page_line_L": "x cm"},
+        "chb": chb,
+    }
+
+
+def test_results_block_reads_the_round8_reports_and_nothing_else(tmp_path):
+    """FV.stat.v2 (E04), X5.n2_reading.v1 (C01), the CHX two-contrast (E25), SD v2 (E24) and
+    E26's synthetic rates: only the reading and the numbers the page quotes."""
+    got = va._results_block(_results_paths(tmp_path, **_r8_reports()))
+    assert got["fvs2"] == {"status": "scored", "reading": "not_shown_weak", "p": 0.9296,
+                           "p0": 0.4753}
+    assert got["n2rd"] == {"wording": "informative", "false_pass": 0.202, "ws05": 0.752,
+                           "ws2": 0.01, "cov": 0.836, "power": 0.948, "power_canal": 0.148,
+                           "power_forcing": 0.504}
+    assert got["chx2c"] == {"reading": "not_separable", "beta": 0.1476, "lo": -0.0379,
+                            "hi": 0.4478}                        # the Yunlin one is not kept
+    assert got["sd2"] == {"label": "model-form spread, not an interval",
+                          "ab": {"n_columns": 10, "lo_cm": 0.4715, "hi_cm": 1.421,
+                                 "coast_lo": 0.402, "coast_hi": 0.7528, "inland_robust": False,
+                                 "inland_ratio": 2.0228, "inland_lo_cm": 0.5401,
+                                 "inland_hi_cm": 1.0924},
+                          "a": {"n_columns": 3, "lo_cm": 1.3979, "hi_cm": 1.421,
+                                "coast_lo": 0.5961, "coast_hi": 0.6008, "inland_robust": True,
+                                "inland_ratio": 1.0096, "inland_lo_cm": 1.0765,
+                                "inland_hi_cm": 1.0868}}
+    assert got["chb"]["p_k0"] == 0.13 and got["chb"]["p_k1"] == 0.346
+    reps = _r8_reports()
+    reps["chb"]["report_only_synthetic_power"]["computed"] = False   # no rates, no caveat
+    assert "p_k0" not in va._results_block(_results_paths(tmp_path, chb=reps["chb"]))["chb"]
+
+
+@pytest.mark.parametrize("key, edit", [
+    ("fvs2", lambda r: r["readings"].update(e04="weak_by_design")),
+    ("fvs2", lambda r: r["null_reading"].update(report_only=False)),
+    ("n2rd", lambda r: r["reading"].update(wording="decisive")),
+    ("n2rd", lambda r: r["reading"].update(status="not_estimable")),
+    ("chx2c", lambda r: r["reading"].update(key="survives")),
+    ("chx2c", lambda r: r["pregate"].update(passed=False)),
+    ("sd2", lambda r: r.update(label="interval")),
+    ("sd2", lambda r: r["readings"]["A"]["2028-12"]["inland"].update(reading="other")),
+])
+def test_results_block_refuses_a_round8_reading_without_page_wording(tmp_path, key, edit):
+    reps = _r8_reports()
+    edit(reps[key])
+    with pytest.raises(ValueError, match="no page wording"):
+        va._results_block(_results_paths(tmp_path, **{key: reps[key]}))
+
+
+def test_round8_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypatch):
+    """Each round-8 line needs both its registration and its report; E24's spread is only in
+    the tA definition (Model internals), never in the evidence list or the headline."""
+    none = tmp_path / "none"
+    none.mkdir()
+    monkeypatch.setattr(va, "PAGE_RESULTS", _results_paths(none))
+    res = va._results_block(_results_paths(tmp_path, **{**_r7_reports(), **_r8_reports()}))
+    js = ("(res) => { const mc = D.modelcard; mc.hybrid = mc.hybrid || {rmse_stat: 1, "
+          "rmse_clim: 1.2, rmse_model: 2, ratio_stat: 0.9, ratio_phys: 1, per_year: {}, "
+          "registration: {registered_on: '2026-10-11', stations: 147, test_start: '2026-11-01', "
+          "test_end: '2027-10-31'}}; "
+          "const txt = () => evidenceItems().map(x => x[1]).join(' | '); "
+          "const all = {chx: true, chb: true, fvs2: true, n2rd: true, chx2c: true, sd2: true}; "
+          "const irr = S.f.map((_, i) => i === 0 ? 0.7 : 1), s26 = M.starts.indexOf(2026); "
+          "const at = (f, si) => { S.f = f; S.start = si; policyInto(P, S.f, S.start); "
+          "KP = kpis(P, S.year); return tileDefHtml('tA'); }; "
+          "mc.registrations = {chx: true, chb: true}; mc.results = res; "
+          "const unreg = txt(), tA0 = at(irr, s26); "
+          "mc.registrations = all; mc.results = {chx: res.chx, chb: res.chb}; "
+          "const noreport = txt(); "
+          "mc.results = res; const on = txt(), tA = at(irr, s26), "
+          "tAbase = at(S.f.map(() => 1), s26), tAother = at(S.f.map(() => 0.8), s26); "
+          "mc.results = {...res, chx2c: {...res.chx2c, lo: 0.01}}; const gen = txt(); "
+          "mc.results = res; LANG = 'zh'; const zh = txt(), tAzh = at(irr, s26); LANG = 'en'; "
+          "return {unreg, tA0, noreport, on, tA, tAbase, tAother, gen, zh, tAzh, s26}; }")
+    _, out, _ = _build(tmp_path)
+    pw, browser = _browser()
+    try:
+        page = browser.new_page()
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(js, res)
+    finally:
+        browser.close()
+        pw.stop()
+    for k in ("FV.stat.v2", "X5.n2_reading.v1", "I1.CHX.v1.twocontrast"):
+        assert k not in got["unreg"] and k not in got["noreport"] and k in got["on"], k
+    # the E25/E26 caveats stand with the direction lines themselves; E26's synthetic rates come
+    # from E26's own report, so they follow that report, not a round-8 registration
+    assert "imprecise and not evidence of specificity" in got["unreg"]
+    assert "A weak test" in got["unreg"] and "A weak test" in got["on"]
+    assert "not independent of the screen test" in got["unreg"]
+    assert "passes with probability 0.93" in got["on"] and "probability 0.48" in got["on"]
+    assert "a fail has probability about 0.07 (1 - P)" in got["on"]
+    assert "false pass 0.20 < 0.25" in got["on"] and "0.75 / 0.01" in got["on"]
+    assert "power 0.95 (0.15 with the canal confounder)" in got["on"]
+    assert "full-size" not in got["on"] and "lambda 0.8: power 0.50)" in got["on"]
+    assert "Changhua slope is 0.15 [-0.04, 0.45] (90 % interval, reaching 0)" in got["on"]
+    # 'reaching 0' only when the interval reaches 0; otherwise the registered generic wording
+    assert "reaching 0" not in got["gen"] and "(Changhua slope 0.15 [0.01, 0.45]" in got["gen"]
+    assert "not separable from Yunlin spill-over" in got["on"]
+    assert "probability 0.35 if the model is right and 0.13 with no response" in got["on"]
+    for k in ("X5.n2_reading.v1", "FV.stat.v2", "I1.CHX.v1.twocontrast"):
+        assert k in got["zh"], k
+    # E24 (R8.11): only in the tA definition, under Model internals, from the report
+    assert "SD.cut_response_spread" not in got["tA0"] and "SD.cut_response_spread" not in got["on"]
+    assert got["s26"] >= 0
+    assert "Model internals (L): across 10 leveling-equivalent columns" in got["tA"]
+    assert "is 0.47–1.42 cm; coast (distal zone) 40–75 % of it; column-dependent ×2.02 inland" in got["tA"]
+    assert ("(0.540–1.092 cm) (model-form spread, not an interval). Across the 3 columns on the "
+            "page's own heads (Tier A) it is 1.40–1.42 cm; coast 60 % of it; inland Yunlin "
+            "robust within ×1.5.") in got["tA"]
+    assert "coast (distal zone) 40–75 % of it" in got["tA"]
+    # only for the irrigation x0.7 lever from 2026 (the run SD v2 measured)
+    for k in ("tAbase", "tAother"):
+        assert "SD.cut_response_spread" not in got[k], k
+    assert "模型內部數值（L）" in got["tAzh"] and "0.47–1.42 公分" in got["tAzh"]
 

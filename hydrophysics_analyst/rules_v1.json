@@ -3,13 +3,13 @@
   "note": "Hand table (spec §6): which claims govern a query value, what class it is, and which page sentence must accompany it. Every rule's claims must be a subset of the display_map ids of its paths/functions (test_analyst_binding). The ledger is not edited from here; a missing mapping is marked offered:false and listed for the lead.",
   "rules": [
     {"quantity": "head_change", "region": "n2_yunlin_wells", "aggregation": "mean_own_layer",
-     "claims": ["C01"], "answer_class": "answer",
+     "claims": ["C01", "C01-w", "C01-sz"], "answer_class": "answer",
      "required_label": ["hl_pol", "tW_r", "start_note"], "offered": true},
     {"quantity": "head_change", "region": "yunlin_l2", "aggregation": "cell_mean",
-     "claims": ["C01"], "answer_class": "answer", "flag": "headWhere fallback (n2Unit null)",
+     "claims": ["C01", "C01-w", "C01-sz"], "answer_class": "answer", "flag": "headWhere fallback (n2Unit null)",
      "required_label": ["hl_pol", "tW_r"], "offered": true},
     {"quantity": "head_change", "region": "fan_l2", "aggregation": "cell_mean",
-     "claims": ["C01"], "answer_class": "answer", "flag": "headWhere fallback (n2Unit null)",
+     "claims": ["C01", "C01-w", "C01-sz"], "answer_class": "answer", "flag": "headWhere fallback (n2Unit null)",
      "required_label": ["hl_pol", "tW_r"], "offered": true},
     {"quantity": "energy_forgone", "region": "policy", "aggregation": "sum_classes",
      "claims": ["C08"], "answer_class": "labelled",
@@ -52,7 +52,7 @@
      "flag": "ruling D3 (2026-11-01): not offered until the ledger maps it"}
   ],
   "scoring": {
-    "C01": {"registration": "N2", "not_before": "2028-01-15"},
+    "C01-w": {"registration": "N2", "not_before": "2028-01-15"},
     "E20": {"registration": "N2C", "not_before": "2028-01-15"},
     "E21": {"registration": "E02c", "not_before": "2028-01-15"},
     "E22": {"registration": "N3F external wells", "not_before": "2028-01-15"},
