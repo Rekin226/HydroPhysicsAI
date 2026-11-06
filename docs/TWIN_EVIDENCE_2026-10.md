@@ -1884,7 +1884,7 @@ scored, and no number on the page is new.
   E04 fail makes it N and the page then names no forecast of record for that window; E02's pass
   or fail moves E02 and the per-well interval line only. None of this wording is on the page,
   the README or the model card before its outcome exists.
-- **Rain-year rider, declaration drafted (pending).** `FW.rider.v1` (model-only) reruns FV v2
+- **Rain-year rider, registered and scored (`FW.rider.v1`).** The rider (model-only) reruns FV v2
   reading 2's world construction, unchanged, with `FW.weather_replay.v2`'s eleven primary arms
   W2012..W2022 (rain and detrended pumping replayed, the page ensemble) as the truth worlds,
   scored by E02c's level rule exactly as FV v2's reading 1 scores it. The truth of sequence s is
@@ -1903,13 +1903,22 @@ scored, and no number on the page is new.
   lead chose W. Every world file must match FW v2's `report.json` file hashes. The code
   (`dataprep_staging/fw_rider/`) reuses FV v2's frozen files unchanged by import, pinned to their
   registered sha256; scoring is private to its runner, which loads the registration itself and
-  refuses before it reads or logs anything. It validates with prereg3 and is not registered.
+  refuses before it reads or logs anything.
   Disclosure: on 2026-11-06, before the first commit, a guard bug in the builder's own test run
   let one test score the real worlds of the then design (the RD arms) on the smoke seed; it read
   arm C and the RD arms, E02's predictions, E02c's baselines and FV v1's exports, wrote a
   metadata-only replay index into the shared results tree (deleted), and printed only the two
   gate messages; no P or other statistic was seen, and the registered seed's draws were never
-  made. The declaration records it, with the disclosure look the lead logs before registering.
+  made. The declaration records it, and the disclosure look
+  `FWR:accidental_smoke_compute_20261106` was logged before registration.
+  Result: registered 2026-11-06 (sha 20e8839d) and scored once (report
+  `results/dataprep/reports/FW.rider.v1/report.json`, sha 377afa62): "not shown weak in replayed
+  years", P 0.9989 (single sequences 0.988-1.000; 90 % interval over the 11 recorded years
+  0.997-1.000), null-world false pass 0.0, hindcast identity 0.0 m. In the model's own recorded
+  weather years a right model still passes E02c's level rule almost always, so the rain years do
+  not show the level test weak; P is not the chance of a 2028 pass. The caveat sits in the
+  ledger (E21, C30-scen) only; there is no page line, the R8.7 page wording is unchanged, and no
+  status changed.
 - **Candidate page.** Built with the command of `results/twin/twin_app_20261106c.build.log`,
   `--out` changed to `results/twin/twin_app_20261106e.html` (log beside it; `20261106d` is the
   build before the review fixes); not promoted.
