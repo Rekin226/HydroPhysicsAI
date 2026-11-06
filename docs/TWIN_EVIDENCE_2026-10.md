@@ -1737,6 +1737,18 @@ Each test below was scored once; the registry sha256 prefix is from
   "last possible Changhua head window checked, not decidable". Disclosed: P6's inventory look on
   the public MOEA well tables (scope 2008-01..2024-12, 2026-10-14) may overlap if those tables
   carry Changhua 2008-09 heads. Ledger: E26, C20 and C21 notes; no status change, no page line.
+- **2010-11 backcast (round-8 #12 closure; user ruling R8.15).** `I1.backcast_2010_11.v1` not
+  decidable by design: its primary's synthetic G0 gives power 0.53 < 0.6 (false pass 0.06), so
+  the whole test would be report-only; by user ruling R8.15 it was stopped before any 2010-11
+  head was read (window unspent). The availability look `I1BC11:ls_cache_dates_2009_2011` had
+  passed (2026-11-06; 32 wells, Yunlin 19, Changhua 13; origin 2010-12 only; sha 1f592b31). G0 g1
+  ran on synthetic worlds only (code `dataprep_staging/bc11/`, PR #87; seed 71120611, 500
+  replicates per cell, B 2000; `results/twin_runs/chx/backcast_2010_11/g0/g0_g1.json`, sha
+  b0622bc9): power 0.527 (per AR cell 0.442-0.596), false pass 0.062; the ratio rule G1 binds
+  (0.514-0.692), the coverage part G1b passes 0.726-0.918. The pre-declared consequence of a G1
+  G0 failure is a report-only declaration; ruling R8.15 (user rulings 2026-11-06, thirteenth
+  set, sha c2d3b0f3) stopped instead: no product build, no registration. Ledger: E04, E07 and
+  E26 notes; no status change, no page line.
 - **CH-J** (`I1.CHX.v1`, 794f6a7e, test I1CHX.chj_externals; report-only for good, R8.1b).
   Report `results/dataprep/reports/I1.CHX.v1/chj_report.json` (sha e5818b6a, written once at
   2026-11-05T23:38Z by a new wrapper around the frozen chj_block; engineering record frozen
