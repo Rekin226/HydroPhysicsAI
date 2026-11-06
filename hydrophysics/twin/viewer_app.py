@@ -131,6 +131,10 @@ HSR_REACH_KM = 1.5          # half the 2 km smoothing plus half the 1 km distort
 # U1.no_band.v1 narrowing; ruling 2026-10-29 third set; C31, C27, C13a, E02/E21 and C05/C26
 # under the rulings of 2026-11-01, fourth set). Only the index's ids are read.
 PREREG_INDEX = "results/dataprep/preregistration/INDEX.jsonl"
+# Ruling R8.13: the two-part head band (dataprep_staging/pb_band/build_pb.py's output), shown
+# only when it cites the declaration the index lists (same sha256)
+PB_ID = "PB.decomposed_band.v1"
+_ID_TOKEN = re.compile(r"(?<![0-9a-fA-F])[0-9]{8}(?![0-9a-fA-F])")
 PAGE_REGISTRATIONS = {
     "e02c": ("E02c.prospective_2026-11.v1",),
     # ruling (c): the external-well test may move to its pre-declared 2026-12 fallback window
@@ -1468,7 +1472,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           coverage_json: str | None = None, prospective_json: str | None = None,
           ring_holdout_json: str | None = None, hybrid_json: str | None = None,
           hybrid_registration: str | None = None, deep_piles_json: str | None = None,
-          policy_response_json: str | None = None,
+          policy_response_json: str | None = None, pb_band_json: str | None = None,
           posthoc_json: str | None = None, all30_npz: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
@@ -1621,7 +1625,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
                        ("hybrid", _hybrid_block(hybrid_json, forward_npz, hybrid_registration)),
                        ("deep_piles", _deep_pile_block(deep_piles_json, forward_npz)),
                        ("policy_response", _policy_response_block(policy_response_json)),
-                       ("posthoc", _posthoc_block(posthoc_json, forward_npz, basis_npz))):
+                       ("posthoc", _posthoc_block(posthoc_json, forward_npz, basis_npz)),
+                       ("pb", _pb_block(pb_band_json))):
         if block is not None:
             modelcard[key] = block
     modelcard["registrations"] = _registrations_block()
@@ -1704,6 +1709,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "all30": all30_npz if all30 is not None and n2_unit is not None else None,
         "all30_provenance": (all30.sidecar_path if all30 is not None and n2_unit is not None
                              else None),
+        # ruling R8.13: PB's band file, named exactly when the page carries modelcard.pb
+        "pb_band": pb_band_json if modelcard.get("pb") is not None else None,
         **{f"result_{k}": p for k, (_, p) in PAGE_RESULTS.items() if k in results},
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
@@ -1765,6 +1772,46 @@ def _coverage_block(path: str | None, forward_npz: str | None) -> dict | None:
             "forecast_origin": report.get("forecast_origin"),
             "end_exclusive": report.get("end_exclusive"),
             "prospective_validation": bool(report.get("prospective_validation", False))}
+
+
+def _pb_block(path: str | None, index: str | None = None) -> dict | None:
+    """Ruling R8.13's two-part head band: the per-well zone ribbon of window A only (E02d's
+    frozen half-widths by DR zone; decided by E02d; B and C stay in the output, not drawn) and
+    the shared range per county (the spread among model variants only) with its
+    leave-one-family-out coverage (design-time, model-only). Read from build_pb.py's output;
+    refused unless it cites the declaration the registry index lists (same sha256) and its
+    identity check passed. Only zone names, well counts, months and metres are kept; an
+    output holding a station id refuses the build. The page computes nothing."""
+    if not path or not os.path.exists(path):
+        return None
+    index = PREREG_INDEX if index is None else index
+    with open(path, encoding="utf-8") as handle:
+        rep = json.load(handle)
+    rows = []
+    if index and os.path.exists(index):
+        with open(index, encoding="utf-8") as handle:
+            rows = [json.loads(ln) for ln in handle if ln.strip()]
+    reg = [r for r in rows if r.get("id") == PB_ID]
+    dec = rep.get("declaration") or {}
+    if dec.get("id") != PB_ID or not reg or reg[-1].get("sha256") != dec.get("sha256"):
+        raise ValueError(f"{path} does not cite the registered {PB_ID}")
+    if not (rep.get("identity") or {}).get("ok"):
+        raise ValueError(f"{path}: the identity check did not pass")
+    if _ID_TOKEN.search(json.dumps([rep["ribbon"]["A"], rep["shared"], rep["lofo"]])):
+        raise ValueError(f"{path} holds a station id")
+    r = rep["ribbon"]["A"]
+    if not r.get("drawn") or not r.get("label"):
+        raise ValueError(f"{path}: window A's ribbon is not marked drawn")
+    rib = {"months": r["months"], "label": r["label"], "small": r["not_drawn"]["zones"],
+           "zones": [{"zone": z["zone"], "county": z["county"], "n": z["n_wells"],
+                      "hw": z["half_width_m"]} for z in r["zones"]]}
+    shared = {c: {"months": s["months"], "lo": s["lo_m"], "hi": s["hi_m"]}
+              for c, s in rep["shared"]["counties"].items()}
+    lofo = {c: {"inside": v["pooled"]["inside"], "n": v["pooled"]["n"]}
+            for c, v in rep["lofo"]["counties"].items()}
+    return {"declaration_sha256": dec["sha256"], "ribbon": rib,
+            "shared": {"label": rep["shared"]["label"], "what": rep["shared"]["what"],
+                       "counties": shared}, "lofo": lofo}
 
 
 def _registrations_block(index: str | None = None) -> dict[str, bool]:
@@ -2501,6 +2548,9 @@ def main(argv=None) -> None:
     ap.add_argument("--posthoc", help="n1_policy page_posthoc.json: post-hoc, model-only "
                                       "labels (hot-spot stability, per-GWh near-tie, elastic "
                                       "split); off by default, never a test")
+    ap.add_argument("--pb-band", help="dataprep_staging/pb_band/build_pb.py's pb_band.json: "
+                                      "the two-part head band of ruling R8.13 (it replaces "
+                                      "the drawn run spread of heads); omitted when absent")
     ap.add_argument("--all30", default=None,
                     help="the all30 scenario forward (dataprep_staging/all30/run_all30.py; "
                          "ruling R8.9): the headline head lever at N2's unit. Optional; "
@@ -2537,6 +2587,7 @@ def main(argv=None) -> None:
           deep_piles_json=opt(args.deep_piles),
           policy_response_json=opt(args.policy_response),
           posthoc_json=opt(args.posthoc), all30_npz=opt(args.all30),
+          pb_band_json=opt(args.pb_band),
           log=lambda s: print(s, flush=True))
 
 

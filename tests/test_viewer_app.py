@@ -2253,6 +2253,155 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
         assert bad not in on["ev"] and bad not in on["ts"]["note"], bad
 
 
+# --- ruling R8.13: the two-part head band (PB.decomposed_band.v1) --------------------------
+def _pb_output(sha="a" * 64, ok=True, zone="Yunlin:mid", drawn=True, small=0):
+    months_a = ["2026-12"] + [f"2027-{m:02d}" for m in range(1, 11)]
+    win = {"A": months_a, "B": [f"2027-{m:02d}" for m in (11, 12)] + [f"2028-{m:02d}" for m in
+                                                                      range(1, 11)],
+           "C": [f"2028-{m:02d}" for m in (11, 12)] + [f"2029-{m:02d}" for m in range(1, 11)]}
+    tests = {"A": ("E02d.decomposed_prospective_2026-12.v1", "2028-01-15"),
+             "B": ("E02y.years23_2027-11_2029-10.v1", "2029-01-15"),
+             "C": ("E02y.years23_2027-11_2029-10.v1", "2030-01-15")}
+    lab = {"en": "decided by a registered test, E02d, 2028", "zh": "甲"}
+    rib = {w: {"months": ms, "drawn": drawn and w == "A", "label": lab if w == "A" else None,
+               "decided_by": {"registration": tests[w][0], "not_before": tests[w][1]},
+               "not_drawn": {"zones": small, "wells": 3 * small},
+               "zones": [{"zone": zone, "county": "Yunlin", "n_wells": 34,
+                          "half_width_m": [3.5] * len(ms)}]} for w, ms in win.items()}
+    sh = {c: {"months": months_a, "lo_m": [-0.4] * 11, "hi_m": [0.6] * 11}
+          for c in ("Yunlin", "Changhua")}
+    return {"declaration": {"id": "PB.decomposed_band.v1", "sha256": sha},
+            "identity": {"ok": ok}, "ribbon": rib,
+            "shared": {"label": {"en": "cannot be tested before 2030 by design", "zh": "丙"},
+                       "what": {"en": "spread among model variants only", "zh": "丁"},
+                       "counties": sh},
+            "lofo": {"counties": {c: {"pooled": {"inside": 30, "n": 44}}
+                                  for c in ("Yunlin", "Changhua")}}}
+
+
+def test_pb_block_only_from_the_registered_declaration(tmp_path):
+    index = tmp_path / "INDEX.jsonl"
+    index.write_text(json.dumps({"id": "PB.decomposed_band.v1", "sha256": "a" * 64}) + "\n")
+    p = tmp_path / "pb_band.json"
+    assert va._pb_block(str(p), str(index)) is None                     # no output, no band
+    p.write_text(json.dumps(_pb_output()))
+    b = va._pb_block(str(p), str(index))
+    assert set(b["ribbon"]) == {"months", "label", "small", "zones"}   # window A only
+    assert b["ribbon"]["small"] == 0
+    assert b["ribbon"]["zones"] == [{"zone": "Yunlin:mid", "county": "Yunlin", "n": 34,
+                                     "hw": [3.5] * 11}]
+    assert b["ribbon"]["months"][0] == "2026-12" and b["ribbon"]["months"][-1] == "2027-10"
+    assert "E02y" not in json.dumps(b)
+    assert b["shared"]["counties"]["Changhua"]["hi"] == [0.6] * 11
+    assert b["lofo"]["Yunlin"] == {"inside": 30, "n": 44}
+    for bad, msg in ((_pb_output(sha="b" * 64), "registered"), (_pb_output(ok=False), "identity"),
+                     (_pb_output(zone="99999999"), "station id"),
+                     (_pb_output(drawn=False), "not marked drawn")):
+        p.write_text(json.dumps(bad))
+        with pytest.raises(ValueError, match=msg):
+            va._pb_block(str(p), str(index))
+    p.write_text(json.dumps(_pb_output()))
+    with pytest.raises(ValueError, match="registered"):
+        va._pb_block(str(p), str(tmp_path / "absent.jsonl"))
+
+
+def test_pb_payload_paths_exactly_with_the_pb_band_source(tmp_path, quiet, monkeypatch):
+    """R8.13: a page built with --pb-band names the source 'pb_band' (basename + sha) and its
+    numeric pb paths are exactly the ledger's payload_conditional.pb; without it, neither."""
+    from hydrophysics.twin import claims as C
+
+    index = tmp_path / "INDEX.jsonl"
+    index.write_text(json.dumps({"id": "PB.decomposed_band.v1", "sha256": "a" * 64}) + "\n")
+    monkeypatch.setattr(va, "PREREG_INDEX", str(index))
+    band = tmp_path / "pb_band.json"
+    band.write_text(json.dumps(_pb_output()))
+    want = set(C.load_ledger(allow_pending=True)["display_map"]["payload_conditional"]["pb"]
+               ["paths"])
+    got = {}
+    for key, pb in (("with", str(band)), ("without", None)):
+        sub = tmp_path / key
+        sub.mkdir()
+        _, out, _ = _build(sub, pb_band_json=pb)
+        D = C.payload_structure(out)
+        got[key] = (D["release"]["sources"],
+                    {p for p in C.numeric_paths(D)
+                     if p.startswith(("modelcard.pb.", "release.sources.pb_band"))})
+    srcs, paths = got["with"]
+    assert srcs["pb_band"]["name"] == "pb_band.json" and len(srcs["pb_band"]["sha256"]) == 64
+    assert paths == want
+    srcs, paths = got["without"]
+    assert "pb_band" not in srcs and not paths
+
+
+def test_page_draws_the_two_part_band_instead_of_the_run_spread(tmp_path, quiet):
+    index = tmp_path / "INDEX.jsonl"
+    index.write_text(json.dumps({"id": "PB.decomposed_band.v1", "sha256": "a" * 64}) + "\n")
+    p = tmp_path / "pb_band.json"
+    p.write_text(json.dumps(_pb_output()))
+    pb = va._pb_block(str(p), str(index))
+    js = ("(pb) => { const mc = D.modelcard; "
+          "mc.coverage = {picp_90: 0.75, inflation_90: 1.3, combined_picp_90: 0.92, "
+          "forecast_origin: '2023-01-01', end_exclusive: '2027-01-01'}; "
+          "const ts = () => { S.ts = 'head'; S.sel = {k: 'fan'}; S.tsFit = false; renderTS(); "
+          "return {note: $('tsNote').textContent, hidden: $('pbWrap').hidden, "
+          "pb: $('pbWrap').textContent, svg: $('tsWrap').innerHTML}; }; "
+          "mc.pb = null; mc.registrations = {}; mc.results = {}; const off = ts(); "
+          "mc.pb = pb; const on = ts(); "
+          "mc.registrations = {fv2: true}; mc.results = {fv2fy: {status: 'scored', "
+          "rain: 'climatology', agg: {n2_lo: -0.56, n2_hi: 0.61, l2_lo: -0.39, l2_hi: 0.43}}}; "
+          "D.memberFields = Object.assign({}, D.memberFields, {n: 36, baseHeadBandYr: "
+          "[0, 1, 2, 3, 4].map(() => M.years.map(() => 0))}); "
+          "const fy = ts(); LANG = 'zh'; const zh = ts(); LANG = 'en'; "
+          "mc.pb = {...pb, ribbon: {...pb.ribbon, small: 1}}; const sm = ts(); "
+          "LANG = 'zh'; const smzh = ts(); LANG = 'en'; mc.pb = null; const nopb = ts(); "
+          "mc.pb = pb; "
+          "S.ts = 'subs'; renderTS(); const subs = $('pbWrap').hidden; "
+          "return {off, on, fy, zh, subs, sm, smzh, nopb}; }")
+    _, out, _ = _build(tmp_path)
+    pw, browser = _browser()
+    try:
+        page = browser.new_page(viewport={"width": 1400, "height": 1000})
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(js, pb)
+    finally:
+        browser.close()
+        pw.stop()
+    off, on, fy, zh = got["off"], got["on"], got["fy"], got["zh"]
+    assert off["hidden"] and "no longer drawn" not in off["note"]
+    assert not on["hidden"] and "no longer drawn on the head series" in on["note"]
+    # the registered coverage line stays under bn_head_pb (lead decision S1)
+    assert "The runs' 90 % spread (not a predictive interval) covered" in on["note"]
+    assert "decided by a registered test, E02d, 2028" in on["pb"]
+    assert "cannot be tested before 2030 by design" in on["pb"]
+    assert "spread among model variants only" in on["pb"] and "forcing-year" in on["pb"]
+    assert "Yunlin:mid (34 wells)" in on["pb"] and "one vertical scale" in on["pb"]
+    assert "Yunlin 30 of 44, Changhua 30 of 44 family-months inside" in on["pb"]
+    assert "Yunlin: −0.4 to +0.6 m" in on["pb"] or "Yunlin: -0.4 to +0.6 m" in on["pb"]
+    assert "E02y" not in on["pb"] and "2029" not in on["pb"]            # window A only (B1/B2)
+    # FV v2's registered forcing-year clause only, beside the shared range (S2, N1)
+    clause = "The model's own forcing-year range (−0.56 to +0.61 m for the N2-unit mean"
+    assert clause not in on["pb"] and "see FV v2's line below" not in on["pb"]
+    assert clause in fy["pb"] and "(see FV v2's line below)" in fy["pb"]
+    assert "post-failure exploratory, FV.decidability.v2" in fy["pb"]
+    for run_spread in ("Bands: p10", "This is a run spread", "run spread, a parameter spread"):
+        assert run_spread not in fy["pb"] and run_spread not in fy["note"]
+    assert "模型自身的逐年驅動範圍" in zh["pb"] and "驅動年份" in zh["pb"] and "強迫" not in zh["pb"]
+    assert "次模擬的第二含水層全扇平均水頭" not in zh["pb"]
+    # without PB the full registered line is back on the head series
+    assert "This is a run spread, a parameter spread, plus the model's own forcing-year" \
+        in got["nopb"]["note"] and got["nopb"]["hidden"]
+    # an undrawn zone is named in one line (N7)
+    assert "Zones with fewer than 5 wells are not drawn (1)." in got["sm"]["pb"]
+    assert "Zones with fewer than 5 wells" not in on["pb"]
+    assert "井數少於 5 口的分區不繪製（1 個）。" in got["smzh"]["pb"]
+    assert "不再繪製模擬分布" in zh["note"] and "甲" in zh["pb"] and "丙" in zh["pb"]
+    assert "雲林 44 個族群月中有 30 個" in zh["pb"] and "涵蓋率" in zh["pb"]
+    assert got["subs"]
+    for bad in ("calibrated", "predictive interval passed"):
+        assert bad not in on["pb"]
+
+
 # ---------------------------------------------------------------------------------------
 # ruling R8.9 (user rulings 2026-11-03, twelfth set): all30 at N2's unit is the headline head
 # lever, from a separate scenario forward (dataprep_staging/all30/run_all30.py; --all30)
@@ -2466,6 +2615,46 @@ def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_
     assert "頭條槓桿（裁定 R8.9）為自2026年起全部抽水減30%" in zb["hl"] and h in zb["hl"]
     assert za["tw"] == h and za["d"].startswith("頭條槓桿：")
     assert zi["d"].startswith("用水類別情境：大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1")
+
+
+START_RUN_JS = (
+    "(cases) => { const out = {}; for (const [k, f, start, lang] of cases) { setLang(lang); "
+    "S.f = f.slice(); S.start = M.starts.indexOf(start); S.year = Y - 1; syncLevers(); "
+    "update(true); cancelAnimationFrame(rafId); flush(); "
+    "out[k] = {hl: document.getElementById('headline').textContent, "
+    "r: document.querySelector('#tW .r').textContent, "
+    "d: document.querySelector('#tW .d').textContent, w30: P.w30, s: M.starts[S.start]}; } "
+    "return out; }")
+
+
+@pytest.mark.parametrize("all30", [True, False])
+def test_all30_range_line_and_the_irrigation_factor_only_from_2026(tmp_path, all30):
+    """#14 review leftovers (b, c): with all30 selected the head tile's range line is the all30
+    one (x1.03-1.05), never 'size depends on the pumping conversion'; x1.27 attaches to the
+    irrigation x0.7 lever only from 2026-01 (as measured); a later start gets the bare
+    clause. EN and ZH; with and without the all30 run."""
+    from hydrophysics_analyst import testing as AT
+
+    page = AT.build_synthetic_page(tmp_path, all30=all30)
+    irr, a30 = [0.7, 1, 1, 1, 1, 1], [0.7] * 6
+    probe = _eval_page(page, "() => M.starts")
+    late = next(y for y in probe if y > 2026)
+    cases = [[f"{k}_{lang}", f, start, lang] for lang in ("en", "zh")
+             for k, f, start in (("a30", a30, 2026), ("irr26", irr, 2026), ("irrL", irr, late))]
+    got = _eval_page(page, f"() => ({START_RUN_JS})({json.dumps(cases)})")
+    for lang, bare in (("en", "size depends on the pumping conversion"),
+                       ("zh", "大小取決於抽水換算")):
+        # tW_r's general note names the measured start for the irrigation factor
+        assert ("from 2026: ×1.27" if lang == "en" else "2026 年起灌溉 ×0.7") in \
+            got[f"irrL_{lang}"]["r"], lang
+        a = got[f"a30_{lang}"]
+        assert a["s"] == 2026 and a["w30"] is all30
+        assert "1.03–1.05" in a["r"] and "all30" in a["r"] and bare not in a["r"], lang
+        i26, iL = got[f"irr26_{lang}"], got[f"irrL_{lang}"]
+        assert iL["s"] == late and "1.27" in i26["hl"] and "1.27" in i26["d"], lang
+        assert "1.27" not in iL["hl"] and "1.27" not in iL["d"] and bare in iL["d"], lang
+    assert "as a class scenario its size depends on the pumping conversion" in got["irrL_en"]["hl"]
+    assert got["irrL_zh"]["d"].startswith("用水類別情境：大小取決於抽水換算。")
 
 
 def test_without_the_all30_run_the_page_has_no_headline_lever(tmp_path):
