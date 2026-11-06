@@ -1561,3 +1561,48 @@ def test_r8_9_the_all30_number_is_recorded_from_its_file_once_it_exists():
         assert "Rank 14 result" in notes and f"{v:+.2f} m" in notes and sha[:8] in notes
     else:
         assert "SLOT (rank 14" in notes or "Rank 14 result" in notes
+
+
+# ---- round 8 #20 (2026-11-06): the head-contrast model-form spread note on C14d --------------
+HC_ARMS = ("chc", "chs", "cdm", "csw", "ccs", "rs", "x5r1t", "ccz", "q0c", "x5r1")
+HC_REPORT = C.REPO / "results/dataprep/reports/X5.changhua_lever_model.v1/report.json"
+
+
+def _hc_text(rep: dict) -> dict[str, str]:
+    """The ranges the note quotes, recomputed from the scored report (window means)."""
+    out = {}
+    for county, key in (("yunlin", "L_yunlin_m_report_only"), ("changhua", "L_m")):
+        for w in ("2026-27", "2030-32"):
+            v = [rep[key][a][w] for a in HC_ARMS]
+            out[f"{county}/{w}"] = f"{min(v):.2f}-{max(v):.2f}"
+            out[f"{county}/{w}/x"] = f"x{max(v) / min(v):.2f}"
+    return out
+
+
+def test_c14d_head_contrast_spread_is_a_ledger_and_readme_note_only():
+    """#20: the model-form spread of the all30 head contrast over the existing forwards, with
+    the x1.27 / x1.39 conversion disclosure, in C14d's notes and the README; C14d stays L, the
+    page carries none of it, and the numbers are the scored report's."""
+    c = CL()["C14d"]
+    assert _st("C14d") == {"L"} and c["status_before"] == "N"
+    n = c["notes"]
+    assert "model-form spread, not an interval" in n and "excludes response-size error" in n
+    assert "x1.27 in Yunlin and x1.39 in Changhua" in n and "x1.03-1.05 for all30" in n
+    assert "untested (N2C registered, scored not before 2028-01-15)" in n
+    assert "withdrawn under every outcome" in n and "the page's own all30 run is not" in n
+    assert {"X5.changhua_lever_model.v1", "X5.lever_class_share.v1"} <= set(
+        c["cites"]["registrations"])
+    readme = (C.REPO / "README.md").read_text(encoding="utf-8")
+    quoted = {"yunlin/2026-27": "2.21-2.60", "yunlin/2030-32": "2.44-2.85",
+              "changhua/2026-27": "2.10-2.73", "changhua/2030-32": "2.48-3.28"}
+    flat = " ".join(readme.split())
+    for k, v in quoted.items():
+        assert v in n and v in flat, k
+    assert "x1.18 and x1.17" in flat and "(x1.30, x1.33)" in flat
+    src = C.template_src()                               # no page change
+    assert not any(v in src for v in quoted.values()) and "x1.39" not in src
+    if HC_REPORT.exists():                               # verbatim against the scored report
+        got = _hc_text(json.loads(HC_REPORT.read_text(encoding="utf-8")))
+        for k, v in quoted.items():
+            assert got[k] == v, (k, got[k])
+        assert [got[f"{k}/x"] for k in quoted] == ["x1.18", "x1.17", "x1.30", "x1.33"]

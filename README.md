@@ -563,6 +563,20 @@ in `docs/GPU_SERVER.md`.
   (`X5.gnss_seasonal_family.gates.v1`: its synthetic gate excludes a far member only 0.78 of the
   time pooled against 0.80, and 0.25 in its worst cell against 0.60), so no GNSS amplitude is
   read and subsidence gains no decided direction from it.
+- How much the head contrast depends on the model form (ledger row C14d, model internals; a
+  note, not on the page, no new run): across the 10 full-data Changhua-pumping calibrations
+  whose all-class x0.7 forwards already exist (`X5.changhua_lever_model.v1`'s seven family
+  arms and its R1c reference, and the q0c and x5r1 calibrations of `X5.lever_class_share.v1`;
+  none is the page model, and every one failed at least one registered gate), the all30 head
+  contrast at N2's 84 Yunlin wells is 2.21-2.60 m in 2026-27 and 2.44-2.85 m in 2030-32 (window
+  means; x1.18 and x1.17) (model-form spread, not an interval). At N2C's 74 Changhua wells the
+  same contrast is 2.10-2.73 and 2.48-3.28 m (x1.30, x1.33); that Changhua head lever is
+  untested (N2C registered, scored not before 2028-01-15). Like the paired runs' spread it
+  excludes response-size error, and the page's own all30 run is not among these. A class lever
+  adds the pumping conversion on top: the irrigation-only cut30 differs x1.27 in Yunlin and
+  x1.39 in Changhua between the q0c and x5r1 conversions (`X5.lever_class_share.v1`,
+  report-only), against x1.03-1.05 for all30; Changhua class-specific levers are withdrawn
+  under every outcome.
 - The pumping-stress spread radius is not identified (0.5-10 km across folds); the
   ensemble carries that spread. Policy sensitivities are consequences of a tested model,
   not validated forecasts.
