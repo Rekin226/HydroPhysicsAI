@@ -32,6 +32,15 @@ def test_synthetic_page_parity(tmp_path):
     assert rep.n_cases > 100 and rep.n_mismatch == 0, rep.mismatches[:3]
 
 
+def test_synthetic_page_parity_with_the_all30_headline_lever(tmp_path):
+    """Ruling R8.9: with n2Unit.all30 the opening headline names the headline lever and the
+    all-pumping x0.7 policy takes its head at N2's wells from that run; the port agrees."""
+    page = testing.build_synthetic_page(tmp_path, all30=True)
+    b = PageBundle.load(page, testing.synthetic_ledger(tmp_path, page), allow_pending=True)
+    rep = _run(page, b, 4)
+    assert rep.n_cases > 100 and rep.n_mismatch == 0, rep.mismatches[:3]
+
+
 @pytest.mark.skipif(not os.environ.get("ANALYST_PAGE"), reason="ANALYST_PAGE not set")
 def test_real_page_parity():
     page = Path(os.environ["ANALYST_PAGE"])

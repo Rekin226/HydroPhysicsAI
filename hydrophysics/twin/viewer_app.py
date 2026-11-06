@@ -235,6 +235,15 @@ PAGE_ROLE_FLAGS = {
 # rescaling), it was built for another model and is not shipped: only the full-model
 # policies are shown
 BASIS_MAX_REL = 0.15
+# ruling R8.9 (user rulings 2026-11-03, twelfth set): the headline head lever is all30 (every
+# class x0.7) at N2's unit, from a separate scenario forward on the page theta
+# (dataprep_staging/all30/run_all30.py, ``--all30``); its own baseline must match the page
+# run's (m, every layer, cell and month), and its sidecar must vouch for the file
+ALL30_NAME = "all30"
+ALL30_FACTOR = 0.7
+ALL30_START = 2026
+ALL30_REF_TOL_M = 0.01
+ALL30_SIDECAR_TOL_M = 1e-4
 
 # Per-zone aquifer geometry, metres below ground, from the median screen depth of the
 # zone-50 wells in each layer (AMP_V2 station metadata; see heads.py for the QC). The
@@ -267,8 +276,20 @@ def _encode_image(raw: np.ndarray, long_side: int = 1200, quality: int = 60) -> 
 
 
 def _parse_policy(desc: str) -> tuple[list[float], int] | None:
-    """``"cut30: irrigation x0.7 from 2026-01"`` -> (factors per class, start year)."""
+    """``"cut30: irrigation x0.7 from 2026-01"`` -> (factors per class, start year).
+
+    ``scenario.PumpingScenario.describe`` lists several classes before one start
+    (``"all30: aquaculture x0.7, domestic x0.7, ... from 2026-01"``): every listed class takes
+    its factor (until 2026-11-06 only the last class before ``from`` was read)."""
     f = [1.0] * len(prep.CLASSES)
+    m = re.fullmatch(r"\s*[^:]+:\s*(.+?) from (\d{4})-\d{2}\s*", desc)
+    if m and "," in m.group(1):
+        hits = [re.fullmatch(r"(\w+) x([\d.]+)", p.strip()) for p in m.group(1).split(",")]
+        if not all(hits) or any(h.group(1) not in prep.CLASSES for h in hits):
+            return None
+        for h in hits:
+            f[prep.CLASSES.index(h.group(1))] = float(h.group(2))
+        return f, int(m.group(2))
     hits = re.findall(r"(\w+) x([\d.]+) from (\d{4})", desc)
     if not hits:
         return None
@@ -714,8 +735,67 @@ def _wells_block(inp, g, head_ye, public: bool) -> tuple[list | None, dict | Non
 N2_YUNLIN_PREFIX = "09"
 
 
+def _load_all30(all30_npz: str | None, forward_npz: str, fw, g, log=print):
+    """The all30 scenario forward (ruling R8.9), verified before the page uses it; None when no
+    file is given (the page then builds as before).
+
+    Refused (ValueError) unless: its sidecar ``<stem>.provenance.json``
+    (``dataprep_staging/all30/run_all30.py``) has status ok, names this file's sha256, found the
+    bound forward run byte-identical before and after the run, and that run is THIS page's
+    forward; the file has this run's months, origin and grid; its ``all30`` scenario is every
+    class x0.7 from 2026; and its own baseline heads match this run's within
+    ``ALL30_REF_TOL_M`` everywhere. Only the heads are kept: the page takes from it the head
+    lever at N2's unit, nothing else."""
+    if not all30_npz:
+        return None
+    side_path = os.path.splitext(all30_npz)[0] + ".provenance.json"
+    if not (os.path.exists(all30_npz) and os.path.exists(side_path)):
+        raise ValueError(f"--all30: {all30_npz} or its sidecar {os.path.basename(side_path)} "
+                         "is missing (dataprep_staging/all30/run_all30.py writes both)")
+    with open(side_path) as handle:
+        side = json.load(handle)
+    sha, fsha = sha256(all30_npz), sha256(forward_npz)
+    ref = side.get("reference") or {}
+    why = [m for bad, m in (
+        (side.get("status") != "ok", f"status {side.get('status')!r}"),
+        ((side.get("outputs_sha256") or {}).get("npz") != sha, "names another npz"),
+        (not ref.get("byte_identical"), "the bound forward run changed during the run"),
+        ({ref.get("sha256_before"), ref.get("sha256_after")} != {fsha},
+         "was checked against another forward run than this page's"),
+        (not (side.get("reproduction") or {}).get("ok"), "the page's levers do not reproduce"))
+        if bad]
+    if why:
+        raise ValueError(f"--all30: the sidecar does not vouch for {os.path.basename(all30_npz)}"
+                         f": {'; '.join(why)}")
+    z = np.load(all30_npz, allow_pickle=False)
+    for k in ("dates", "origin", "mask"):
+        if not np.array_equal(z[k], fw[k]):
+            raise ValueError(f"--all30: {k} differs from the forward run's")
+    names = [str(s) for s in z["scenario_names"]]
+    desc = [str(s) for s in z["scenarios"]]
+    if names[0] != "baseline" or ALL30_NAME not in names:
+        raise ValueError(f"--all30: scenarios {names} carry no baseline-first all30")
+    pol = _parse_policy(desc[names.index(ALL30_NAME)])
+    if pol is None or pol[1] != ALL30_START or any(abs(v - ALL30_FACTOR) > 1e-9
+                                                    for v in pol[0]):
+        raise ValueError(f"--all30: {desc[names.index(ALL30_NAME)]!r} is not every class "
+                         f"x{ALL30_FACTOR:g} from {ALL30_START}")
+    heads = z["heads_mean"]
+    dmax = float(np.max(np.abs(heads[0].astype("float64") - fw["heads_mean"][0])))
+    if not dmax <= ALL30_REF_TOL_M:
+        raise ValueError(f"--all30: its baseline heads differ from the page run's by up to "
+                         f"{dmax:.3g} m (> {ALL30_REF_TOL_M} m)")
+    unit = (side.get("n2_unit") or {}).get("dec2032_m") or {}
+    log(f"all30 scenario forward {os.path.basename(all30_npz)} (sha256 {sha[:8]}; sidecar "
+        f"{sha256(side_path)[:8]}): baseline within {dmax:.2g} m of the page run")
+    return SimpleNamespace(heads=heads, names=names, factors=pol[0], start=pol[1],
+                           file=os.path.basename(all30_npz), sha256=sha,
+                           sidecar=os.path.basename(side_path),
+                           sidecar_dec2032=unit.get(ALL30_NAME), sidecar_path=side_path)
+
+
 def _n2_unit_block(inp, prospective_json: str | None, f, solved: list, basis_npz: str | None,
-                   calib: dict | None, g, log=print) -> dict | None:
+                   calib: dict | None, g, log=print, all30=None) -> dict | None:
     """The head change in N2's unit, at every year-end: the mean over the registered
     prospective test's Yunlin wells of policy minus baseline at each well's cell and in its
     OWN screened layer (N2's contrast). Model output only; the well set comes from the station
@@ -766,6 +846,19 @@ def _n2_unit_block(inp, prospective_json: str | None, f, solved: list, basis_npz
                 if i is not None:
                     basis[si * K + k] = calib["head"][k] * unit(heads, i, b)
         out["basis"] = np.round(basis, 4).tolist()
+    if all30 is not None:
+        # ruling R8.9: the headline lever, from its own full-model forward (policy minus that
+        # file's own baseline, N2's wells, each in its own layer)
+        s30 = unit(all30.heads, all30.names.index(ALL30_NAME), 0)
+        if all30.sidecar_dec2032 is not None and not abs(
+                float(s30[-1]) - all30.sidecar_dec2032) <= ALL30_SIDECAR_TOL_M:
+            raise ValueError(f"N2 unit: all30 {s30[-1]:+.4f} m here against "
+                             f"{all30.sidecar_dec2032:+.4f} m in its sidecar")
+        out["all30"] = {"name": ALL30_NAME, "factors": [float(v) for v in all30.factors],
+                        "start": int(all30.start), "series": np.round(s30, 4).tolist(),
+                        "file": all30.file, "sha256": all30.sha256}
+        log(f"N2 unit: all30 (headline lever, ruling R8.9) {s30[-1]:+.2f} m at the horizon, "
+            f"full-model run {all30.file} (sha256 {all30.sha256[:8]})")
     msg = ", ".join(f"{x['name']} {v[-1]:+.2f} m" for x, v in zip(solved, out["solved"],
                                                                   strict=True))
     log(f"N2 unit: {out['n']} of {out['n_registered']} registered Yunlin wells, each in its own "
@@ -1364,7 +1457,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
           ring_holdout_json: str | None = None, hybrid_json: str | None = None,
           hybrid_registration: str | None = None, deep_piles_json: str | None = None,
           policy_response_json: str | None = None,
-          posthoc_json: str | None = None) -> dict:
+          posthoc_json: str | None = None, all30_npz: str | None = None) -> dict:
     """Build the page. Returns the payload (a dict of plain values and packed arrays).
 
     ``public`` (the default) ships observations only as aggregates: township and chain
@@ -1375,7 +1468,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     screen); the page quotes its response next to the ensemble's agreement, because the
     ensemble varies parameters only, and compares its tests with this model's.
     ``rheo_npz="auto"`` takes the rheology axis from the forward run itself when it has
-    two columns.
+    two columns. ``all30_npz`` (ruling R8.9) is the all30 scenario forward of
+    ``dataprep_staging/all30/run_all30.py``: the head lever at N2's unit of the headline policy
+    (``n2Unit.all30``); without it the page builds as before.
     """
     fw = np.load(forward_npz, allow_pickle=False)
     if observations_csv is not None and (
@@ -1411,6 +1506,7 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
     f = _forward_fields(fw, g, log)
     base_ye, solved = f.base_ye, f.solved
     basis, berr, calib, basis_off = _response_basis(basis_npz, g, solved, log)
+    all30 = _load_all30(all30_npz, forward_npz, fw, g, log)
 
     # fixed difference scales, chosen once (spec §3.2)
     if basis is not None:
@@ -1464,7 +1560,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
             log(f"wells and class energies unavailable ({type(e).__name__}: {e})")
     class_gwh, wells_fan, wells_out = _wells_block(inp, g, f.head_ye, public)
     n2_unit = _n2_unit_block(inp, prospective_json, f, solved,
-                             basis_npz if basis is not None else None, calib, g, log)
+                             basis_npz if basis is not None else None, calib, g, log, all30)
+    if all30 is not None and n2_unit is None:
+        log("all30 not shown: N2's unit is unavailable (wells or the registered predictions)")
     if wells_out is not None:
         sizes["wells"] = len(wells_out["obs"]["z"])
     extra = {}
@@ -1591,6 +1689,9 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "deep_piles": deep_piles_json if deep_piles_json and os.path.exists(deep_piles_json) else None,
         "policy_response": policy_response_json,
         "posthoc": posthoc_json,
+        "all30": all30_npz if all30 is not None and n2_unit is not None else None,
+        "all30_provenance": (all30.sidecar_path if all30 is not None and n2_unit is not None
+                             else None),
         **{f"result_{k}": p for k, (_, p) in PAGE_RESULTS.items() if k in results},
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
@@ -2388,6 +2489,10 @@ def main(argv=None) -> None:
     ap.add_argument("--posthoc", help="n1_policy page_posthoc.json: post-hoc, model-only "
                                       "labels (hot-spot stability, per-GWh near-tie, elastic "
                                       "split); off by default, never a test")
+    ap.add_argument("--all30", default=None,
+                    help="the all30 scenario forward (dataprep_staging/all30/run_all30.py; "
+                         "ruling R8.9): the headline head lever at N2's unit. Optional; "
+                         "without it the page builds as before")
     ap.add_argument("--private", action="store_true",
                     help="embed every benchmark and well with its location and observed "
                          "series; for a local page only, never commit the output")
@@ -2419,7 +2524,7 @@ def main(argv=None) -> None:
           hybrid_json=opt(args.hybrid), hybrid_registration=opt(args.hybrid_registration),
           deep_piles_json=opt(args.deep_piles),
           policy_response_json=opt(args.policy_response),
-          posthoc_json=opt(args.posthoc),
+          posthoc_json=opt(args.posthoc), all30_npz=opt(args.all30),
           log=lambda s: print(s, flush=True))
 
 

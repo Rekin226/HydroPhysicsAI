@@ -144,9 +144,11 @@ def _quiet(va):
         va._ground_idw, va._load_inputs, socket.socket.connect = saved
 
 
-def _n2_unit(payload: dict) -> dict:
+def _n2_unit(payload: dict, all30: bool = False) -> dict:
     """A plausible N2 unit in ``_n2_unit_block``'s shape: per solved run and per basis row, a
-    head change that is zero before the policy's start year and grows after it."""
+    head change that is zero before the policy's start year and grows after it. ``all30`` adds
+    the headline lever's block (ruling R8.9; ``viewer_app --all30``), a little off the basis
+    superposition, as a full-model run is."""
     years = payload["meta"]["years"]
     K = len(payload["classes"])
     starts = payload["meta"]["starts"]
@@ -160,7 +162,12 @@ def _n2_unit(payload: dict) -> dict:
         solved.append(ramp(int(x["start"]), amp * 1.07))
     basis = [ramp(s, mag[k] * (1.0 if si == 0 else 0.8)) for si, s in enumerate(starts)
              for k in range(K)]
-    return {"n": 84, "n_registered": 90, "solved": solved, "basis": basis}
+    out = {"n": 84, "n_registered": 90, "solved": solved, "basis": basis}
+    if all30:
+        out["all30"] = {"name": "all30", "factors": [0.7] * K, "start": int(starts[0]),
+                        "series": ramp(int(starts[0]), 0.3 * sum(mag) * 0.93),
+                        "file": "all30_page.npz", "sha256": "0" * 64}
+    return out
 
 
 def _write_payload(page: Path, payload: dict) -> None:
@@ -172,7 +179,7 @@ def _write_payload(page: Path, payload: dict) -> None:
 
 
 def build_synthetic_page(tmp_path: Path, *, n2: bool = True, basis: bool = True,
-                         three: str = "none") -> Path:
+                         three: str = "none", all30: bool = False) -> Path:
     from hydrophysics.twin import viewer_app as va
     from hydrophysics.twin.release import read_payload
     tmp_path = Path(tmp_path)
@@ -191,7 +198,7 @@ def build_synthetic_page(tmp_path: Path, *, n2: bool = True, basis: bool = True,
     payload["townSkill"] = [{"n": 3, "bias": 6.1, "r2": None, "low": True}] + [
         {"n": 8, "bias": -1.2, "r2": 0.42, "low": False} for _ in payload["towns"][1:]]
     if n2:
-        payload["n2Unit"] = _n2_unit(payload)
+        payload["n2Unit"] = _n2_unit(payload, all30)
         if not basis:
             payload["n2Unit"]["basis"] = None
     _write_payload(out, payload)

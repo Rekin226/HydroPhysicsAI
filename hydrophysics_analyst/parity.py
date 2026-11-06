@@ -70,7 +70,7 @@ def grid(b: PageBundle, n_random: int = 30, seed: int = 0) -> list[tuple[tuple[f
     horizon and two earlier years (one before the 2030 start, for the not-yet-acting branch)."""
     c = Q.ctx(b)
     fs: list[tuple[float, ...]] = []
-    presets = [[0.7, 1, 1, 1, 1, 1], [1, 0, 1, 1, 1, 1], [0.7, 0, 1, 1, 1, 1], [0.8] * 6]
+    presets = [[0.7] * 6, [0.7, 1, 1, 1, 1, 1], [1, 0, 1, 1, 1, 1], [0.7, 0, 1, 1, 1, 1], [0.8] * 6]
     for f in presets + [x["factors"] for x in c.solved] + [[1.0] * c.K]:
         t = tuple(float(v) for v in f)
         if t not in fs:

@@ -312,9 +312,20 @@ def test_every_payload_array_is_mapped():
 
 
 def test_every_numeric_payload_path_is_mapped_exactly():
+    """Exact both ways. A conditional block (ruling R8.9: the all30 file, viewer_app --all30)
+    is mapped only when the page names its source in release.sources, and then exactly; a page
+    built without that source may carry none of its paths."""
     D = C.payload_structure(_page())
     paths = {p for p in C.numeric_paths(D) if not p.startswith("arrays.")}
-    m = DM()["payload"]
+    m = dict(DM()["payload"])
+    srcs = set(D["release"]["sources"])
+    for name, blk in DM().get("payload_conditional", {}).items():
+        _ids_ok(f"payload_conditional.{name}", blk["paths"])
+        assert not set(blk["paths"]) & set(m), name
+        if blk["source"] in srcs:
+            m.update(blk["paths"])
+        else:
+            assert not set(blk["paths"]) & paths, f"{name}: paths without the source {srcs}"
     assert not sorted(paths - set(m)), f"payload numbers with no ledger id: {sorted(paths - set(m))}"
     assert not sorted(set(m) - paths), f"stale payload paths: {sorted(set(m) - paths)}"
     _ids_ok("payload", m)
@@ -1070,10 +1081,11 @@ def test_round8_rulings_and_rows_follow_the_scored_reports():
     row C14f-r (N), FB is row E29 (N), and no model-only study supports anything."""
     ids = {r["id"] for r in L()["rulings"]}
     for rid in ("R8.1a", "R8.1b", "R8.1c", "R8.1d", "R8.1e", "R8.1f", "R8.2", "R8.3", "R8.4a",
-                "R8.5", "R8.7", "R8.8", "R8.10", "R8.11", "R8.14"):
+                "R8.5", "R8.7", "R8.8", "R8.9", "R8.10", "R8.11", "R8.14"):
         assert _r8(rid) in ids, rid
-    # R8.7 (forecast of record, C30 split) is wired since 2026-11-06 (test_r8_7_*)
-    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.9", "R8.13"):   # wired separately
+    # R8.7 (forecast of record, C30 split) is wired since 2026-11-06 (test_r8_7_*); R8.9 (the
+    # all30 headline lever) since 2026-11-06 (test_r8_9_*)
+    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.13"):   # wired separately
         assert _r8(rid) not in ids, rid
     assert all("user_rulings_2026-11-03.json (sha256 ec610b69)" in r["text"]
                for r in L()["rulings"] if r["id"].startswith("user ruling 2026-11-03"))
@@ -1499,3 +1511,53 @@ def test_round8_2010_11_backcast_is_closed_by_ruling_r8_15():
         g = json.loads(path.read_text(encoding="utf-8"))
         assert C.sha256(path).startswith("b0622bc9") and g["gate"]["decidable"] is False
         assert round(g["gate"]["power"], 2) == 0.53 and round(g["gate"]["false_pass"], 2) == 0.06
+
+
+# ---- ruling R8.9 (2026-11-06 wiring): all30 is the headline head lever ----------------------
+ALL30_SIDECAR = C.REPO / "results/twin_forward/all30_page.provenance.json"
+CLASS_CLAUSE = {"en": "size depends on the pumping conversion (×1.27 Yunlin; "
+                      "X5.lever_class_share.v1, report-only)",
+                "zh": "大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1，僅供報告）"}
+
+
+def test_r8_9_all30_is_the_headline_lever_and_the_class_levers_are_labelled_en_zh():
+    """R8.9: all30 (all-class x0.7) at N2's unit is the headline; cut30 and retire_aqua are
+    class scenarios labelled 'size depends on the pumping conversion'. No status moves."""
+    cl, ids = CL(), {r["id"] for r in L()["rulings"]}
+    assert _r8("R8.9") in ids
+    for cid, st in (("C01", {"S"}), ("C01-w", {"D"}), ("C01-sz", {"N"}), ("C12", {"L"})):
+        assert _r8("R8.9") in cl[cid]["ruling_also"], cid
+        assert _st(cid) == st, cid                                   # nothing promoted
+    assert "x1.27 Yunlin; X5.lever_class_share.v1, report-only" in cl["C01-sz"]["wording_en"]
+    assert "all30" in cl["C01"]["wording_en"] and "all30" in cl["C12"]["notes"]
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    for k in ("tW_cls", "hl_pol", "def_tW", "rank_limit"):
+        assert CLASS_CLAUSE["en"] in en[k] and CLASS_CLAUSE["zh"] in zh[k], k
+    for k in ("hl_w30", "tW_w30", "def_tW", "hl_pol"):          # the headline lever, both languages
+        assert ("all pumping" in en[k] or "a cut of all pumping" in en[k]) and "全部抽水" in zh[k], k
+    assert "×1.03–1.05" in en["hl_w30"] and "×1.03–1.05" in zh["hl_w30"]
+    assert "N2 decides the within-window response, not this size" in en["hl_w30"]
+    js = C.template_js()
+    assert 'const PRESETS = [["all30", [0.7,0.7,0.7,0.7,0.7,0.7]],' in js
+    assert "isW30(f, startYear)" in C.function_source("policyInto")
+    assert "w30Sentence" in C.function_closure("renderHeadline")
+    assert {"hl_w30", "hw_n2"} <= C.function_keys("renderHeadline", follow=True)
+    assert {"tW_w30", "tW_cls", "tW_w30_src"} <= C.function_keys("renderTiles")
+    blk = DM()["payload_conditional"]["all30"]
+    assert blk["source"] == "all30" and "n2Unit.all30.series[]" in blk["paths"]
+    # the bound forward stays the page's and N2's
+    assert L()["page"]["forward_sha256"] == L()["page"]["n2_primary_forward_sha256"] == (
+        "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228")
+
+
+def test_r8_9_the_all30_number_is_recorded_from_its_file_once_it_exists():
+    """The all30 number is model output: C01-sz's notes carry a SLOT until the lead's forward
+    exists, then its Dec-2032 value at N2's unit and the file's sha256 from the sidecar."""
+    notes = CL()["C01-sz"]["notes"]
+    side = json.loads(ALL30_SIDECAR.read_text()) if ALL30_SIDECAR.exists() else None
+    if side and side.get("status") == "ok":
+        v, sha = side["n2_unit"]["dec2032_m"]["all30"], side["outputs_sha256"]["npz"]
+        assert "SLOT (rank 14" not in notes, "fill the all30 number from its sidecar"
+        assert "Rank 14 result" in notes and f"{v:+.2f} m" in notes and sha[:8] in notes
+    else:
+        assert "SLOT (rank 14" in notes or "Rank 14 result" in notes

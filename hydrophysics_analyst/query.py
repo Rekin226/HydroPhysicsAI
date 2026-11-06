@@ -115,6 +115,7 @@ class PolicyFields:
     hasW: bool
     src: Literal["base", "solved", "basis", "none"]
     solved: int
+    w30: bool = False              # ruling R8.9: dW from the all30 full-model run (n2Unit.all30)
 
 
 @dataclass
@@ -201,6 +202,18 @@ def solved_match(c: Ctx, f, start_year: int) -> int:
     return -1
 
 
+def w30(c: Ctx) -> dict | None:
+    """``W30()``: the headline lever's N2-unit block (ruling R8.9), when the page carries it."""
+    return (c.n2u or {}).get("all30") or None
+
+
+def is_w30(c: Ctx, f, start_year: int) -> bool:
+    """``isW30(f, startYear)``: the policy is the all30 run (every class x0.7, its start)."""
+    w = w30(c)
+    return bool(w) and int(w["start"]) == int(start_year) and all(
+        abs(v - f[k]) < 1e-6 for k, v in enumerate(w["factors"]))
+
+
 def policy_fields(b: PageBundle, p: Policy) -> PolicyFields:
     c = ctx(b)
     si = c.si(p.start)
@@ -233,6 +246,9 @@ def policy_fields(b: PageBundle, p: Policy) -> PolicyFields:
             out.dW = _acc(out.dW, w, u["basis"][si * c.K + k])
     out.hasW = bool(u and u.get("basis"))
     out.src = "basis"
+    if is_w30(c, p.f, c.starts[si]):            # R8.9: its own full-model run
+        out.dW = np.asarray(w30(c)["series"], dtype=F64).astype(F32)
+        out.hasW = out.w30 = True
     return out
 
 
@@ -533,10 +549,24 @@ def _prov(b: PageBundle, pol: PolicyFields, kp: dict, lang: str) -> tuple[str, l
         if assumed:
             s += c.tr(lang, "prov_assumed", {"c": class_list(b, assumed, lang)})
             keys.append("prov_assumed")
+        if pol.w30:
+            s += c.tr(lang, "prov_w30")
+            keys.append("prov_w30")
         return s, keys
     if pol.src == "none":
         return c.tr(lang, "prov_none"), ["prov_none"]
     return c.tr(lang, "prov_base", {"n": c.mc.get("n_members")}), ["prov_base"]
+
+
+def w30_sentence(b: PageBundle, lang: str) -> str:
+    """``w30Sentence()``: the opening headline names the headline lever (ruling R8.9)."""
+    c = ctx(b)
+    w = w30(c)
+    if not w:
+        return ""
+    return c.tr(lang, "hl_w30", {"yr": w["start"], "h": J.sg(w["series"][c.Y - 1]),
+                                 "where": c.tr(lang, "hw_n2", {"n": c.n2u["n"]}),
+                                 "H": c.years[c.Y - 1]})
 
 
 def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResult:
@@ -554,6 +584,9 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
         key, s = "hl_fit", c.tr(lang, "hl_fit", {"year": Hy, "y0": y0, "a": c.years[0], "b": c.years[c.YO]})
     elif pol.src == "base":
         key, s = "hl_base", c.tr(lang, "hl_base", {"rec": rec, "y0": y0, "year": Hy})
+        ws = w30_sentence(b, lang)
+        if ws:
+            key, s = "hl_base+hl_w30", s + ws
     elif pol.src == "none":
         opts = c.tr(lang, "list_or").join(
             c.tr(lang, "hl_opt", {"p": J.lc(policy_phrase(b, x["factors"], lang)), "s": x["start"]})
@@ -566,7 +599,8 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
         hw = head_where(b, kp, lang)
         txt = J.sg(hw["v"])
         values.append(Value("head", hw["v"], txt, "m",
-                            paths=("n2Unit.solved[][]", "n2Unit.basis[][]") if hw["n2"] else ("arrays.dHeadL2",),
+                            paths=(("n2Unit.all30.series[]",) if pol.w30 else
+                                   ("n2Unit.solved[][]", "n2Unit.basis[][]")) if hw["n2"] else ("arrays.dHeadL2",),
                             functions=("headWhere",), quantity="head_change",
                             region="n2_yunlin_wells" if hw["n2"] else
                             ("yunlin_l2" if hw["key"] == "hw_yun" else "fan_l2"),
