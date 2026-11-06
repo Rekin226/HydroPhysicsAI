@@ -8,18 +8,24 @@ What each helper touches, and nothing else:
   names only);
 * ``timestamps_by_well`` / ``months_by_well``: per candidate, ONLY the ``datetime`` column
   (``avail_l1pre.timestamps``: ``pyarrow.parquet.read_schema`` then
-  ``pyarrow.parquet.read_table(columns=['datetime'])``); the ``value`` column is never read.
+  ``pyarrow.parquet.read_table(columns=['datetime'])``); the ``value`` column is never decoded
+  or returned (the file is hashed whole for provenance and its footer schema is parsed).
   The monthly-sampling rule is ``bc_lib.available_months`` (a month is available with >= 20
   days holding >= 12 distinct hours), applied to the look's own window;
 * ``nest_excluded``: station coordinates and the ring-site table (``bc_lib.nest_wells``, the
   1000 m ring-nest rule of I1.CH_backcast.v1);
 * ``logged_look`` / ``prior_overlaps``: the hash-chained ``looks.jsonl`` and the membership
   index (unit ids, member ids, windows, purposes and times of earlier looks; never a value);
-* ``write_once``: the output is opened with mode ``x`` (an existing file refuses).
+* ``constants_sha`` / ``note_matches``: the stop rule's constants are hashed into the look
+  note at ``look --write``; ``count`` refuses unless the logged note carries the same hash and
+  rule text (no rule shopping between the look and the count);
+* ``write_once``: the output (a constant path per script) is opened with mode ``x`` (an
+  existing file refuses).
 """
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -143,6 +149,33 @@ def overlap_summary(rows: list[dict]) -> str:
     if unknown:
         s += f"; plus {len(unknown)} look(s) on units of unknown membership in the window"
     return s
+
+
+# ----------------------------------------------------------------------------- rule hash
+def constants_sha(constants: dict) -> str:
+    """sha256 of the canonical JSON of a script's stop-rule constants."""
+    return hashlib.sha256(json.dumps(constants, sort_keys=True).encode()).hexdigest()
+
+
+def sha_tag(constants: dict) -> str:
+    return f"constants_sha256={constants_sha(constants)}"
+
+
+def note_matches(lk: dict, constants: dict, rule_text: str) -> bool:
+    """Does the logged look's note carry these constants' hash and this rule text?"""
+    note = str(lk.get("note") or "")
+    return sha_tag(constants) in note and rule_text in note
+
+
+def probe_lines(rows: list[dict]) -> list[str]:
+    """Probe hits as unit ids and counts only (no member id)."""
+    return [f"{r['unit']} | {r['purpose']} | {str(r['time'])[:10]} | {r['membership']} | "
+            f"{'universal' if r['universal'] else r['n_shared']}" for r in rows]
+
+
+def missing_units(rows: list[dict], required) -> list[str]:
+    seen = {r["unit"] for r in rows}
+    return [u for u in required if u not in seen]
 
 
 # ----------------------------------------------------------------------------- output
