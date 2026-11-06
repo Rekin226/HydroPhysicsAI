@@ -1801,9 +1801,10 @@ reading the page has no wording for refuses the build. Page lines (EN and ZH) fo
 R8.8 and R8.11 only; the FV v2 per-truth split stays off the page. The ledger adds rows C01-w,
 C01-sz, C14f-r, E29 and E30, splits C01 and fills the notes above. The candidate page is built
 with the command recorded in `results/twin/twin_app_20261102b.build.log`, with `--out` changed
-to `results/twin/twin_app_20261106b.html` (log beside it; `20261106a` is the build before the
-round-8 review fixes); the ledger names the b file, which is not promoted:
-`results/twin/twin_app.html` stays the round-7 build until the lead promotes it.
+to `results/twin/twin_app_20261106c.html` (log beside it; `20261106a` is the build before the
+round-8 review fixes, `20261106b` the one before the coast-share display fix); the ledger names
+the c file, promoted to `results/twin/twin_app.html` after the merge of PR #82 (byte-identical,
+sha256 204985fd; it replaces the round-7 build 20261102b, sha256 956ec5d1).
 
 Progress: an estimate from the round-8 plan's per-action point effects for the outcomes
 obtained; a row-by-row section-21 recount of the ledger is still to be done. It is not a
