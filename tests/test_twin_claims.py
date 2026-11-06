@@ -1208,8 +1208,8 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
         "模型內部數值（L）")
     assert "(model-form spread, not an interval)" in en["def_tA_e24"]
     # SD v2's registered line_template: range, coast share, inland reading; Tier A beside A+B
-    assert "coast (distal zone) {clo}–{chi} % of it; {inl}" in en["def_tA_e24"]
-    assert "{ta}" in en["def_tA_e24"] and "coast {clo}–{chi} % of it" in en["def_tA_e24_a"]
+    assert "coast (distal zone) {crng} % of it; {inl}" in en["def_tA_e24"]
+    assert "{ta}" in en["def_tA_e24"] and "coast {crng} % of it" in en["def_tA_e24_a"]
     assert en["e24_inl_rob"] == "inland Yunlin robust within ×1.5"
     assert "const e24 = e24Line(); if (e24) p(e24);" in C.function_source("tileDefHtml")
     e24 = C.function_source("e24Line")                 # only for the run SD v2 measured

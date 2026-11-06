@@ -2146,7 +2146,7 @@ def test_round8_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypa
     assert "Model internals (L): across 10 leveling-equivalent columns" in got["tA"]
     assert "is 0.47–1.42 cm; coast (distal zone) 40–75 % of it; column-dependent ×2.02 inland" in got["tA"]
     assert ("(0.540–1.092 cm) (model-form spread, not an interval). Across the 3 columns on the "
-            "page's own heads (Tier A) it is 1.40–1.42 cm; coast 60–60 % of it; inland Yunlin "
+            "page's own heads (Tier A) it is 1.40–1.42 cm; coast 60 % of it; inland Yunlin "
             "robust within ×1.5.") in got["tA"]
     assert "coast (distal zone) 40–75 % of it" in got["tA"]
     # only for the irrigation x0.7 lever from 2026 (the run SD v2 measured)
