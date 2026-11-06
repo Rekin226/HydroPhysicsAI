@@ -80,7 +80,7 @@ def _write_out(stem: Path, all30=2.05, perturb=0.0):
 def repo(tmp_path, monkeypatch):
     """A fake repository tree with every declared input; the bound forward run is synthetic and
     its sha256 is patched in as the bound one."""
-    root = tmp_path / "repo"
+    root = _Root(tmp_path / "repo")
     for p in (*R.THETAS, *R.VEPS, R.RF, *R.DATA_FILES):
         (root / p).parent.mkdir(parents=True, exist_ok=True)
         (root / p).write_text(f"fake {p}\n")
@@ -92,10 +92,31 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "REF_SHA256", _sha(root / R.REF))
     monkeypatch.setattr(R, "load_screens", lambda repo=None: (
         CELLS, LAYERS, {"source": "synthetic", "screens_sha256": "0" * 64, "n_yunlin": 3}))
+    (root / R.FS_SCORER).parent.mkdir(parents=True, exist_ok=True)
+    (root / R.FS_SCORER).write_text("# frozen screens (fake)\n")
+    _write_fs_decl(root)
+    rung = {"rung": "main"}
     monkeypatch.setattr(R, "check_code", lambda code, python: {
-        "dir": "repo", "commit": "f" * 40, "hydrophysics_clean": True, "forward_py_sha256": None})
+        "dir": "repo", "commit": ("4c2723e" if rung["rung"] == "4c2723e" else "f") + "0" * 33,
+        "hydrophysics_clean": True, "forward_py_sha256": None, "rung": rung["rung"]})
     monkeypatch.setattr(R, "gpu_free_mib", lambda: 20000)
+    root.rung = rung                      # tests switch the code's rung here
     return root
+
+
+class _Root(type(Path())):
+    """A Path that can carry the fixture's rung switch."""
+
+
+def _write_fs_decl(root: Path, **override):
+    """FS.start_invariance.v1's declaration in the fake tree: frozen scorer and input hashes."""
+    ins = R.input_hashes(root)["sha256"]
+    decl = {"frozen_code": {R.FS_SCORER: _sha(root / R.FS_SCORER)},
+            "inputs": [{"path": k, "sha256": v} for k, v in ins.items() if isinstance(v, str)],
+            "input_digests": [{"path": d, "glob": g, **ins[f"{d}/{g}"]} for d, g in R.DATA_DIRS]}
+    decl.update(override)
+    (root / R.FS_DECL).parent.mkdir(parents=True, exist_ok=True)
+    (root / R.FS_DECL).write_text(json.dumps(decl))
 
 
 def _fake_forward(tmp_path: Path, repo: Path, *, touch_ref=False, perturb=0.0, rc=0,
@@ -113,7 +134,9 @@ def _fake_forward(tmp_path: Path, repo: Path, *, touch_ref=False, perturb=0.0, r
         f"print('device: {device}')\n"
         f"for suf in ('.npz', '.summary.csv', '.members.csv', '.members.npz'):\n"
         f"    shutil.copy({str(staged / 'out')!r} + suf, {str(dst)!r} + suf)\n"
-        + (f"open({str(repo / R.REF)!r}, 'ab').write(b'x')\n" if touch_ref else "")
+        + (f"open({str(repo / R.REF)!r}, 'ab').write(b'x')\n" if touch_ref == "append" or
+           touch_ref is True else "")
+        + (f"import os; os.remove({str(repo / R.REF)!r})\n" if touch_ref == "remove" else "")
         + f"sys.exit({rc})\n")
     return [sys.executable, str(script)]
 
@@ -190,8 +213,9 @@ def test_a_run_writes_its_sidecar_and_reproduces_the_page_levers(repo, tmp_path,
     assert u["dec2032_m"]["all30"] == pytest.approx(2.05, abs=1e-6)
     assert u["published_check"]["ok"] and len(u["all30_series_m"]) == 21
     assert "all30 +2.050 m" in capsys.readouterr().out
-    # never overwritten: a second run refuses before anything runs
-    with pytest.raises(R.Refused, match="never overwritten"):
+    # a second run refuses before anything runs (it reproduced; and outputs are never
+    # overwritten)
+    with pytest.raises(R.Refused, match="reproduced; no rerun"):
         R.cmd_run(repo, R.OUT_STEM, "PY", repo, dry=False)
     assert R.cmd_verify(repo, R.OUT_STEM) == 0
 
@@ -243,3 +267,105 @@ def test_the_basis_cannot_give_all30_exactly_on_the_real_files():
         pytest.skip("results/ (page run, basis) not present")
     assert note["exact"] is False and note["basis_sets"] == 1 and note["forward_sets"] == 18
     assert note["nonlinearity_irr50"]["rel"] > 0.05
+
+
+# ---- the declared attempt ladder ---------------------------------------------------------------
+def _rows(repo):
+    return R.read_attempts(repo)
+
+
+def _run(repo, tmp_path, monkeypatch, **kw):
+    monkeypatch.setattr(R, "forward_argv", lambda py, stem=R.OUT_STEM: _fake_forward(
+        tmp_path, repo, **kw))
+    return R.cmd_run(repo, R.OUT_STEM, "PY", repo, dry=False)
+
+
+def test_every_attempt_is_logged_and_an_ok_run_is_never_rerun(repo, tmp_path, monkeypatch):
+    assert _run(repo, tmp_path, monkeypatch) == 0
+    rows = _rows(repo)
+    assert [r["event"] for r in rows] == ["start", "end"]
+    assert rows[1]["status"] == "ok" and rows[1]["rung"] == "main" and rows[1]["rc"] == 0
+    assert rows[1]["outputs_sha256"]["npz"] == _sha(repo / f"{R.OUT_STEM}.npz")
+    with pytest.raises(R.Refused, match="not archived"):
+        R.cmd_archive(repo, R.OUT_STEM, "try again")
+    with pytest.raises(R.Refused, match="no rerun"):
+        R.next_rung(_rows(repo))
+
+
+def test_main_then_one_fallback_then_the_ladder_is_used_up(repo, tmp_path, monkeypatch):
+    assert _run(repo, tmp_path, monkeypatch, perturb=0.02) == 3              # main spent
+    assert R.next_rung(_rows(repo)) == "4c2723e"
+    with pytest.raises(R.Refused, match="never overwritten"):
+        _run(repo, tmp_path, monkeypatch)                                    # archive first
+    R.cmd_archive(repo, R.OUT_STEM, "main did not reproduce")
+    with pytest.raises(R.Refused, match="next rung is 4c2723e"):
+        _run(repo, tmp_path, monkeypatch)                                    # main again: no
+    repo.rung["rung"] = "4c2723e"
+    assert _run(repo, tmp_path, monkeypatch, perturb=0.02) == 3
+    side = json.loads((repo / R.sidecar_path()).read_text())
+    assert side["rung"] == "4c2723e" and [a["rung"] for a in side["prior_attempts"]] == ["main"]
+    R.cmd_archive(repo, R.OUT_STEM, "fallback did not reproduce")
+    with pytest.raises(R.Refused, match="used up"):
+        R.cmd_run(repo, R.OUT_STEM, "PY", repo, dry=True)
+
+
+def test_engineering_failures_and_killed_runs_count_and_may_retry_after_archive(
+        repo, tmp_path, monkeypatch):
+    assert _run(repo, tmp_path, monkeypatch, rc=1) == 2
+    assert _rows(repo)[-1]["status"] == "forward_failed"
+    R.cmd_archive(repo, R.OUT_STEM, "forward crashed")
+    # a killed run leaves a start row only: it counts as an attempt, killed_or_partial
+    R.log_attempt(repo, {"event": "start", "attempt": 2, "rung": "main", "time": "t",
+                         "code_commit": "f" * 40})
+    summ = R.attempts_summary(_rows(repo))
+    assert [a["status"] for a in summ] == ["forward_failed", "killed_or_partial"]
+    assert R.next_rung(_rows(repo)) == "main"                    # engineering: same rung
+    assert _run(repo, tmp_path, monkeypatch) == 0
+    side = json.loads((repo / R.sidecar_path()).read_text())
+    assert side["attempt"] == 3 and len(side["prior_attempts"]) == 2
+    assert [r["event"] for r in _rows(repo)].count("archive") == 1
+
+
+def test_a_removed_bound_file_after_the_run_is_recorded_not_a_crash(repo, tmp_path,
+                                                                    monkeypatch):
+    assert _run(repo, tmp_path, monkeypatch, touch_ref="remove") == 3
+    side = json.loads((repo / R.sidecar_path()).read_text())
+    assert side["status"] == "reference_changed" and side["reference"]["sha256_after"] is None
+    assert _rows(repo)[-1]["status"] == "reference_changed"
+    with pytest.raises(R.Refused):                       # nothing more runs
+        R.next_rung(_rows(repo))
+
+
+def test_preflight_refuses_a_changed_scorer_or_a_changed_declared_input(repo):
+    R.preconditions(repo)
+    (repo / R.FS_SCORER).write_text("# edited\n")
+    with pytest.raises(R.Refused, match="frozen"):
+        R.preconditions(repo)
+    (repo / R.FS_SCORER).write_text("# frozen screens (fake)\n")
+    (repo / R.THETAS[0]).write_text("another theta\n")
+    with pytest.raises(R.Refused, match="inputs changed"):
+        R.preconditions(repo)
+    (repo / R.THETAS[0]).write_text(f"fake {R.THETAS[0]}\n")
+    (repo / R.DATA_DIRS[0][0] / "w2.parquet").write_bytes(b"new well")
+    with pytest.raises(R.Refused, match="inputs changed"):
+        R.preconditions(repo)
+
+
+def test_code_check_refuses_untracked_python_and_off_ladder_commits(tmp_path, monkeypatch):
+    import subprocess
+
+    code = tmp_path / "code"
+    (code / "hydrophysics" / "twin").mkdir(parents=True)
+    (code / "hydrophysics" / "twin" / "forward.py").write_text("x = 1\n")
+    for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t",
+                                                "commit", "-qm", "c"]):
+        subprocess.run(["git", "-C", str(code), *cmd], check=True)
+    info = R.code_info(code)
+    assert info["hydrophysics_clean"] and info["rung"] in (None, "main")
+    (code / "hydrophysics" / "twin" / "stray.py").write_text("y = 2\n")
+    info = R.code_info(code)
+    assert not info["hydrophysics_clean"] and info["untracked_py"]
+    with pytest.raises(R.Refused, match="untracked"):
+        R.check_code(code, sys.executable)
+    assert R.rung_of("4c2723e" + "0" * 33, "a" * 40) == "4c2723e"
+    assert R.rung_of("a" * 40, "a" * 40) == "main" and R.rung_of("b" * 40, "a" * 40) is None

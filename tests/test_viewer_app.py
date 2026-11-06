@@ -2273,7 +2273,8 @@ def test_policy_parser_reads_every_listed_class():
     assert va._parse_policy("baseline: baseline (no change)") is None
 
 
-def _write_all30(tmp_path, fw_path, *, delta=2.0, base_shift=0.0, factor=0.7, side=None):
+def _write_all30(tmp_path, fw_path, *, delta=2.0, base_shift=0.0, factor=0.7, side=None,
+                 lever_shift=0.0, start="2026-01"):
     """An all30 file beside the synthetic forward run: its three scenarios plus all30, and the
     sidecar run_all30.py writes (``side`` overrides its fields)."""
     from hydrophysics.twin.release import sha256
@@ -2283,7 +2284,8 @@ def _write_all30(tmp_path, fw_path, *, delta=2.0, base_shift=0.0, factor=0.7, si
     h30 = heads[0] + np.float32(delta) * np.minimum(_ramp(168), 1.0)[None, None].astype("float32")
     allh = np.concatenate([heads, h30[None]]).copy()
     allh[0] += np.float32(base_shift)
-    desc = ALL30_DESC.replace("x0.7", f"x{factor:g}")
+    allh[1] += np.float32(lever_shift)                        # the file's cut30
+    desc = ALL30_DESC.replace("x0.7", f"x{factor:g}").replace("2026-01", start)
     arrs = {k: fw[k] for k in fw.files}
     arrs.update(heads_mean=allh, scenario_names=np.array([*fw["scenario_names"], "all30"]),
                 scenarios=np.array([*fw["scenarios"], desc]))
@@ -2316,6 +2318,9 @@ def test_all30_file_is_used_only_when_its_sidecar_vouches_for_it(tmp_path):
                                                           "sha256_after": "y"}}),
            "not reproduced": dict(side={"reproduction": {"ok": False}}),
            "baseline off": dict(base_shift=0.05),
+           # the viewer recomputes the page levers itself, whatever the sidecar says
+           "cut30 off, sidecar ok": dict(lever_shift=0.05),
+           "starts 2026-04": dict(start="2026-04"),
            "not x0.7": dict(factor=0.8)}
     for why, kw in bad.items():
         p = _write_all30(tmp_path, fw_path, **kw)
@@ -2391,67 +2396,94 @@ def test_build_refuses_an_unvouched_all30_file_and_is_unchanged_without_one(tmp_
     assert any("all30 not shown" in m for m in msgs)
 
 
-def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_path):
-    """Headless: with n2Unit.all30 the opening headline names the headline lever with its
-    full-model size; the all-pumping preset is first and takes its head at N2's wells from that
-    run; a class lever carries the conversion clause; EN and ZH. Without the block nothing of it
-    shows."""
-    from hydrophysics_analyst import testing as AT
-
-    js = ("() => { const w = D.n2Unit.all30, out = {}; const run = (f, lang) => { setLang(lang); "
-          "S.f = f.slice(); S.start = 0; S.year = Y - 1; syncLevers(); update(true); "
-          "cancelAnimationFrame(rafId); flush(); "
-          "return {hl: document.getElementById('headline').textContent, "
-          "tw: document.querySelector('#tW .vn').textContent, "
-          "r: document.querySelector('#tW .r').textContent, "
-          "d: document.querySelector('#tW .d').textContent, "
-          "chip: document.getElementById('prov').textContent, w30: P.w30}; }; "
-          "out.first = PRESETS[0][0]; out.h = sg(w.series[Y-1]); "
-          "for (const lang of ['en', 'zh']) { out['base_' + lang] = run([1,1,1,1,1,1], lang); "
-          "out['all_' + lang] = run([.7,.7,.7,.7,.7,.7], lang); "
-          "out['irr_' + lang] = run([.7,1,1,1,1,1], lang); out['all20_' + lang] = "
-          "run([.8,.8,.8,.8,.8,.8], lang); } return out; }")
-    page = AT.build_synthetic_page(tmp_path, all30=True)
+def _eval_page(page, js):
     pw, browser = _browser()
     try:
         pg = browser.new_page()
         pg.goto(page.as_uri())
         pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
-        got = pg.evaluate(js)
+        return pg.evaluate(js)
     finally:
         browser.close()
         pw.stop()
+
+
+ALL30_RUN_JS = (
+    "(pols) => { const out = {}; const run = (f, lang) => { setLang(lang); "
+    "S.f = f.slice(); S.start = 0; S.year = Y - 1; syncLevers(); update(true); "
+    "cancelAnimationFrame(rafId); flush(); "
+    "return {hl: document.getElementById('headline').textContent, "
+    "tw: document.querySelector('#tW .vn').textContent, "
+    "r: document.querySelector('#tW .r').textContent, "
+    "d: document.querySelector('#tW .d').textContent, "
+    "def: tileDefHtml('tW').replace(/<[^>]+>/g, ''), "
+    "chip: document.getElementById('prov').textContent, w30: P.w30}; }; "
+    "const w = (D.n2Unit || {}).all30; out.h = w ? sg(w.series[Y-1]) : null; "
+    "out.presets = presetsShown().map(p => p[0]); "
+    "for (const lang of ['en', 'zh']) for (const [k, f] of Object.entries(pols)) "
+    "out[k + '_' + lang] = run(f, lang); return out; }")
+POLS = {"base": [1] * 6, "all": [0.7] * 6, "irr": [0.7, 1, 1, 1, 1, 1],
+        "aqua": [1, 0, 1, 1, 1, 1], "both": [0.7, 0, 1, 1, 1, 1],
+        "custom": [0.8, 1, 0.5, 1, 1, 0.9], "all20": [0.8] * 6}
+
+
+def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_path):
+    """Headless: with n2Unit.all30 the opening headline names the headline lever with its
+    full-model size; the all-pumping preset is first and takes its head at N2's wells from that
+    run. Lead decision (b): only the irrigation x0.7 lever carries x1.27; retire_aqua, both and
+    a custom mix carry the bare R8.9 label. EN and ZH."""
+    from hydrophysics_analyst import testing as AT
+
+    page = AT.build_synthetic_page(tmp_path, all30=True)
+    got = _eval_page(page, f"() => ({ALL30_RUN_JS})({json.dumps(POLS)})")
     h = got["h"]
-    assert got["first"] == "all30"
+    assert got["presets"][0] == "all30"
     b, a, i, a20 = got["base_en"], got["all_en"], got["irr_en"], got["all20_en"]
-    assert "The headline lever (ruling R8.9) is cutting all pumping 30% from 2026" in b["hl"]
+    assert ("The headline lever (ruling R8.9) is cutting all pumping 30% (all30, every class "
+            "×0.7) from 2026") in b["hl"]
     assert f"raises the groundwater head by {h} m" in b["hl"] and "not this size" in b["hl"]
+    assert "measured on the q0c and x5r1 calibrations, not the page model" in b["hl"]
     assert b["tw"] == "0.00" and b["r"].startswith("headline lever (ruling R8.9)") and h in b["r"]
     assert a["w30"] and a["tw"] == h and a["d"].startswith("Headline lever: the head at N2's")
     assert "head at N2's wells: the all-pumping full-model run" in a["chip"]
-    assert "Class scenario" not in a["d"]
-    cls = ("Class scenario: size depends on the pumping conversion (×1.27 Yunlin; "
+    assert "this is the headline lever (ruling R8.9)" in a["hl"] and "Class scenario" not in a["d"]
+    assert "The headline lever is that all-class ×0.7 cut" in a["def"]
+    irr = ("Class scenario: size depends on the pumping conversion (×1.27 Yunlin; "
            "X5.lever_class_share.v1, report-only).")
-    assert not i["w30"] and i["d"].startswith(cls) and "full-model run" not in i["chip"]
-    assert "are class scenarios: size depends on the pumping conversion (×1.27 Yunlin" in i["hl"]
-    assert not a20["w30"] and "Class scenario" not in a20["d"]       # uniform, not the run
+    assert not i["w30"] and i["d"].startswith(irr) and "full-model run" not in i["chip"]
+    assert ("irrigation ×0.7 class scenario's size depends on the pumping conversion (×1.27"
+            in i["hl"])
+    for k in ("aqua", "both", "custom"):                    # the bare label, no number
+        x = got[k + "_en"]
+        assert x["d"].startswith("Class scenario: size depends on the pumping conversion. "), k
+        assert "as a class scenario its size depends on the pumping conversion." in x["hl"], k
+        assert "1.27" not in x["hl"] and "1.27" not in x["d"], k
+        z = got[k + "_zh"]
+        assert z["d"].startswith("用水類別情境：大小取決於抽水換算。") and "1.27" not in z["hl"], k
+    assert not a20["w30"] and "Class scenario" not in a20["d"]       # uniform, not all30
+    assert "1.03" not in a20["hl"] and "1.27" not in a20["hl"]
     zb, za, zi = got["base_zh"], got["all_zh"], got["irr_zh"]
     assert "頭條槓桿（裁定 R8.9）為自2026年起全部抽水減30%" in zb["hl"] and h in zb["hl"]
     assert za["tw"] == h and za["d"].startswith("頭條槓桿：")
     assert zi["d"].startswith("用水類別情境：大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1")
-    # without the block: no headline lever, the preset list still leads with all-pumping
-    (tmp_path / "plain").mkdir()
-    page2 = AT.build_synthetic_page(tmp_path / "plain")
-    pw, browser = _browser()
-    try:
-        pg = browser.new_page()
-        pg.goto(page2.as_uri())
-        pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
-        plain = pg.evaluate("() => { S.f = [.7,.7,.7,.7,.7,.7]; update(true); "
-                            "cancelAnimationFrame(rafId); flush(); "
-                            "return [document.getElementById('headline').textContent, P.w30, "
-                            "w30Sentence()]; }")
-    finally:
-        browser.close()
-        pw.stop()
-    assert plain[1] is False and plain[2] == "" and "R8.9" not in plain[0]
+
+
+def test_without_the_all30_run_the_page_has_no_headline_lever(tmp_path):
+    """S3: a page built without --all30 never presents the fast estimate as the headline
+    lever: no all-pumping preset, no headline-lever words anywhere; the class clauses stay."""
+    from hydrophysics_analyst import testing as AT
+
+    page = AT.build_synthetic_page(tmp_path)
+    got = _eval_page(page, f"() => ({ALL30_RUN_JS})({json.dumps(POLS)})")
+    assert got["h"] is None and "all30" not in got["presets"]
+    assert got["presets"] == ["irr30", "aqua0", "both", "all20"]       # as before
+    for k, x in got.items():
+        if not isinstance(x, dict):
+            continue
+        txt = x["hl"] + x["r"] + x["d"] + x["def"] + x["chip"]
+        assert not x["w30"] and "R8.9" not in txt and "headline lever" not in txt.lower(), k
+        assert "頭條槓桿" not in txt, k
+    assert got["base_en"]["r"] == "" and got["base_en"]["tw"] == "0.00"
+    # all30 on the fast estimate: the all30 conversion fact, never 'the headline lever'
+    assert "the all-class ×0.7 cut (all30) changes only ×1.03–1.05" in got["all_en"]["hl"]
+    assert "1.27" not in got["aqua_en"]["hl"] and "×1.27" in got["irr_en"]["hl"]

@@ -775,19 +775,31 @@ def _load_all30(all30_npz: str | None, forward_npz: str, fw, g, log=print):
     desc = [str(s) for s in z["scenarios"]]
     if names[0] != "baseline" or ALL30_NAME not in names:
         raise ValueError(f"--all30: scenarios {names} carry no baseline-first all30")
-    pol = _parse_policy(desc[names.index(ALL30_NAME)])
-    if pol is None or pol[1] != ALL30_START or any(abs(v - ALL30_FACTOR) > 1e-9
-                                                    for v in pol[0]):
-        raise ValueError(f"--all30: {desc[names.index(ALL30_NAME)]!r} is not every class "
-                         f"x{ALL30_FACTOR:g} from {ALL30_START}")
+    d30 = desc[names.index(ALL30_NAME)]
+    pol = _parse_policy(d30)
+    if pol is None or not d30.endswith(f" from {ALL30_START}-01") or any(
+            abs(v - ALL30_FACTOR) > 1e-9 for v in pol[0]):
+        raise ValueError(f"--all30: {d30!r} is not every class x{ALL30_FACTOR:g} from "
+                         f"{ALL30_START}-01")
     heads = z["heads_mean"]
-    dmax = float(np.max(np.abs(heads[0].astype("float64") - fw["heads_mean"][0])))
-    if not dmax <= ALL30_REF_TOL_M:
-        raise ValueError(f"--all30: its baseline heads differ from the page run's by up to "
-                         f"{dmax:.3g} m (> {ALL30_REF_TOL_M} m)")
+    # the page's own scenarios in the file must reproduce the page run itself (recomputed
+    # here, not taken from the sidecar): every layer, cell and month
+    fnames = [str(n) for n in fw["scenario_names"]]
+    worst = {}
+    for i, n in enumerate(fnames):
+        if n not in names:
+            raise ValueError(f"--all30: the page run's scenario {n!r} is not in the file")
+        worst[n] = float(np.max(np.abs(heads[names.index(n)].astype("float64")
+                                       - fw["heads_mean"][i])))
+    bad = {n: v for n, v in worst.items() if not v <= ALL30_REF_TOL_M}
+    if bad:
+        raise ValueError("--all30: its heads differ from the page run's by up to "
+                         + ", ".join(f"{n} {v:.3g} m" for n, v in bad.items())
+                         + f" (> {ALL30_REF_TOL_M} m)")
+    dmax = max(worst.values())
     unit = (side.get("n2_unit") or {}).get("dec2032_m") or {}
     log(f"all30 scenario forward {os.path.basename(all30_npz)} (sha256 {sha[:8]}; sidecar "
-        f"{sha256(side_path)[:8]}): baseline within {dmax:.2g} m of the page run")
+        f"{sha256(side_path)[:8]}): {', '.join(worst)} within {dmax:.2g} m of the page run")
     return SimpleNamespace(heads=heads, names=names, factors=pol[0], start=pol[1],
                            file=os.path.basename(all30_npz), sha256=sha,
                            sidecar=os.path.basename(side_path),

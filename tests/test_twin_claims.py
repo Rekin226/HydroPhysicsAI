@@ -1202,7 +1202,9 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     assert "不符合其門檻（< 0.25 / ≥ 0.80）" in zh["evc_n2_rd"] and "未達" not in zh["evc_n2_rd"]
     for d in (en, zh):
         assert not any("full-size response" in v or "完整大小" in v for v in d.values())
-    for k in ("hl_pol", "def_tW", "rank_limit"):
+    # lead decision (b), 2026-11-06, under R8.9: x1.27 belongs to the irrigation x0.7 lever
+    # only, so the headline carries it through its per-policy size clause (hl_sz_irr)
+    for k in ("hl_sz_irr", "def_tW", "rank_limit"):
         assert "×1.27" in en[k] and "×1.27" in zh[k], k
     assert "(S, design-time" in en["tW_r"] and "(D)" in en["tW_r"] and "(N;" in en["tW_r"]
     assert "Size (N, model-only)" in en["def_tW"] and "(D):" in en["def_tW"]
@@ -1515,39 +1517,85 @@ def test_round8_2010_11_backcast_is_closed_by_ruling_r8_15():
 
 # ---- ruling R8.9 (2026-11-06 wiring): all30 is the headline head lever ----------------------
 ALL30_SIDECAR = C.REPO / "results/twin_forward/all30_page.provenance.json"
-CLASS_CLAUSE = {"en": "size depends on the pumping conversion (×1.27 Yunlin; "
-                      "X5.lever_class_share.v1, report-only)",
-                "zh": "大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1，僅供報告）"}
+# lead decision (b), 2026-11-06: R8.9's label is the bare clause; x1.27 is measured for the
+# irrigation x0.7 cut only (X5.lever_class_share.v1), so only that lever carries the number
+BARE = {"en": "size depends on the pumping conversion", "zh": "大小取決於抽水換算"}
+IRR_CLAUSE = {"en": "size depends on the pumping conversion (×1.27 Yunlin; "
+                    "X5.lever_class_share.v1, report-only)",
+              "zh": "大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1，僅供報告）"}
+AT_MOST = {"en": "size depends on the pumping conversion (irrigation ×0.7: ×1.27 Yunlin)",
+           "zh": "大小取決於抽水換算（灌溉 ×0.7：雲林 ×1.27）"}
 
 
 def test_r8_9_all30_is_the_headline_lever_and_the_class_levers_are_labelled_en_zh():
     """R8.9: all30 (all-class x0.7) at N2's unit is the headline; cut30 and retire_aqua are
-    class scenarios labelled 'size depends on the pumping conversion'. No status moves."""
+    class scenarios labelled 'size depends on the pumping conversion'. Lead decisions (a, b):
+    x1.27 only on the irrigation x0.7 lever, x1.03-1.05 only on all30. No status moves."""
     cl, ids = CL(), {r["id"] for r in L()["rulings"]}
     assert _r8("R8.9") in ids
     for cid, st in (("C01", {"S"}), ("C01-w", {"D"}), ("C01-sz", {"N"}), ("C12", {"L"})):
         assert _r8("R8.9") in cl[cid]["ruling_also"], cid
         assert _st(cid) == st, cid                                   # nothing promoted
-    assert "x1.27 Yunlin; X5.lever_class_share.v1, report-only" in cl["C01-sz"]["wording_en"]
     assert "all30" in cl["C01"]["wording_en"] and "all30" in cl["C12"]["notes"]
     en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
-    for k in ("tW_cls", "hl_pol", "def_tW", "rank_limit"):
-        assert CLASS_CLAUSE["en"] in en[k] and CLASS_CLAUSE["zh"] in zh[k], k
-    for k in ("hl_w30", "tW_w30", "def_tW", "hl_pol"):          # the headline lever, both languages
-        assert ("all pumping" in en[k] or "a cut of all pumping" in en[k]) and "全部抽水" in zh[k], k
-    assert "×1.03–1.05" in en["hl_w30"] and "×1.03–1.05" in zh["hl_w30"]
+    d = {"en": en, "zh": zh}
+    for lang in ("en", "zh"):
+        t = d[lang]
+        for k in ("tW_cls_irr", "hl_sz_irr"):                    # irrigation x0.7: the number
+            assert IRR_CLAUSE[lang] in t[k], (lang, k)
+        for k in ("tW_cls", "hl_sz_cls"):                        # every other class lever: bare
+            assert BARE[lang] in t[k] and "1.27" not in t[k] and "1.39" not in t[k], (lang, k)
+        for k in ("tW_r", "rank_limit"):                         # at most the irrigation note
+            assert AT_MOST[lang] in t[k] and t[k].count("×1.27") == 1, (lang, k)
+        assert "1.27" not in t["hl_pol"] and "{sz}" in t["hl_pol"], lang
+        assert "{hl}" in t["def_tW"] and "all30" in t["def_tW"], lang
+        for k in ("hl_sz_all", "hl_sz_w30", "hl_w30", "def_tW", "evc_pr_ch_class"):
+            assert "1.03–1.05" in t[k] and ("all30" in t[k] or "全部抽水減30%" in t[k]), (lang, k)
+        for k in ("hl_w30", "hl_sz_all", "hl_sz_w30"):           # nit: where it was measured
+            assert "q0c" in t[k] and "X5.lever_class_share.v1" in t[k], (lang, k)
+    for k, v in en.items():                                      # x1.03-1.05 is all30's only
+        if "1.03–1.05" in v:
+            assert "all30" in v, k
     assert "N2 decides the within-window response, not this size" in en["hl_w30"]
     js = C.template_js()
     assert 'const PRESETS = [["all30", [0.7,0.7,0.7,0.7,0.7,0.7]],' in js
+    assert 'PRESETS.filter(p => p[0] !== "all30")' in C.function_source("presetsShown")
     assert "isW30(f, startYear)" in C.function_source("policyInto")
     assert "w30Sentence" in C.function_closure("renderHeadline")
-    assert {"hl_w30", "hw_n2"} <= C.function_keys("renderHeadline", follow=True)
-    assert {"tW_w30", "tW_cls", "tW_w30_src"} <= C.function_keys("renderTiles")
+    assert {"hl_w30", "hw_n2", "hl_sz_irr", "hl_sz_cls", "hl_sz_all", "hl_sz_w30"} <= (
+        C.function_keys("renderHeadline", follow=True))
+    assert {"tW_w30", "tW_cls", "tW_cls_irr", "tW_w30_src"} <= C.function_keys("renderTiles")
+    assert 'W30() ? tr("def_tW_w30") : ""' in C.function_source("tileDefHtml")
     blk = DM()["payload_conditional"]["all30"]
     assert blk["source"] == "all30" and "n2Unit.all30.series[]" in blk["paths"]
     # the bound forward stays the page's and N2's
     assert L()["page"]["forward_sha256"] == L()["page"]["n2_primary_forward_sha256"] == (
         "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228")
+
+
+def test_r8_9_a_page_without_the_all30_run_is_never_the_page_of_record():
+    """Promotion guard (S3): once R8.9 is wired, a page built from this template must carry
+    n2Unit.all30 to be the page of record (results/twin/twin_app.html) or the ledger's page
+    unless the ledger names it a candidate built without --all30; the r14 candidates are never
+    promoted."""
+    assert _r8("R8.9") in {r["id"] for r in L()["rulings"]}
+    rec = C.REPO / "results/twin/twin_app.html"
+    led = C.REPO / L()["page"]["html"]
+    assert led != rec or "WITHOUT --all30" not in L()["page"]["html_note"]
+    for page in {rec, led}:
+        if not page.exists():
+            continue
+        if "hl_w30" not in page.read_text(encoding="utf-8"):
+            continue                                   # built before R8.9: not this template
+        has = "all30" in (C.payload_structure(page).get("n2Unit") or {})
+        if page == rec:
+            assert has, "the page of record lacks the all30 run (build with --all30)"
+        else:
+            assert has or "WITHOUT --all30" in L()["page"]["html_note"], page.name
+    if rec.exists():
+        sha = C.sha256(rec)
+        for cand in (C.REPO / "results/twin").glob("twin_app_20261106r14*.html"):
+            assert C.sha256(cand) != sha, f"{cand.name} was promoted"
 
 
 def test_r8_9_the_all30_number_is_recorded_from_its_file_once_it_exists():
@@ -1600,7 +1648,8 @@ def test_c14d_head_contrast_spread_is_a_ledger_and_readme_note_only():
         assert v in n and v in flat, k
     assert "x1.18 and x1.17" in flat and "(x1.30, x1.33)" in flat
     src = C.template_src()                               # no page change
-    assert not any(v in src for v in quoted.values()) and "x1.39" not in src
+    assert not any(v in src for v in quoted.values())
+    assert "x1.39" not in src and src.count("×1.39") == 2   # only evc_pr_ch_class, EN and ZH
     if HC_REPORT.exists():                               # verbatim against the scored report
         got = _hc_text(json.loads(HC_REPORT.read_text(encoding="utf-8")))
         for k, v in quoted.items():

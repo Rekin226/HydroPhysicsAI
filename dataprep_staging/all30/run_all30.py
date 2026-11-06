@@ -4,6 +4,25 @@
     DRY=1 python dataprep_staging/all30/run_all30.py run          print the forward command
     python dataprep_staging/all30/run_all30.py run [--code DIR]   the forward (GPU, in tmux)
     python dataprep_staging/all30/run_all30.py verify             re-check the outputs (CPU)
+    python dataprep_staging/all30/run_all30.py archive "<reason>" move outputs aside (logged)
+
+Attempt ladder (declared before any run). Rung 1 is the merged main: the checkout this runner
+lives in (``--code`` defaults to it), clean, its HEAD equal to ``origin/main``. Rung 2, the one
+fallback, is a clean worktree at 4c2723e (the code at which FS.start_invariance.v1's S0
+reproduced the page run to 0.0 m), passed as ``--code``, and only after rung 1 ended with its
+outputs not reproducing the page run (exit 3). Every attempt is logged, append-only, in
+``results/twin_runs/all30/attempts.jsonl`` (a start row before the forward, an end row after it,
+with the time, rung, code commit, exit code, status and output sha256s); a start row without an
+end row is a killed or partial run and counts as an attempt. A run is refused once any attempt
+reproduced (no rerun), once the bound file changed, once a rung's outputs did not reproduce
+(that rung is spent; the ladder is used up after rung 2), and while outputs are present: an
+engineering failure (the forward failed, ran off the GPU, was killed, or its outputs could not
+be read) may be retried at the same rung only after ``archive``. The sidecar lists every earlier
+attempt.
+
+Preflight: the frozen N2 screens' scorer (score_fs.py) must have FS.start_invariance.v1's
+registered sha256 (``frozen_code``), and every input FS declared (files and the head-well
+directory digest) must still have its declared hash, before any GPU time is spent.
 
 Ruling R8.9 (user rulings 2026-11-03, twelfth set): "all30 (all-class x0.7) at N2's unit is the
 headline; cut30 and retire_aqua kept as class scenarios labelled 'size depends on the pumping
@@ -41,18 +60,20 @@ the frozen screens of FS.start_invariance.v1) for each lever. The page builder
 (``twin.viewer_app --all30``) refuses an all30 file whose sidecar does not vouch for it.
 
 Model output only: no registration, no test, no status. Exit codes: 0 ok, 1 refused
-(precondition), 2 the forward failed, 3 the reference changed or the outputs do not reproduce
-the page run.
+(precondition), 2 an engineering failure (forward failed, off the GPU, killed, unreadable
+outputs), 3 the reference changed or the outputs do not reproduce the page run.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import fcntl
 import hashlib
 import importlib.util
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -95,6 +116,12 @@ PUBLISHED_DEC2032 = {"cut30": 1.19, "retire_aqua": 1.41}     # ledger C01-sz, 2 
 PUBLISHED_TOL_M = 0.005
 MIN_FREE_MIB = int(os.environ.get("ALL30_MIN_FREE_MIB", "5000"))
 FS_SCORER = "dataprep_staging/fs_start/score_fs.py"     # frozen N2 screens (read, never edited)
+FS_DECL = "results/dataprep/preregistration/FS.start_invariance.v1.json"
+LOG_DIR = "results/twin_runs/all30"
+ATTEMPTS = f"{LOG_DIR}/attempts.jsonl"
+LADDER = ("main", "4c2723e")             # declared: merged main, then one fallback
+FALLBACK_COMMIT = "4c2723e"
+ENGINEERING = ("forward_failed", "killed_or_partial", "unreadable_outputs")
 LAYOUT_KEYS = ("dates", "origin", "mask", "nx", "ny", "dx", "x0", "y0", "n_members",
                "member_labels", "rheology_labels", "horizon", "gain", "hindcast_gain",
                "hindcast_every", "gate", "forward_options")
@@ -189,17 +216,41 @@ def code_info(code: Path) -> dict:
     try:
         head = git("rev-parse", "HEAD")
         dirty = git("status", "--porcelain", "--untracked-files=no", "--", "hydrophysics")
+        untracked = [ln[3:] for ln in git("status", "--porcelain", "--untracked-files=all",
+                                          "--", "hydrophysics").splitlines()
+                     if ln.startswith("??") and ln.endswith(".py")]
     except (OSError, subprocess.CalledProcessError) as e:
         raise Refused(f"{code.name}: not a git checkout ({type(e).__name__})") from e
+    try:
+        main = subprocess.run(["git", "-C", str(REPO), "rev-parse", "origin/main"],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        main = None
     fwd = code / "hydrophysics" / "twin" / "forward.py"
-    return {"dir": code.name, "commit": head, "hydrophysics_clean": not dirty,
+    return {"dir": code.name, "commit": head, "hydrophysics_clean": not dirty and not untracked,
+            "untracked_py": untracked, "origin_main": main,
+            "rung": rung_of(head, main),
             "forward_py_sha256": sha256(fwd) if fwd.is_file() else None}
+
+
+def rung_of(commit: str, main: str | None) -> str | None:
+    """The ladder rung a code commit is: the merged main, the declared fallback, or none."""
+    if main and commit == main:
+        return "main"
+    if commit.startswith(FALLBACK_COMMIT):
+        return FALLBACK_COMMIT
+    return None
 
 
 def check_code(code: Path, python: str) -> dict:
     info = code_info(code)
     if not info["hydrophysics_clean"]:
-        raise Refused(f"{code.name}: hydrophysics/ has uncommitted changes; run committed code")
+        raise Refused(f"{code.name}: hydrophysics/ has uncommitted changes or untracked .py "
+                      f"files {info['untracked_py']}; run committed code")
+    if info["rung"] is None:
+        raise Refused(f"{code.name} is at {info['commit'][:7]}, neither origin/main "
+                      f"({(info['origin_main'] or '?')[:7]}) nor the declared fallback "
+                      f"{FALLBACK_COMMIT}")
     env = {**os.environ, "PYTHONPATH": str(code)}
     r = subprocess.run([python, "-P", "-c", "import hydrophysics.twin.forward as m; "
                         "print(m.__file__)"], capture_output=True, text=True, env=env,
@@ -220,14 +271,90 @@ def gpu_free_mib() -> int:
     return total - used
 
 
+def check_fs_declared(repo: Path, inputs: dict) -> dict:
+    """Preflight against FS.start_invariance.v1's registered declaration: the frozen-screen
+    scorer has its ``frozen_code`` sha256, and every input both runs read (files, and the
+    head-well directory digest) still has the hash FS declared. Refused otherwise."""
+    p = repo / FS_DECL
+    if not p.is_file():
+        raise Refused(f"{FS_DECL} is missing: the N2 screens and the inputs cannot be checked")
+    decl = json.loads(p.read_text(encoding="utf-8"))
+    want = (decl.get("frozen_code") or {}).get(FS_SCORER)
+    got = sha256(repo / FS_SCORER) if (repo / FS_SCORER).is_file() else None
+    if not want or got != want:
+        raise Refused(f"{FS_SCORER} sha256 {str(got)[:8]} is not FS's frozen {str(want)[:8]}")
+    bad, n = [], 0
+    for rec in decl.get("inputs") or []:
+        if rec.get("path") in inputs:
+            n += 1
+            if inputs[rec["path"]] != rec.get("sha256"):
+                bad.append(rec["path"])
+    for rec in decl.get("input_digests") or []:
+        key = f"{rec.get('path')}/{rec.get('glob')}"
+        if key in inputs:
+            n += 1
+            if inputs[key] != {"n_files": rec.get("n_files"), "sha256": rec.get("sha256")}:
+                bad.append(key)
+    if bad:
+        raise Refused(f"inputs changed since FS.start_invariance.v1 declared them: {bad}")
+    return {"declaration_sha256": sha256(p), "scorer_sha256": got, "n_inputs_checked": n}
+
+
 def preconditions(repo: Path = REPO, stem: str = OUT_STEM) -> dict:
     check_stem(stem)
     before = check_reference(repo)
     ins = input_hashes(repo)
     if ins["missing"]:
         raise Refused(f"inputs missing: {ins['missing']}")
+    fs = check_fs_declared(repo, ins["sha256"])
     present = [p for p in (*outputs(stem).values(), sidecar_path(stem)) if (repo / p).exists()]
-    return {"reference_sha256_before": before, "inputs": ins["sha256"], "present": present}
+    return {"reference_sha256_before": before, "inputs": ins["sha256"], "present": present,
+            "fs_preflight": fs}
+
+
+# ---------------------------------------------------------------------------------- attempts
+def read_attempts(repo: Path = REPO) -> list[dict]:
+    p = repo / ATTEMPTS
+    if not p.is_file():
+        return []
+    return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def log_attempt(repo: Path, rec: dict) -> None:
+    """Append one row (never rewritten)."""
+    p = repo / ATTEMPTS
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(json.dumps(rec, sort_keys=True) + "\n")
+
+
+def attempts_summary(records: list[dict]) -> list[dict]:
+    """One entry per attempt: its end row, or its start row marked killed_or_partial."""
+    ends = {r["attempt"]: r for r in records if r.get("event") == "end"}
+    out = []
+    for r in records:
+        if r.get("event") == "start":
+            e = ends.get(r["attempt"])
+            out.append(e if e else {**r, "event": "end", "status": "killed_or_partial",
+                                    "rc": None})
+    return out
+
+
+def next_rung(records: list[dict]) -> str:
+    """The rung the next run must use, or Refused when the ladder forbids any run."""
+    done = attempts_summary(records)
+    for a in done:
+        if a["status"] == "ok":
+            raise Refused(f"attempt {a['attempt']} at {a['rung']} reproduced; no rerun")
+        if a["status"] == "reference_changed":
+            raise Refused(f"attempt {a['attempt']} found the bound file changed; stop for the "
+                          "lead")
+    spent = {a["rung"] for a in done if a["status"] == "does_not_reproduce"}
+    for rung in LADDER:
+        if rung not in spent:
+            return rung
+    raise Refused(f"the declared ladder {list(LADDER)} is used up: no rung reproduced")
 
 
 # ---------------------------------------------------------------------------------- checks
@@ -377,7 +504,13 @@ def _write_sidecar(repo: Path, stem: str, rec: dict) -> None:
 def cmd_check(repo: Path, stem: str, python: str) -> int:
     pre = preconditions(repo, stem)
     print(f"reference {REF}: sha256 {pre['reference_sha256_before'][:8]} (byte-identical)")
-    print(f"inputs: {len(pre['inputs'])} hashed, none missing")
+    print(f"inputs: {len(pre['inputs'])} hashed, none missing; FS preflight ok "
+          f"({pre['fs_preflight']['n_inputs_checked']} declared inputs unchanged, score_fs.py "
+          "frozen)")
+    try:
+        print(f"attempt ladder {list(LADDER)}: next rung {next_rung(read_attempts(repo))}")
+    except Refused as e:
+        print(f"attempt ladder: no run allowed ({e})")
     if pre["present"]:
         print(f"outputs already present (a run would refuse): {pre['present']}")
     sp = superposition_note(repo)
@@ -393,62 +526,111 @@ def cmd_check(repo: Path, stem: str, python: str) -> int:
 
 def cmd_run(repo: Path, stem: str, python: str, code: Path, dry: bool) -> int:
     pre = preconditions(repo, stem)
+    records = read_attempts(repo)
+    rung = next_rung(records)
     argv = forward_argv(python, stem)
     if dry:
-        print(f"reference sha256 {pre['reference_sha256_before'][:8]} ok; would run from "
+        print(f"reference sha256 {pre['reference_sha256_before'][:8]} ok; FS preflight ok "
+              f"({pre['fs_preflight']['n_inputs_checked']} inputs); next rung {rung} "
+              f"({len(attempts_summary(records))} earlier attempts); would run from "
               f"{repo.name} with PYTHONPATH={code}:")
         print(shlex.join(argv))
         return 0
     if pre["present"]:
-        raise Refused(f"outputs exist (never overwritten; move them aside): {pre['present']}")
+        raise Refused(f"outputs exist (never overwritten; run archive first): {pre['present']}")
     info = check_code(code, python)
+    if info["rung"] != rung:
+        raise Refused(f"the ladder's next rung is {rung}, but {code.name} is the "
+                      f"{info['rung']} rung")
     free = gpu_free_mib()
     print(f"GPU memory free: {free} MiB (need {MIN_FREE_MIB})", flush=True)
     if free < MIN_FREE_MIB:
         raise Refused(f"not enough free GPU memory ({free} MiB)")
     o = outputs(stem)
+    n = 1 + sum(1 for r in records if r.get("event") == "start")
     t0 = utc()
+    log_attempt(repo, {"event": "start", "attempt": n, "rung": rung, "time": t0,
+                       "code_commit": info["commit"], "code_dir": info["dir"]})
     env = {**os.environ, "PYTHONPATH": str(code)}
-    with (repo / o["stdout_log"]).open("x") as so, (repo / o["stderr_log"]).open("x") as se:
-        rc = subprocess.run(argv, cwd=str(repo), env=env, stdout=so, stderr=se).returncode
-    t1 = utc()
-    after = sha256(repo / REF)
-    rec = {"schema": "all30_scenario_forward.v1", "ruling": RULING, "model_only": True,
-           "registration": None, "purpose": "all30 head lever at N2's unit for the page "
-           "(tile tW headline); cut30 and retire_aqua reproduced in the same file",
-           "command": ["$PYTHON", *argv[1:]], "cwd": "repository root",
-           "env": {"PYTHONPATH": code.name, "CUDA_VISIBLE_DEVICES":
-                   os.environ.get("CUDA_VISIBLE_DEVICES")},
-           "python": sys.version.split()[0], "code": info, "started_utc": t0,
-           "finished_utc": t1, "returncode": rc, "inputs_sha256": pre["inputs"],
-           "reference": {"path": REF, "sha256_expected": REF_SHA256,
-                         "sha256_before": pre["reference_sha256_before"],
-                         "sha256_after": after, "byte_identical": after == REF_SHA256},
-           "scenario": {"name": "all30", "spec": ALL30, "desc": ALL30_DESC}}
-    with (repo / o["stdout_log"]).open() as f:
-        first = f.readline().strip()
-    rec["device_line"] = first
-    status, code_rc = "ok", 0
-    if rc != 0 or first != "device: cuda":
-        status, code_rc = "forward_failed", 2
-    elif after != REF_SHA256:
-        status, code_rc = "reference_changed", 3
-    else:
-        v = verify(repo, stem)
-        rec.update({k: v[k] for k in ("layout", "reproduction", "n2_unit")})
-        if not v["ok"]:
-            status, code_rc = "does_not_reproduce", 3
-    rec["outputs_sha256"] = {k: sha256(repo / p) for k, p in o.items() if (repo / p).is_file()}
-    rec["status"] = status
-    _write_sidecar(repo, stem, rec)
-    print(f"all30 forward: {status} (exit {code_rc}); sidecar {sidecar_path(stem)} "
-          f"sha256 {sha256(repo / sidecar_path(stem))[:8]}; reference "
-          f"{'byte-identical' if after == REF_SHA256 else 'CHANGED'}")
+    rc, status, code_rc, rec = None, "killed_or_partial", 2, {}
+    try:
+        with (repo / o["stdout_log"]).open("x") as so, (repo / o["stderr_log"]).open("x") as se:
+            rc = subprocess.run(argv, cwd=str(repo), env=env, stdout=so, stderr=se).returncode
+        try:
+            after = sha256(repo / REF)
+        except OSError:
+            after = None
+        with (repo / o["stdout_log"]).open() as f:
+            first = f.readline().strip()
+        rec = {"schema": "all30_scenario_forward.v2", "ruling": RULING, "model_only": True,
+               "registration": None, "purpose": "all30 head lever at N2's unit for the page "
+               "(tile tW headline); cut30 and retire_aqua reproduced in the same file",
+               "command": ["$PYTHON", *argv[1:]], "cwd": "repository root",
+               "env": {"PYTHONPATH": code.name, "CUDA_VISIBLE_DEVICES":
+                       os.environ.get("CUDA_VISIBLE_DEVICES")},
+               "python": sys.version.split()[0], "code": info, "rung": rung, "attempt": n,
+               "ladder": list(LADDER), "prior_attempts": attempts_summary(records),
+               "started_utc": t0, "returncode": rc, "inputs_sha256": pre["inputs"],
+               "fs_preflight": pre["fs_preflight"],
+               "reference": {"path": REF, "sha256_expected": REF_SHA256,
+                             "sha256_before": pre["reference_sha256_before"],
+                             "sha256_after": after, "byte_identical": after == REF_SHA256},
+               "scenario": {"name": "all30", "spec": ALL30, "desc": ALL30_DESC},
+               "device_line": first}
+        if rc != 0 or first != "device: cuda":
+            status, code_rc = "forward_failed", 2
+        elif after != REF_SHA256:
+            status, code_rc = "reference_changed", 3
+        else:
+            try:
+                v = verify(repo, stem)
+            except Exception as e:  # noqa: BLE001  (an unreadable output is an attempt, too)
+                status, code_rc = "unreadable_outputs", 2
+                rec["verify_error"] = f"{type(e).__name__}: {e}"
+            else:
+                rec.update({k: v[k] for k in ("layout", "reproduction", "n2_unit")})
+                status, code_rc = ("ok", 0) if v["ok"] else ("does_not_reproduce", 3)
+    finally:
+        shas = {k: sha256(repo / p) for k, p in o.items() if (repo / p).is_file()}
+        rec.update({"status": status, "finished_utc": utc(), "outputs_sha256": shas})
+        if rec.get("schema"):
+            _write_sidecar(repo, stem, rec)
+        log_attempt(repo, {"event": "end", "attempt": n, "rung": rung, "time": rec[
+            "finished_utc"], "code_commit": info["commit"], "rc": rc, "status": status,
+            "outputs_sha256": shas})
+    sc = repo / sidecar_path(stem)
+    same = rec.get("reference", {}).get("byte_identical")
+    print(f"all30 forward: {status} (exit {code_rc}, attempt {n}, rung {rung}); sidecar "
+          f"{sha256(sc)[:8] if sc.is_file() else 'not written'}; reference "
+          f"{'byte-identical' if same else 'CHANGED or unread'}")
     if status == "ok":
         d = rec["n2_unit"]["dec2032_m"]
         print("N2's unit, Dec 2032 (model output): " + ", ".join(
             f"{s} {v:+.3f} m" for s, v in d.items()))
+    elif status == "does_not_reproduce" and rung == LADDER[0]:
+        print(f"rung {rung} spent: archive its outputs, then run --code <clean worktree at "
+              f"{FALLBACK_COMMIT}> (the one declared fallback)")
     return code_rc
+
+
+def cmd_archive(repo: Path, stem: str, reason: str) -> int:
+    """Move every output and the sidecar aside, unopened, and log it."""
+    if not reason.strip():
+        raise Refused("archive needs a reason")
+    if any(a["status"] == "ok" for a in attempts_summary(read_attempts(repo))):
+        raise Refused("an attempt reproduced: its outputs are the deliverable, not archived")
+    stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dst = repo / LOG_DIR / "archive" / stamp
+    moved = []
+    for p in (*outputs(stem).values(), sidecar_path(stem)):
+        if (repo / p).exists():
+            dst.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(repo / p), str(dst / Path(p).name))
+            moved.append(Path(p).name)
+    log_attempt(repo, {"event": "archive", "time": utc(), "reason": reason,
+                       "dir": str(dst.relative_to(repo)), "moved": moved})
+    print(f"archived {len(moved)} files to {dst.relative_to(repo)}")
+    return 0
 
 
 def cmd_verify(repo: Path, stem: str) -> int:
@@ -469,7 +651,8 @@ def cmd_verify(repo: Path, stem: str) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("cmd", choices=("check", "run", "verify"))
+    ap.add_argument("cmd", choices=("check", "run", "verify", "archive"))
+    ap.add_argument("reason", nargs="?", default="", help="archive: why the outputs move")
     ap.add_argument("--code", default=str(REPO),
                     help="checkout whose hydrophysics/ runs (PYTHONPATH; default this one)")
     ap.add_argument("--python", default=sys.executable)
@@ -481,6 +664,8 @@ def main(argv=None) -> int:
             return cmd_check(REPO, OUT_STEM, a.python)
         if a.cmd == "verify":
             return cmd_verify(REPO, OUT_STEM)
+        if a.cmd == "archive":
+            return cmd_archive(REPO, OUT_STEM, a.reason)
         return cmd_run(REPO, OUT_STEM, a.python, Path(a.code).resolve(),
                        a.dry_run or os.environ.get("DRY") == "1")
     except Refused as e:

@@ -558,6 +558,59 @@ def _prov(b: PageBundle, pol: PolicyFields, kp: dict, lang: str) -> tuple[str, l
     return c.tr(lang, "prov_base", {"n": c.mc.get("n_members")}), ["prov_base"]
 
 
+IRR30 = (0.7, 1.0, 1.0, 1.0, 1.0, 1.0)
+
+
+def _near(f, g) -> bool:
+    return all(abs(a - b) < 1e-6 for a, b in zip(f, g, strict=True))
+
+
+def _uniform_cut(f) -> bool:
+    return not all(v == 1 for v in f) and all(abs(v - f[0]) < 1e-6 for v in f)
+
+
+def hl_size(c: Ctx, pol: PolicyFields, f, yr: int, lang: str) -> tuple[str, str]:
+    """``hlSize(f, yr)``: the headline's size clause per policy (R8.9; lead decisions a, b: the
+    x1.27 factor belongs to the irrigation x0.7 lever only, x1.03-1.05 to all30 only)."""
+    if pol.w30:
+        k = "hl_sz_w30"
+    elif _near(f, IRR30):
+        k = "hl_sz_irr"
+    elif not _uniform_cut(f):
+        k = "hl_sz_cls"
+    elif _near(f, (0.7,) * len(f)) and int(yr) == 2026:
+        k = "hl_sz_all"
+    else:
+        return "", ""
+    return k, c.tr(lang, k)
+
+
+def tile_w(b: PageBundle, p: Policy, year: int, lang: str = "en") -> tuple[str, str, str]:
+    """``renderTiles`` for tile tW: (range-line key, range line, detail line)."""
+    c = ctx(b)
+    y = c.yidx(year)
+    pol = policy_fields(b, p)
+    if pol.src == "none":
+        return "no_run", c.tr(lang, "no_run"), ""
+    kp = kpis(b, pol, y).kp
+    isB = pol.src == "base"
+    w = w30(c)
+    if isB:
+        rk = "tW_w30" if w else ""
+        r = c.tr(lang, "tW_w30", {"yr": w["start"], "h": J.sg(w["series"][c.Y - 1]),
+                                   "H": c.years[c.Y - 1]}) if w else ""
+        pre = ""
+    else:
+        rk, r = "tW_r", c.tr(lang, "tW_r")
+        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _near(p.f, IRR30) else
+              "" if _uniform_cut(p.f) else "tW_cls")
+        pre = c.tr(lang, pk) if pk else ""
+    d = pre + c.tr(lang, "tW_d", {"year": c.years[y],
+                                  "y": "–" if kp.get("yunHead") is None else J.sg(kp["yunHead"]),
+                                  "f": J.sg(kp["head"]), "v": J.sg(kp["headMax"], 1)})
+    return rk, r, d
+
+
 def w30_sentence(b: PageBundle, lang: str) -> str:
     """``w30Sentence()``: the opening headline names the headline lever (ruling R8.9)."""
     c = ctx(b)
@@ -599,14 +652,17 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
         hw = head_where(b, kp, lang)
         txt = J.sg(hw["v"])
         values.append(Value("head", hw["v"], txt, "m",
-                            paths=(("n2Unit.all30.series[]",) if pol.w30 else
-                                   ("n2Unit.solved[][]", "n2Unit.basis[][]")) if hw["n2"] else ("arrays.dHeadL2",),
+                            paths=((("n2Unit.all30.series[]",) if pol.w30 else
+                                    ("n2Unit.solved[][]", "n2Unit.basis[][]")) if hw["n2"]
+                                   else ("arrays.dHeadL2",)),
                             functions=("headWhere",), quantity="head_change",
                             region="n2_yunlin_wells" if hw["n2"] else
                             ("yunlin_l2" if hw["key"] == "hw_yun" else "fan_l2"),
                             aggregation="mean_own_layer" if hw["n2"] else "cell_mean"))
+        _, sz = hl_size(c, pol, p.f, yr, lang)       # its claims are hl_pol's (C01-sz)
         key = "hl_pol"
-        s = c.tr(lang, "hl_pol", {"pol": pol_words, "yr": yr, "h": txt, "where": hw["where"], "year": Hy})
+        s = c.tr(lang, "hl_pol", {"pol": pol_words, "yr": yr, "h": txt, "where": hw["where"],
+                                  "year": Hy, "sz": sz})
     snippets.append(Snippet(key, lang, s, tuple(v.key for v in values)))
     prov, pkeys = _prov(b, pol, kp, lang)
     snippets.append(Snippet("+".join(pkeys), lang, prov))
@@ -622,6 +678,12 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
                                 aggregation="mean_own_layer" if hw["n2"] else "cell_mean"))
         if not isB:
             snippets.append(Snippet("tW_r", lang, c.tr(lang, "tW_r")))
+        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _near(p.f, IRR30) else
+              "" if _uniform_cut(p.f) else "tW_cls") if not isB else ("tW_w30" if w30(c) else "")
+        if pk:
+            w = w30(c)
+            snippets.append(Snippet(pk, lang, c.tr(lang, pk, {"yr": w["start"], "h": J.sg(
+                w["series"][c.Y - 1]), "H": c.years[c.Y - 1]} if pk == "tW_w30" else None)))
         gwh = kp["gwh"]
         if gwh is not None:
             values.append(Value("gwh", gwh, J.f1(gwh), "GWh/yr", paths=("classes[].gwh",),
