@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md section 21",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07 (fourteenth set) R8.16a/b/c, results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -22,7 +22,10 @@
  "grades_note": "S: supported by a prospective or fresh registered test; S-dt: S (design-time); S-dt-dir-size: S (design-time), direction only, on a claim about a size; D-measured: a registered synthetic reading says the test can decide; D-unknown: decidability unknown; D-weak: weak by design. A D decidable only after 2030-01-15 is D-pending at the same grades (ruling R8.4b). N, L and W are graded by their code and need no qualifier.",
  "end_goal_grade": 1.0,
  "end_goal_note": "end-goal convention (ruling R8.12b, bookkeeping only, never shown alone): a row the mapping marks withdrawn_with_reason (withdrawn under every outcome, with the reason stated in the ledger), registered_undecidable or no_target counts as honestly narrowed, graded end_goal_grade; 'requires' names the registration that must be cited at the ledger state for the mark to apply",
- "composite_note": "a W in a composite status grades the row W; otherwise the row takes the highest grade among its codes (progress.py --composite first is the sensitivity that grades the first code)",
+ "composite": "first",
+ "composite_note": "official rule (user ruling 2026-11-07, fourteenth set, R8.16a): a W in a composite status grades the row W; otherwise the row is graded by its first code, the status of what the row shows now (the trailing D is the pending decider, a trailing L the internals label). The earlier default (mapping default-v1) took the highest code.",
+ "split_weights": true,
+ "split_note": "split rule (user ruling 2026-11-07, fourteenth set, R8.16b): rows carrying split_of P are the pieces of the ledger row P. The parent's display weight is the largest derived (or overridden) weight among the pieces present at the ledger state (the pieces partition the parent's display, so the parent was shown wherever any piece is), and each piece weighs that weight divided by the number of pieces present. The parent's total weight in its part is therefore unchanged and splitting a claim cannot raise its part's score by itself. Pieces of one parent must share a part. At a ledger state before the split only the parent row is present and keeps its weight.",
  "answer_tiles": [
   "tW",
   "tC"
@@ -37,32 +40,29 @@
    "grade": {
     "S+D": {
      "S": "S-dt-dir-size",
-     "D": {
-      "measured_by": "X5.n2_reading.v1",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     },
     "S": {
      "S": "S-dt"
     }
    },
-   "reason": "Head change under a policy at N2's unit, the headline answer. Before the round-8 split (status S+D) the row claimed the change itself, a size, while its S covered only the direction (design-time, R0 recipe): S design-time direction-only on a size claim. After the split (status S) the row claims the direction only: S design-time."
+   "reason": "Head change under a policy at N2's unit, the headline answer. Before the round-8 split (status S+D) the row claimed the change itself, a size, while its S covered only the direction (design-time, R0 recipe): S design-time direction-only on a size claim. After the split (status S) the row claims the direction only: S design-time. The D of the pre-split S+D (N2) is graded unknown, as C01-w is (R8.16c); under the composite-first rule the row grades its S.",
+   "split_of": "C01"
   },
   "C01-w": {
    "part": "head_response_yunlin",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "X5.n2_reading.v1",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
-   "reason": "N2's within-window anomaly response. Decidability measured by X5.n2_reading.v1 ('informative', not decisive: false pass 0.20, power 0.95, 0.15 under the canal confounder); the ledger labels it 'D, decidability measured'."
+   "reason": "N2's within-window anomaly response. Decidability measured by X5.n2_reading.v1 ('informative', not decisive: false pass 0.20, power 0.95, 0.15 under the canal confounder); the ledger labels it 'D, decidability measured'. Graded D, decidability unknown, by user ruling 2026-11-07 (fourteenth set) (R8.16c): the 'informative' reading cannot decide under the canal confounder, so it does not say the test can decide.",
+   "split_of": "C01"
   },
   "C01-sz": {
    "part": "head_response_yunlin",
-   "reason": "Size of the head lever by Dec 2032, model-only, 'size likely too small; not gated' (N)."
+   "reason": "Size of the head lever by Dec 2032, model-only, 'size likely too small; not gated' (N).",
+   "split_of": "C01"
   },
   "C02": {
    "part": "head_response_yunlin",
@@ -127,7 +127,8 @@
   },
   "C30-scen": {
    "part": "forecast_start_validation",
-   "reason": "Baseline projection fields after Dec 2022: the physics model's average-weather scenario, not a forecast (N), on the baseline headline."
+   "reason": "Baseline projection fields after Dec 2022: the physics model's average-weather scenario, not a forecast (N), on the baseline headline.",
+   "split_of": "C30"
   },
   "C30-fc": {
    "part": "forecast_start_validation",
@@ -139,7 +140,8 @@
      }
     }
    },
-   "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475)."
+   "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475).",
+   "split_of": "C30"
   },
   "E01": {
    "part": "forecast_start_validation",
@@ -190,13 +192,10 @@
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "FV.decidability.v2_postfailure",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-weak"
     }
    },
-   "reason": "E02c, per-county coverage gate-3 and the strict level rule. FV.decidability.v2 measured the level rule decisive (P 0.96, null false pass 0.0); its coverage half is weak by design in Yunlin (P 0.35) and within Monte Carlo noise of weak in Changhua (0.501). Mixed row: graded on the level rule, the row's primary rule (flagged; candidate B grades D-weak)."
+   "reason": "E02c, per-county coverage gate-3 and the strict level rule. FV.decidability.v2 measured the level rule decisive (P 0.96, null false pass 0.0); its coverage half is weak by design in Yunlin (P 0.35) and within Monte Carlo noise of weak in Changhua (0.501). Graded D-weak on its coverage half by user ruling 2026-11-07 (fourteenth set) (R8.16c)."
   },
   "E22": {
    "part": "forecast_start_validation",
@@ -480,19 +479,19 @@
    "part": "changhua",
    "grade": {
     "S": {
-     "S": "S-dt"
+     "S": "S-dt-dir-size"
     }
    },
-   "reason": "Direction of R1c's Changhua response at 23 external screens: S design-time, a direction claim (size not supported is a stated limit)."
+   "reason": "Direction of R1c's Changhua response at 23 external screens: S design-time, a direction claim (size not supported is a stated limit). Graded S design-time direction-only on a size claim (0.75) by user ruling 2026-11-07 (fourteenth set) (R8.16c): a direction-only answer to Changhua's size question."
   },
   "E26": {
    "part": "changhua",
    "grade": {
     "S": {
-     "S": "S-dt"
+     "S": "S-dt-dir-size"
     }
    },
-   "reason": "Direction of R1c's Changhua response in 2010-11: S design-time, a direction claim."
+   "reason": "Direction of R1c's Changhua response in 2010-11: S design-time, a direction claim. Graded S design-time direction-only on a size claim (0.75) by user ruling 2026-11-07 (fourteenth set) (R8.16c): a direction-only answer to Changhua's size question."
   },
   "E12": {
    "part": "none",
@@ -523,15 +522,20 @@
    "reason": "No science part: payload numbers the page never reads (not displayed)."
   }
  },
- "candidates": {
-  "B": {
-   "description": "stricter qualifiers, for the lead's decision: N2's 'informative' reading is not 'the test can decide' (it cannot under the canal confounder); E02c is graded on its weak coverage half; E25 and E26 are read as answers to the Changhua size question, supported in direction only",
+ "mappings": {
+  "default-v1": {
+   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a.",
+   "composite": "max",
+   "split_weights": false,
    "claims": {
     "C01": {
      "grade": {
       "S+D": {
        "S": "S-dt-dir-size",
-       "D": "D-unknown"
+       "D": {
+        "measured_by": "X5.n2_reading.v1",
+        "otherwise": "D-unknown"
+       }
       },
       "S": {
        "S": "S-dt"
@@ -541,28 +545,34 @@
     "C01-w": {
      "grade": {
       "D": {
-       "D": "D-unknown"
+       "D": {
+        "measured_by": "X5.n2_reading.v1",
+        "otherwise": "D-unknown"
+       }
       }
      }
     },
     "E21": {
      "grade": {
       "D": {
-       "D": "D-weak"
+       "D": {
+        "measured_by": "FV.decidability.v2_postfailure",
+        "otherwise": "D-unknown"
+       }
       }
      }
     },
     "E25": {
      "grade": {
       "S": {
-       "S": "S-dt-dir-size"
+       "S": "S-dt"
       }
      }
     },
     "E26": {
      "grade": {
       "S": {
-       "S": "S-dt-dir-size"
+       "S": "S-dt"
       }
      }
     }

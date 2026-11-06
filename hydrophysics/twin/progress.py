@@ -21,6 +21,12 @@ What comes from where:
   0.5 for a row shown only in the README, the model card or the evidence update (``doc:``
   text keys or ``doc_anchors`` only); 0 for a row shown nowhere. The mapping may override a
   derived weight, and every override carries its reason (``weight_reason``).
+* SPLIT rows (user ruling R8.16b): rows the mapping marks ``split_of: P`` are the pieces of
+  the ledger row P. The parent's display weight is the largest weight among the pieces
+  present at the ledger state (the pieces partition the parent's display), and each piece
+  weighs that weight divided by the number of pieces present, so the parent's total weight
+  in its part is unchanged and a split cannot raise a part's score by itself. Before the
+  split only the parent row is present and keeps its weight.
 * GRADE: the status code's grade (section 21); S and D codes take the qualifier the mapping
   gives for the row's exact status string (``grade[status][code]``). A D qualifier may be
   conditional, ``{"measured_by": REG, "otherwise": "D-unknown"}``: measured exactly when the
@@ -28,10 +34,12 @@ What comes from where:
   qualifier for at its current status is an error, so a status change forces a mapping change.
 * COMPOSITE statuses (``S+D``, ``N+D``, ``W+D``, ``W+L``): a W anywhere grades the row W (a
   withdrawn row asserts nothing, and its pending decider does not restore it); otherwise the
-  row takes the highest grade among its codes (``max``: the S or N part is what the row shows
-  now, the D part the registered decider its wording names, and the row is at least as well
-  founded as either alone). ``--composite first`` grades by the first code instead, as a
-  sensitivity. Every composite row is flagged in the output.
+  official rule (``first``, user ruling R8.16a) grades the first code, the status of what the
+  row shows now (the trailing D is the pending decider). ``max`` (the highest code, the rule of
+  mapping ``default-v1``) is kept for comparison. Every composite row is flagged.
+
+The official mapping is the map file's base (user rulings 2026-11-07, fourteenth set,
+R8.16a/b/c); ``--mapping default-v1`` lays the recount's first default over it for comparison.
 
 Reported beside each other (never one alone): the five parts, science trust, the 6-part
 headline (only when a claim-honesty figure is supplied: claim honesty is how well the page,
@@ -41,7 +49,7 @@ withdrawn-with-reason, registered-undecidable or no-target graded 1.0; bookkeepi
 evidence, ruling R8.12b).
 
 CLI: ``python -m hydrophysics.twin.progress [--ledger PATH] [--at COMMIT-or-file] [--json]
-[--honesty PCT] [--candidate NAME] [--composite max|first]``.
+[--honesty PCT] [--mapping NAME] [--composite max|first]``.
 """
 from __future__ import annotations
 
@@ -87,17 +95,25 @@ def load_ledger(path: Path | None = None, at: str | None = None) -> tuple[dict, 
     return json.loads(p.read_text(encoding="utf-8")), str(p)
 
 
-def with_candidate(pmap: dict, name: str | None) -> dict:
-    """The mapping with candidate ``name``'s per-claim fields laid over it."""
-    if not name:
+OFFICIAL = "official"
+
+
+def with_mapping(pmap: dict, name: str | None) -> dict:
+    """The mapping named ``name``: the map file's base (the official rule) when ``name`` is
+    None or ``official``, else the base with that entry of ``mappings`` laid over it (its
+    per-claim fields, its ``composite`` and ``split_weights``)."""
+    if not name or name == OFFICIAL:
         return pmap
-    cand = pmap.get("candidates", {}).get(name)
-    if cand is None:
-        raise MappingError(f"no candidate mapping {name!r} in the map file")
+    alt = pmap.get("mappings", {}).get(name)
+    if alt is None:
+        raise MappingError(f"no mapping {name!r} in the map file")
     out = dict(pmap, claims={k: dict(v) for k, v in pmap["claims"].items()})
-    for cid, fields in cand["claims"].items():
+    for key in ("composite", "split_weights"):
+        if key in alt:
+            out[key] = alt[key]
+    for cid, fields in alt["claims"].items():
         if cid not in out["claims"]:
-            raise MappingError(f"candidate {name}: unknown claim id {cid}")
+            raise MappingError(f"mapping {name}: unknown claim id {cid}")
         out["claims"][cid].update(fields)
     return out
 
@@ -215,11 +231,18 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
         eg = e.get("end_goal")
         if eg and eg.get("kind") not in END_GOAL_KINDS:
             probs.append(f"{c['id']}: end_goal kind {eg.get('kind')!r} unknown")
+    split_parts: dict[str, set] = {}
+    for e in pmap["claims"].values():
+        if e.get("split_of"):
+            split_parts.setdefault(e["split_of"], set()).add(e.get("part"))
+    probs += [f"split pieces of {p} sit in more than one part: {sorted(ps)}"
+              for p, ps in split_parts.items() if len(ps) > 1]
     return probs
 
 
 def recount(ledger: dict, pmap: dict, honesty: float | None = None,
-            composite: str = "max") -> dict:
+            composite: str | None = None) -> dict:
+    composite = composite or pmap.get("composite", "max")
     probs = check_mapping(ledger, pmap)
     if probs:
         raise MappingError("; ".join(probs))
@@ -236,7 +259,8 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
         code = g["graded_code"]
         rows.append({
             "id": c["id"], "status": c["status_current"], "part": e["part"],
-            "weight": w, "derived_weight": dw, "weight_basis": dwhy,
+            "weight": w, "display_weight": w, "derived_weight": dw, "weight_basis": dwhy,
+            "split_of": e.get("split_of") if pmap.get("split_weights") else None,
             "weight_override": "weight" in e and w != dw,
             "grade": g["grade"], "grade_key": g["grade_key"], "graded_code": code,
             "grade_why": g["why"], "composite": g["composite"],
@@ -244,6 +268,14 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
             "end_goal": eg["kind"] if eg_on else None,
             "end_goal_grade": float(pmap["end_goal_grade"]) if eg_on else g["grade"],
         })
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        if r["split_of"]:
+            groups.setdefault(r["split_of"], []).append(r)
+    for pieces in groups.values():
+        parent_w = max(r["display_weight"] for r in pieces)
+        for r in pieces:
+            r["weight"] = parent_w / len(pieces)
     parts = {}
     for p in pmap["parts"]:
         rs = [r for r in rows if r["part"] == p and r["weight"] > 0]
@@ -264,6 +296,7 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
             for f in sci if sci[f] is not None} if honesty is not None else None)
     return {"rows": rows, "parts": parts, "science": sci, "six_part": six,
             "claim_honesty": honesty, "composite_rule": composite,
+            "split_groups": {k: sorted(r["id"] for r in v) for k, v in sorted(groups.items())},
             "weight_overrides": sorted(r["id"] for r in rows if r["weight_override"]),
             "composite_rows": sorted(r["id"] for r in rows if r["composite"])}
 
@@ -274,10 +307,12 @@ def _f(v) -> str:
 
 
 def render(res: dict, label: str, pmap: dict) -> str:
+    splits = "; ".join(f"{k}: {', '.join(v)}" for k, v in res["split_groups"].items())
     out = [f"Progress recount (rule of section 21) of {label}",
            f"composite rule: {res['composite_rule']}; weight overrides: "
            f"{', '.join(res['weight_overrides']) or 'none'}; composite rows: "
-           f"{', '.join(res['composite_rows']) or 'none'}", "",
+           f"{', '.join(res['composite_rows']) or 'none'}; split rows sharing a parent's "
+           f"weight: {splits or 'none'}", "",
            f"{'part':28s} {'official':>8s} {'intended':>8s} {'end-goal*':>9s} {'rows':>5s}"]
     for p in pmap["parts"]:
         s = res["parts"][p]
@@ -299,9 +334,10 @@ def render(res: dict, label: str, pmap: dict) -> str:
     for r in res["rows"]:
         flags = [f for f, on in (("composite", r["composite"]),
                                  ("override", r["weight_override"]),
+                                 (f"split of {r['split_of']}", r["split_of"]),
                                  (f"end-goal:{r['end_goal']}", r["end_goal"])) if on]
         basis = r["grade_key"] + (f" [{r['grade_why']}]" if r["grade_why"] else "")
-        out.append(f"{r['id']:8s} {r['status']:6s} {r['part']:26s} {r['weight']:>4g} "
+        out.append(f"{r['id']:8s} {r['status']:6s} {r['part']:26s} {r['weight']:>4.3g} "
                    f"{r['grade']:>5.2f}  {basis}" + (f"  ({'; '.join(flags)})" if flags else ""))
     return "\n".join(out)
 
@@ -314,21 +350,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--at", default=None, help="a commit (the ledger as committed there) or "
                     "a ledger file")
     ap.add_argument("--map", type=Path, default=MAP, help="mapping file")
-    ap.add_argument("--candidate", default=None, help="lay a candidate mapping from the map "
-                    "file over the default one")
-    ap.add_argument("--composite", choices=("max", "first"), default="max")
+    ap.add_argument("--mapping", default=None, help="'official' (default: user rulings "
+                    "R8.16a/b/c) or a named mapping of the map file, e.g. default-v1")
+    ap.add_argument("--composite", choices=("max", "first"), default=None,
+                    help="override the mapping's composite rule (sensitivity only)")
     ap.add_argument("--honesty", type=float, default=None, help="claim honesty in percent "
                     "(an audit or estimate figure; the ledger cannot give it)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     ledger, label = load_ledger(a.ledger, a.at)
-    pmap = with_candidate(load_map(a.map), a.candidate)
+    pmap = with_mapping(load_map(a.map), a.mapping)
     res = recount(ledger, pmap, a.honesty, a.composite)
     if a.json:
-        json.dump(dict(res, ledger=label, candidate=a.candidate), sys.stdout, indent=1)
+        json.dump(dict(res, ledger=label, mapping=a.mapping or OFFICIAL), sys.stdout, indent=1)
         sys.stdout.write("\n")
     else:
-        print(render(res, label + (f" (candidate {a.candidate})" if a.candidate else ""), pmap))
+        print(render(res, f"{label} (mapping {a.mapping or OFFICIAL})", pmap))
     return 0
 
 

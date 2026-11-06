@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 
 import pytest
 
@@ -19,7 +20,7 @@ PARTS = ["head_response_yunlin", "forecast_start_validation", "uncertainty_bands
 
 def _map(claims: dict) -> dict:
     real = P.load_map()
-    return {"parts": PARTS, "grades": real["grades"], "end_goal_grade": 1.0,
+    return {"parts": PARTS, "grades": real["grades"], "end_goal_grade": 1.0, "composite": "max",
             "answer_tiles": ["tW"], "headline_functions": ["renderHeadline"],
             "claims": claims}
 
@@ -166,8 +167,8 @@ def test_the_map_has_no_unknown_ids():
     retired = {k for k, v in pmap["claims"].items() if v.get("retired")}
     assert active == ids, f"unknown ids {sorted(active - ids)}"
     assert not retired & ids, f"ids marked retired are still in the ledger: {retired & ids}"
-    for name, cand in pmap["candidates"].items():
-        assert set(cand["claims"]) <= set(pmap["claims"]), name
+    for name, alt in pmap["mappings"].items():
+        assert set(alt["claims"]) <= set(pmap["claims"]), name
 
 
 def test_map_values_are_well_formed():
@@ -192,11 +193,17 @@ def test_map_values_are_well_formed():
 
 def test_weights_and_grades_on_the_real_ledger():
     ledger = _ledger()
-    for cand in (None, *P.load_map()["candidates"]):
-        pmap = P.with_candidate(P.load_map(), cand)
+    for name in (None, *P.load_map()["mappings"]):
+        pmap = P.with_mapping(P.load_map(), name)
         for rule in ("max", "first"):
             res = P.recount(ledger, pmap, composite=rule)
-            assert {r["weight"] for r in res["rows"]} <= {2.0, 1.0, 0.5, 0.0}
+            assert {r["display_weight"] for r in res["rows"]} <= {2.0, 1.0, 0.5, 0.0}
+            for parent, ids in res["split_groups"].items():
+                ws = [r["weight"] for r in res["rows"] if r["id"] in ids]
+                disp = max(r["display_weight"] for r in res["rows"] if r["id"] in ids)
+                assert ws == pytest.approx([disp / len(ids)] * len(ids)), parent
+            if not pmap.get("split_weights"):
+                assert all(r["weight"] == r["display_weight"] for r in res["rows"])
             assert all(0 <= r["grade"] <= 1 for r in res["rows"])
             assert all(v is not None and 0 <= v <= 100
                        for s in res["parts"].values() for v in (s["official"], s["intended"],
@@ -226,3 +233,80 @@ def test_cli_json_round_trip(capsys, tmp_path):
         P.recount(copy.deepcopy(ledger), pmap, honesty=90.0)["six_part"]["official"])
     assert P.main(["--at", str(lp), "--map", str(mp)]) == 0
     assert "not computed" in capsys.readouterr().out
+
+
+# ---- user rulings 2026-11-07, fourteenth set (R8.16a/b/c) -------------------------------------
+# results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)
+def test_split_pieces_share_the_parent_weight():
+    """R8.16b: the pieces of a split weigh the parent's display weight divided equally, so a
+    split leaves the parent's total weight in its part unchanged."""
+    ledger, pmap = _synthetic()
+    pmap["split_weights"] = True
+    ledger["claims"] += [_claim("A1-w", "D", ["tile:tW"]), _claim("A1-sz", "N", ["i18n:q"])]
+    pmap["claims"]["A1-w"] = {"part": PARTS[0], "grade": {"D": {"D": "D-unknown"}},
+                              "reason": "r", "split_of": "A1"}
+    pmap["claims"]["A1-sz"] = {"part": PARTS[0], "reason": "r", "split_of": "A1"}
+    pmap["claims"]["A1"]["split_of"] = "A1"
+    res = P.recount(ledger, pmap)
+    assert [_row(res, c)["weight"] for c in ("A1", "A1-w", "A1-sz")] == pytest.approx([2 / 3] * 3)
+    assert _row(res, "A1-sz")["display_weight"] == 1          # its own display weighs 1
+    assert res["parts"][PARTS[0]]["weight"] == pytest.approx(5.5)   # unchanged by the split
+    want = (2 / 3 * (0.9 + 0.6 + 0.5) + 2 * 0.5 + 0.25 + 0.5 * 0.15) / 5.5 * 100
+    assert res["parts"][PARTS[0]]["official"] == pytest.approx(want)
+    # before the split only the parent is present: it keeps its weight
+    ledger, _ = _synthetic()
+    assert _row(P.recount(ledger, pmap), "A1")["weight"] == 2
+    # pieces of one parent in two parts make the recount refuse
+    ledger["claims"].append(_claim("A1-w", "D", ["tile:tW"]))
+    pmap["claims"]["A1-w"]["part"] = PARTS[1]
+    with pytest.raises(P.MappingError, match="split pieces of A1"):
+        P.recount(ledger, pmap)
+
+
+def test_the_default_mapping_is_the_ruled_one():
+    pmap = P.load_map()
+    assert pmap["composite"] == "first" and pmap["split_weights"] is True           # R8.16a/b
+    assert "R8.16" in pmap["rule"] and "c0886864" in pmap["rule"]
+    cl = pmap["claims"]
+    assert {c: cl[c].get("split_of") for c in ("C01", "C01-w", "C01-sz", "C30-scen", "C30-fc")} \
+        == {"C01": "C01", "C01-w": "C01", "C01-sz": "C01", "C30-scen": "C30", "C30-fc": "C30"}
+    assert cl["C01-w"]["grade"] == {"D": {"D": "D-unknown"}}                         # R8.16c
+    assert cl["E21"]["grade"] == {"D": {"D": "D-weak"}}
+    assert cl["E25"]["grade"] == cl["E26"]["grade"] == {"S": {"S": "S-dt-dir-size"}}
+    assert P.with_mapping(pmap, None) is pmap and P.with_mapping(pmap, "official") is pmap
+    old = P.with_mapping(pmap, "default-v1")
+    assert old["composite"] == "max" and old["split_weights"] is False
+    res = P.recount(_ledger(), pmap)
+    assert res["composite_rule"] == "first"
+    assert res["split_groups"] == {"C01": ["C01", "C01-sz", "C01-w"], "C30": ["C30-fc", "C30-scen"]}
+
+
+AUDIT_STATE = "fd40796"
+
+
+def _at(commit):
+    ok = subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=P.REPO,
+                        capture_output=True).returncode == 0
+    if not ok:
+        pytest.skip(f"commit {commit} not in this clone (shallow checkout)")
+    return P.load_ledger(at=commit)[0]
+
+
+def test_ruled_figures_at_the_audit_state_are_reproduced():
+    """The official figures at the 2026-11-02 audit state (main fd40796), pinned as published
+    in evidence section 26, and the earlier default beside them."""
+    ledger = _at(AUDIT_STATE)
+    res = P.recount(ledger, P.load_map(), honesty=95.0)
+    want = {"head_response_yunlin": 53.5, "forecast_start_validation": 51.1538,
+            "uncertainty_bands": 41.875, "subsidence_cut_response": 35.814,
+            "changhua": 45.625}
+    for p, v in want.items():
+        assert res["parts"][p]["official"] == pytest.approx(v, abs=1e-3), p
+    assert res["science"]["official"] == pytest.approx(45.5936, abs=1e-3)
+    assert res["science"]["intended"] == pytest.approx(38.6799, abs=1e-3)
+    assert res["science"]["end_goal"] == pytest.approx(57.1401, abs=1e-3)
+    assert res["six_part"]["official"] == pytest.approx(53.828, abs=1e-3)
+    assert res["six_part"]["end_goal"] == pytest.approx(63.4501, abs=1e-3)
+    old = P.recount(ledger, P.with_mapping(P.load_map(), "default-v1"), honesty=95.0)
+    assert old["science"]["official"] == pytest.approx(48.4, abs=0.05)
+    assert old["six_part"]["official"] == pytest.approx(56.1, abs=0.05)

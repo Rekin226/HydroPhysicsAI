@@ -248,6 +248,18 @@
   {
    "id": "user ruling 2026-11-06 (thirteenth set) (R8.15)",
    "text": "I1.backcast_2010_11.v1: the G1 G0 failed (power 0.527 < 0.6, false pass 0.062), so under the lead's S6 rule the whole declaration is report-only. Spend the unspent 2010-11 Yunlin window on a report-only run, or stop? Decision: Stop before any 2010-11 head is read: no product_build look, no product build, no registration. Ledger line 'not decidable by design (G1 G0 power 0.53 < 0.6)'. The 2010-11 window stays unspent for a future better-powered design. Applies to: I1.backcast_2010_11.v1, E04, E07, E26. Source: results/dataprep/rulings/user_rulings_2026-11-06.json (sha256 c2d3b0f3)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fourteenth set) (R8.16a)",
+   "text": "Which rule gives the official progress figure from now on? Decision: The strict recount: candidate B with the composite-first rule, computed from the ledger by hydrophysics/twin/progress.py, is the official rule; its part-level split differs from the 2026-11-02 audit and that is disclosed; the audited (section 21) and estimated (section 22) figures stay as labelled, shown beside. Applies to: section 21, progress reporting. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fourteenth set) (R8.16b)",
+   "text": "How are rows split from one claim weighted? Decision: The pieces of a split share the parent row's display weight (C01 -> C01/C01-w/C01-sz; C30 -> C30-scen/C30-fc), so splitting a claim cannot raise its part's score by itself. Applies to: C01, C01-w, C01-sz, C30-scen, C30-fc. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fourteenth set) (R8.16c)",
+   "text": "Apply candidate B's strict readings? Decision: Yes, all three: C01-w as D with decidability unknown (N2 'informative' cannot decide under the canal confounder); E21 graded D-weak on its coverage half; E25 and E26 graded 0.75 (direction-only answers to Changhua's size question). Applies to: C01-w, E21, E25, E26. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)."
   }
  ],
  "page": {
