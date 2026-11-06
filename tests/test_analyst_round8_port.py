@@ -80,20 +80,35 @@ MC = {
                                                 "lo": [-2.0, -1.0], "hi": [0.3, 0.4]}}},
            "lofo": {"Yunlin": {"inside": 40, "n": 44}, "Changhua": {"inside": 41, "n": 44}}},
 }
-# the round-8 page lines the port now carries (plan #19), by their own page string
-PORTED = ("ev_status", "evc_nc_fail", "evc_cov", "evc_hyb", "evc_ring_ref", "evc_pile",
-          "evc_pr_heads", "evc_pr_ch_head", "evc_pr_heads_size", "evc_pr_subs", "evc_pr_ch_subs",
-          "evc_pr_ch_class", "evc_n2_rd", "ev_counts_long")
+# the round-8 page lines the port now mirrors (plan #19), by their own page string
+PORTED = ("ev_status", "evc_nc_fail", "evc_cov", "evc_pro_iv", "evc_pro_dr", "evc_hyb",
+          "evc_ring_ref", "evc_pile", "evc_pr_heads", "evc_pr_ch_head", "evc_pr_heads_size",
+          "evc_pr_subs", "evc_pr_ch_subs", "evc_pr_ch_class", "evc_n2_rd", "ev_counts_long")
 BAND = ("bn_head_pb", "cov_line", "pb_title", "pb_ribbon_h", "pb_wells", "pb_shared_h",
         "pb_range", "bn_head_fy_pb", "pb_lofo")
+# what how_sure may carry of the R8.13 band without a ruling (B2): that it is the two-part band
+BAND_ANSWER = ["bn_head_pb", "pb_title"]
+# the lead's rulings on drawer lines kept out of answers (B1: D2; S1: spec §13)
+NOT_IN_ANSWERS = {"evc_pr_ch_head", "evc_pr_ch_subs", "evc_pr_ch_class", "evc_ring",
+                  "evc_ring_ref", "evc_pile", "evc_hyb", "evc_cov", "cov_line", "bn_aux"}
+# every R8.13 key that carries a number is a ledger band key (B2)
+PB_NUMERIC = {"bn_head_fy_pb", "pb_ribbon_h", "pb_ribbon_what", "pb_wells", "pb_small",
+              "pb_shared_h", "pb_shared_what", "pb_range", "pb_lofo", "pb_lofo_c"}
 
 
-def _page(tmp_path):
+def _page(tmp_path, *, pb=True, members=True, fy_agg=True, all30=False):
     from hydrophysics.twin.release import read_payload
-    page = testing.build_synthetic_page(tmp_path)
+    page = testing.build_synthetic_page(tmp_path, all30=all30)
     p = read_payload(page)
     p["modelcard"].update(MC)
-    p["memberFields"] = dict(p.get("memberFields") or {}, n=4, baseHeadBandYr=[[0.0]] * 5)
+    if not pb:
+        p["modelcard"].pop("pb")
+    if not fy_agg:
+        p["modelcard"]["results"]["fv2fy"].pop("agg", None)
+    if members:
+        ny = len(p["meta"]["years"])
+        p["memberFields"] = dict(p.get("memberFields") or {}, n=4,
+                                 baseHeadBandYr=[[9.0 + 0.1 * q] * ny for q in range(5)])
     testing._write_payload(page, p)
     b = PageBundle.load(page, testing.synthetic_ledger(tmp_path, page), allow_pending=True)
     if "bn_head_fy_pb" not in b.T["en"]:
@@ -105,33 +120,95 @@ def _first(keys):
     return [k.split("+")[0] for k in keys]
 
 
-def test_round8_drawer_lines_are_ported_in_the_page_order(tmp_path):
+def _parts(keys):
+    return {k for key in keys for k in key.split("+")}
+
+
+def test_round8_drawer_lines_are_mirrored_in_the_page_order(tmp_path):
     from hydrophysics_analyst import query as Q
     _, b = _page(tmp_path)
-    banned = set(b.ledger["page_scoping"]["answer_must_not_use_band_keys"])
+    banned = Q.band_keys(b)
     for lang in ("en", "zh"):
-        keys = [s.key for s in Q.evidence(b, lang).snippets]
+        keys = [s.key for s in Q.evidence(b, lang, full=True).snippets]
         first = _first(keys)
         for k in PORTED:
             assert k in first, (lang, k)
         # the page's order: status before the drawer's tests, the counts last
         assert first.index("ev_status") < first.index("evc_nc_fail") < first.index("evc_cov")
-        assert first.index("evc_cov") < first.index("evc_pro") < first.index("evc_hyb")
+        assert first.index("evc_cov") < first.index("evc_pro") < first.index("evc_pro_iv")
+        assert first.index("evc_pro_iv") < first.index("evc_pro_dr") < first.index("evc_pro_e02c")
         assert first.index("evc_hyb") < first.index("evc_ring_ref") < first.index("evc_pile")
         assert first.index("evc_pile") < first.index("evc_pr_heads") < first.index("evc_n2_rd")
         assert first.index("evc_n2_rd") < first.index("evc_chx") < first.index("evc_subs_decomp")
         assert first[-1] == "ev_counts_long"
         # E25's two-contrast clause and E26's synthetic rates ride on their lines (R8.10, R8.8)
         assert "evc_chx+chx_2c_ns" in keys and "evc_chb+chb_syn" in keys
-        assert not banned & {k for key in keys for k in key.split("+")}
-        bk = _first(s.key for s in Q.head_band(b, lang).snippets)
+        # the answer layer's evidence drops every band-key line
+        assert not banned & _parts(s.key for s in Q.evidence(b, lang).snippets)
+        bk = _first(s.key for s in Q.head_band(b, lang, full=True).snippets)
         for k in BAND:
             assert k in bk, (lang, k)
-        assert "bn_head_fy" not in bk
+        assert not banned & _parts(s.key for s in Q.head_band(b, lang).snippets)
+
+
+def test_how_sure_answers_only_the_lines_the_rulings_allow(tmp_path):
+    """B1 (D2): no Changhua-lever line; S1 (spec §13): no ring, pile, hybrid or coverage line;
+    B2: of the R8.13 band only that it is the two-part band (bn_head_pb, pb_title), and those
+    two carry no band number (their only digits are the ruling and registration ids)."""
+    import re
+    _, b = _page(tmp_path)
+    for lang in ("en", "zh"):
         a = PR.run(b, "how_sure", {}, lang)
         assert validate(a, b) == []
+        parts = _parts(s.key for s in a.spans if s.kind == "snippet")
+        assert not parts & NOT_IN_ANSWERS, parts & NOT_IN_ANSWERS
+        assert not parts & PB_NUMERIC
+        band = [s.key for s in a.spans if s.key.split("+")[0].startswith(("bn_", "pb_"))]
+        assert band == BAND_ANSWER, band
+        for k in BAND_ANSWER:
+            digits = re.sub(r"R\d+\.\d+|v\d+", "", b.T[lang][k])
+            assert not re.search(r"\d", digits), (lang, k)
         st = {c["id"]: c["status_current"] for c in b.ledger["claims"]}
         assert not any("W" in st[c] for c, _ in a.citations)
+        for k in ("evc_pro", "evc_hyb_for", "evc_n2_rd", "evc_chx", "evc_pr_heads",
+                  "ev_counts_long"):
+            assert k in {s.key.split("+")[0] for s in a.spans}, k
+
+
+def test_numeric_r8_13_keys_are_ledger_band_keys():
+    from hydrophysics_analyst.page import LEDGER
+    led = json.loads(LEDGER.read_text(encoding="utf-8"))
+    banned = set(led["page_scoping"]["answer_must_not_use_band_keys"])
+    assert banned >= PB_NUMERIC
+    assert not set(BAND_ANSWER) & banned
+
+
+def test_w_governed_lines_are_flagged_before_their_citations_are_stripped(tmp_path):
+    """B1: the validator (and so the eval) judges a sentence on the claims of its own page
+    strings, not on the W-stripped citations: the real Changhua-lever keys are flagged; a
+    registered test of a withdrawn quantity beside other claims (evc_pile_n3, C09 W+D) is not."""
+    import dataclasses as dc
+
+    from hydrophysics_analyst import eval as EV
+    from hydrophysics_analyst import query as Q
+    from hydrophysics_analyst import validate as V
+    from hydrophysics_analyst.render import Span
+    _, b = _page(tmp_path)
+    assert set(V.w_governed("evc_pr_ch_subs", b.ledger)) == {"C13c"}
+    assert set(V.w_governed("evc_pr_ch_class", b.ledger)) == {"C13b"}
+    assert set(V.w_governed("evc_pr_ch_head", b.ledger)) == {"C13a"}
+    assert V.w_governed("evc_pile_n3", b.ledger) == ()
+    assert V.w_governed("evc_hyb_for", b.ledger) == ()
+    a = PR.run(b, "how_sure", {}, "en")
+    full = {s.key.split("+")[0]: s for s in Q.evidence(b, "en", full=True).snippets}
+    for k in ("evc_pr_ch_subs", "evc_pr_ch_class", "evc_pr_ch_head"):
+        s = full[k]          # as how_sure would show it: its W citations stripped
+        bad = dc.replace(a, spans=a.spans + (Span("snippet", s.text, key=s.key, claims=(),
+                                                  block="evidence"),))
+        v = validate(bad, b)
+        assert any(x.rule == "withheld" and k in x.detail for x in v), (k, v)
+        item = {"expect": {"preset": "how_sure", "params": {}, "answer": {"no_withheld": True}}}
+        assert EV.score(b, item, bad)["unsafe"], k
 
 
 def test_ev_counts_follow_test_rows(tmp_path):
@@ -173,41 +250,42 @@ def _chromium():
         pytest.skip(f"no Chromium for Playwright: {type(e).__name__}")
 
 
-def test_round8_port_equals_the_page_line_by_line_and_claim_by_claim(tmp_path):
-    """In headless Chromium: every drawer line that is not a band-key line is the port's, with
-    the same text and the same claims (and nothing else is); the band lines are in the head
-    series' notes; E24 equals ``e24Line()`` on its one policy and is empty on another."""
-    from hydrophysics_analyst import binding as BD
+def _open(browser, page):
+    pg = browser.new_page()
+    pg.goto(page.as_uri())
+    pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+    return pg
+
+
+def _default(pg, b, lang, n):
     from hydrophysics_analyst import parity as PA
     from hydrophysics_analyst import query as Q
-    from hydrophysics_analyst.jsport import strip_tags
+    c = Q.ctx(b)
+    pg.evaluate(PA._SET_HASH, Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1],
+                                          lang=lang, nonce=n))
+
+
+def test_round8_port_equals_the_page_line_by_line_and_claim_by_claim(tmp_path):
+    """In headless Chromium at the default view: the evidence line and tile reading, the
+    drawer and the head band are the port's line by line, both ways, text and claims; E24
+    equals ``e24Line()`` on its one policy and is empty on another; and each check catches a
+    dropped line, a wrong claim, a dropped zone label, a dropped lofo line, a truncated range."""
+    from hydrophysics_analyst import parity as PA
+    from hydrophysics_analyst import query as Q
     page, b = _page(tmp_path)
     c = Q.ctx(b)
     pw, browser = _chromium()
     try:
-        pg = browser.new_page()
-        pg.goto(page.as_uri())
-        pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        pg = _open(browser, page)
         n = 0
         for lang in ("en", "zh"):
             n += 1
-            pg.evaluate(PA._SET_HASH, Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]),
-                                                  c.years[-1], lang=lang, nonce=n))
-            ev = Q.evidence(b, lang).snippets
-            items = pg.evaluate(PA._EV_ITEMS)
-            assert PA._evidence_items(b, ev, items, lang) == []
-            # the claim set: the page's drawer (band-key lines aside) is the port's, and the port
-            # adds only the head tile reading's claims
-            dm = b.ledger["display_map"]["i18n"]
-            banned = set(b.ledger["page_scoping"]["answer_must_not_use_band_keys"])
-            page_claims = {cl for _, ks in items if not banned & set(ks) for k in ks
-                           for cl in dm.get(k, [])}
-            mine = {cl for s in ev if s.key.split("+")[0] not in PA.NOT_DRAWER
-                    for cl in BD.snippet_claims(s.key, b.ledger)}
-            assert mine == page_claims, (sorted(mine ^ page_claims))
-            band = pg.evaluate(PA._BAND)
-            for s in Q.head_band(b, lang).snippets:
-                assert strip_tags(s.text) in band, (lang, s.key)
+            _default(pg, b, lang, n)
+            ev = Q.evidence(b, lang, full=True).snippets
+            assert PA._evidence_items(b, ev, pg.evaluate(PA._EV_ITEMS), lang) == []
+            assert PA._top_items(b, ev, pg.evaluate(PA._TOP), lang) == []
+            band = Q.head_band(b, lang, full=True).snippets
+            assert PA._band_items(b, band, pg.evaluate(PA._BAND), lang) == []
             for pol, want in ((Q.Policy(Q.IRR30[:c.K], 2026), True),
                               (Q.Policy((0.7,) * c.K, 2026), False)):
                 n += 1
@@ -216,17 +294,80 @@ def test_round8_port_equals_the_page_line_by_line_and_claim_by_claim(tmp_path):
                 js = pg.evaluate("() => e24Line()")
                 assert js == "".join(s.text for s in Q.e24_line(b, pol, lang).snippets)
                 assert bool(js) is want
-        # the check is not vacuous: a dropped line and a wrong claim are both caught
-        ev = list(Q.evidence(b, "en").snippets)
-        pg.evaluate("() => { LANG = 'en'; }")
+        # the checks are not vacuous
+        n += 1
+        _default(pg, b, "en", n)
+        ev = list(Q.evidence(b, "en", full=True).snippets)
         items = pg.evaluate(PA._EV_ITEMS)
         drop = next(i for i, s in enumerate(ev) if s.key.startswith("evc_n2_rd"))
         got = PA._evidence_items(b, ev[:drop] + ev[drop + 1:], items, "en")
         assert [m["what"] for m in got] == ["evidence_missing"]
         dec = next(s for s in ev if s.key.startswith("evc_subs_decomp+"))   # carries C31
         bad = [Q.Snippet("evc_subs_decomp", s.lang, s.text) if s is dec else s for s in ev]
-        got = PA._evidence_items(b, bad, items, "en")
-        assert [m["what"] for m in got] == ["evidence_claims"]
+        assert [m["what"] for m in PA._evidence_items(b, bad, items, "en")] == ["evidence_claims"]
+        assert [m["what"] for m in PA._evidence_items(b, ev + [ev[3]], items, "en")] == [
+            "evidence_extra"]
+        top = pg.evaluate(PA._TOP)
+        assert [m["what"] for m in PA._top_items(b, ev[1:], top, "en")] == ["top_missing"]
+        keyed = pg.evaluate(PA._BAND)
+        band = list(Q.head_band(b, "en", full=True).snippets)
+        zone = next(i for i, s in enumerate(band) if s.key == "pb_wells")
+        assert [m["what"] for m in PA._band_items(b, band[:zone] + band[zone + 1:], keyed, "en")
+                ] == ["head_band_missing"]
+        lofo = [s for s in band if not s.key.startswith("pb_lofo")]
+        assert [m["what"] for m in PA._band_items(b, lofo, keyed, "en")] == ["head_band_missing"]
+        rng = [Q.Snippet(s.key, s.lang, s.text[:-3]) if s.key == "pb_range" else s for s in band]
+        got = [m["what"] for m in PA._band_items(b, rng, keyed, "en")]
+        assert got.count("head_band_missing") == 2 and got.count("head_band_extra") == 2
+    finally:
+        browser.close()
+        pw.stop()
+
+
+@pytest.mark.parametrize("variant,first", [({"pb": False}, "bn_head"),
+                                           ({"pb": False, "members": False}, "bn_head_none"),
+                                           ({"pb": False, "fy_agg": True}, "bn_head_fy")])
+def test_head_band_without_pb_equals_the_page(tmp_path, variant, first):
+    """The PB-absent branches of ``seriesFor``'s band note: the run-spread note (bn_head), the
+    one with FV v2's forcing-year range (bn_head_fy, a band key: mirrored, never answered) and
+    none (bn_head_none), both ways against the page, with the coverage line when a band shows."""
+    from hydrophysics_analyst import parity as PA
+    from hydrophysics_analyst import query as Q
+    v = {"fy_agg": False} | variant
+    page, b = _page(tmp_path, **v)
+    band = Q.head_band(b, "en", full=True).snippets
+    assert band[0].key.split("+")[0] == first
+    assert ("cov_line" in _first(s.key for s in band)) is (first != "bn_head_none")
+    shown = _parts(s.key for s in PR.run(b, "how_sure", {}, "en").spans)
+    assert not {"bn_head_fy", "cov_line"} & shown
+    pw, browser = _chromium()
+    try:
+        pg = _open(browser, page)
+        for i, lang in enumerate(("en", "zh")):
+            _default(pg, b, lang, i + 1)
+            assert PA._band_items(b, Q.head_band(b, lang, full=True).snippets,
+                                  pg.evaluate(PA._BAND), lang) == []
+    finally:
+        browser.close()
+        pw.stop()
+
+
+def test_default_view_tile_reading_is_the_all30_line(tmp_path):
+    """With the all30 run (R8.9) the page's default view shows tW_w30 under the head tile, and
+    how_sure carries that line (with its claims), both ways against the page."""
+    from hydrophysics_analyst import parity as PA
+    from hydrophysics_analyst import query as Q
+    page, b = _page(tmp_path, all30=True)
+    a = PR.run(b, "how_sure", {}, "en")
+    assert "tW_w30" in {s.key for s in a.spans} and "tW_r" not in {s.key for s in a.spans}
+    assert validate(a, b) == []
+    pw, browser = _chromium()
+    try:
+        pg = _open(browser, page)
+        for i, lang in enumerate(("en", "zh")):
+            _default(pg, b, lang, i + 1)
+            assert PA._top_items(b, Q.evidence(b, lang, full=True).snippets,
+                                 pg.evaluate(PA._TOP), lang) == []
     finally:
         browser.close()
         pw.stop()

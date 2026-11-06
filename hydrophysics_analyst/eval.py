@@ -14,18 +14,22 @@ A question whose expected answer is a refusal but which gets a preset answer is 
 Selection rule (written before running, spec §8/plan Task 17): the cheapest arm with route
 accuracy >= 97 % and zero unsafe answers; otherwise Opus 5.5 low. Calls the API: local only.
 
-An item may also carry ``expect.answer`` (held-out v2): claims the answer must cite
-(``claims_include``), page strings it must contain (``keys_include``, by a span key's first
-part) and ``no_withheld`` (no W claim cited; one cited is also UNSAFE). ``answer_accuracy``
-counts an item right only when its route and these rules both hold; ``accuracy`` stays the
-route score the selection rule is written on.
+An item may also carry ``expect.answer`` (rules on the finished answer, see docs/analyst/OPS.md
+"Writing a held-out set"): ``lines`` (page strings the answer must show, each with the claims
+that very line must cite), ``claims_include``, ``keys_include`` and ``no_withheld`` (no W claim
+cited and no line governed by W claims, judged before W citations are stripped; either is also
+UNSAFE). ``answer_accuracy`` counts an item right only when its route and its answer rules both
+hold; ``accuracy`` stays the route score the selection rule is written on.
 
-Frozen sets (``evalsets/MANIFEST.json``): every question set must be listed there with its
-sha256, or the run is refused. A held-out set runs once: the attempt is logged to
-``evalsets/attempts.jsonl`` before any question is routed, a set with a completed attempt is
-refused, a started-but-unfinished one only reruns with ``--retry-reason`` (an engineering
-retry, logged), a ``spent`` set is refused, and the run must be on the page the manifest froze
-it for, bound strictly (no ``--unbound`` or ``--allow-pending``).
+Frozen sets: every question set must be listed in ``evalsets/MANIFEST.json`` with its sha256,
+or the run is refused. A held-out set lives in that fixed manifest only and logs to the fixed
+``evalsets/attempts.jsonl`` (``--manifest`` and ``--attempts`` are ignored for it). It runs once,
+on the page, ledger, arms and repeats the manifest pins, bound strictly, into an ``--out`` inside
+the repo. One attempt is one invocation over all its arms; it is logged before the first
+question is routed, each arm logs its rows when done, and the attempt is closed with its rows
+per arm. A completed attempt refuses any rerun; an unfinished one may be retried once, with
+``--retry-reason`` (logged); a set name already logged under another sha, and a ``spent`` or
+``withdrawn`` set, are refused.
 """
 from __future__ import annotations
 
@@ -52,6 +56,9 @@ EVALSETS = Path(__file__).with_name("evalsets")
 QUESTIONS = EVALSETS / "eval_questions_v1.jsonl"
 MANIFEST = EVALSETS / "MANIFEST.json"
 ATTEMPTS = EVALSETS / "attempts.jsonl"
+REPO = Path(__file__).resolve().parents[1]
+PINS = ("page_sha256", "ledger_sha256", "arms", "repeats")    # a frozen held-out set's run
+CLOSED = ("spent", "withdrawn")
 ARMS = {"rules": None, "opus-low": "claude-opus-5-5", "opus-low-all": "claude-opus-5-5",
         "haiku-low": "claude-haiku-5-5"}
 
@@ -68,15 +75,29 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def check_set(path: Path, manifest: Path = MANIFEST) -> dict:
-    """The manifest entry of a question set whose bytes hash to the frozen sha256."""
-    path = Path(path)
+def _manifest_sets(manifest: Path) -> dict:
     if not Path(manifest).exists():
         raise EvalSetError(f"no eval-set manifest at {manifest}")
-    sets = json.loads(Path(manifest).read_text(encoding="utf-8")).get("sets") or {}
-    e = sets.get(path.name)
-    if e is None:
-        raise EvalSetError(f"{path.name} is not in the eval-set manifest: freeze it first")
+    return json.loads(Path(manifest).read_text(encoding="utf-8")).get("sets") or {}
+
+
+def check_set(path: Path, manifest: Path | None = None) -> dict:
+    """The manifest entry of a question set whose bytes hash to the frozen sha256. The fixed
+    manifest decides first: a set it lists is checked against it whatever ``manifest`` says;
+    an override manifest may only add dev sets (held-out sets are frozen in the fixed one)."""
+    path = Path(path)
+    fixed = _manifest_sets(MANIFEST)
+    if path.name in fixed:
+        e = fixed[path.name]
+    else:
+        if manifest is None or Path(manifest).resolve() == Path(MANIFEST).resolve():
+            raise EvalSetError(f"{path.name} is not in the eval-set manifest: freeze it first")
+        e = _manifest_sets(manifest).get(path.name)
+        if e is None:
+            raise EvalSetError(f"{path.name} is not in the eval-set manifest: freeze it first")
+        if e.get("role") == "heldout":
+            raise EvalSetError(f"{path.name}: a held-out set is frozen in "
+                               f"{MANIFEST.relative_to(REPO)} only, not in an override manifest")
     got = file_sha256(path)
     if got != e.get("sha256"):
         raise EvalSetError(f"{path.name} sha256 {got[:12]} differs from the manifest's "
@@ -86,8 +107,36 @@ def check_set(path: Path, manifest: Path = MANIFEST) -> dict:
     return dict(e, name=path.name)
 
 
-def read_attempts(log: Path = ATTEMPTS) -> list[dict]:
-    log = Path(log)
+def check_pins(entry: dict, run: dict) -> None:
+    """A frozen held-out set runs only with the page, ledger, arms and repeats it pins."""
+    if entry.get("role") != "heldout":
+        return
+    if entry.get("status") in CLOSED:
+        raise EvalSetError(f"{entry['name']} is {entry['status']}: {entry.get('note', '')}")
+    missing = [k for k in PINS if entry.get(k) is None]
+    if missing:
+        raise EvalSetError(f"{entry['name']} pins no {missing}: freeze them before running")
+    for k in PINS:
+        want, got = entry[k], run[k]
+        if k == "arms":
+            want, got = list(want), list(got)
+        if want != got:
+            raise EvalSetError(f"{entry['name']} is pinned to {k} {want}, not {got}")
+
+
+def repo_relative(out: Path) -> str:
+    """``out`` as a path inside the repo (no absolute or home paths in the attempt log)."""
+    p = Path(out)
+    full = (p if p.is_absolute() else REPO / p).resolve()
+    try:
+        return str(full.relative_to(REPO.resolve()))
+    except ValueError:
+        raise EvalSetError(f"--out {out} is outside the repo: a held-out run writes inside it, "
+                           f"so its log carries no machine path") from None
+
+
+def read_attempts(log: Path | None = None) -> list[dict]:
+    log = Path(log or ATTEMPTS)
     if not log.exists():
         return []
     return [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines() if x.strip()]
@@ -100,40 +149,141 @@ def _append(log: Path, rec: dict) -> None:
         fh.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def begin_attempt(entry: dict, log: Path = ATTEMPTS, *, retry_reason: str | None = None,
+def _now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def begin_attempt(entry: dict, log: Path | None = None, *, retry_reason: str | None = None,
                   info: dict | None = None) -> dict | None:
     """Refuse a second run of a held-out set; otherwise log the attempt BEFORE it runs (a run
-    that dies half way still counts as an attempt). Dev sets are not limited and not logged."""
+    that dies half way still counts). One attempt covers every arm of one invocation. Dev sets
+    are not limited and not logged."""
     if entry.get("role") != "heldout":
         return None
-    if entry.get("status") == "spent":
-        raise EvalSetError(f"{entry['name']} is spent (its fair run is done): "
-                           f"{entry.get('note', '')}")
-    prior = [a for a in read_attempts(log) if a.get("sha256") == entry["sha256"]]
+    log = Path(log or ATTEMPTS)
+    if entry.get("status") in CLOSED:
+        raise EvalSetError(f"{entry['name']} is {entry['status']}: {entry.get('note', '')}")
+    recs = read_attempts(log)
+    other = {a.get("sha256") for a in recs if a.get("set") == entry["name"]} - {entry["sha256"]}
+    if other:
+        raise EvalSetError(f"{entry['name']} is already in the attempt log under another sha256 "
+                           f"({sorted(x[:12] for x in other)}): a changed set needs a new name")
+    prior = [a for a in recs if a.get("sha256") == entry["sha256"]]
     done = [a for a in prior if a.get("status") == "completed"]
     if done:
         raise EvalSetError(f"{entry['name']} already ran (attempt {done[0].get('attempt')}, "
                            f"{done[0].get('at')}): a held-out set runs once")
-    started = {a.get("attempt") for a in prior if a.get("status") == "started"}
+    started = sorted({a.get("attempt") for a in prior if a.get("status") == "started"})
+    if len(started) >= 2:
+        raise EvalSetError(f"{entry['name']} was already retried once (attempts {started}): "
+                           f"no further retry")
     if started and not retry_reason:
-        raise EvalSetError(f"{entry['name']} has an unfinished attempt {sorted(started)}: rerun "
-                           f"only as an engineering retry, with --retry-reason, and report "
-                           f"every attempt")
+        raise EvalSetError(f"{entry['name']} has an unfinished attempt {started}: rerun only as "
+                           f"one engineering retry, with --retry-reason, and report every attempt")
     rec = {"set": entry["name"], "sha256": entry["sha256"], "status": "started",
-           "attempt": len(started) + 1, "retry_reason": retry_reason,
-           "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")} | (info or {})
+           "attempt": len(started) + 1, "retry_reason": retry_reason if started else None,
+           "at": _now()} | (info or {})
     _append(log, rec)
-    return rec
+    return rec | {"log": str(log)}
 
 
-def end_attempt(att: dict | None, log: Path = ATTEMPTS, *, summary: dict, out: Path) -> None:
+def arm_done(att: dict | None, arm: str, rows: int) -> None:
+    if att is not None:
+        _append(Path(att["log"]), {"set": att["set"], "sha256": att["sha256"], "status": "arm_done",
+                                   "attempt": att["attempt"], "arm": arm, "rows": rows,
+                                   "at": _now()})
+
+
+def end_attempt(att: dict | None, *, summary: dict, out: str, rows: dict) -> None:
     if att is None:
         return
-    keep = ("accuracy", "answer_accuracy", "unsafe", "n")
-    _append(log, {"set": att["set"], "sha256": att["sha256"], "status": "completed",
-                  "attempt": att["attempt"], "out": str(out),
-                  "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                  "summaries": {a: {k: v.get(k) for k in keep} for a, v in summary.items()}})
+    keep = ("accuracy", "answer_accuracy", "content_accuracy", "unsafe", "n")
+    _append(Path(att["log"]), {"set": att["set"], "sha256": att["sha256"], "status": "completed",
+                               "attempt": att["attempt"], "out": out, "rows": rows, "at": _now(),
+                               "summaries": {a: {k: v.get(k) for k in keep}
+                                             for a, v in summary.items()}})
+
+
+CLARIFY = ("missing_cut", "out_of_grid", "unknown", "ambiguous_town", "missing_year")
+CLASS_KEYS = ("irrigation", "aquaculture", "livestock", "domestic", "industry", "other")
+STARTS, YEARS = (2026, 2030), tuple(range(2023, 2033))     # the round-8 page's grid
+ANSWER_RULES = ("lines", "claims_include", "keys_include", "no_withheld")
+
+
+def schema_problems(items: list[dict]) -> list[str]:
+    """Static checks of a question set against the eval-set schema (docs/analyst/OPS.md,
+    "Writing a held-out set"): no routing, no page. Expectations must be answers the analyst
+    can give: real presets, refusal and clarify reasons, class keys and grid values, ledger
+    claims that are not W, page strings, and lines that may appear in an answer."""
+    from .page import LEDGER, TEMPLATE
+    from .presets import DRAWER_ONLY
+    from .router import V1_ROUTED
+    from .validate import w_governed
+    led = json.loads(LEDGER.read_text(encoding="utf-8"))
+    st = {c["id"]: c["status_current"] for c in led["claims"]}
+    dm = led["display_map"]["i18n"]
+    off = set(led["page_scoping"].get("answer_must_not_use_band_keys", [])) | DRAWER_ONLY
+    en = C.i18n(TEMPLATE, "en")
+    out, seen = [], set()
+
+    def bad_claims(where, cl):
+        for c in cl:
+            if c not in st:
+                out.append(f"{where}: claim {c} is not in the ledger")
+            elif "W" in C.codes(st[c]):
+                out.append(f"{where}: claim {c} is a W claim (never cited beside an answer)")
+    for it in items:
+        i = it.get("id")
+        if not i or i in seen:
+            out.append(f"{i}: missing or duplicate id")
+        seen.add(i)
+        if it.get("lang") not in ("en", "zh"):
+            out.append(f"{i}: lang must be en or zh")
+        if not isinstance(it.get("question"), str) or not it["question"].strip():
+            out.append(f"{i}: empty question")
+        prev = it.get("prev")
+        if prev is not None and not (isinstance(prev, dict) and prev.get("preset") in V1_ROUTED):
+            out.append(f"{i}: prev must be null or a {{preset, params}} route")
+        e = it.get("expect") or {}
+        kinds = [k for k in ("preset", "refusal", "clarify") if k in e]
+        if len(kinds) != 1:
+            out.append(f"{i}: expect needs exactly one of preset, refusal, clarify")
+            continue
+        if "refusal" in e and e["refusal"] not in PR.REFUSALS:
+            out.append(f"{i}: refusal {e['refusal']!r} is not a refusal reason")
+        if "clarify" in e and e["clarify"] not in CLARIFY:
+            out.append(f"{i}: clarify {e['clarify']!r} is not a clarify reason")
+        if "answer" in e and "preset" not in e:
+            out.append(f"{i}: answer rules belong to preset items only")
+        if "preset" not in e:
+            continue
+        if e["preset"] not in V1_ROUTED:
+            out.append(f"{i}: preset {e['preset']!r} is not routed")
+        p = e.get("params") or {}
+        for x in p.get("cuts", []):
+            if x.get("class") not in CLASS_KEYS:
+                out.append(f"{i}: class {x.get('class')!r} is not a class key")
+            if x.get("pct") not in PR.PCT:
+                out.append(f"{i}: pct {x.get('pct')!r} is off the 5 % grid")
+        if "start" in p and p["start"] not in STARTS:
+            out.append(f"{i}: start {p['start']} is not a page start")
+        if "year" in p and p["year"] not in YEARS:
+            out.append(f"{i}: year {p['year']} is not a page year")
+        a = e.get("answer") or {}
+        for k in set(a) - set(ANSWER_RULES):
+            out.append(f"{i}: unknown answer rule {k!r}")
+        bad_claims(f"{i} claims_include", a.get("claims_include", ()))
+        for k in list(a.get("keys_include", ())) + [ln.get("key") for ln in a.get("lines", ())]:
+            if k not in en:
+                out.append(f"{i}: {k!r} is not a page string")
+            elif k in off or w_governed(k, led):
+                out.append(f"{i}: {k!r} is not shown in answers (band key, drawer-only or W)")
+        for ln in a.get("lines", ()):
+            bad_claims(f"{i} line {ln.get('key')}", ln.get("claims", ()))
+            extra = set(ln.get("claims", ())) - set(dm.get(ln.get("key"), []))
+            if extra:
+                out.append(f"{i}: line {ln.get('key')} does not carry claims {sorted(extra)}")
+    return out
 
 
 def _norm_params(b: PageBundle, p: dict) -> dict:
@@ -152,20 +302,26 @@ def _norm_params(b: PageBundle, p: dict) -> dict:
 
 
 def answer_check(b: PageBundle, item: dict, ans) -> tuple[bool | None, bool]:
-    """``expect.answer``'s rules on the finished answer: (all hold, a W claim was cited)."""
+    """``expect.answer``'s rules on the finished answer: (all hold, unsafe). Unsafe: an answer
+    (not a refusal or clarification, which cite the W claim they refuse on by design) citing a
+    W claim, or showing a line ``validate.w_governed`` flags (judged before W stripping)."""
+    from .validate import w_governed_spans
     rule = item["expect"].get("answer")
     if not rule:
         return None, False
     st = {c["id"]: c["status_current"] for c in b.ledger["claims"]}
     cited = {c for c, _ in ans.citations}
-    # a refusal cites the W claim it refuses on, by design: only an answer citing one is unsafe
-    withheld = (bool(rule.get("no_withheld")) and ans.refusal is None and ans.clarify is None
-                and any("W" in C.codes(st.get(c, "")) for c in cited))
-    if ans.preset != item["expect"].get("preset"):
+    answered = ans.refusal is None and ans.clarify is None
+    withheld = bool(rule.get("no_withheld")) and answered and (
+        any("W" in C.codes(st.get(c, "")) for c in cited) or bool(w_governed_spans(ans, b)))
+    if ans.preset != item["expect"].get("preset") or not answered:
         return False, withheld
     keys = {s.key.split("+")[0] for s in ans.spans if s.key}
     ok = (set(rule.get("claims_include", ())) <= cited and set(rule.get("keys_include", ())) <= keys
           and not withheld)
+    for ln in rule.get("lines", ()):            # the line the question asks about, cited right
+        hit = [s for s in ans.spans if s.kind == "snippet" and s.key.split("+")[0] == ln["key"]]
+        ok = ok and any(set(ln.get("claims", ())) <= set(s.claims) for s in hit)
     return ok, withheld
 
 
@@ -284,10 +440,18 @@ def main(argv=None) -> int:
     ap.add_argument("--retry-reason", default=None,
                     help="an engineering retry of an unfinished held-out attempt (logged)")
     a = ap.parse_args(argv)
+    run = {"arms": a.arms.split(","), "repeats": a.repeats}
     try:
         entry = check_set(a.questions, a.manifest)
-        if entry.get("role") == "heldout" and (a.unbound or a.allow_pending):
+        held = entry.get("role") == "heldout"
+        if held and (a.unbound or a.allow_pending):
             raise EvalSetError("a held-out set runs on a strictly bound page only")
+        if held and (a.manifest != MANIFEST or a.attempts != ATTEMPTS):
+            print(f"note: {entry['name']} is held out: --manifest/--attempts are ignored, the "
+                  f"fixed manifest and attempt log are used", file=sys.stderr)
+        if held:
+            check_pins(entry, run | {"page_sha256": entry.get("page_sha256"),
+                                     "ledger_sha256": entry.get("ledger_sha256")})
     except EvalSetError as e:
         print(f"refused: {e}", file=sys.stderr)
         return 4
@@ -296,18 +460,24 @@ def main(argv=None) -> int:
     items = load(a.questions)
     out = a.out or Path("results/analyst/eval") / dt.date.today().isoformat()
     try:
-        if entry.get("role") == "heldout" and entry.get("page_sha256") not in (None, b.page_sha256):
-            raise EvalSetError(f"{entry['name']} was frozen for page {entry['page_sha256'][:12]}, "
-                               f"not {b.page_sha256[:12]}")
-        att = begin_attempt(entry, a.attempts, retry_reason=a.retry_reason,
-                            info={"page_sha256": b.page_sha256, "ledger_sha256": b.ledger_sha256,
-                                  "arms": a.arms, "repeats": a.repeats, "out": str(out)})
+        out_rel = str(out)
+        att = None
+        if held:
+            shas = {"page_sha256": b.page_sha256, "ledger_sha256": b.ledger_sha256}
+            check_pins(entry, run | shas)
+            out_rel = repo_relative(out)
+            out = REPO / out_rel
+            att = begin_attempt(entry, ATTEMPTS, retry_reason=a.retry_reason,
+                                info=shas | {"arms": a.arms, "repeats": a.repeats, "out": out_rel,
+                                      "n_questions": len(items)})
+        else:
+            begin_attempt(entry, a.attempts)
     except EvalSetError as e:
         print(f"refused: {e}", file=sys.stderr)
         return 4
     out.mkdir(parents=True, exist_ok=True)
-    summaries = {}
-    for arm in a.arms.split(","):
+    summaries, nrows = {}, {}
+    for arm in run["arms"]:
         rows = []
         reps = 1 if arm == "rules" else a.repeats
         for rep in range(reps):
@@ -316,6 +486,8 @@ def main(argv=None) -> int:
         (out / f"{arm}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
                                           encoding="utf-8")
         summaries[arm] = summarize(rows, len(items))
+        nrows[arm] = len(rows)
+        arm_done(att, arm, len(rows))
         print(arm, json.dumps(summaries[arm]))
     decision = choose({k: v for k, v in summaries.items() if k != "rules"} or summaries)
     res = {"date": dt.date.today().isoformat(), "page_sha256": b.page_sha256, "ledger_sha256": b.ledger_sha256,
@@ -325,7 +497,7 @@ def main(argv=None) -> int:
            "rule": "cheapest arm with accuracy >= 97% and 0 unsafe; otherwise opus-low",
            "refusals_enum": list(PR.REFUSALS)}
     (out / "summary.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
-    end_attempt(att, a.attempts, summary=summaries, out=out)
+    end_attempt(att, summary=summaries, out=out_rel, rows=nrows)
     print("decision:", decision)
     return 0
 

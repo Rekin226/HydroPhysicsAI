@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -1168,6 +1168,25 @@ def _policy_response_lines(L: _Lines, r: dict) -> None:
     L.take()
 
 
+def _dr_line(L: _Lines, r: dict | None) -> None:
+    """``drLine`` (DR.relative_drift.v1, C14b)."""
+    if not r:
+        return
+    cs = [k for k in ("Yunlin", "Changhua") if r.get(k)]
+    if not cs:
+        return
+
+    def one(k) -> str:
+        v, cty = r[k], L.t("cty_" + k.lower())
+        if v.get("evaluable") and v.get("excess_drift_6y_m") is not None:
+            return L.t("dr_cty", {"cty": cty, "x": J.f2(v["excess_drift_6y_m"])})
+        return L.t("dr_ne", {"cty": cty})
+    parts = [one(k) for k in cs]
+    L.add("evc_pro_dr", {"list": L.t("list_and").join(parts),
+                         "trig": L.t("pro_dr_trig") if any(r[k].get("include_drift") for k in cs)
+                         else ""})
+
+
 def _ring_line(L: _Lines) -> None:
     """``ringLine``."""
     r = L.c.mc.get("ring_holdout")
@@ -1218,13 +1237,30 @@ def _pile_line(L: _Lines) -> None:
     L.push("evc_pile", pre + txt)
 
 
-def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
-    """``evLineText``, the reading under the head tile (``tW_r``) and every line of
-    ``evidenceItems`` (template.html ~2888) in its order, except the band keys the ledger keeps out
-    of answers (``page_scoping.answer_must_not_use_band_keys``): the per-well interval
-    (``evc_pro_iv``), DR's drift (``evc_pro_dr``) and FV v2's forcing-year coverage
-    (``evc_fv2_rc_*``) stay in the page's drawer only. Lines the bound page's dictionary leaves
-    empty (an older template) are skipped."""
+def band_keys(b: PageBundle) -> set[str]:
+    """The ledger's ``page_scoping.answer_must_not_use_band_keys``."""
+    return set(b.ledger["page_scoping"].get("answer_must_not_use_band_keys", []))
+
+
+def _no_band(b: PageBundle, res: QueryResult) -> QueryResult:
+    banned = band_keys(b)
+    return replace(res, snippets=tuple(s for s in res.snippets
+                                       if not banned & set(s.key.split("+"))))
+
+
+def evidence(b: PageBundle, lang: str = "en", *, full: bool = False) -> QueryResult:
+    """``evLineText``, the head tile's reading at the page's default view (``tW_w30`` when the
+    page has the all30 run; none otherwise) and every line of ``evidenceItems`` (template.html
+    ~2888) in its order. ``full`` keeps every line, for the parity check; otherwise the lines
+    using a band key the ledger keeps out of answers (``answer_must_not_use_band_keys``: the
+    per-well interval ``evc_pro_iv``, DR's drift ``evc_pro_dr``, FV v2's forcing-year coverage
+    ``evc_fv2_rc_*``) are dropped. Lines the bound page's dictionary leaves empty (an older
+    template) are skipped."""
+    res = _drawer(b, lang)
+    return res if full else _no_band(b, res)
+
+
+def _drawer(b: PageBundle, lang: str) -> QueryResult:
     c = ctx(b)
     mc, L, f2 = c.mc, _Lines(c, lang), J.f2
 
@@ -1240,7 +1276,9 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
         L.add("ev_tp_fail", {"y": c.years[c.YO]})
     else:
         L.add("ev_tp_pass", {"y": c.years[c.YO]})
-    L.add("tW_r")
+    rk, r, _ = tile_w(b, Policy((1.0,) * c.K, c.starts[0]), c.years[-1], lang)   # default view
+    if rk:
+        L.push(rk, r, [])
     # ---- evidenceItems() ----
     rel = b.get("release")
     L.add("ev_status", {"u": _esc(rel.get("uncertainty")) if rel else ""})
@@ -1267,7 +1305,11 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
             L.add("evc_pro", {"reg": q["registered_on"], "a": qa, "b": qb, "n": q["stations"]})
         else:
             L.add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
-        # (evc_pro_iv and evc_pro_dr: band keys, the page's drawer only)
+        if q.get("interval_bound") and qa and qb:          # band key: parity only
+            L.add("evc_pro_iv", {"a": qa, "b": qb,
+                                 "out": L.t("pro_out_e02y" if rg.get("e02y") else "pro_out_un")})
+        if rg.get("dr"):                                     # drLine, band key: parity only
+            _dr_line(L, res.get("dr"))
         if rg.get("e02c"):
             L.add("evc_pro_e02c")
         if rg.get("e02z"):                                   # C30-scen's years-2/3 sub-label (R8.7)
@@ -1302,7 +1344,7 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
                                           "t": f2(sup["tolerance_m"])})
                        if sup and sup.get("pass") is False else _esc(fv.get("why")))
                 L.add("evc_pro_fv_ne", {"why": why})
-        if rg.get("fv2"):                      # fv2Lines, without the band-key rc lines
+        if rg.get("fv2"):                      # fv2Lines (the rc lines are band keys)
             w, y = res.get("fv2"), res.get("fv2fy")
             if w and w.get("status") == "scored":
                 for cty in ("Yunlin", "Changhua"):
@@ -1311,8 +1353,20 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
                         wbd = v.get("reading") == "weak_by_design"
                         L.add("evc_fv2_cov_wbd" if wbd else "evc_fv2_cov_nsw",
                               {"cty": L.t("cty_" + cty.lower()), "p": f2(v["p"])})
-            if y and y.get("status") == "scored" and (y.get("rc") or {}).get("Changhua"):
-                L.add("evc_fv2_ch_rep" if y.get("rain") == "replayed" else "evc_fv2_ch_clim")
+            if y and y.get("status") == "scored":
+                for cty in ("Yunlin", "Changhua"):
+                    v = (y.get("rc") or {}).get(cty)
+                    if not v or v.get("reading") == "not_represented":
+                        continue
+                    forcing = L.t("fv2_forcing_rep" if y.get("rain") == "replayed"
+                                  else "fv2_forcing_clim")
+                    L.add("evc_fv2_rc_omits" if v.get("reading") == "omits" else "evc_fv2_rc_nso",
+                          {"cty": L.t("cty_" + cty.lower()), "forcing": forcing,
+                           "rc": J.pctf(100 * v["rc"]), "tlo": J.pctf(100 * v["t_lo"]),
+                           "thi": J.pctf(100 * v["t_hi"]), "lo": J.pctf(100 * v["lo"]),
+                           "hi": J.pctf(100 * v["hi"])})
+                if (y.get("rc") or {}).get("Changhua"):
+                    L.add("evc_fv2_ch_rep" if y.get("rain") == "replayed" else "evc_fv2_ch_clim")
     if rg.get("no_band"):
         L.add("evc_band_none")
     # the statistical layer: its retrospective score, its registration, the forecast of record
@@ -1378,12 +1432,18 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
     return _result(b, "evidence", [], L.sn, "base", None, None, lang)
 
 
-def head_band(b: PageBundle, lang: str = "en") -> QueryResult:
+def head_band(b: PageBundle, lang: str = "en", *, full: bool = False) -> QueryResult:
     """The head series' band at the page's default view (head, fan average): ``seriesFor``'s band
-    note, ``covLine`` and, under ruling R8.13 (PB.decomposed_band.v1), ``renderPB``'s labelled
-    two-part band (its notes, zone labels, county ranges, FV v2's forcing-year clause
-    ``bn_head_fy_pb`` and the leave-one-family-out line). The run-spread sentence with the
-    forcing-year range (``bn_head_fy``) is a band key and stays on the page only."""
+    note (with ``bn_aux``, the layer-2 wells' note), ``covLine`` and, under ruling R8.13
+    (PB.decomposed_band.v1), ``renderPB``'s labelled two-part band (title, notes, zone labels,
+    county ranges, FV v2's forcing-year clause ``bn_head_fy_pb``, the leave-one-family-out line).
+    ``full`` keeps every line, for the parity check; otherwise lines with a ledger band key
+    (every R8.13 number, ``bn_head_fy``) are dropped."""
+    res = _head_band(b, lang)
+    return res if full else _no_band(b, res)
+
+
+def _head_band(b: PageBundle, lang: str) -> QueryResult:
     c = ctx(b)
     mc, L = c.mc, _Lines(c, lang)
     rg, res = mc.get("registrations") or {}, mc.get("results") or {}
@@ -1394,11 +1454,23 @@ def head_band(b: PageBundle, lang: str = "en") -> QueryResult:
     fy_ok = bool(y and y.get("status") == "scored" and y.get("agg"))
     if pb:
         L.add("bn_head_pb")
-    elif hb:
-        if not fy_ok:                          # headBandNote; bn_head_fy is a band key
+    elif hb:                                               # headBandNote
+        if not fy_ok:
             L.add("bn_head", {"n": mf["n"]})
+        else:
+            a = y["agg"]
+            L.add("bn_head_fy", {"n": mf["n"], "n2lo": J.sg(a["n2_lo"]), "n2hi": J.sg(a["n2_hi"]),
+                                 "l2lo": J.sg(a["l2_lo"]), "l2hi": J.sg(a["l2_hi"]),
+                                 "forcing": L.t("fv2_forcing_rep" if y.get("rain") == "replayed"
+                                                else "fv2_forcing_clim")})
     else:
         L.add("bn_head_none")
+    wf = b.get("wellsFan")                                 # the fan's layer-2 wells (bn_aux)
+    if wf:
+        pts = [(o, m) for o, m in zip(wf["obs"], wf["model"], strict=False) if o is not None]
+        d = [(_num0(m) - o) for o, m in pts if (_num0(m) - o) == (_num0(m) - o)]
+        gap = sum(d) / len(d) if d else math.nan
+        L.add("bn_aux", {"n": wf.get("n_wells"), "gap": J.sg(gap, 1), "gapa": J.f1(gap)})
     cv = mc.get("coverage")
     if (pb or hb) and cv:                                    # covLine (kept under R8.13)
         L.add("cov_line", {"n": mc.get("n_members"), "a": J.pctf(100 * cv["picp_90"]),
