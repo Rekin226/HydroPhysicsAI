@@ -455,7 +455,8 @@ def test_draft_declaration_key_fields(tmp_path, synth):
         assert k in acc, k
     look = d["disclosure_look"]
     assert look["units"] == ["FWR:accidental_smoke_compute_20261106"]
-    assert look["purpose"] == "disclosure" and "none" in look["members"]
+    assert look["purpose"] == "disclosure"
+    assert "none" in look["members"]["FWR:accidental_smoke_compute_20261106"]
     assert not re.search(r"E02c?:|heads_20|prospective_heads", json.dumps(look))
     assert not STATION.search(json.dumps(d, ensure_ascii=False))
     assert "/" + "home/" not in json.dumps(d)
@@ -464,3 +465,61 @@ def test_draft_declaration_key_fields(tmp_path, synth):
     assert any("ruling R8.7" in m for m in msgs)                 # not the real rulings sha
     assert not any("sha256 differs" in m or "MANIFEST" in m or "replay_fields" in m
                    or "REUSED" in m for m in msgs), msgs
+
+
+def _tmp_registry(tmp_path, P):
+    """The draft written into a TEMPORARY registry and ledger (synthetic sources only)."""
+    from harness import prereg3
+
+    reg, rows = tmp_path / "prereg", tmp_path / "rows"
+    reg.mkdir()
+    rows.mkdir()
+    d = PR.draft_prereg(prereg_dir=reg, P=P)
+    prereg3.write_prereg(d, prereg_dir=reg, rows_dir=rows, units_registry=None, registries=[])
+    return reg, rows
+
+
+def test_a_temporary_registry_never_unlocks_the_real_worlds(tmp_path, synth):
+    """NEW-1: with the declaration copied into a temporary registry, the real (or any
+    results/) paths are refused before anything is read or logged; synthetic paths may use it."""
+    reg, rows = _tmp_registry(tmp_path, synth)
+    doc, sha = R.load_registered(prereg_dir=reg, rows_dir=rows)   # the copy itself is intact
+    assert {k: doc["design"][k] for k in R.design()} == R.design() and len(sha) == 64
+    fake = tmp_path / "repo" / "results"
+    P = dataclasses.replace(synth, outd=str(fake / "twin_forward" / "fw_replay_v2"),
+                            index=str(fake / "ix.json"), report=str(fake / "rep" / "r.json"))
+    for paths in (P, R.RiderPaths()):
+        with pytest.raises(R.EngineeringFailure, match="real registry only"):
+            R._score(paths, seed=R.SEED, prereg_dir=reg, rows_dir=rows)
+        with pytest.raises(R.EngineeringFailure, match="real registry only"):
+            R.run(paths, prereg_dir=reg, rows_dir=rows)
+        with pytest.raises(R.EngineeringFailure, match="real registry only"):
+            R._registry_guard(paths, rows_dir=rows)
+    assert not fake.exists()                                     # nothing written or logged
+    R._registry_guard(synth, prereg_dir=reg, rows_dir=rows)      # synthetic: allowed
+    from harness import prereg3
+    R._registry_guard(R.RiderPaths(), prereg_dir=prereg3.PREREG_DIR,
+                      rows_dir=prereg3.LEDGER_ROWS)              # the real registry: allowed
+
+
+def test_the_disclosure_look_records_and_blocks_nothing(tmp_path):
+    """NEW-2: DISCLOSURE_LOOK is accepted by prereg3.record_look as given, and its 'none'
+    membership overlaps and blocks no head-window test."""
+    from harness import prereg3
+
+    reg = tmp_path / "prereg"
+    reg.mkdir()
+    L = PR.DISCLOSURE_LOOK
+    assert set(L["members"]) == set(L["units"])
+    prereg3.record_look(L["units"], L["data_scope"], L["wp"], L["purpose"],
+                        members=L["members"], note="test", prereg_dir=reg, registries=[])
+    lk = list(prereg3.read_chained(reg / "looks.jsonl"))[-1]
+    assert lk["units"] == L["units"] and lk["purpose"] == "disclosure"
+    idx = prereg3.membership_index(reg, registries=[])
+    head = "I1:prospective_heads_2026-11_2027-10_R0wells"
+    idx.members[head] = prereg3._declared_members(
+        {"ids": ["w1", "w2"], "window": "2026-11..2027-10", "description": "stand-in"})
+    test = {"test_id": "T", "data_scope": "heads:2026-11..2027-10", "fresh_units": [head]}
+    assert idx.overlap(L["units"][0], head) is False
+    assert prereg3.look_hits(lk, test, idx) == {"block": [], "overlap": [], "unknown": []}
+    assert prereg3.blocking_looks([test], None, reg, idx) == []

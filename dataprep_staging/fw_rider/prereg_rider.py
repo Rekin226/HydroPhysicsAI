@@ -56,10 +56,12 @@ DISCLOSURE_LOOK = {
                   "E02c baselines; FV v1 exports",
     "wp": "FW",
     "purpose": "disclosure",
-    "members": {"none": "model outputs and pre-origin derived statistics only; no registered "
-                        "well, benchmark or cell window is a member",
-                "description": "accidental, unseen builder computation of FW.rider.v1 v1.0.0 "
-                               "on FW v2's RD arms (smoke seed), 2026-11-06T06:05Z"},
+    # prereg3.record_look: members keyed by unit; 'none' (with its reason) overlaps nothing
+    "members": {"FWR:accidental_smoke_compute_20261106": {
+        "none": "model outputs and pre-origin derived statistics only; no registered well, "
+                "benchmark or cell window is a member",
+        "description": "accidental, unseen builder computation of FW.rider.v1 v1.0.0 on FW v2's "
+                       "RD arms (smoke seed), 2026-11-06T06:05Z"}},
 }
 
 

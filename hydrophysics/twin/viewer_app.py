@@ -2006,7 +2006,12 @@ def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None
 def _hybrid_block(path: str | None, forward_npz: str | None,
                   registration: str | None) -> dict | None:
     """twin.hybrid's retrospective score (sha-checked against the forward run) and, when
-    given, the manifest of its prospective registration (hashed on its own parameters)."""
+    given, the manifest of its prospective registration (hashed on its own parameters).
+
+    Field contract (ruling R8.7, claim C30-fc): ``registration`` may carry ``result``, written
+    only when E04 is scored: ``"failed"`` or ``"not_evaluable"`` takes the forecast of record
+    away (the template's forecastOfRecord then names none); any other value, or no field (the
+    case until E04 is scored), keeps it. This build does not write the field yet."""
     report = _read_report(path, forward_npz, "hybrid report")
     if report is None:
         return None

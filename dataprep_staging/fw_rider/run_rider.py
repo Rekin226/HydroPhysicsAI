@@ -377,6 +377,21 @@ def close(rep: dict, why: str) -> dict:
     return rep
 
 
+def _registry_guard(P: RiderPaths, prereg_dir=None, rows_dir=None) -> None:
+    """A run on real paths (any under results/) uses the real registry and ledger rows only:
+    a temporary registry holding a copy of the declaration must never unlock the real worlds.
+    Synthetic paths (all outside results/) may use a temporary registry (tests)."""
+    from harness import prereg3
+
+    if not any(_under_results(p) for p in P.all_paths()):
+        return
+    for given, real, name in ((prereg_dir, prereg3.PREREG_DIR, "prereg_dir"),
+                              (rows_dir, prereg3.LEDGER_ROWS, "rows_dir")):
+        if given is not None and Path(given).resolve() != Path(real).resolve():
+            raise EngineeringFailure(f"{ID} on real paths uses the real registry only: "
+                                     f"{name} {given} is not {real}")
+
+
 def _score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
            smoke: bool = False, prereg_dir=None, rows_dir=None, log=print) -> dict:
     """Gates E, N and MC, then the reading. Returns the report (not written).
@@ -392,6 +407,7 @@ def _score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
     else:
         if seed != SEED or k != K_WORLD or k_null != K_NULL:
             raise EngineeringFailure(f"{ID} scores only on its registered seed and K")
+        _registry_guard(P, prereg_dir, rows_dir)
         decl, dsha = load_registered(ID, prereg_dir, rows_dir)
     rep: dict = {"id": ID, "version": VERSION, "smoke": smoke, "created": O._now(),
                  "declaration_sha256": dsha, "seed": seed, "k_per_sequence": k,
@@ -524,6 +540,7 @@ def run(P: RiderPaths | None = None, *, prereg_dir=None, rows_dir=None, log=prin
     attempts.jsonl beside the report, and writes report.json once (mode 'x'). No statistic
     is logged."""
     P = P or RiderPaths()
+    _registry_guard(P, prereg_dir, rows_dir)          # real paths: the real registry only
     load_registered(ID, prereg_dir, rows_dir)         # before anything is logged or read
     outp = O.rp(P.report)
     ap = attempts_path(P.report)
@@ -671,6 +688,7 @@ def main(argv=None, prereg_dir=None, rows_dir=None) -> int:
             print(f"smoke {rep['status']} (synthetic)")
             return 0
         if a.cmd == "verify":
+            _registry_guard(RiderPaths(), prereg_dir, rows_dir)
             doc, dsha = load_registered(ID, prereg_dir, rows_dir)
             bad = world_problems(RiderPaths(), (doc.get("worlds") or {}).get("files"))
             if bad:
