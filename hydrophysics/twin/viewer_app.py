@@ -1932,16 +1932,29 @@ def _chx2c_result(rep: dict, reg_id: str) -> dict:
 
 
 def _sd2_result(rep: dict, reg_id: str) -> dict:
-    """SD.cut_response_spread.v2 (E24; ruling R8.11): the Tier A+B model-form spread of the
-    Yunlin cut30 avoided subsidence by 2028-12, for the tA definition under Model internals
-    only (L, 'model-form spread, not an interval'); never an answer number."""
+    """SD.cut_response_spread.v2 (E24; ruling R8.11): the model-form spread of the Yunlin cut30
+    avoided subsidence by 2028-12 per tier (A+B, and A beside it), as its registered
+    line_template words it (range, coast share, inland reading), for the tA definition under
+    Model internals only (L, 'model-form spread, not an interval'); never an answer number."""
     if rep.get("label") != "model-form spread, not an interval" or not rep.get("evaluable"):
         raise _no_wording(reg_id, rep.get("label"))
-    ab = (rep.get("readings") or {})["A+B"]
-    r = ab["2028-12"]
-    lo, hi = r["yunlin_cm_range"]
-    return {"label": rep["label"], "n_columns": len(ab["columns"]), "lo_cm": float(lo),
-            "hi_cm": float(hi), "inland_ratio": float(r["inland"]["ratio"])}
+    rd = rep.get("readings") or {}
+
+    def tier(name: str) -> dict:
+        t = rd[name]
+        r = t["2028-12"]
+        lo, hi = r["yunlin_cm_range"]
+        clo, chi = r["yunlin_distal_share_range"]
+        inl = r["inland"]
+        robust = str(inl["reading"]).startswith("inland Yunlin robust")
+        if not robust and not str(inl["reading"]).startswith("column-dependent"):
+            raise _no_wording(reg_id, inl["reading"])
+        return {"n_columns": len(t["columns"]), "lo_cm": float(lo), "hi_cm": float(hi),
+                "coast_lo": float(clo), "coast_hi": float(chi), "inland_robust": robust,
+                "inland_ratio": float(inl["ratio"]), "inland_lo_cm": float(inl["min_cm"]),
+                "inland_hi_cm": float(inl["max_cm"])}
+
+    return {"label": rep["label"], "ab": tier("A+B"), "a": tier("A") if "A" in rd else None}
 
 
 _ROUND7_READERS = {"fm": _fm_result, "dr": _dr_result, "fv2": _fv2_result,

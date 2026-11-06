@@ -15,8 +15,10 @@ is logged there and no real observation is read.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -550,4 +552,27 @@ def test_draft_against_the_real_registry_reads_nothing_new():
     assert {p: d["frozen_code"][p] for p in C.PARENT_FROZEN} == C.PARENT_FROZEN
     assert all(isinstance(x, dict) for x in d["inputs"])
     left = PR.readiness(d)
-    assert all("not committed" in s for s in left), left
+    idx = {r["id"]: r for r in prereg3.read_chained(prereg3.PREREG_DIR / "INDEX.jsonl")}
+    if C.ID not in idx:                         # before registration: only git remains
+        assert all("not committed" in s for s in left), left
+        return
+    # registered (2026-11-03) and scored once: the registered file is the INDEX entry, it holds
+    # exactly what this draft builder produces (the harness adds only its own bookkeeping
+    # fields and resolves the inputs), and readiness names exactly the registered state
+    reg_path = prereg3.PREREG_DIR / f"{C.ID}.json"
+    assert hashlib.sha256(reg_path.read_bytes()).hexdigest() == idx[C.ID]["sha256"]
+    reg = json.loads(reg_path.read_text(encoding="utf-8"))
+    for k, v in d.items():
+        if k == "inputs":
+            assert [x["sha256"] for x in reg[k]] == [x["sha256"] for x in v]
+        elif k == "disclosures":                # this test file is disclosed, not frozen
+            t = reg[k]["tests"]
+            assert t["binding"] == "disclosure only, not frozen" and re.fullmatch(
+                r"[0-9a-f]{64}", t["sha256_at_declaration"])
+            assert {a: b for a, b in reg[k].items() if a != "tests"} == {
+                a: b for a, b in v.items() if a != "tests"}
+        else:
+            assert reg[k] == v, k
+    assert sorted(left) == sorted([f"{C.REPORT} exists before the declaration",
+                                   f"{C.ATTEMPTS} exists before the declaration",
+                                   f"{C.ID} is already registered"]), left

@@ -13,6 +13,7 @@ side, runs G-sep or G0 on it, or opens a GNSS, pile or electricity value.
 """
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import math
@@ -449,9 +450,28 @@ def test_pending_draft_validates():
     import prereg_gsf as P
     from harness import prereg3
 
-    d = P.draft_prereg(918273645, pending=True)
-    assert prereg3.validate_prereg(d) == []
-    assert d["seed"] == 918273645 and d["frozen_code"] and d["gates"]["v1_g0oc"]["pass"] is False
+    g0p = REPO / K.G0_OUT
+    g0 = json.loads(g0p.read_text(encoding="utf-8")) if g0p.exists() else None
+    if g0 is None or g0.get("pass") is not False:      # gates not run, or passed: the draft
+        d = P.draft_prereg(918273645, pending=True)
+        assert prereg3.validate_prereg(d) == []
+        assert d["seed"] == 918273645 and d["frozen_code"]
+        assert d["gates"]["v1_g0oc"]["pass"] is False
+        return
+    # G0 failed (2026-11-03): the declared closure. The draft refuses with the closure line,
+    # the failed G0 is the file the gates run recorded, and no registration was written
+    import gsf_gates as GT
+
+    with pytest.raises(SystemExit) as exc:
+        P.draft_prereg(918273645, pending=True)
+    assert str(exc.value) == GT.closure_line("G0", g0)
+    runs = [json.loads(x) for x in (REPO / K.ATTEMPTS).read_text(encoding="utf-8").splitlines()
+            if x.strip() and json.loads(x).get("event") == "g0_run"]
+    assert runs and runs[-1]["pass"] is False
+    assert runs[-1]["g0_sha256"] == hashlib.sha256(g0p.read_bytes()).hexdigest()
+    ids = {r["id"] for r in prereg3.read_chained(prereg3.PREREG_DIR / "INDEX.jsonl")}
+    assert K.DECL_ID in ids and K.ID not in ids
+    assert not (prereg3.PREREG_DIR / f"{K.ID}.json").exists()
 
 
 def test_score_failure_after_the_look_writes_the_final_report(monkeypatch, tmp_path):

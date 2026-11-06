@@ -55,3 +55,29 @@ def test_gov_template_sha_matches_the_current_builder():
     finally:
         sys.path[:] = saved
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == doc["template"]["sha256"]
+
+
+GOV_TEST = "tests/test_gov_heads_window.py"
+
+
+def test_registered_state_replaces_the_draft_state_check():
+    """The registered state that tests/test_gov_heads_window.py's draft-state check cannot see
+    (that file is a hash-bound input of GOV and is not edited; tests/conftest.py marks its
+    'not registered' check xfail(strict) once GOV is registered): the registered file is the
+    INDEX entry, the bound test file is byte-identical to its registered input, and the local
+    draft copy, when present, is still what the draft builder produces."""
+    doc, rec = _registered()
+    bound = [i for i in doc["inputs"] if i["path"] == GOV_TEST]
+    assert len(bound) == 1 and bound[0]["sha256"] == _sha(REPO / GOV_TEST)
+    assert doc["governance_tests"] == GOV_TEST and doc["id"] == GOV_ID
+    saved = list(sys.path)
+    try:
+        spec = importlib.util.spec_from_file_location("test_gov_registered_hw2", REPO / HW_PATH)
+        hw = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hw)
+        built = hw.draft_declaration()
+        if hw.DRAFT.exists():
+            assert json.loads(hw.DRAFT.read_text(encoding="utf-8")) == built
+    finally:
+        sys.path[:] = saved
+    assert built["id"] == GOV_ID == rec["id"]

@@ -386,11 +386,10 @@ in `docs/GPU_SERVER.md`.
   county, scored from 2029-01-15; synthetic decidability not shown weak: about 1.0 in Yunlin and
   0.69 in Changhua), and its expected outcome, from the published 2023-26 record, is the
   pre-worded narrowing that the physics level stays an average-weather scenario. The
-  departure-transfer band at N3F's never-calibrated wells is not decidable by design
-  (`U1.ext_transfer_power.v1`: Yunlin power 0.767 against 0.80; Changhua report-only), so E02x
+  departure-transfer band at N3F's never-calibrated wells is undecidable by design at the
+  external wells (`U1.ext_transfer_power.v1`: Yunlin power 0.767 against 0.80; Changhua report-only), so E02x
   was not registered. The side of a Changhua coverage fail does not separate the pumping
-  families once drift and year shocks are added (`CB.coverage_side.v1`, model-only: P(over |
-  page family) 0.208 against 0.8 needed), so the per-truth disclosure above stands.
+  families once drift and year shocks are added (`CB.coverage_side.v1`, model-only: P(over | Q0/R0 family) 0.208 against 0.8 needed), so the per-truth disclosure above stands.
 - At wells it never saw, the model is worse than interpolation on head changes (+0.34 vs
   +0.61) and on absolute level (+0.64 vs +0.70), worst on the upper fan, whose deep layers
   have one well between them. It passes the held-out-years test only after each well's
@@ -410,9 +409,9 @@ in `docs/GPU_SERVER.md`.
   lever follows from any verdict. The 1-3-year size of the subsidence response
   does not: on 2016-18 a constant sinking rate partitions the leveling better than the
   column, while the 2007-10 comparison across places points the other way in Yunlin. In the
-  registered numbers: on the masked 2016-18 refits the Yunlin model lost to both no change and
-  reference-year pumping on leveling (observed-on-modelled slope 0.22 [0.17, 0.27]) and the
-  Changhua model R1c beat reference-year pumping but lost to no change on leveling (0.40
+  registered numbers: on the masked 2016-18 refits the Yunlin model lost to both a constant
+  sinking rate and reference-year pumping on leveling (observed-on-modelled slope 0.22 [0.17, 0.27]) and the
+  Changhua model R1c beat reference-year pumping but lost to a constant sinking rate on leveling (0.40
   [0.30, 0.49]); across places in 2007-10 Yunlin is inconclusive (observed +0.66 against
   modelled +0.26 cm/yr per GWh/yr; the interval of the modelled-over-observed ratio,
   [0.21, 2.17], holds both the point ratio 0.40 and 1). In this
@@ -472,6 +471,8 @@ in `docs/GPU_SERVER.md`.
   bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support.
   Its no-harm and forward checks pass in both seeds; the two seeds share one full-data fit (the
   seed sets only the fold partition), so its external and forward numbers are one replicate.
+  The --ske-skv-max 0.1 cap applies globally, so the Yunlin column zones are capped too; CH-J's
+  no-harm baseline is Q0's own three-zone uncapped column.
   The size class of Changhua's first-year response is not decidable prospectively: N2CS was not
   registered because its synthetic gate failed (`N2CS.osse_design.v1`): under a canal confounder
   shaped like the pumping, a response one third as large reads "not overstated" in 0.47-0.63 of
@@ -496,12 +497,10 @@ in `docs/GPU_SERVER.md`.
   conversions it differs about x1.27 in Yunlin (x1.26-1.28 by horizon), while a cut of all
   pumping (all30) is invariant: gated ratios x1.03-1.05 (by horizon 1.02-1.06, report-only;
   `X5.lever_class_share.v1`, model-only). N2 tests the response to total recorded pumping anomalies, not to a class.
-  The head claim is split three ways: direction S (design-time), within-window anomaly response D
-  (N2), size N (model-only). N2's rule is informative but not decisive by design
-  (`X5.n2_reading.v1`, synthetic): a world with no response passes it 0.20 of the time, but one
-  with half the response passes 0.75 of the time, and its 90 % interval covers the true size
-  0.84 of the time; power 0.95 (0.15 with the canal confounder; 0.50 with forcing error). So N2
-  can detect a response but cannot tell a full-size response from a half-size one.
+  The head claim is split three ways (ledger rows C01, C01-w, C01-sz): direction S
+  (design-time), within-window anomaly response D (N2), size N (model-only). N2's synthetic
+  operating characteristics, in the registered wording (`X5.n2_reading.v1`, synthetic, the worst
+  case over its two confounder settings): "N2's rule is informative but not decisive for Yunlin (X5.n2_reading.v1): false pass 0.20 < 0.25, but wrong-size pass at k = 0.5 / 2 0.75 / 0.01 or 90 % interval coverage at k = 1 0.84 misses its threshold (0.25 / 0.80); an N2 verdict is printed with these rates; power 0.95 (0.15 with the canal confounder); no forcing error between X1 and the true pumping is modelled in the gating cells (report-only forcing-error cell, lambda 0.8: power 0.50)".
 - Every cited fit uses the historical head-target defaults: sample-weighted monthly means
   (February 2019 shifts by up to 1.7 m at 13 Yunlin wells), coverage counted against hours,
   and back-filled gaps. The fixes exist only as opt-in flags; nothing was rescored (model
@@ -532,8 +531,9 @@ in `docs/GPU_SERVER.md`.
   0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm)
   (model-form spread, not an interval). Across the 3 columns on the page's own heads (Tier A)
   it is 1.40-1.42 cm, 60 % of it on the coast, inland Yunlin robust within x1.5. The page shows
-  the Tier A+B spread only in the avoided-subsidence tile's definition under Model internals,
-  labelled as a model-form spread, not an interval (user ruling 2026-11-03); no number of it
+  both tier lines only in the avoided-subsidence tile's definition under Model internals, while
+  the irrigation x0.7 lever from 2026 is selected, labelled as a model-form spread, not an
+  interval (user ruling 2026-11-03); no number of it
   reaches the answer, and no correction follows. The 2028 deep-pile and township units cannot
   separate these columns (`COLF.column_family_2028.v1`: 0 of 36 pile pairs decidable, P(correct
   ranking) at most 0.37; the township arm gives 0 for all 45 pairs, a tie artefact of its bound

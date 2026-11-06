@@ -751,9 +751,11 @@ def test_fs_wording_follows_its_declaration_and_waits_for_its_report():
         "renderStartNote")
     assert "const fs = fsWords(); if (fs) p(fs);" in C.function_source("tileDefHtml")
     # scored 2026-11-01: pass; C01 cites FS and the new L row (E23) the declaration calls for.
-    # Round 8 (ruling R8.8) splits C01 into direction S, window D and size N
+    # Round 8 (ruling R8.8) splits C01: C01 keeps the direction (S), C01-w the window (D) and
+    # C01-sz the size (N)
     cl, fs = CL(), "FS.start_invariance.v1"
-    assert _reg("fs") == fs and _st("E23") == {"L"} and _st("C01") == {"S", "D", "N"}
+    assert _reg("fs") == fs and _st("E23") == {"L"} and _st("C01") == {"S"}
+    assert _st("C01-w") == {"D"} and _st("C01-sz") == {"N"}
     for cid in ("C01", "E23"):
         assert fs in cl[cid]["cites"]["registrations"], cid
         assert "results/dataprep/reports/FS.start_invariance.v1/report.json" in cl[cid][
@@ -1052,6 +1054,8 @@ def _r8(rid: str) -> str:
     return f"user ruling 2026-11-03 (twelfth set) ({rid})"
 
 
+# status_current at main 711447b, before the round-8 results, of every row that was S then
+PRE_ROUND8_STATUS = {"C01": "S+D", "E25": "S", "E26": "S"}
 R8_MODEL_ONLY = ("FV.stat.v2", "X5.n2_reading.v1", "COLF.column_family_2028.v1",
                  "FE.encompass_2026-12.v1", "CB.coverage_side.v1", "FB.family_power.v1",
                  "U1.ext_transfer_power.v1", "X5.gnss_seasonal_family.gates.v1",
@@ -1060,21 +1064,33 @@ R8_MODEL_ONLY = ("FV.stat.v2", "X5.n2_reading.v1", "COLF.column_family_2028.v1",
 
 def test_round8_rulings_and_rows_follow_the_scored_reports():
     """The twelfth set is recorded; each scored round-8 study moves only what its registration
-    maps: E04 and C01 get measured decidability (C01 split S+D+N under R8.8), E02z is row E30
-    (D), E02x's failed P-gate is row C14f-r (N), FB is row E29 (N), and no model-only study
-    supports anything."""
+    maps: E04 and N2's window row C01-w get measured decidability (C01 split into C01, C01-w and
+    C01-sz under R8.8, following C14a -> C14a-r), E02z is row E30 (D), E02x's failed P-gate is
+    row C14f-r (N), FB is row E29 (N), and no model-only study supports anything."""
     ids = {r["id"] for r in L()["rulings"]}
-    for rid in ("R8.1b", "R8.2", "R8.3", "R8.4a", "R8.5", "R8.8", "R8.10", "R8.11", "R8.14"):
+    for rid in ("R8.1a", "R8.1b", "R8.1c", "R8.1d", "R8.1e", "R8.1f", "R8.2", "R8.3", "R8.4a",
+                "R8.5", "R8.8", "R8.10", "R8.11", "R8.14"):
         assert _r8(rid) in ids, rid
+    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.7", "R8.9", "R8.13"):   # wired separately
+        assert _r8(rid) not in ids, rid
     assert all("user_rulings_2026-11-03.json (sha256 ec610b69)" in r["text"]
                for r in L()["rulings"] if r["id"].startswith("user ruling 2026-11-03"))
     cl = CL()
-    c01 = cl["C01"]
-    assert c01["status_before"] == "S+D" and _st("C01") == {"S", "D", "N"}
-    assert c01["ruling"] == _r8("R8.8") and "X5.n2_reading.v1" in c01["cites"]["registrations"]
-    for k in ("direction S (design-time", "within-window anomaly response D", "size N"):
-        assert k in c01["wording_en"], k
-    assert "'informative'" in c01["notes"] and "half-size" in c01["notes"]
+    c01, w, sz = cl["C01"], cl["C01-w"], cl["C01-sz"]
+    assert c01["status_before"] == "U" and _st("C01") == {"S"} and c01["ruling"] == _r8("R8.8")
+    assert "S+D from that scoping" in c01["notes"] and "split on 2026-11-06" in c01["notes"]
+    assert "X5.n2_reading.v1" not in c01["cites"]["registrations"]
+    assert c01["cites"]["tests"] == ["N1P.C_heads_yunlin", "N1.G1_mask_E2015"]
+    assert _st("C01-w") == {"D"} and w["cites"]["tests"] == ["N2P.heads_yunlin_response"]
+    assert set(w["cites"]["registrations"]) == {"N2.policy_response.prospective_2026-11.v1",
+                                                "X5.n2_reading.v1"}
+    assert "'informative'" in w["notes"] and "cannot decide" in w["notes"]
+    assert "0.752 at rho -0.87" in w["notes"] and "0.002 at rho -0.87" in w["notes"]
+    assert _st("C01-sz") == {"N"} and "size likely too small; not gated" in sz["wording_en"]
+    assert "X5.lever_class_share.v1" in sz["cites"]["registrations"]
+    assert "No calibrated correction factor follows." in sz["doc_anchors"]["README.md"]["present"]
+    assert DM()["tiles"]["tW"] == ["C01", "C01-w", "C01-sz"]
+    assert DM()["i18n"]["evc_n2_rd"] == ["C01-w"] and DM()["functions"]["n2rdLine"] == ["C01-w"]
     e04 = cl["E04"]
     assert _st("E04") == {"D"} and "FV.stat.v2" in e04["cites"]["registrations"]
     assert "'not_shown_weak'" in e04["notes"] and "decidability measured" in e04["notes"]
@@ -1089,14 +1105,14 @@ def test_round8_rulings_and_rows_follow_the_scored_reports():
     assert "GOV.heads_window_product.v1" in cl["C14b"]["cites"]["registrations"]
     f = cl["C14f-r"]
     assert _st("C14f-r") == {"N"} and f["cites"]["registrations"] == ["U1.ext_transfer_power.v1"]
-    assert "not decidable by design (U1.ext_transfer_power.v1)" in f["wording_en"]
+    assert "'undecidable by design at the external wells'" in f["wording_en"]
     e29 = cl["E29"]
     assert _st("E29") == {"N"} and e29["cites"]["registrations"] == ["FB.family_power.v1"]
     assert "family BF not decidable by design (FB.family_power.v1)" in e29["wording_en"]
     assert not {"E27", "E28"} & set(cl), "E27/E28 were conditional on registrations that failed"
     for c in L()["claims"]:                 # a model-only study never adds an S
         if set(c["cites"]["registrations"]) & set(R8_MODEL_ONLY) and "S" in _st(c["id"]):
-            assert "S" in C.codes(c["status_before"]), c["id"]
+            assert "S" in C.codes(PRE_ROUND8_STATUS.get(c["id"], "")), c["id"]
     for cid in ("E25", "E26"):                    # the S rests on the primary tests only
         assert len(cl[cid]["cites"]["tests"]) == 1, cid
 
@@ -1117,6 +1133,8 @@ def test_round8_narrowings_and_closures_are_worded_as_registered():
         n = cl[cid]["notes"]
         assert chj in n and "co-located canal/paddy recharge is NOT rejected" in n, cid
         assert "one replicate" in n and "only the no-harm" in n, cid      # the seed disclosure
+        assert "the --ske-skv-max 0.1 cap applies globally" in n, cid      # R8.1f
+        assert "Q0's own three-zone uncapped column" in n, cid
         assert "'size class not decidable prospectively (OSSE power 0.89)'" in n, cid
         assert "false 'not overstated' rate" in n and "0.47-0.63" in n and "<= 0.20" in n, cid
         assert _st(cid) == {"N"}, cid
@@ -1159,7 +1177,17 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
             assert d["evc_hyb_fvs"] == want and d["evc_hyb_fvs_pass"] == pas, lang
     assert "out.push(...fvsLines());" in C.function_source("evidenceItems")
     assert "const nl = n2rdLine(); if (nl)" in C.function_source("evidenceItems")
-    assert "cannot tell a full-size response from a half-size one" in en["evc_n2_rd"]
+    decl = C.PREREG / "X5.n2_reading.v1.json"
+    if decl.exists():                           # the registered wording, verbatim
+        w = json.loads(decl.read_text(encoding="utf-8"))["thresholds"]["reading"]["wording"]
+        want = w["informative"]
+        for k in ("fp", "ws05", "ws2", "cov", "pw", "pwc", "pwf"):
+            want = want.replace(f"{{{k}:.2f}}", f"{{{k}}}")
+        assert en["evc_n2_rd"] == want
+    assert en["evc_n2_rd"].endswith("lambda 0.8: power {pwf})")      # no gloss after it
+    assert "不符合其門檻（< 0.25 / ≥ 0.80）" in zh["evc_n2_rd"] and "未達" not in zh["evc_n2_rd"]
+    for d in (en, zh):
+        assert not any("full-size response" in v or "完整大小" in v for v in d.values())
     for k in ("hl_pol", "def_tW", "rank_limit"):
         assert "×1.27" in en[k] and "×1.27" in zh[k], k
     assert "(S, design-time" in en["tW_r"] and "(D)" in en["tW_r"] and "(N;" in en["tW_r"]
@@ -1167,6 +1195,11 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     # C27: registered numbers; the 'other way' / 'constant rate' readings are gone
     assert "{syl}" in en["evc_pr_subs"] and "{scu}" in zh["evc_pr_subs"]
     assert "ratio interval [{lo}, {hi}]" in en["pr_stepb"]
+    # on leveling CL is a constant sinking rate, not 'no change' (N1.policy_response.v1)
+    for k in ("pr_s_lost_both", "pr_s_lost_cl", "pr_s_lost_zr", "pr_s_beat"):
+        assert "a constant sinking rate" in en[k] and "固定下陷速率" in zh[k], k
+        assert "no change" not in en[k] and "不變" not in zh[k], k
+    assert "against a constant sinking rate (CL)" in CL()["C27"]["wording_en"]
     for gone in ("pr_way_other", "pr_way_same", "pr_cl_better"):
         assert gone not in en and gone not in zh, gone
     assert not any("too large" in v for d in (en, zh) for v in d.values())
@@ -1174,7 +1207,15 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     assert en["def_tA_e24"].startswith("Model internals (L)") and zh["def_tA_e24"].startswith(
         "模型內部數值（L）")
     assert "(model-form spread, not an interval)" in en["def_tA_e24"]
+    # SD v2's registered line_template: range, coast share, inland reading; Tier A beside A+B
+    assert "coast (distal zone) {clo}–{chi} % of it; {inl}" in en["def_tA_e24"]
+    assert "{ta}" in en["def_tA_e24"] and "coast {clo}–{chi} % of it" in en["def_tA_e24_a"]
+    assert en["e24_inl_rob"] == "inland Yunlin robust within ×1.5"
     assert "const e24 = e24Line(); if (e24) p(e24);" in C.function_source("tileDefHtml")
+    e24 = C.function_source("e24Line")                 # only for the run SD v2 measured
+    assert 'PRESETS.find(q => q[0] === "irr30")' in e24 and "M.starts[S.start] !== 2026" in e24
+    assert 'r.lo <= 0 ? "chx_2c_ns" : "chx_2c_ns_gen"' in C.function_source("chxSepClause")
+    assert "reaching 0" not in en["chx_2c_ns_gen"]
     sc = L()["page_scoping"]
     assert "def_tA_e24" in sc["internals_labelled_keys"] and "def_tA_e24" in sc[
         "headline_must_not_use"]

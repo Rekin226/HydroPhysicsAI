@@ -2024,10 +2024,20 @@ def _r8_reports() -> dict:
                   "reading": {"key": "not_separable"}},
         "sd2": {"id": "SD.cut_response_spread.v2", "label": "model-form spread, not an interval",
                 "evaluable": True,
-                "readings": {"A+B": {"columns": [f"c{i}" for i in range(10)],
-                                     "2028-12": {"yunlin_cm_range": [0.4715, 1.421],
-                                                 "inland": {"ratio": 2.0228}},
-                                     "2032-12": {"yunlin_cm_range": [9.0, 9.9]}}},
+                "readings": {
+                    "A+B": {"columns": [f"c{i}" for i in range(10)],
+                            "2028-12": {"yunlin_cm_range": [0.4715, 1.421],
+                                        "yunlin_distal_share_range": [0.402, 0.7528],
+                                        "inland": {"ratio": 2.0228, "min_cm": 0.5401,
+                                                   "max_cm": 1.0924, "reading":
+                                                   "column-dependent x2.02 (0.540-1.092 cm)"}},
+                            "2032-12": {"yunlin_cm_range": [9.0, 9.9]}},
+                    "A": {"columns": ["page", "page_aquitard", "page_tau30"],
+                          "2028-12": {"yunlin_cm_range": [1.3979, 1.421],
+                                      "yunlin_distal_share_range": [0.5961, 0.6008],
+                                      "inland": {"ratio": 1.0096, "min_cm": 1.0765,
+                                                 "max_cm": 1.0868, "reading":
+                                                 "inland Yunlin robust within x1.5"}}}},
                 "page_line_L": "x cm"},
         "chb": chb,
     }
@@ -2044,8 +2054,15 @@ def test_results_block_reads_the_round8_reports_and_nothing_else(tmp_path):
                            "power_forcing": 0.504}
     assert got["chx2c"] == {"reading": "not_separable", "beta": 0.1476, "lo": -0.0379,
                             "hi": 0.4478}                        # the Yunlin one is not kept
-    assert got["sd2"] == {"label": "model-form spread, not an interval", "n_columns": 10,
-                          "lo_cm": 0.4715, "hi_cm": 1.421, "inland_ratio": 2.0228}
+    assert got["sd2"] == {"label": "model-form spread, not an interval",
+                          "ab": {"n_columns": 10, "lo_cm": 0.4715, "hi_cm": 1.421,
+                                 "coast_lo": 0.402, "coast_hi": 0.7528, "inland_robust": False,
+                                 "inland_ratio": 2.0228, "inland_lo_cm": 0.5401,
+                                 "inland_hi_cm": 1.0924},
+                          "a": {"n_columns": 3, "lo_cm": 1.3979, "hi_cm": 1.421,
+                                "coast_lo": 0.5961, "coast_hi": 0.6008, "inland_robust": True,
+                                "inland_ratio": 1.0096, "inland_lo_cm": 1.0765,
+                                "inland_hi_cm": 1.0868}}
     assert got["chb"]["p_k0"] == 0.13 and got["chb"]["p_k1"] == 0.346
     reps = _r8_reports()
     reps["chb"]["report_only_synthetic_power"]["computed"] = False   # no rates, no caveat
@@ -2060,6 +2077,7 @@ def test_results_block_reads_the_round8_reports_and_nothing_else(tmp_path):
     ("chx2c", lambda r: r["reading"].update(key="survives")),
     ("chx2c", lambda r: r["pregate"].update(passed=False)),
     ("sd2", lambda r: r.update(label="interval")),
+    ("sd2", lambda r: r["readings"]["A"]["2028-12"]["inland"].update(reading="other")),
 ])
 def test_results_block_refuses_a_round8_reading_without_page_wording(tmp_path, key, edit):
     reps = _r8_reports()
@@ -2081,13 +2099,18 @@ def test_round8_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypa
           "test_end: '2027-10-31'}}; "
           "const txt = () => evidenceItems().map(x => x[1]).join(' | '); "
           "const all = {chx: true, chb: true, fvs2: true, n2rd: true, chx2c: true, sd2: true}; "
+          "const irr = S.f.map((_, i) => i === 0 ? 0.7 : 1), s26 = M.starts.indexOf(2026); "
+          "const at = (f, si) => { S.f = f; S.start = si; policyInto(P, S.f, S.start); "
+          "KP = kpis(P, S.year); return tileDefHtml('tA'); }; "
           "mc.registrations = {chx: true, chb: true}; mc.results = res; "
-          "const unreg = txt(), tA0 = tileDefHtml('tA'); "
+          "const unreg = txt(), tA0 = at(irr, s26); "
           "mc.registrations = all; mc.results = {chx: res.chx, chb: res.chb}; "
           "const noreport = txt(); "
-          "mc.results = res; const on = txt(), tA = tileDefHtml('tA'); "
-          "LANG = 'zh'; const zh = txt(), tAzh = tileDefHtml('tA'); LANG = 'en'; "
-          "return {unreg, tA0, noreport, on, tA, zh, tAzh}; }")
+          "mc.results = res; const on = txt(), tA = at(irr, s26), "
+          "tAbase = at(S.f.map(() => 1), s26), tAother = at(S.f.map(() => 0.8), s26); "
+          "mc.results = {...res, chx2c: {...res.chx2c, lo: 0.01}}; const gen = txt(); "
+          "mc.results = res; LANG = 'zh'; const zh = txt(), tAzh = at(irr, s26); LANG = 'en'; "
+          "return {unreg, tA0, noreport, on, tA, tAbase, tAother, gen, zh, tAzh, s26}; }")
     _, out, _ = _build(tmp_path)
     pw, browser = _browser()
     try:
@@ -2109,16 +2132,25 @@ def test_round8_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypa
     assert "a fail has probability about 0.07 (1 - P)" in got["on"]
     assert "false pass 0.20 < 0.25" in got["on"] and "0.75 / 0.01" in got["on"]
     assert "power 0.95 (0.15 with the canal confounder)" in got["on"]
-    assert "cannot tell a full-size response from a half-size one" in got["on"]
-    assert "Changhua slope is 0.15 [-0.04, 0.45]" in got["on"]
+    assert "full-size" not in got["on"] and "lambda 0.8: power 0.50)" in got["on"]
+    assert "Changhua slope is 0.15 [-0.04, 0.45] (90 % interval, reaching 0)" in got["on"]
+    # 'reaching 0' only when the interval reaches 0; otherwise the registered generic wording
+    assert "reaching 0" not in got["gen"] and "(Changhua slope 0.15 [0.01, 0.45]" in got["gen"]
     assert "not separable from Yunlin spill-over" in got["on"]
     assert "probability 0.35 if the model is right and 0.13 with no response" in got["on"]
     for k in ("X5.n2_reading.v1", "FV.stat.v2", "I1.CHX.v1.twocontrast"):
         assert k in got["zh"], k
     # E24 (R8.11): only in the tA definition, under Model internals, from the report
     assert "SD.cut_response_spread" not in got["tA0"] and "SD.cut_response_spread" not in got["on"]
+    assert got["s26"] >= 0
     assert "Model internals (L): across 10 leveling-equivalent columns" in got["tA"]
-    assert "0.47–1.42 cm, column-dependent ×2.02 inland" in got["tA"]
-    assert "(model-form spread, not an interval)" in got["tA"]
+    assert "is 0.47–1.42 cm; coast (distal zone) 40–75 % of it; column-dependent ×2.02 inland" in got["tA"]
+    assert ("(0.540–1.092 cm) (model-form spread, not an interval). Across the 3 columns on the "
+            "page's own heads (Tier A) it is 1.40–1.42 cm; coast 60–60 % of it; inland Yunlin "
+            "robust within ×1.5.") in got["tA"]
+    assert "coast (distal zone) 40–75 % of it" in got["tA"]
+    # only for the irrigation x0.7 lever from 2026 (the run SD v2 measured)
+    for k in ("tAbase", "tAother"):
+        assert "SD.cut_response_spread" not in got[k], k
     assert "模型內部數值（L）" in got["tAzh"] and "0.47–1.42 公分" in got["tAzh"]
 
