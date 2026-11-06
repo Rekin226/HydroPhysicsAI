@@ -47,6 +47,7 @@ _DOM = """() => {
   const q = s => { const e = document.querySelector(s); return e ? e.textContent : null; };
   const sn = document.getElementById("startNote");
   return {headline: q("#headline"), tW: q("#tW .vn"), tC: q("#tC .vn"),
+          tWr: q("#tW .r"), tWd: q("#tW .d"),
           startNote: sn && !sn.hidden ? sn.textContent : ""}; }"""
 _EVIDENCE = """() => { renderCard(); const q = id => (document.getElementById(id) || {}).textContent || "";
   return [q("evLine"), q("cardBody"), q("tiles")].join("\\n"); }"""
@@ -70,7 +71,7 @@ def grid(b: PageBundle, n_random: int = 30, seed: int = 0) -> list[tuple[tuple[f
     horizon and two earlier years (one before the 2030 start, for the not-yet-acting branch)."""
     c = Q.ctx(b)
     fs: list[tuple[float, ...]] = []
-    presets = [[0.7, 1, 1, 1, 1, 1], [1, 0, 1, 1, 1, 1], [0.7, 0, 1, 1, 1, 1], [0.8] * 6]
+    presets = [[0.7] * 6, [0.7, 1, 1, 1, 1, 1], [1, 0, 1, 1, 1, 1], [0.7, 0, 1, 1, 1, 1], [0.8] * 6]
     for f in presets + [x["factors"] for x in c.solved] + [[1.0] * c.K]:
         t = tuple(float(v) for v in f)
         if t not in fs:
@@ -107,7 +108,9 @@ def _python_dom(b: PageBundle, f, start, year, lang) -> dict:
     if year == c.years[-1] and src not in ("base", "none"):
         r2 = Q.start_compare(b, f, year, lang)
         sn = next((s.text for s in r2.snippets if s.key.startswith("start_note")), "")
-    return {"headline": J.strip_tags(hl.text), "tW": tW, "tC": tC, "startNote": sn}
+    _, tWr, tWd = Q.tile_w(b, Q.Policy(tuple(f), start), year, lang)
+    return {"headline": J.strip_tags(hl.text), "tW": tW, "tC": tC, "tWr": tWr, "tWd": tWd,
+            "startNote": sn}
 
 
 def _python_rank(b: PageBundle, year: int, by: str, lang: str) -> str:

@@ -1947,6 +1947,108 @@ scored, and no number on the page is new.
 Progress: no figure in section 22's table changes. C30's one row becomes two (C30-scen N,
 C30-fc D); the rubric points of the split rows are not recomputed here.
 
+## 24. all30 headline (ruling R8.9)
+
+User ruling R8.9 (2026-11-03, twelfth set; `results/dataprep/rulings/user_rulings_2026-11-03.json`,
+sha ec610b69): "Yes: all30 (all-class x0.7) at N2's unit is the headline; cut30 and retire_aqua
+kept as class scenarios labelled 'size depends on the pumping conversion'. Scenario forward to a
+separate file; cf2c7154 must stay byte-identical." The ledger records it as
+`user ruling 2026-11-03 (twelfth set) (R8.9)`. This is a ruling, not a test: nothing is
+registered or scored, and no status changes (C01 S, C01-w D, C01-sz N, C12 L).
+
+- **Why all30.** N2 (`N2.policy_response.prospective_2026-11.v1`) tests this model's response to
+  total recorded Yunlin pumping anomalies, not to a class. Between two pumping
+  energy-to-volume conversions the all-class x0.7 cut (all30) changes only x1.03-1.05 (gated ratios
+  1.034-1.052 in both counties, by horizon 1.02-1.06), while the irrigation-only cut30 changes
+  about x1.27 in Yunlin (x1.26-1.28 by horizon) (`X5.lever_class_share.v1`, report-only part,
+  measured between the q0c and x5r1 calibrations, not on the page model). The headline lever
+  therefore becomes the quantity N2's test is built on; N2 still decides the within-window
+  response (C01-w), not the lever's size (C01-sz, N).
+- **A forward, not the response basis.** The page's fast estimate superposes one-class
+  retirements of one parameter set (`response_basis_innov.npz`), rescaled per class to the
+  ensemble's solved runs. It cannot give all30 exactly: it is one parameter set against the
+  page run's 18 (its baseline differs from the ensemble's by up to 2.3 m at N2's screens), three
+  of the six classes have no solved run to rescale to (assumed factor), and the solver is not
+  linear in the pumping multipliers: the basis's own check, irrigation x0.5, misses half of
+  irrigation x0 by 6.3 % at N2's unit. At N2's unit for Dec 2032 the raw superposition gives
+  +2.14 m and the per-class rescaled one +2.00 m; neither is used. cut30 itself is a full
+  ensemble forward (`datum_gate_innov.npz`), so all30 is produced the same way: one GPU forward.
+- **The scenario forward.** `dataprep_staging/all30/run_all30.py` runs `twin.forward` with the
+  page recipe exactly as FS.start_invariance.v1's arm S0 reproduced it (0.0 m against the page
+  run): the page theta `stage3_datum_gate` with its 5 fold and 12 posterior sets (18 sets x 2
+  initial fields = 36 members), both columns, the innovation restart with a 5 km taper, the
+  calibrated apex hold, the column on free-running heads with the start-up load released, the
+  vendor rain cache the page run read, 120 months, per-member yearly fields. Its scenarios are
+  the page's cut30 and retire_aqua plus all30 (every class x0.7 from 2026-01, cut30's start and
+  horizon), written to `results/twin_forward/all30_page.*`, never over an existing file. Before
+  anything runs and again after the forward, `results/twin_forward/datum_gate_innov.npz` must
+  be byte-identical to sha256 cf2c7154 (the registered forward of N2, E02, E02c and N3F);
+  otherwise the runner refuses (before) or fails with exit 3 (after; a missing file is recorded,
+  not a crash). Preflight: the frozen-screen scorer `score_fs.py` must have FS's registered
+  sha256 and every input FS declared (files and the head-well directory digest) its declared
+  hash. After the forward it checks the new file's layout against the page run (grid, months,
+  members, columns, forward options, gate) and that the page's three scenarios reproduce it
+  within 0.01 m in every layer, cell and month, and that cut30 and retire_aqua at N2's unit for
+  Dec 2032 equal the published +1.19 and +1.41 m within 0.005 m. The sidecar
+  `all30_page.provenance.json` records the command, the code commit, the sha256 of every input
+  and output, the reference check before and after, these checks, all30's N2-unit series (the
+  frozen N2 screens of FS.start_invariance.v1, read, not edited) and every earlier attempt.
+  Model output only.
+- **Attempt ladder (declared before any run).** Rung 1 is the merged main (the clean checkout
+  the runner lives in, its HEAD equal to `origin/main`); the one fallback is a clean worktree at
+  4c2723e (where FS's S0 reproduced the page run), allowed only after rung 1's outputs did not
+  reproduce (exit 3). Every attempt is logged append-only in
+  `results/twin_runs/all30/attempts.jsonl` (start and end rows: time, rung, code commit, exit
+  code, status, output sha256s); a start row without an end row counts as a killed or partial
+  attempt. No run once an attempt reproduced, once the bound file changed, or once a rung did
+  not reproduce (the ladder is used up after the fallback); an engineering failure may be
+  retried at the same rung after its outputs are archived (`run_all30.py archive`, logged).
+- **The page (EN and ZH).** `twin.viewer_app --all30 <file>` is optional; without it the page
+  shows no headline lever, no all-pumping preset and none of the headline-lever wording, and
+  reads as before apart from the per-policy conversion clauses below. With it the builder
+  refuses a file whose sidecar does not vouch for it (status, file sha, the bound file unchanged
+  and equal to this page's forward, reproduction), whose months, origin or grid differ, whose
+  all30 is not every class x0.7 from 2026-01, or whose baseline, cut30 or retire_aqua heads
+  differ from the page run's by more than 0.01 m (recomputed by the builder itself, not taken
+  from the sidecar); it then computes all30 at N2's unit exactly as the solved levers (policy
+  minus the file's own baseline, each well in its own screened layer) and checks it against the
+  sidecar's value within 1e-4 m. Payload `n2Unit.all30` (per-year means only). The opening
+  headline then names the headline lever and its size (`hl_w30`: "cutting all pumping 30% (all30,
+  every class x0.7) from 2026, the kind of change N2's test is built on ... That size is
+  model-only and likely too small (Evidence); it changes only x1.03-1.05 between two pumping
+  conversions (measured on the q0c and x5r1 calibrations, not the page model;
+  X5.lever_class_share.v1, report-only). N2 decides the within-window response, not this
+  size."), the business-as-usual head tile carries it in its range line (`tW_w30`: the number
+  and "size model-only, N", no conversion factor), the all-pumping preset comes first
+  (`pr_all30`), and when it is chosen the head at N2's wells is that full-model run
+  (`tW_w30_src`, `prov_w30`, `hl_sz_w30`, `def_tW_w30`; the map and the other tiles stay the fast
+  estimate). The ruled label is the bare clause "size depends on the pumping conversion"; the
+  x1.27 factor is measured for the irrigation x0.7 cut only, so (lead decision b, 2026-11-06)
+  only that lever (factors exactly [0.7, 1, 1, 1, 1, 1]) carries "size depends on the pumping
+  conversion (x1.27 Yunlin; X5.lever_class_share.v1, report-only)" (`hl_sz_irr`, `tW_cls_irr`),
+  retire_aqua and every other class or mixed lever carry the bare label (`hl_sz_cls`,
+  `tW_cls`), and the general lines (`tW_r`, `rank_limit` on C12, `def_tW`) carry the bare label
+  plus "(irrigation x0.7: x1.27 Yunlin)". x1.03-1.05 is stated only for the all-class x0.7 cut
+  (all30) (lead decision a; `hl_sz_all`, `evc_pr_ch_class`). The policy parser now reads every
+  class of a multi-class scenario description; single-class runs read as before. The analyst
+  mirror (`hydrophysics_analyst`) follows the same lines, and its JS parity check, which now
+  also compares tile tW's range and detail lines, passes on a synthetic page with and without
+  the block.
+- **Ledger.** C01, C01-w, C01-sz and C12 cite R8.9 and their wording and notes say the above;
+  the payload paths of `n2Unit.all30` are mapped in a conditional block that the page must carry
+  exactly when it was built with `--all30` and never otherwise. C01-sz's notes hold a slot for
+  the all30 number until the forward exists; it is then written there from the sidecar with the
+  file's sha256 (a test checks the two agree). A promotion guard test fails if a page built
+  from this template without the all30 run becomes the page of record.
+- **Candidate pages.** `results/twin/twin_app_20261106r14a.html` (before the review fixes) and
+  `results/twin/twin_app_20261106r14b.html`, both built WITHOUT `--all30` with the command of
+  `results/twin/twin_app_20261106e.build.log` (`--out` changed; logs beside them); their payload
+  equals 20261106e's except the code hash, so nothing regressed. Neither is ever promoted: the
+  final page adds `--all30 results/twin_forward/all30_page.npz` after the forward.
+
+Progress: no figure in section 22's table changes; the head rows keep their statuses, and the
+headline number becomes the quantity N2's test is built on.
+
 ## 25. PB decomposed band (ruling R8.13)
 
 User ruling R8.13 (2026-11-03, twelfth set; `results/dataprep/rulings/user_rulings_2026-11-03.json`,

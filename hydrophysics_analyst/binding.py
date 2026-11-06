@@ -73,6 +73,8 @@ def ledger_ids(paths, functions, ledger: dict) -> set[str]:
                     ids.update(v)
         else:
             ids.update(dm["payload"].get(p, []))
+            for blk in dm.get("payload_conditional", {}).values():     # ruling R8.9 (all30)
+                ids.update(blk["paths"].get(p, []))
     for fn in functions:
         ids.update(dm["functions"].get(fn, []))
     return ids

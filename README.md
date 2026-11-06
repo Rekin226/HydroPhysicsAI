@@ -513,11 +513,20 @@ in `docs/GPU_SERVER.md`.
   (section 11). The modelled head response is smaller than observed in Yunlin: the
   observed-on-modelled slope is 2.13 in the 2015 drought test, which mixes canal water and
   rain with pumping, and 1.21 on 2016-18. No calibrated correction factor follows. The
-  headline lever (irrigation x0.7, +1.19 m at N2's 84 Yunlin wells by December 2032) is
-  class-specific, and its size depends on the pumping energy-to-volume conversion: between two
-  conversions it differs about x1.27 in Yunlin (x1.26-1.28 by horizon), while a cut of all
-  pumping (all30) is invariant: gated ratios x1.03-1.05 (by horizon 1.02-1.06, report-only;
-  `X5.lever_class_share.v1`, model-only). N2 tests the response to total recorded pumping anomalies, not to a class.
+  headline head lever is all30 (every class x0.7 from January 2026) at N2's 84 Yunlin wells
+  (ruling R8.9): N2 tests the response to total recorded pumping anomalies, not to a class, and
+  the all-class x0.7 cut (all30) is invariant between two pumping energy-to-volume conversions:
+  gated ratios x1.03-1.05 (by horizon 1.02-1.06, report-only; `X5.lever_class_share.v1`,
+  model-only, measured on the q0c and x5r1 calibrations, not the page model). Its number is model output of a separate scenario forward on the page theta
+  (`dataprep_staging/all30/run_all30.py`; `results/twin_forward/all30_page.npz`, while the
+  bound forward `datum_gate_innov.npz`, sha cf2c7154, stays byte-identical), shown on the page
+  once that forward has run and recorded in the ledger (C01-sz) with the file's sha; until
+  then the page shows no headline lever and reads as before. The response basis cannot give it
+  exactly (evidence update section 24). The irrigation-only cut30 (+1.19 m at the same wells by
+  December 2032) and retire_aqua are kept as class scenarios: size depends on the pumping
+  conversion. The x1.27 factor is measured for the irrigation x0.7 cut only (x1.27 Yunlin,
+  x1.26-1.28 by horizon; `X5.lever_class_share.v1`, report-only); retire_aqua and the other
+  class or mixed levers carry the label without a number.
   The head claim is split three ways (ledger rows C01, C01-w, C01-sz): direction S
   (design-time), within-window anomaly response D (N2), size N (model-only). N2's synthetic
   operating characteristics, in the registered wording (`X5.n2_reading.v1`, synthetic, the worst
@@ -562,6 +571,20 @@ in `docs/GPU_SERVER.md`.
   (`X5.gnss_seasonal_family.gates.v1`: its synthetic gate excludes a far member only 0.78 of the
   time pooled against 0.80, and 0.25 in its worst cell against 0.60), so no GNSS amplitude is
   read and subsidence gains no decided direction from it.
+- How much the head contrast depends on the model form (ledger row C14d, model internals; a
+  note, not on the page, no new run): across the 10 full-data Changhua-pumping calibrations
+  whose all-class x0.7 forwards already exist (`X5.changhua_lever_model.v1`'s seven family
+  arms and its R1c reference, and the q0c and x5r1 calibrations of `X5.lever_class_share.v1`;
+  none is the page model, and every one failed at least one registered gate), the all30 head
+  contrast at N2's 84 Yunlin wells is 2.21-2.60 m in 2026-27 and 2.44-2.85 m in 2030-32 (window
+  means; report-only parts of both reports; x1.18 and x1.17) (model-form spread, not an interval). At N2C's 74 Changhua wells the
+  same contrast is 2.10-2.73 and 2.48-3.28 m (x1.30, x1.33); that Changhua head lever is
+  untested (N2C registered, scored not before 2028-01-15). Like the paired runs' spread it
+  excludes response-size error, and the page's own all30 run is not among these. A class lever
+  adds the pumping conversion on top: the irrigation-only cut30 differs x1.27 in Yunlin and
+  x1.39 in Changhua between the q0c and x5r1 conversions (`X5.lever_class_share.v1`,
+  report-only), against x1.03-1.05 for all30; Changhua class-specific levers are withdrawn
+  under every outcome.
 - The pumping-stress spread radius is not identified (0.5-10 km across folds); the
   ensemble carries that spread. Policy sensitivities are consequences of a tested model,
   not validated forecasts.

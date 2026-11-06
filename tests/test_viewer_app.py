@@ -2251,3 +2251,239 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
     for bad in ("passed its registered test", "did not pass its registered test",
                 "FW.rider.v1", "Rain-year caveat"):
         assert bad not in on["ev"] and bad not in on["ts"]["note"], bad
+
+
+# ---------------------------------------------------------------------------------------
+# ruling R8.9 (user rulings 2026-11-03, twelfth set): all30 at N2's unit is the headline head
+# lever, from a separate scenario forward (dataprep_staging/all30/run_all30.py; --all30)
+# ---------------------------------------------------------------------------------------
+ALL30_DESC = ("all30: aquaculture x0.7, domestic x0.7, industry x0.7, irrigation x0.7, "
+              "livestock x0.7, other x0.7 from 2026-01")
+
+
+def test_policy_parser_reads_every_listed_class():
+    assert va._parse_policy(ALL30_DESC) == ([0.7] * 6, 2026)
+    assert va._parse_policy("both: aquaculture x0, irrigation x0.7 from 2030-01") == (
+        [0.7, 0.0, 1, 1, 1, 1], 2030)
+    # the single-class forms read as before
+    assert va._parse_policy("cut30: irrigation x0.7 from 2026-01") == ([0.7, 1, 1, 1, 1, 1], 2026)
+    assert va._parse_policy("retire_aqua: aquaculture x0 from 2026-01") == (
+        [1, 0.0, 1, 1, 1, 1], 2026)
+    assert va._parse_policy("x: rice x0.7, irrigation x0.7 from 2026-01") is None
+    assert va._parse_policy("baseline: baseline (no change)") is None
+
+
+def _write_all30(tmp_path, fw_path, *, delta=2.0, base_shift=0.0, factor=0.7, side=None,
+                 lever_shift=0.0, start="2026-01"):
+    """An all30 file beside the synthetic forward run: its three scenarios plus all30, and the
+    sidecar run_all30.py writes (``side`` overrides its fields)."""
+    from hydrophysics.twin.release import sha256
+
+    fw = np.load(fw_path)
+    heads = fw["heads_mean"].astype("float32")
+    h30 = heads[0] + np.float32(delta) * np.minimum(_ramp(168), 1.0)[None, None].astype("float32")
+    allh = np.concatenate([heads, h30[None]]).copy()
+    allh[0] += np.float32(base_shift)
+    allh[1] += np.float32(lever_shift)                        # the file's cut30
+    desc = ALL30_DESC.replace("x0.7", f"x{factor:g}").replace("2026-01", start)
+    arrs = {k: fw[k] for k in fw.files}
+    arrs.update(heads_mean=allh, scenario_names=np.array([*fw["scenario_names"], "all30"]),
+                scenarios=np.array([*fw["scenarios"], desc]))
+    out = tmp_path / "all30_page.npz"
+    np.savez(out, **arrs)
+    fsha = sha256(str(fw_path))
+    rec = {"status": "ok", "outputs_sha256": {"npz": sha256(str(out))},
+           "reference": {"byte_identical": True, "sha256_before": fsha, "sha256_after": fsha},
+           "reproduction": {"ok": True}, "n2_unit": {"dec2032_m": {}}}
+    rec.update(side or {})
+    (tmp_path / "all30_page.provenance.json").write_text(json.dumps(rec))
+    return out
+
+
+def _geo(fw_path):
+    return va._geometry(np.load(fw_path))
+
+
+def test_all30_file_is_used_only_when_its_sidecar_vouches_for_it(tmp_path):
+    fw_path, _, _ = _write_inputs(tmp_path)
+    fw, g = np.load(fw_path), _geo(fw_path)
+    a = va._load_all30(str(_write_all30(tmp_path, fw_path)), str(fw_path), fw, g,
+                       log=lambda s: None)
+    assert a.factors == [0.7] * 6 and a.start == 2026 and a.names[-1] == "all30"
+    assert a.file == "all30_page.npz" and va._load_all30(None, str(fw_path), fw, g) is None
+    bad = {"status not ok": dict(side={"status": "forward_failed"}),
+           "another npz": dict(side={"outputs_sha256": {"npz": "0" * 64}}),
+           "bound file changed": dict(side={"reference": {"byte_identical": False,
+                                                          "sha256_before": "x",
+                                                          "sha256_after": "y"}}),
+           "not reproduced": dict(side={"reproduction": {"ok": False}}),
+           "baseline off": dict(base_shift=0.05),
+           # the viewer recomputes the page levers itself, whatever the sidecar says
+           "cut30 off, sidecar ok": dict(lever_shift=0.05),
+           "starts 2026-04": dict(start="2026-04"),
+           "not x0.7": dict(factor=0.8)}
+    for why, kw in bad.items():
+        p = _write_all30(tmp_path, fw_path, **kw)
+        with pytest.raises(ValueError, match="--all30"):
+            va._load_all30(str(p), str(fw_path), fw, g, log=lambda s: None)
+        assert why
+    p = _write_all30(tmp_path, fw_path)
+    (tmp_path / "all30_page.provenance.json").unlink()
+    with pytest.raises(ValueError, match="sidecar"):
+        va._load_all30(str(p), str(fw_path), fw, g, log=lambda s: None)
+    # checked against another page forward than this one: refused
+    other = tmp_path / "other"
+    other.mkdir()
+    fw2, _, _ = _write_inputs(other)
+    with open(fw2, "ab") as fh:
+        fh.write(b"\0")
+    p = _write_all30(tmp_path, fw_path)
+    with pytest.raises(ValueError, match="another forward run"):
+        va._load_all30(str(p), str(fw2), fw, g, log=lambda s: None)
+
+
+def test_n2_unit_carries_the_all30_lever_from_its_own_run(tmp_path):
+    from types import SimpleNamespace
+
+    from hydrophysics.twin.release import sha256
+
+    reg = tmp_path / "reg"
+    reg.mkdir()
+    pred = reg / "predictions.csv"
+    pd.DataFrame({"station_id": ["09000001", "09000002"], "layer": [2, 3]}).to_csv(pred,
+                                                                                  index=False)
+    man = reg / "manifest.json"
+    man.write_text(json.dumps({"predictions_sha256": sha256(pred)}))
+    inp = SimpleNamespace(sids=["09000001", "09000002"], obs_idx=np.array([1, 2]),
+                          obs_layer=np.array([1, 2]))
+    rng = np.random.default_rng(1)
+    heads = rng.normal(size=(2, 4, 3, 5)).astype("float32")
+    h30 = rng.normal(size=(4, 4, 3, 5)).astype("float32")
+    f = SimpleNamespace(heads=heads, names=["baseline", "cut30"])
+    g = SimpleNamespace(ye=np.array([1, 4]))
+    want = ((h30[3, 1, 1] - h30[0, 1, 1]) + (h30[3, 2, 2] - h30[0, 2, 2]))[[1, 4]] / 2
+    a30 = SimpleNamespace(heads=h30, names=["baseline", "cut30", "retire_aqua", "all30"],
+                          factors=[0.7] * 6, start=2026, file="all30_page.npz", sha256="a" * 64,
+                          sidecar_dec2032=float(want[-1]))
+    out = va._n2_unit_block(inp, str(man), f, [{"name": "cut30"}], None, None, g,
+                            log=lambda s: None, all30=a30)
+    assert set(out) == {"n", "n_registered", "solved", "basis", "all30"}
+    w = out["all30"]
+    assert np.allclose(w["series"], want, atol=1e-4) and w["factors"] == [0.7] * 6
+    assert w["start"] == 2026 and set(w) == {"name", "factors", "start", "series", "file",
+                                             "sha256"}               # no ids, cells or layers
+    a30.sidecar_dec2032 = float(want[-1]) + 0.01                    # the sidecar disagrees
+    with pytest.raises(ValueError, match="sidecar"):
+        va._n2_unit_block(inp, str(man), f, [{"name": "cut30"}], None, None, g,
+                          log=lambda s: None, all30=a30)
+
+
+def test_build_refuses_an_unvouched_all30_file_and_is_unchanged_without_one(tmp_path, quiet):
+    pl, _, _ = _build(tmp_path)
+    assert "all30" not in pl["release"]["sources"] and pl["n2Unit"] is None
+    fw_path = tmp_path / "fwd.npz"
+    p = _write_all30(tmp_path, fw_path, side={"status": "does_not_reproduce"})
+    with pytest.raises(ValueError, match="does not vouch"):
+        _build(tmp_path, all30_npz=str(p))
+    # a vouched file without N2's unit (no wells here) is not shown and not cited
+    sub = tmp_path / "b"
+    sub.mkdir()
+    _write_inputs(sub)
+    p = _write_all30(sub, sub / "fwd.npz")
+    msgs = []
+    pl, _, _ = _build(sub, all30_npz=str(p), log=msgs.append)
+    assert "all30" not in pl["release"]["sources"] and pl["n2Unit"] is None
+    assert any("all30 not shown" in m for m in msgs)
+
+
+def _eval_page(page, js):
+    pw, browser = _browser()
+    try:
+        pg = browser.new_page()
+        pg.goto(page.as_uri())
+        pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        return pg.evaluate(js)
+    finally:
+        browser.close()
+        pw.stop()
+
+
+ALL30_RUN_JS = (
+    "(pols) => { const out = {}; const run = (f, lang) => { setLang(lang); "
+    "S.f = f.slice(); S.start = 0; S.year = Y - 1; syncLevers(); update(true); "
+    "cancelAnimationFrame(rafId); flush(); "
+    "return {hl: document.getElementById('headline').textContent, "
+    "tw: document.querySelector('#tW .vn').textContent, "
+    "r: document.querySelector('#tW .r').textContent, "
+    "d: document.querySelector('#tW .d').textContent, "
+    "def: tileDefHtml('tW').replace(/<[^>]+>/g, ''), "
+    "chip: document.getElementById('prov').textContent, w30: P.w30}; }; "
+    "const w = (D.n2Unit || {}).all30; out.h = w ? sg(w.series[Y-1]) : null; "
+    "out.presets = presetsShown().map(p => p[0]); "
+    "for (const lang of ['en', 'zh']) for (const [k, f] of Object.entries(pols)) "
+    "out[k + '_' + lang] = run(f, lang); return out; }")
+POLS = {"base": [1] * 6, "all": [0.7] * 6, "irr": [0.7, 1, 1, 1, 1, 1],
+        "aqua": [1, 0, 1, 1, 1, 1], "both": [0.7, 0, 1, 1, 1, 1],
+        "custom": [0.8, 1, 0.5, 1, 1, 0.9], "all20": [0.8] * 6}
+
+
+def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_path):
+    """Headless: with n2Unit.all30 the opening headline names the headline lever with its
+    full-model size; the all-pumping preset is first and takes its head at N2's wells from that
+    run. Lead decision (b): only the irrigation x0.7 lever carries x1.27; retire_aqua, both and
+    a custom mix carry the bare R8.9 label. EN and ZH."""
+    from hydrophysics_analyst import testing as AT
+
+    page = AT.build_synthetic_page(tmp_path, all30=True)
+    got = _eval_page(page, f"() => ({ALL30_RUN_JS})({json.dumps(POLS)})")
+    h = got["h"]
+    assert got["presets"][0] == "all30"
+    b, a, i, a20 = got["base_en"], got["all_en"], got["irr_en"], got["all20_en"]
+    assert ("The headline lever (ruling R8.9) is cutting all pumping 30% (all30, every class "
+            "×0.7) from 2026") in b["hl"]
+    assert f"raises the groundwater head by {h} m" in b["hl"] and "not this size" in b["hl"]
+    assert "measured on the q0c and x5r1 calibrations, not the page model" in b["hl"]
+    assert b["tw"] == "0.00" and b["r"].startswith("headline lever (ruling R8.9)") and h in b["r"]
+    assert a["w30"] and a["tw"] == h and a["d"].startswith("Headline lever: the head at N2's")
+    assert "head at N2's wells: the all-pumping full-model run" in a["chip"]
+    assert "this is the headline lever (ruling R8.9)" in a["hl"] and "Class scenario" not in a["d"]
+    assert "The headline lever is that all-class ×0.7 cut" in a["def"]
+    irr = ("Class scenario: size depends on the pumping conversion (×1.27 Yunlin; "
+           "X5.lever_class_share.v1, report-only).")
+    assert not i["w30"] and i["d"].startswith(irr) and "full-model run" not in i["chip"]
+    assert ("irrigation ×0.7 class scenario's size depends on the pumping conversion (×1.27"
+            in i["hl"])
+    for k in ("aqua", "both", "custom"):                    # the bare label, no number
+        x = got[k + "_en"]
+        assert x["d"].startswith("Class scenario: size depends on the pumping conversion. "), k
+        assert "as a class scenario its size depends on the pumping conversion." in x["hl"], k
+        assert "1.27" not in x["hl"] and "1.27" not in x["d"], k
+        z = got[k + "_zh"]
+        assert z["d"].startswith("用水類別情境：大小取決於抽水換算。") and "1.27" not in z["hl"], k
+    assert not a20["w30"] and "Class scenario" not in a20["d"]       # uniform, not all30
+    assert "1.03" not in a20["hl"] and "1.27" not in a20["hl"]
+    zb, za, zi = got["base_zh"], got["all_zh"], got["irr_zh"]
+    assert "頭條槓桿（裁定 R8.9）為自2026年起全部抽水減30%" in zb["hl"] and h in zb["hl"]
+    assert za["tw"] == h and za["d"].startswith("頭條槓桿：")
+    assert zi["d"].startswith("用水類別情境：大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1")
+
+
+def test_without_the_all30_run_the_page_has_no_headline_lever(tmp_path):
+    """S3: a page built without --all30 never presents the fast estimate as the headline
+    lever: no all-pumping preset, no headline-lever words anywhere; the class clauses stay."""
+    from hydrophysics_analyst import testing as AT
+
+    page = AT.build_synthetic_page(tmp_path)
+    got = _eval_page(page, f"() => ({ALL30_RUN_JS})({json.dumps(POLS)})")
+    assert got["h"] is None and "all30" not in got["presets"]
+    assert got["presets"] == ["irr30", "aqua0", "both", "all20"]       # as before
+    for k, x in got.items():
+        if not isinstance(x, dict):
+            continue
+        txt = x["hl"] + x["r"] + x["d"] + x["def"] + x["chip"]
+        assert not x["w30"] and "R8.9" not in txt and "headline lever" not in txt.lower(), k
+        assert "頭條槓桿" not in txt, k
+    assert got["base_en"]["r"] == "" and got["base_en"]["tw"] == "0.00"
+    # all30 on the fast estimate: the all30 conversion fact, never 'the headline lever'
+    assert "the all-class ×0.7 cut (all30) changes only ×1.03–1.05" in got["all_en"]["hl"]
+    assert "1.27" not in got["aqua_en"]["hl"] and "×1.27" in got["irr_en"]["hl"]
