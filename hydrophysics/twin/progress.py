@@ -1,0 +1,336 @@
+"""Progress figures recomputed from the claims ledger by the rule of section 21.
+
+``docs/TWIN_EVIDENCE_2026-10.md`` section 21 fixes how the project's progress figures come from
+the claims ledger (``claims_v1.json``): a grade per claim from its status, a weight per claim
+from where it is shown, a part score as the weighted mean grade in percent, science trust as
+the mean of the five science parts and the headline as the mean of those five and claim
+honesty. This module applies that rule. It reads nothing but the ledger and the committed
+mapping ``progress_map_v1.json``; no observation value, report or registry file is opened.
+
+What comes from where:
+
+* PART: the mapping file (claim id -> one of the five science parts, or ``none`` for rows that
+  make no science claim: UI rows, the model's configuration line, release and bookkeeping
+  rows). A ``none`` row is listed but counted in no part.
+* WEIGHT: derived from the ledger, never from free text (``derived_weight``). 0 for the
+  ledger's non-claim rows (ids ``Z*``: UI, legends, 3D drawer, unread payload) and for rows
+  the mapping marks as a mirror; 2 for a row on an answer tile (``display_map.tiles`` of
+  the mapping's ``answer_tiles``, the template's ``TILE_IDS[:PRIMARY]``) or in a headline
+  function (``display_map.functions['renderHeadline']``); 1 for any other row the page shows
+  (any ``tile:``, ``i18n:`` or ``card:`` text key, or any page section of ``display_map``);
+  0.5 for a row shown only in the README, the model card or the evidence update (``doc:``
+  text keys or ``doc_anchors`` only); 0 for a row shown nowhere. The mapping may override a
+  derived weight, and every override carries its reason (``weight_reason``).
+* GRADE: the status code's grade (section 21); S and D codes take the qualifier the mapping
+  gives for the row's exact status string (``grade[status][code]``). A D qualifier may be
+  conditional, ``{"measured_by": REG, "otherwise": "D-unknown"}``: measured exactly when the
+  ledger's ``registry_hashes`` cites REG at that ledger state. A row the mapping has no
+  qualifier for at its current status is an error, so a status change forces a mapping change.
+* COMPOSITE statuses (``S+D``, ``N+D``, ``W+D``, ``W+L``): a W anywhere grades the row W (a
+  withdrawn row asserts nothing, and its pending decider does not restore it); otherwise the
+  row takes the highest grade among its codes (``max``: the S or N part is what the row shows
+  now, the D part the registered decider its wording names, and the row is at least as well
+  founded as either alone). ``--composite first`` grades by the first code instead, as a
+  sensitivity. Every composite row is flagged in the output.
+
+Reported beside each other (never one alone): the five parts, science trust, the 6-part
+headline (only when a claim-honesty figure is supplied: claim honesty is how well the page,
+the ledger and the docs agree with the record, which the ledger alone cannot measure), the
+intended-output variant (W and L graded 0) and the end-goal convention (rows the mapping marks
+withdrawn-with-reason, registered-undecidable or no-target graded 1.0; bookkeeping, not
+evidence, ruling R8.12b).
+
+CLI: ``python -m hydrophysics.twin.progress [--ledger PATH] [--at COMMIT-or-file] [--json]
+[--honesty PCT] [--candidate NAME] [--composite max|first]``.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+LEDGER = HERE / "claims_v1.json"
+MAP = HERE / "progress_map_v1.json"
+LEDGER_IN_REPO = "hydrophysics/twin/claims_v1.json"
+WEIGHTS = (2.0, 1.0, 0.5, 0.0)
+NONE = "none"
+D_PENDING_AFTER = "2030-01-15"
+END_GOAL_KINDS = ("withdrawn_with_reason", "registered_undecidable", "no_target")
+PAGE_SECTIONS = ("i18n", "card_rows", "functions", "arrays", "payload")
+
+
+class MappingError(ValueError):
+    """The mapping does not cover the ledger (missing id, missing qualifier, bad value)."""
+
+
+# ---- inputs ---------------------------------------------------------------------------------
+def load_map(path: Path = MAP) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def load_ledger(path: Path | None = None, at: str | None = None) -> tuple[dict, str]:
+    """(ledger, label). ``at`` is a file path or a git commit (the ledger as committed there);
+    otherwise ``path`` (default: the ledger beside this module). PENDING hashes are not
+    refused here: the recount reads statuses only."""
+    if at is not None:
+        p = Path(at)
+        if p.is_file():
+            return json.loads(p.read_text(encoding="utf-8")), str(p)
+        out = subprocess.run(["git", "show", f"{at}:{LEDGER_IN_REPO}"], cwd=REPO, check=True,
+                             capture_output=True, text=True).stdout
+        return json.loads(out), f"{at}:{LEDGER_IN_REPO}"
+    p = Path(path) if path is not None else LEDGER
+    return json.loads(p.read_text(encoding="utf-8")), str(p)
+
+
+def with_candidate(pmap: dict, name: str | None) -> dict:
+    """The mapping with candidate ``name``'s per-claim fields laid over it."""
+    if not name:
+        return pmap
+    cand = pmap.get("candidates", {}).get(name)
+    if cand is None:
+        raise MappingError(f"no candidate mapping {name!r} in the map file")
+    out = dict(pmap, claims={k: dict(v) for k, v in pmap["claims"].items()})
+    for cid, fields in cand["claims"].items():
+        if cid not in out["claims"]:
+            raise MappingError(f"candidate {name}: unknown claim id {cid}")
+        out["claims"][cid].update(fields)
+    return out
+
+
+# ---- weight ---------------------------------------------------------------------------------
+def _ids_in(section) -> set[str]:
+    ids: set[str] = set()
+    if isinstance(section, dict):
+        for v in section.values():
+            if isinstance(v, list):
+                ids.update(x for x in v if isinstance(x, str))
+            elif isinstance(v, dict):
+                ids |= _ids_in(v.get("paths", {}))
+    return ids
+
+
+def answer_ids(ledger: dict, pmap: dict) -> set[str]:
+    dm = ledger.get("display_map", {})
+    ids = {c for t in pmap["answer_tiles"] for c in dm.get("tiles", {}).get(t, [])}
+    for f in pmap["headline_functions"]:
+        ids.update(dm.get("functions", {}).get(f, []))
+    return ids
+
+
+def page_ids(ledger: dict) -> set[str]:
+    dm = ledger.get("display_map", {})
+    ids = _ids_in(dm.get("tiles", {}))
+    for s in PAGE_SECTIONS:
+        ids |= _ids_in(dm.get(s, {}))
+    ids |= _ids_in(dm.get("payload_conditional", {}))
+    return ids
+
+
+def derived_weight(claim: dict, ledger: dict, pmap: dict,
+                   entry: dict | None = None) -> tuple[float, str]:
+    """(weight, why) from the ledger alone (see the module docstring)."""
+    cid = claim["id"]
+    if cid.startswith("Z"):
+        return 0.0, "non-claim row (Z*)"
+    if entry and entry.get("mirror"):
+        return 0.0, "mirror row"
+    if cid in answer_ids(ledger, pmap):
+        return 2.0, "answer tile or headline"
+    keys = claim.get("text_keys", [])
+    if cid in page_ids(ledger) or any(k.split(":", 1)[0] in ("tile", "i18n", "card")
+                                      for k in keys):
+        return 1.0, "page"
+    if any(k.startswith("doc:") for k in keys) or claim.get("doc_anchors"):
+        return 0.5, "docs only"
+    return 0.0, "shown nowhere"
+
+
+# ---- grade ----------------------------------------------------------------------------------
+def _qualifier(spec, registry: set[str]) -> tuple[str, str]:
+    """(grade key, why) of one S/D qualifier, resolving a conditional ``measured_by``."""
+    if isinstance(spec, str):
+        return spec, ""
+    reg = spec["measured_by"]
+    if reg in registry:
+        return "D-measured", f"measured by {reg}"
+    return spec["otherwise"], f"{reg} not cited at this ledger state"
+
+
+def grade(claim: dict, entry: dict, registry: set[str], grades: dict,
+          composite: str = "max") -> dict:
+    status = claim["status_current"]
+    codes = status.split("+")
+    per = []
+    for code in codes:
+        if code in ("S", "D"):
+            spec = entry.get("grade", {}).get(status, {}).get(code)
+            if spec is None:
+                if "W" in codes:          # W grades the row; its D needs no qualifier
+                    continue
+                raise MappingError(f"{claim['id']}: no {code} qualifier for status {status!r}")
+            key, why = _qualifier(spec, registry)
+        elif code in ("N", "L", "W"):
+            key, why = code, ""
+        else:
+            raise MappingError(f"{claim['id']}: status code {code!r} cannot be graded")
+        if key not in grades:
+            raise MappingError(f"{claim['id']}: unknown grade key {key!r}")
+        per.append((code, key, grades[key], why))
+    if "W" in codes:
+        pick = next(p for p in per if p[0] == "W")
+    elif composite == "first":
+        pick = per[0]
+    elif composite == "max":
+        pick = max(per, key=lambda p: p[2])
+    else:
+        raise ValueError(f"composite rule {composite!r}")
+    label = pick[1]
+    dnb = entry.get("decidable_not_before")
+    if pick[0] == "D" and dnb and dnb > D_PENDING_AFTER:
+        label += " (D-pending)"
+    return {"grade": pick[2], "grade_key": label, "graded_code": pick[0],
+            "why": pick[3], "codes": [(c, k, g) for c, k, g, _ in per],
+            "composite": len(codes) > 1}
+
+
+# ---- the recount ----------------------------------------------------------------------------
+def check_mapping(ledger: dict, pmap: dict) -> list[str]:
+    """Problems that make the recount undefined; an empty list means it is defined."""
+    probs = []
+    parts = set(pmap["parts"]) | {NONE}
+    for c in ledger["claims"]:
+        e = pmap["claims"].get(c["id"])
+        if e is None:
+            probs.append(f"{c['id']}: no mapping entry")
+            continue
+        if e.get("part") not in parts:
+            probs.append(f"{c['id']}: part {e.get('part')!r} unknown")
+        if "weight" in e and (e["weight"] not in WEIGHTS or not e.get("weight_reason")):
+            probs.append(f"{c['id']}: weight override needs a value in {WEIGHTS} and a reason")
+        eg = e.get("end_goal")
+        if eg and eg.get("kind") not in END_GOAL_KINDS:
+            probs.append(f"{c['id']}: end_goal kind {eg.get('kind')!r} unknown")
+    return probs
+
+
+def recount(ledger: dict, pmap: dict, honesty: float | None = None,
+            composite: str = "max") -> dict:
+    probs = check_mapping(ledger, pmap)
+    if probs:
+        raise MappingError("; ".join(probs))
+    registry = set(ledger.get("registry_hashes", {}))
+    grades = pmap["grades"]
+    rows = []
+    for c in ledger["claims"]:
+        e = pmap["claims"][c["id"]]
+        dw, dwhy = derived_weight(c, ledger, pmap, e)
+        w = float(e["weight"]) if "weight" in e else dw
+        g = grade(c, e, registry, grades, composite)
+        eg = e.get("end_goal")
+        eg_on = bool(eg) and (not eg.get("requires") or eg["requires"] in registry)
+        code = g["graded_code"]
+        rows.append({
+            "id": c["id"], "status": c["status_current"], "part": e["part"],
+            "weight": w, "derived_weight": dw, "weight_basis": dwhy,
+            "weight_override": "weight" in e and w != dw,
+            "grade": g["grade"], "grade_key": g["grade_key"], "graded_code": code,
+            "grade_why": g["why"], "composite": g["composite"],
+            "intended_grade": 0.0 if code in ("W", "L") else g["grade"],
+            "end_goal": eg["kind"] if eg_on else None,
+            "end_goal_grade": float(pmap["end_goal_grade"]) if eg_on else g["grade"],
+        })
+    parts = {}
+    for p in pmap["parts"]:
+        rs = [r for r in rows if r["part"] == p and r["weight"] > 0]
+        wsum = sum(r["weight"] for r in rs)
+
+        def mean(field, rs=rs, wsum=wsum):
+            return 100.0 * sum(r["weight"] * r[field] for r in rs) / wsum if wsum else None
+
+        parts[p] = {"official": mean("grade"), "intended": mean("intended_grade"),
+                    "end_goal": mean("end_goal_grade"), "rows": len(rs), "weight": wsum}
+
+    def avg(field):
+        vals = [parts[p][field] for p in pmap["parts"]]
+        return sum(vals) / len(vals) if all(v is not None for v in vals) else None
+
+    sci = {f: avg(f) for f in ("official", "intended", "end_goal")}
+    six = ({f: (sci[f] * len(pmap["parts"]) + honesty) / (len(pmap["parts"]) + 1)
+            for f in sci if sci[f] is not None} if honesty is not None else None)
+    return {"rows": rows, "parts": parts, "science": sci, "six_part": six,
+            "claim_honesty": honesty, "composite_rule": composite,
+            "weight_overrides": sorted(r["id"] for r in rows if r["weight_override"]),
+            "composite_rows": sorted(r["id"] for r in rows if r["composite"])}
+
+
+# ---- output ---------------------------------------------------------------------------------
+def _f(v) -> str:
+    return "-" if v is None else f"{v:.1f}"
+
+
+def render(res: dict, label: str, pmap: dict) -> str:
+    out = [f"Progress recount (rule of section 21) of {label}",
+           f"composite rule: {res['composite_rule']}; weight overrides: "
+           f"{', '.join(res['weight_overrides']) or 'none'}; composite rows: "
+           f"{', '.join(res['composite_rows']) or 'none'}", "",
+           f"{'part':28s} {'official':>8s} {'intended':>8s} {'end-goal*':>9s} {'rows':>5s}"]
+    for p in pmap["parts"]:
+        s = res["parts"][p]
+        out.append(f"{p:28s} {_f(s['official']):>8s} {_f(s['intended']):>8s} "
+                   f"{_f(s['end_goal']):>9s} {s['rows']:>5d}")
+    sc = res["science"]
+    out.append(f"{'science trust (mean of 5)':28s} {_f(sc['official']):>8s} "
+               f"{_f(sc['intended']):>8s} {_f(sc['end_goal']):>9s}")
+    if res["six_part"]:
+        sx = res["six_part"]
+        out.append(f"{'6-part headline':28s} {_f(sx.get('official')):>8s} {'':>8s} "
+                   f"{_f(sx.get('end_goal')):>9s}   (claim honesty {res['claim_honesty']:g}, "
+                   "supplied, not computed from the ledger)")
+    else:
+        out.append("6-part headline: not computed (claim honesty is not a ledger quantity; "
+                   "pass --honesty with the audit or estimate figure)")
+    out += ["* end-goal convention (R8.12b): bookkeeping only, never shown alone", "",
+            f"{'id':8s} {'status':6s} {'part':26s} {'w':>4s} {'grade':>5s}  basis"]
+    for r in res["rows"]:
+        flags = [f for f, on in (("composite", r["composite"]),
+                                 ("override", r["weight_override"]),
+                                 (f"end-goal:{r['end_goal']}", r["end_goal"])) if on]
+        basis = r["grade_key"] + (f" [{r['grade_why']}]" if r["grade_why"] else "")
+        out.append(f"{r['id']:8s} {r['status']:6s} {r['part']:26s} {r['weight']:>4g} "
+                   f"{r['grade']:>5.2f}  {basis}" + (f"  ({'; '.join(flags)})" if flags else ""))
+    return "\n".join(out)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m hydrophysics.twin.progress",
+                                 description=__doc__.split("\n\n")[0])
+    ap.add_argument("--ledger", type=Path, default=None, help="ledger file (default: beside "
+                    "this module)")
+    ap.add_argument("--at", default=None, help="a commit (the ledger as committed there) or "
+                    "a ledger file")
+    ap.add_argument("--map", type=Path, default=MAP, help="mapping file")
+    ap.add_argument("--candidate", default=None, help="lay a candidate mapping from the map "
+                    "file over the default one")
+    ap.add_argument("--composite", choices=("max", "first"), default="max")
+    ap.add_argument("--honesty", type=float, default=None, help="claim honesty in percent "
+                    "(an audit or estimate figure; the ledger cannot give it)")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    ledger, label = load_ledger(a.ledger, a.at)
+    pmap = with_candidate(load_map(a.map), a.candidate)
+    res = recount(ledger, pmap, a.honesty, a.composite)
+    if a.json:
+        json.dump(dict(res, ledger=label, candidate=a.candidate), sys.stdout, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print(render(res, label + (f" (candidate {a.candidate})" if a.candidate else ""), pmap))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2141,3 +2141,118 @@ and 0 in Yunlin, against 0.8), so no Bayes-factor test is registered and ledger 
 E02x registered, failed, because `U1.ext_transfer_power.v1` (registered sha 1bfbf010; result
 sha daace1bf) failed its P-gate and E02x was never registered (row C14f-r N). Nothing is built
 for EXS.
+
+## 26. Progress recount (rule of section 21, 2026-11-07)
+
+Section 21 says the progress figures come from the claims ledger by a fixed rule so that they
+can be recomputed. Until now they could not be: the audited figures of section 21 and the
+estimates of section 22 were worked out by hand, and section 22 says so (its "now" column is
+an estimate from per-action effects, not a recount). `hydrophysics/twin/progress.py` applies
+the rule to any ledger state, and `hydrophysics/twin/progress_map_v1.json` is the committed
+mapping it needs. Recompute with
+`python -m hydrophysics.twin.progress --at <commit> --honesty <pct>` (`--json` for the per-row
+table; `--candidate B` and `--composite first` for the alternatives below). Nothing but the
+ledger and the mapping is read.
+
+How each input is fixed:
+
+- **Part**: the mapping names one of the five science parts for every ledger id, or `none`
+  for the 8 rows that make no science claim (Z01-Z04, the configuration line E12, the evidence
+  badge count E17, release status E18, and the cost tile C08, which the ledger's page scoping
+  calls "an input or accounting number"). A `none` row is listed but counted in no part.
+- **Weight**: derived from the ledger, not from free text: 2 for a row on an answer tile
+  (`display_map.tiles` of tW and tC, the template's `TILE_IDS[:PRIMARY]`) or in the headline
+  function (`display_map.functions.renderHeadline`); 1 for any other row the page shows (a
+  `tile:`, `i18n:` or `card:` text key, or any page section of `display_map`); 0.5 for a row
+  with only `doc:` keys or doc anchors; 0 for the ledger's Z rows and for mirror rows (none in
+  the ledger). One override, with its reason in the mapping: C28 (the provenance chip is set
+  inside `renderHeadline`, but it qualifies how a number was computed and is not the answer),
+  2 -> 1.
+- **Grade**: section 21's table, by status code. S and D codes take the qualifier the mapping
+  gives for the row's exact status string, so a status change without a mapping change makes
+  the recount refuse. A D's "decidability measured" is conditional on the ledger: it applies
+  exactly when the ledger's `registry_hashes` cites the registration that measured it (for
+  E04, FV.stat.v2), so the same mapping gives "D, decidability unknown" at the audit state and
+  "measured" today.
+- **Composite statuses** (flagged in the output: C05, C09, C14a, C14a-r, C14b, C14e, C26, and
+  at the audit state C01 and C30): a W anywhere grades the row W (a withdrawn row asserts
+  nothing and its pending decider does not restore it); otherwise the row takes the highest
+  grade among its codes (the N or S part is what the row shows now, the D part the registered
+  decider its wording names). `--composite first`, grading the first code, is the sensitivity.
+- **End-goal convention** (R8.12b, bookkeeping only): the mapping marks 10 rows (C03, C09,
+  C13b and C13c withdrawn under every outcome; C14c, C14d and C14e no target, U1.no_band.v1;
+  C14f-r, E29 and C31 registered undecidable), each graded 1.0 in that column only.
+- **Claim honesty** is not computed: it is how well the page, the ledger and the docs agree
+  with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
+  offered. The 6-part rows below use the audit's 95 at the audit state and section 21's
+  estimate of 98 today, labelled so.
+
+The audit state is main fd40796, the last main commit before the round-8 step-0 merge (PR
+#70); its `claims_v1.json` is byte-identical to af97301's, the state the audit read.
+
+| | audited 2026-11-02 | recount, audit state (fd40796) | recount, today (08a6aa7) | section 22 estimate |
+|---|---|---|---|---|
+| head response, Yunlin | 60 | 53.5 | 57.5 | 60-61 |
+| forecast start and validation | 56 | 55.8 | 55.7 | 57.7 |
+| uncertainty bands | 43 | 46.9 | 47.2 | 42.5 |
+| subsidence and cut response | 31 | 36.3 | 36.0 | 31 |
+| Changhua | 36.5 | 49.4 | 49.4 | 35 |
+| **science trust** (mean of 5) | **45.3** | **48.4** | **49.2** | 45.2-45.4 |
+| claim honesty (not recomputed) | 95 | 95 (audit) | 98 (estimate) | 98 |
+| **6-part mean** (headline) | **53.6** | **56.1** | **57.3** | 54.0-54.2 |
+| intended-output variant (science basis) | 35.7 | 41.4 | 42.8 | not recomputed |
+| end-goal convention, science / 6-part (bookkeeping only) | about 61-62 (6-part) | 59.9 / 65.8 | 61.2 / 67.3 | not recomputed |
+
+What moved between the two states under the rule: the head part rose 4.0 mostly because the
+C01 split turned one weight-2 row (0.75, S design-time, direction only, on a size claim) into
+three weight-2 rows (C01 S design-time 0.9, C01-w D measured 0.7 by X5.n2_reading.v1, C01-sz
+N 0.5), so the headline now weighs 6 of 14 in the part instead of 2 of 10; the forecast part
+is flat because E04's measured decidability (+) and the new row E30 (+) are offset by the C30
+split, which leaves the headline's baseline row C30-scen at N (0.5) instead of C30's N+D at
+0.7; the bands part gains a little from C14f-r and E29 (N, weight 0.5); the subsidence part
+loses a little because E24 moved from README-only (0.5) to the tA definition (1) at L.
+Changhua does not move: the E25 narrowing of round 8 changed no status, and the rule grades
+statuses only.
+
+The gap to the audited figures. The recount is not tuned to them, and it does not reproduce
+them: science trust is 3.1 points higher at the audit state, with the parts off in both
+directions. The audited figures were judgments that included the disclosure downgrades of
+section 21's last paragraph; the status table can express a downgrade only through a status
+or a qualifier, and the audit's row-by-row assignment is not part of the record. The rows
+driving each gap at the audit state:
+
+- Head response, Yunlin (-6.5): the L rows C12, C28 and E16 (the class ranking, the
+  superposition error of the fast estimate, the monotonicity check) pull the part down about
+  3.5 points each against the audited 60, and the N headline row C04 2 points; moving C28 and
+  E16 (checks of the policy engine) to `none` would give 60.6 at the audit state and 62.9
+  today.
+- Uncertainty bands (+3.9): C14a-r, C14b and C14f graded D measured (0.7) each lift the part
+  about 3.4 points; grading composite rows by their first code (N) gives 41.9.
+- Subsidence and cut response (+5.3): the after-the-fact evidence rows (E05, E06, E09, E10,
+  E19, all N at 0.5) and C26 (N+D, D decidability unknown) hold the part above 31; no single
+  mapping choice closes it.
+- Changhua (+12.9): E25 and E26 (S design-time, 0.9) and E20 (D measured by
+  X5.n2c_reading.v1, 0.7) lift the part about 6.7, 6.7 and 4.2 points. The audit judged E26
+  weak (synthetic power 0.35, false pass 0.13) and E25 not separated from Yunlin spill-over;
+  the table has no "S, weak" grade, so the rule keeps 0.9 unless the lead rules a qualifier.
+
+Candidate mapping B (in the mapping file, not the default) is the stricter reading, for the
+lead's decision: N2's "informative" reading is not "the test can decide" (C01-w D unknown,
+since it cannot decide under the canal confounder); E02c (E21) graded on its weak coverage
+half (D weak); E25 and E26 read as answers to the Changhua size question, supported in
+direction only (0.75). Under B the parts are 53.5 / 54.2 / 46.9 / 36.3 / 45.6 at the audit
+state (science 47.3, 6-part 55.3) and 56.1 / 54.3 / 47.2 / 36.0 / 45.6 today (science 47.9,
+6-part 56.2). With `--composite first` as well: 53.5 / 51.2 / 41.9 / 35.8 / 45.6 at the audit
+state (science 45.6, 6-part 53.8) and 56.1 / 54.3 / 42.8 / 35.6 / 45.6 today (science 46.9,
+6-part 55.4). The default mapping with `--composite first` alone gives science 46.7 at the
+audit state and 48.2 today.
+
+Open choices for the lead, none decided here: (1) the composite rule (highest code, the
+default, or first code); (2) mapping B's three qualifier readings (C01-w, E21, E25/E26);
+(3) whether rows split from one parent (C01 -> C01 / C01-w / C01-sz, C30 -> C30-scen /
+C30-fc) each keep their own display weight, as section 21 reads and the default does, or share
+the parent's (C01's three rows at 2/3 each would give the head part 52.5 today instead of
+57.5); (4) whether the policy-engine checks C28 and E16 belong to the head part; (5) which
+figure the project reports. Until the lead rules, the audited figures of section 21 and the
+labelled estimates of section 22 stand as they were labelled, and this recount is shown beside
+them; section 22's figures were estimates, not a recount.
