@@ -545,7 +545,8 @@ def test_fourth_set_rulings_are_recorded():
 def test_c31_is_decided_by_n3_and_no_cut_number_can_become_s():
     """Fourth set (a): the narrowed page mapping. Only C31 can become S on a joint N2 + N3G
     pass; the avoided-subsidence number stays W ('links tested, cut size untested'); the 溪州
-    arm never gates; C09 and C30 carry the N3 sub-label for the 2-cell sub-claim only."""
+    arm never gates; C09 and C30-scen (C30 before the R8.7 split) carry the N3 sub-label for the
+    2-cell sub-claim only."""
     cl, n3 = CL(), _reg("n3")
     c31 = cl["C31"]
     # N3 is registered level-only (G0 failed; user ruling 2026-11-01, fifth set): C31 is N
@@ -583,8 +584,8 @@ def test_c31_is_decided_by_n3_and_no_cut_number_can_become_s():
     assert "never gates" in t["never"] and "no Changhua subsidence lever" in t["never"]
     assert "no correction factor" in t["not_supported"]
     assert {"intended", "scoped"} <= set(c31["coverage"]) and "2 " in c31["coverage"]["scoped"]
-    assert _st("C09") == {"W", "D"} and _st("C30") == {"N", "D"} and _st("C03") == {"W"}
-    for cid in ("C09", "C30"):
+    assert _st("C09") == {"W", "D"} and _st("C30-scen") == {"N", "D"} and _st("C03") == {"W"}
+    for cid in ("C09", "C30-scen"):
         assert N3_SUB in cl[cid]["wording_en"] and n3 in cl[cid]["cites"]["registrations"], cid
         assert f"{FOURTH} (a)" in _also(cl[cid]), cid
     assert "links tested, cut size untested" in cl["C03"]["wording_en"]
@@ -672,7 +673,7 @@ def test_c13a_caps_can_only_narrow_an_n2c_pass():
 def test_the_decidability_reading_is_one_sided():
     """Fourth set (d): P <= 0.5 means 'weak by design'; there is no 'a fail is informative'."""
     cl, fv = CL(), _reg("fv")
-    for cid in ("E02", "E21", "C30"):
+    for cid in ("E02", "E21", "C30-scen"):
         assert fv in cl[cid]["cites"]["registrations"], cid
     for cid in ("E02", "E21"):
         w = cl[cid]["wording_en"]
@@ -714,14 +715,14 @@ def test_the_decidability_study_was_not_evaluable_and_gives_no_reading():
     for k in ("not_evaluable", "superposition failed", "0.2845 m", "0.02 m",
               "'no interpretation line; E02/E02c read as registered'"):
         assert k in cl["E02"]["notes"], k
-    for cid in ("E02", "E21", "C30"):
+    for cid in ("E02", "E21", "C30-scen"):
         c = cl[cid]
         assert "i18n:evc_pro_fv_ne" in c["text_keys"], cid
         assert "results/dataprep/reports/FV.decidability.v1/report.json" in c["cites"]["reports"]
         assert "not evaluable" in c["wording_en"], cid
     # the registered rule stays written; the result adds no reading of it
     assert "weak by design" in cl["E02"]["wording_en"] and "<= 0.5" in cl["E02"]["wording_en"]
-    assert "clause (d) does not apply" in cl["C30"]["wording_en"]
+    assert "clause (d) does not apply" in cl["C30-scen"]["wording_en"]
 
 
 def test_fs_wording_follows_its_declaration_and_waits_for_its_report():
@@ -795,7 +796,7 @@ def test_the_start_code_fact_is_in_the_internals_note():
     en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
     assert "free-running heads" in en["mi_note"] and "December 2022 heads" in en["mi_note"]
     assert "2022 年 12 月水頭" in zh["mi_note"]
-    for cid in ("C29", "C30"):
+    for cid in ("C29", "C30-scen"):
         assert "i18n:mi_note" in CL()[cid]["text_keys"], cid
         assert cid in DM()["i18n"]["mi_note"], cid
 
@@ -966,7 +967,7 @@ def test_round7_model_only_readings_are_worded_as_declared():
                 "{p:.2f}", "{p}"), lang
             assert d["evc_fv2_cov_wbd"] == w["coverage"]["weak_by_design"][lang].replace(
                 "{p:.2f}", "{p}").replace("{county}", "{cty}"), lang
-    for cid in ("E02", "E21", "C30"):
+    for cid in ("E02", "E21", "C30-scen"):
         assert "FV.decidability.v2_postfailure" in cl[cid]["cites"]["registrations"], cid
         assert "FM.origin_memory.v1" in cl[cid]["cites"]["registrations"], cid
         assert _r7("R7.fv_v2_page") in _also(cl[cid]), cid
@@ -1069,9 +1070,10 @@ def test_round8_rulings_and_rows_follow_the_scored_reports():
     row C14f-r (N), FB is row E29 (N), and no model-only study supports anything."""
     ids = {r["id"] for r in L()["rulings"]}
     for rid in ("R8.1a", "R8.1b", "R8.1c", "R8.1d", "R8.1e", "R8.1f", "R8.2", "R8.3", "R8.4a",
-                "R8.5", "R8.8", "R8.10", "R8.11", "R8.14"):
+                "R8.5", "R8.7", "R8.8", "R8.10", "R8.11", "R8.14"):
         assert _r8(rid) in ids, rid
-    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.7", "R8.9", "R8.13"):   # wired separately
+    # R8.7 (forecast of record, C30 split) is wired since 2026-11-06 (test_r8_7_*)
+    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.9", "R8.13"):   # wired separately
         assert _r8(rid) not in ids, rid
     assert all("user_rulings_2026-11-03.json (sha256 ec610b69)" in r["text"]
                for r in L()["rulings"] if r["id"].startswith("user ruling 2026-11-03"))
@@ -1101,7 +1103,7 @@ def test_round8_rulings_and_rows_follow_the_scored_reports():
     assert e30["cites"]["registrations"][0] == "E02z.level_years23.v1"
     assert set(e30["cites"]["tests"]) == {"E02zP.level_2027-11", "E02zP.level_2028-11"}
     assert "GOV.heads_window_product.v1" in e30["cites"]["registrations"]
-    assert "E02z.level_years23.v1" in cl["C30"]["cites"]["registrations"]
+    assert "E02z.level_years23.v1" in cl["C30-scen"]["cites"]["registrations"]
     assert "GOV.heads_window_product.v1" in cl["C14b"]["cites"]["registrations"]
     f = cl["C14f-r"]
     assert _st("C14f-r") == {"N"} and f["cites"]["registrations"] == ["U1.ext_transfer_power.v1"]
@@ -1224,3 +1226,163 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     # the FV v2 per-truth split stays off the page
     for bad in ("Q0 0.004", "R1c 0.992", "X5R1 0.996", "per truth"):
         assert not any(bad in v for v in en.values()), bad
+
+
+# ---- ruling R8.7 (2026-11-06): forecast of record, C30 split, post-2028 wording ------------
+POST2028 = {
+    "C30-scen": ("before_scoring", "e02c_level_forecast_supported",
+                 "e02c_level_forecast_not_supported", "e02c_not_evaluable",
+                 "e02z_level_supported", "e02z_level_not_supported", "e02z_level_not_evaluable",
+                 "n3_and_n3sl", "rider_caveat", "never"),
+    "C30-fc": ("before_scoring", "e04_pass", "e04_fail", "e04_not_evaluable", "never"),
+    "E02": ("before_scoring", "pass", "fail", "not_evaluable", "never"),
+    "E21": ("before_scoring", "level_forecast_supported", "level_forecast_not_supported",
+            "level_not_evaluable", "coverage_supported", "coverage_supported_weak_power",
+            "coverage_not_supported", "coverage_not_evaluable",
+            "pooled_gate_failed_county_report_only", "rider_caveat", "never"),
+}
+
+
+def test_r8_7_c30_is_split_into_the_scenario_and_the_forecast_of_record():
+    """R8.7: C30 -> C30-scen (the physics average-weather scenario, N with C30's registered D
+    sub-labels) and C30-fc (E04 named the first-year forecast of record, D via E04)."""
+    cl, ids = CL(), {r["id"] for r in L()["rulings"]}
+    assert _r8("R8.7") in ids and "C30" not in cl
+    scen, fc = cl["C30-scen"], cl["C30-fc"]
+    assert _st("C30-scen") == {"N", "D"} and _st("C30-fc") == {"D"}
+    assert scen["ruling"] == fc["ruling"] == _r8("R8.7")
+    assert scen["status_before"] == fc["status_before"] == "N+D"
+    # the scenario keeps every C30 citation; the forecast row cites E04's manifest and FV.stat.v2
+    for r in ("E02c.prospective_2026-11.v1", "E02z.level_years23.v1", "N3.piles_prospective.v1",
+              "N3SL.township_prospective_roc116-117.v1", "FM.origin_memory.v1",
+              "FV.decidability.v2_postfailure", "GOV.heads_window_product.v1"):
+        assert r in scen["cites"]["registrations"], r
+    assert fc["cites"]["manifests"] == ["results/twin/prospective_2026-11_hybrid/manifest.json"]
+    assert "FV.stat.v2" in fc["cites"]["registrations"]
+    assert "Wording before the split (C30)" in scen["wording_en"]
+    assert "never makes the physics run a forecast or the forecast of record" in scen[
+        "wording_en"]
+    dm = DM()
+    assert not any("C30" in v for sec in ("i18n", "functions", "card_rows", "arrays", "payload")
+                   for v in dm[sec].values()), "a display site still names C30"
+    for k in ("lg_proj", "lg_proj_scen", "ts_fm_mark", "evc_pro_e02z", "evc_pro_fm", "kv_proj"):
+        where = dm["card_rows"] if k.startswith("kv_") else dm["i18n"]
+        assert "C30-scen" in where[k] and "C30-fc" not in where[k], k
+    for k in ("evc_hyb_for", "evc_hyb_fvs", "evc_hyb_fvs_pass"):
+        assert dm["i18n"][k] == ["E04", "C30-fc"], k
+    assert dm["i18n"]["evc_pro_e02z"] == ["E30", "C30-scen"]
+    assert "i18n:evc_hyb_for" in fc["text_keys"] and "i18n:evc_hyb_for" in cl["E04"]["text_keys"]
+    assert "i18n:evc_pro_e02z" in cl["E30"]["text_keys"] and "R8.7" in cl["E30"]["where"]
+
+
+def test_r8_7_page_says_which_line_is_a_forecast_and_which_a_scenario_en_zh():
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "an average-weather scenario after {lm}, not a forecast" in en["lg_proj_scen"]
+    assert "平均天氣情境，並非預測" in zh["lg_proj_scen"] and "{lm}" in zh["lg_proj_scen"]
+    for d in (en, zh):                      # the earlier legend wording is kept, with FM added
+        assert d["lg_proj"].split("{y}")[0] in d["lg_proj_scen"]
+    assert en["ts_fm_mark"] == "{lm}: start memory ends, in this model"
+    assert "本模型中" in zh["ts_fm_mark"]
+    assert "average-weather scenario, not a forecast" in en["ts_fm_note"]
+    assert "forecast of record is the registered statistical layer (E04" in en["ts_fm_note"]
+    assert en["evc_hyb_for"].startswith("Forecast of record for {a}–{b}: this registered "
+                                        "statistical layer (E04), not the physics model")
+    assert "正式預測" in zh["evc_hyb_for"] and "（E04）" in zh["evc_hyb_for"]
+    for d in (en, zh):
+        assert "R8.7" in d["evc_hyb_for"] and "{a}" in d["evc_hyb_for"]
+        assert not re.search(r"\d", re.sub(r"\{[a-z]+\}|R8\.7|E04|–", "", d["evc_hyb_for"]))
+    # the E02z sub-label is its registered before_scoring text
+    sub = ("strict level rule years 2-3 (E02z), per county; scored not before 2029-01-15 "
+           "(2027-11..2028-10) and 2030-01-15 (2028-11..2029-10)")
+    assert sub in en["evc_pro_e02z"]
+    decl = C.PREREG / "E02z.level_years23.v1.json"
+    if decl.exists():
+        pm = json.loads(decl.read_text(encoding="utf-8"))["page_mapping"]
+        assert f"'{sub}'" in pm["before_scoring"]["C30-scen"]
+    # wiring: each line waits for its record; the start memory is read from FM's report
+    fm = C.function_source("fmMemory")
+    assert "(mc.registrations || {}).fm" in fm and 'r.case !== "within_first_year"' in fm
+    assert 'r.clause_case !== "window_beyond_memory"' in fm
+    assert "2023-11" not in C.template_src()          # never typed in: lstar_month from FM
+    lg = C.function_source("legend")
+    assert "fmMemory()" in lg and 'tr("lg_proj_scen"' in lg and 'tr("lg_proj"' in lg
+    ts = C.function_source("renderTS")
+    assert 'S.ts === "head" && !fit ? fmMemory() : null' in ts and '"ts_fm_mark"' in ts
+    assert '"ts_fm_note"' in ts
+    ev = C.function_source("evidenceItems")
+    assert ev.index('tr("evc_hyb_reg"') < ev.index('tr("evc_hyb_for"') < ev.index(
+        "out.push(...fvsLines());")
+    assert 'if (rg.e02z) out.push(["", tr("evc_pro_e02z")]);' in ev
+    for fn in L()["page_scoping"]["answer_functions"]:     # the answer row is unchanged
+        keys = C.function_keys(fn, follow=True)
+        assert not keys & {"evc_hyb_for", "lg_proj_scen", "ts_fm_note", "evc_pro_e02z"}, fn
+
+
+def test_r8_7_post_2028_wording_is_predeclared_for_every_branch():
+    """R8.7: C30 (both rows), E02 and E21 carry the post-2028 wording of every branch, pass
+    included, quoting each registration's own wording where one exists; none of it is shown
+    before its outcome exists (no template key, no README or model-card sentence)."""
+    cl = CL()
+    for cid, keys in POST2028.items():
+        od = cl[cid]["outcome_display"]
+        assert set(keys) <= set(od), (cid, sorted(set(keys) - set(od)))
+        assert "before any E02, E02c, E04 or E02z score" in od["declared"], cid
+        assert "nothing here is shown" in od["declared"], cid
+        assert od["never"], cid
+    scen, fc, e21 = (cl[c]["outcome_display"] for c in ("C30-scen", "C30-fc", "E21"))
+    assert "S-limited" in scen["e02c_level_forecast_supported"]
+    assert "not a forecast" in scen["e02c_level_forecast_supported"]
+    assert "the expected outcome" in scen["e02c_level_forecast_not_supported"]
+    assert fc["e04_pass"].startswith("C30-fc -> S (prospective) for 2026-11..2027-10 only")
+    assert fc["e04_fail"].startswith("C30-fc -> N, decided")
+    assert any("never moves C30-fc" in x for x in fc["never"])
+    assert any("never called a forecast" in x for x in scen["never"])
+    decl = C.PREREG / "E02c.prospective_2026-11.v1.json"
+    if decl.exists():                         # E02c's registered wording, verbatim
+        pm = json.loads(decl.read_text(encoding="utf-8"))["page_mapping"]
+        lw, cw = pm["T_level"]["wording"], pm["T_cov"]["wording"]
+        assert f"'{lw['level_supported']}' [verbatim]" in scen["e02c_level_forecast_supported"]
+        assert f"'{lw['level_not_supported']}' [verbatim]" in scen[
+            "e02c_level_forecast_not_supported"]
+        assert f"'{lw['level_not_evaluable']}' [verbatim]" in scen["e02c_not_evaluable"]
+        assert f"'{lw['level_supported']}' [verbatim]" in e21["level_forecast_supported"]
+        for k, w in (("coverage_supported", "cov_supported"),
+                     ("coverage_supported_weak_power", "cov_supported_weak_power"),
+                     ("coverage_not_supported", "cov_not_supported"),
+                     ("coverage_not_evaluable", "cov_not_evaluable")):
+            assert f"'{cw[w]}' [verbatim]" in e21[k], k
+    decl = C.PREREG / "E02z.level_years23.v1.json"
+    if decl.exists():
+        zw = json.loads(decl.read_text(encoding="utf-8"))["page_mapping"]["wording"]
+        for k in ("level_supported", "level_not_supported", "level_not_evaluable"):
+            assert f"'{zw[k]}' [verbatim]" in scen[f"e02z_{k}"], k
+    decl = C.PREREG / "FV.stat.v2.json"
+    if decl.exists():
+        pas = json.loads(decl.read_text(encoding="utf-8"))["readings"][
+            "what_a_2028_pass_shows"]["en"]
+        assert pas.split(" What it cannot show")[0].split(": ")[0] in fc["e04_pass"]
+        assert "a 2028 fail is the more informative outcome" in pas and \
+            "a 2028 fail is the more informative outcome" in fc["e04_fail"]
+    # nothing pre-declared is shown before its outcome exists
+    shown = [C.template_src(), (C.REPO / "README.md").read_text(encoding="utf-8"),
+             (C.REPO / "MODEL_CARD.md").read_text(encoding="utf-8")]
+    for bad in ("passed its registered test on 2026-11..2027-10",
+                "did not pass its registered test", "registered prospective test E02 passed",
+                "registered prospective test E02 did not pass", "beat climatology and "
+                "climatology-plus-trend on 2026-11..2027-10", "FW.rider.v1"):
+        assert not any(bad in t for t in shown), bad
+
+
+def test_r8_7_rain_year_rider_is_a_ledger_caveat_slot_only():
+    """FW.rider.v1 is drafted, not registered: a SLOT in the notes and outcome_display only;
+    no registration is cited (the PENDING guard stays quiet), no page key, no status change."""
+    cl = CL()
+    assert "FW.rider.v1" not in L()["registry_hashes"]
+    for c in L()["claims"]:
+        assert "FW.rider.v1" not in c["cites"]["registrations"], c["id"]
+        assert "FW.rider.v1" not in c["wording_en"], c["id"]
+    for cid in ("E21", "C30-scen"):
+        assert "SLOT (FW.rider.v1" in cl[cid]["notes"], cid
+        assert cl[cid]["outcome_display"]["rider_caveat"].startswith("SLOT (FW.rider.v1"), cid
+        assert "Never on the page, no status change" in cl[cid]["outcome_display"][
+            "rider_caveat"], cid

@@ -173,6 +173,9 @@ PAGE_REGISTRATIONS = {
     "n2rd": ("X5.n2_reading.v1",),
     "chx2c": ("I1.CHX.v1.twocontrast",),
     "sd2": ("SD.cut_response_spread.v2",),
+    # ruling R8.7 (C30 split): C30-scen's years-2/3 sub-label, named once E02z is registered
+    # (E02z page_mapping.before_scoring; ruling R8.14)
+    "e02z": ("E02z.level_years23.v1",),
 }
 # Results of the registered model-only studies that change what the page may say (claims E02,
 # E21, C30: FV; C13a: the two Changhua studies; C01: FS). A file is read only when it exists,

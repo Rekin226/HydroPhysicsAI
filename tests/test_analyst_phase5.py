@@ -182,3 +182,101 @@ def test_round7_evidence_lines_mirror_the_page(tmp_path):
     assert not banned & set(keys) and "evc_pro_fv_ne" not in keys      # v2 level replaces v1's line
     for lang in ("en", "zh"):
         assert validate(PR.run(b, "how_sure", {}, lang), b) == []
+
+
+R87_HYBRID = {"rmse_stat": 1.0, "rmse_clim": 1.2, "rmse_model": 2.0, "ratio_stat": 0.9,
+              "ratio_phys": 1.0, "per_year": {}, "forecast_origin": "2022-12",
+              "end_exclusive": "2026-09",
+              "registration": {"registered_on": "2026-10-11", "stations": 147,
+                               "test_start": "2026-11-01", "test_end": "2027-10-31"}}
+R87_KEYS = ("evc_pro_e02z", "evc_hyb_reg", "evc_hyb_for", "evc_hyb_fvs", "evc_hyb_fvs_pass")
+
+
+def _r87_page(tmp_path):
+    from hydrophysics.twin.release import read_payload
+    page = testing.build_synthetic_page(tmp_path)
+    p = read_payload(page)
+    mc = p["modelcard"]
+    mc["registrations"] = dict(mc.get("registrations") or {}, e02c=True, e02z=True, fm=True,
+                               fvs2=True)
+    mc["prospective"] = {"registered_on": "2026-10-11", "stations": 158,
+                         "test_start": "2026-11-01", "test_end": "2027-10-31",
+                         "result": "pending", "interval_bound": False}
+    mc["hybrid"] = R87_HYBRID
+    mc["results"] = {"fm": R7_RESULTS["fm"],
+                     "fvs2": {"status": "scored", "reading": "not_shown_weak", "p": 0.9296,
+                              "p0": 0.4753}}
+    testing._write_payload(page, p)
+    return page, PageBundle.load(page, testing.synthetic_ledger(tmp_path, page),
+                                 allow_pending=True)
+
+
+def test_r8_7_forecast_of_record_lines_mirror_the_page(tmp_path):
+    """Ruling R8.7: the analyst's evidence carries the page's forecast-of-record lines (E04
+    named, FV.stat.v2's two lines, E02z's sub-label) in the page's order and cites the same
+    rows (C30-fc, C30-scen, E04, E30); no answer cites the pre-split C30."""
+    from hydrophysics.twin import claims as CL
+    from hydrophysics_analyst import binding as BD
+    from hydrophysics_analyst import query as Q
+    _, b = _r87_page(tmp_path)
+    if "evc_hyb_for" not in b.T["en"]:
+        pytest.skip("template without the R8.7 lines")
+    for lang in ("en", "zh"):
+        sn = Q.evidence(b, lang).snippets
+        keys = [s.key for s in sn]
+        for k in R87_KEYS:
+            assert k in keys, (lang, k)
+        assert keys.index("evc_pro_e02c") < keys.index("evc_pro_e02z")
+        assert [keys.index(k) for k in R87_KEYS[1:]] == sorted(keys.index(k) for k in R87_KEYS[1:])
+        txt = {s.key: s.text for s in sn}
+        if lang == "en":
+            assert txt["evc_hyb_for"].startswith("Forecast of record for Nov 2026–Oct 2027: this "
+                                                 "registered statistical layer (E04)")
+            assert "passes with probability 0.93" in txt["evc_hyb_fvs"]
+            assert "probability 0.48" in txt["evc_hyb_fvs"]
+            assert "a fail has probability about 0.07" in txt["evc_hyb_fvs_pass"]
+        assert validate(PR.run(b, "how_sure", {}, lang), b) == []
+    # the claim set of these lines is the page's own (display_map), and never the old C30
+    page_keys = CL.function_keys("evidenceItems", follow=True) | CL.function_keys("fvsLines")
+    assert set(R87_KEYS) <= page_keys
+    cited = {c for k in R87_KEYS for c in BD.snippet_claims(k, b.ledger)}
+    assert cited == {"C30-fc", "C30-scen", "E04", "E30"}
+    a = PR.run(b, "how_sure", {}, "en")
+    got = {c for c, _ in a.citations}
+    assert {"C30-fc", "E04", "C30-scen"} <= got and "C30" not in got
+    ids = {c["id"] for c in b.ledger["claims"]}
+    rules_ids = {c for r in BD.rules().values() for c in r.claims} | set(BD.topics()) | set(
+        BD.scoring())
+    assert rules_ids <= ids and "C30" not in rules_ids
+
+
+def test_r8_7_forecast_of_record_text_equals_the_page(tmp_path):
+    """The rendered page's evidenceItems() and the analyst give the same R8.7 sentences (EN and
+    ZH), in headless Chromium."""
+    sync = pytest.importorskip("playwright.sync_api")
+    page, b = _r87_page(tmp_path)
+    if "evc_hyb_for" not in b.T["en"]:
+        pytest.skip("template without the R8.7 lines")
+    from hydrophysics.twin.browser_check import _exe
+    from hydrophysics_analyst import query as Q
+    from hydrophysics_analyst.jsport import strip_tags
+    pw = sync.sync_playwright().start()
+    try:
+        browser = pw.chromium.launch(**_exe())
+    except Exception as e:  # noqa: BLE001
+        pw.stop()
+        pytest.skip(f"no Chromium for Playwright: {type(e).__name__}")
+    try:
+        pg = browser.new_page()
+        pg.goto(page.as_uri())
+        pg.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = pg.evaluate("() => { const out = {}; for (const l of ['en', 'zh']) { LANG = l; "
+                          "out[l] = evidenceItems().map(x => x[1]); } LANG = 'en'; return out; }")
+    finally:
+        browser.close()
+        pw.stop()
+    for lang in ("en", "zh"):
+        mine = {s.key: strip_tags(s.text) for s in Q.evidence(b, lang).snippets}
+        page_txt = [strip_tags(t) for t in got[lang]]
+        for k in R87_KEYS:
+            assert mine[k] in page_txt, (lang, k, mine[k][:80])

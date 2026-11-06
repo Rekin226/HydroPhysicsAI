@@ -1830,3 +1830,75 @@ Intended-output variant: 35.7 % at audit; not recomputed. End-goal convention (R
 bookkeeping only, always beside the official figure, never alone): 61-62 % at audit; the round-8
 closures (C14f-r, E29, the N2CS N line, CB, the GNSS closure, the COLF narrowing) would add to
 it; not recomputed.
+
+## 23. Forecast of record (ruling R8.7)
+
+User ruling R8.7 (2026-11-03, twelfth set; `results/dataprep/rulings/user_rulings_2026-11-03.json`,
+sha ec610b69): "Approved: page, ledger, README; C30 -> C30-scen (N) and C30-fc (D via E04);
+post-2028 C30/E02/E21 wording pre-declared for every branch." The ledger records it as
+`user ruling 2026-11-03 (twelfth set) (R8.7)`. This is a ruling, not a test: nothing below was
+scored, and no number on the page is new.
+
+- **Relabel (EN and ZH).** After the start memory the projection is called what it is. The map
+  legend reads "Projected value (year): in this model an average-weather scenario after
+  November 2023, not a forecast (start memory, FM.origin_memory.v1); not validated; no
+  uncertainty band, since no held data can calibrate one" (`lg_proj_scen`). The head series
+  draws a marker at November 2023 labelled "start memory ends, in this model" (`ts_fm_mark`),
+  and its note says that after that month the head line is this model's average-weather
+  scenario and that the first-year forecast of record is the statistical layer (`ts_fm_note`).
+  The month and the 11 months come from `FM.origin_memory.v1`'s report (L* = 11 months,
+  2023-11; registered sha e2d261fb, report sha d93c0e6d) through the page payload, never typed
+  in; a build without that report keeps the earlier legend and draws no marker.
+- **E04 named the forecast of record.** A line after the statistical layer's registration line
+  (`evc_hyb_for`): "Forecast of record for November 2026–October 2027: this registered
+  statistical layer (E04), not the physics model, is the page's first-year head forecast (user
+  ruling R8.7); its registered test decides it once the window has closed. For the same months
+  the physics model's head levels are its average-weather scenario, not a forecast." FV.stat.v2's
+  two registered lines follow it unchanged (P 0.93; the rho = 0 null reading P0 0.48; "a 2028
+  fail is the more informative outcome").
+- **C30 split.** C30 becomes C30-scen and C30-fc, following the C01 -> C01 / C01-w / C01-sz
+  precedent. C30-scen keeps the baseline projection fields as the physics model's
+  average-weather scenario with C30's registered sub-labels unchanged: E02c's level rule (year
+  1), E02z (years 2 and 3; its registered before-scoring text is now on the page as
+  `evc_pro_e02z`, once E02z is in the registry), N3's pile cells and N3S-L's coast. Its status
+  is written N+D: N is the ruling's scenario status, and +D marks those sub-labels, as E02c's
+  and E02z's page mappings word it ("N with D sub-label"). C30-fc is new, status D: the
+  first-year forecast of record is E04's, decided by E04's registered rule (equal-station RMSE
+  ratio to climatology at most 1.0 and pooled 90 % coverage in [0.85, 0.95], at least 100
+  stations with 6 window months). Every display key, function and payload path that named
+  C30 now names C30-scen; the forecast-of-record lines name E04 and C30-fc. The analyst mirror
+  emits the same forecast-of-record lines and cites the same rows.
+- **Post-2028 wording, pre-declared.** The ledger's `outcome_display` on C30-scen, C30-fc, E02
+  and E21 words every branch before any of these tests is scored, pass included, and quotes
+  each registration's own wording where one exists (E02c's `page_mapping.T_level` and `T_cov`,
+  E02z's `page_mapping.wording`, FV.stat.v2's pass clause). In short: an E02c or E02z level
+  pass makes the scenario's heads part S-limited for that window only and never makes the
+  physics run a forecast or the forecast of record; a level fail is the expected outcome on the
+  published 2023-26 record and keeps it an average-weather scenario; an E04 pass makes C30-fc S
+  (prospective) for 2026-11 to 2027-10 only, with FV.stat.v2's "what it cannot show" clause; an
+  E04 fail makes it N and the page then names no forecast of record for that window; E02's pass
+  or fail moves E02 and the per-well interval line only. None of this wording is on the page,
+  the README or the model card before its outcome exists.
+- **Rain-year rider, declaration drafted (pending).** `FW.rider.v1` (model-only) reruns FV v2
+  reading 2's world construction with `FW.weather_replay.v2`'s eleven RD replays (rain and
+  detrended pumping replayed, the page parameter set alone) as the truth worlds, scored by
+  E02c's level rule exactly as FV v2's reading 1 scores it. The truth of sequence s is the
+  frozen forecast plus the datum-anchored departure of RD(2012 + s) from FW v2's climatology arm
+  C, plus FV v1's AR(1) noise; it never reads an observed head. Estimand P(E02c level pass),
+  the mean over the 11 sequences; 250 noise draws each, its own fixed seed, 500 null worlds
+  against FV v1's tolerance. One-sided: P at or below 0.5 adds the caveat that in a real weather
+  year a 2028 level fail would not by itself refute the model's average-weather level; above
+  0.5 it says only that the replayed rain years do not show the level test weak. Either way it
+  is a caveat line in the ledger (E21, beside C30-scen's level wording), never a page line, and
+  it changes no status. The code (`dataprep_staging/fw_rider/`) reuses FV v2's frozen files
+  unchanged by import, pinned to their registered sha256; it validates with prereg3 and is not
+  registered: the lead registers it after the code is on main, and the runner refuses to
+  compute before that. Disclosure: on 2026-11-06 a guard bug in the builder's own test run let
+  one test score the real worlds on the smoke seed; the result was discarded unseen (only the
+  two gate messages were printed), the index file it wrote was deleted, and the guard is fixed.
+  The declaration records it for the lead to log before registering.
+- **Candidate page.** Built with the command of `results/twin/twin_app_20261106c.build.log`,
+  `--out` changed to `results/twin/twin_app_20261106d.html` (log beside it); not promoted.
+
+Progress: no figure in section 22's table changes. C30's one row becomes two (C30-scen N+D,
+C30-fc D); the rubric points of the split rows are not recomputed here.

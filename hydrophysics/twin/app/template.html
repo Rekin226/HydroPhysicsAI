@@ -734,6 +734,8 @@ en: {
   chx_2c_ns_gen: " After-the-fact two-contrast check (I1.CHX.v1.twocontrast, exploratory, narrowing only): direction not separable from Yunlin spill-over (Changhua slope {s} [{lo}, {hi}], 90 % interval).",
   chb_syn: " A weak test: in its synthetic check it passes with probability {k1} if the model is right and {k0} with no response, and a dry year biases the slope toward a pass.",
   evc_hyb_fvs: "Synthetic decidability study (FV.stat.v2, model-free; engineering v2 of FV.stat.v1 on a fresh seed): if anomalies truly persist as the statistical layer assumes (lag-1 0.80-0.93), its registered test (E04) passes with probability {p} (optimistic: no gaps, drift or datum steps; not a strict bound; v1's identical design was previewed at K = 8 on another seed before registration); the study does not show the test weak. In a world with no persistence (lag-1 0) the same rule passes with probability {p0}.",
+  evc_hyb_for: "Forecast of record for {a}–{b}: this registered statistical layer (E04), not the physics model, is the page's first-year head forecast (user ruling R8.7); its registered test decides it once the window has closed. For the same months the physics model's head levels are its average-weather scenario, not a forecast.",
+  evc_pro_e02z: "Physics head level in years 2 and 3 (an average-weather scenario, not a forecast): strict level rule years 2-3 (E02z), per county; scored not before 2029-01-15 (2027-11..2028-10) and 2030-01-15 (2028-11..2029-10).",
   evc_hyb_fvs_pass: "What a 2028 E04 pass can show: over 2026-11..2027-10 the layer was no worse than climatology on equal-station RMSE (ratio <= 1.0, no margin; ties pass), with pooled 90 % interval coverage in [0.85, 0.95]. What it cannot show: a pass alone does not establish persistence; a no-persistence world passes with probability {p0} (against {p} with persistence, both synthetic and optimistic); nor anything about the physics model, or skill in other years. The outcomes are not symmetric: in the AR worlds a fail has probability about {q} (1 - P), so a 2028 fail is the more informative outcome.",
   evc_n2_rd: "N2's rule is informative but not decisive for Yunlin (X5.n2_reading.v1): false pass {fp} < 0.25, but wrong-size pass at k = 0.5 / 2 {ws05} / {ws2} or 90 % interval coverage at k = 1 {cov} misses its threshold (0.25 / 0.80); an N2 verdict is printed with these rates; power {pw} ({pwc} with the canal confounder); no forcing error between X1 and the true pumping is modelled in the gating cells (report-only forcing-error cell, lambda 0.8: power {pwf})",
   def_tA_e24: "Model internals (L): across {n} leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B, SD.cut_response_spread.v2) the Yunlin avoided subsidence by Dec 2028 under the irrigation ×0.7 lever is {lo}–{hi} cm; coast (distal zone) {crng} % of it; {inl} (model-form spread, not an interval).{ta} Its size stays untested and no column is selected.",
@@ -879,6 +881,8 @@ en: {
   lg_river: "rivers: treated as no-flow in the model", why_matters: "why it matters", lg_rail: "THSR centreline (OSM)",
   lg_free_pass: "Free run ({y}); the held-out test of this horizon passes{fair}.", lg_fair: " once each well's constant offset is removed",
   lg_free_fail: "Free run ({y}); the held-out test of this horizon failed.", lg_proj: "Projected value ({y}), not validated; no uncertainty band, since no held data can calibrate one.",
+  lg_proj_scen: "Projected value ({y}): in this model an average-weather scenario after {lm}, not a forecast (start memory, FM.origin_memory.v1); not validated; no uncertainty band, since no held data can calibrate one.",
+  ts_fm_mark: "{lm}: start memory ends, in this model", ts_fm_mark_s: "start memory, in this model", ts_fm_note: "After {lm} the head line is this model's average-weather scenario, not a forecast (start memory, FM.origin_memory.v1); the first-year forecast of record is the registered statistical layer (E04; see Evidence).",
   lg_zone: "straight north–south edges are the model's zone lines", lg_zone_short: "zone lines",
   aria_map: "{t}, {y}. Fan mean {m} {u}; largest magnitude {big} {u} in {town}. {keys}", aria_cell: "Arrow keys move a focus cell, Enter selects it.",
   aria_swipe: "Left and right arrow keys move the divider, Shift for fine steps.", swipe_at: "Divider at {p} %",
@@ -1128,6 +1132,8 @@ zh: {
   chx_2c_ns_gen: "事後的雙對比檢查（I1.CHX.v1.twocontrast，探索性，只能收窄）：方向無法與雲林外溢區分（彰化斜率 {s} [{lo}, {hi}]，90 % 區間）。",
   chb_syn: "這是弱檢驗：在其合成檢查中，模型正確時通過機率為 {k1}，沒有反應時為 {k0}；乾旱年份會使斜率偏向通過。",
   evc_hyb_fvs: "合成可判定性研究（FV.stat.v2，不依賴模型；FV.stat.v1 的工程修正版，使用新種子）：若異常確如統計層所假設般延續（一階自相關 0.80-0.93），其登錄檢驗（E04）的通過機率為 {p}（偏樂觀：無缺測、漂移或基準跳動；並非嚴格界限；v1 的同一設計曾於登錄前以另一種子、K = 8 預覽）；本研究未顯示該檢驗為弱檢驗。在異常不延續的世界（一階自相關 0）中，同一規則的通過機率為 {p0}。",
+  evc_hyb_for: "{a}–{b} 的正式預測：本頁第一年的水位預測是這個已登錄的統計層（E04），而非物理模型（使用者裁示 R8.7）；由其登錄檢驗在期間結束後判定。同一期間物理模型的水位是其平均天氣情境，並非預測。",
+  evc_pro_e02z: "第 2、3 年的物理模型水位（平均天氣情境，並非預測）：第 2-3 年嚴格水位規則（E02z），依縣別；最早於 2029-01-15（2027-11..2028-10）與 2030-01-15（2028-11..2029-10）評分。",
   evc_hyb_fvs_pass: "2028 年 E04 通過所能顯示的：在 2026-11 至 2027-10 期間，統計層以等站權重 RMSE 計不劣於氣候值（比值 <= 1.0，無餘裕；相等亦算通過），且合併 90 % 區間涵蓋率落在 [0.85, 0.95] 內。所不能顯示的：僅憑通過不能確立異常延續；異常不延續的世界通過的機率為 {p0}（延續時為 {p}，兩者皆為合成且偏樂觀的數值）；亦不能顯示任何關於物理模型的結論或其他年份的預報能力。兩種結果並不對稱：在 AR 世界中未通過的機率約為 {q}（1 - P），因此 2028 年未通過是資訊量較高的結果。",
   evc_n2_rd: "N2 的規則在雲林具資訊性但不具決定性（X5.n2_reading.v1）：誤判通過率 {fp} < 0.25，但大小錯誤時的通過率（k = 0.5 / 2）{ws05} / {ws2}，或 k = 1 時 90 % 區間的涵蓋率 {cov}，不符合其門檻（< 0.25 / ≥ 0.80）；N2 的判定將與這些比率一併列出；檢定力 {pw}（含渠道干擾因子時 {pwc}）；門檻情境未模擬 X1 與真實抽水之間的強迫誤差（僅供報告的強迫誤差情境，lambda 0.8：檢定力 {pwf}）",
   def_tA_e24: "模型內部數值（L）：在 {n} 個與水準測量同等吻合的壓密柱（加入 Q0 族與 R0、各以其自身水頭；Tier A+B，SD.cut_response_spread.v2）中，灌溉 ×0.7 槓桿下雲林到 2028 年 12 月減少的下陷量為 {lo}–{hi} 公分；沿海（遠端區）占其中 {crng} %；{inl}（模型形式的差距，不是區間）。{ta}其大小仍未經檢驗，也不據此選定任何壓密柱。",
@@ -1266,7 +1272,9 @@ zh: {
   lg_hatch_full: "，無意義。每格的模擬一致性只有完整模型模擬才有（{runs}）；快速估算沒有。", lg_hatch_none: "，無意義。每格的模擬一致性需逐次輸出，尚未提供。",
   lg_river: "河川：模型中為不透水邊界", why_matters: "說明", lg_rail: "高鐵中心線（OSM）",
   lg_free_pass: "模型自行運算（{y}）；此期間的保留年份檢驗{fair}通過。", lg_fair: "在去除各井固定偏差後", lg_free_fail: "模型自行運算（{y}），此期間的保留年份檢驗未通過。",
-  lg_proj: "推估值（{y}），未驗證；沒有不確定性帶狀，因為現有資料無法校準。", lg_zone: "南北向的直線邊緣是扇區分界（模型邊界）", lg_zone_short: "扇區分界",
+  lg_proj: "推估值（{y}），未驗證；沒有不確定性帶狀，因為現有資料無法校準。",
+  lg_proj_scen: "推估值（{y}）：在本模型中，{lm} 之後為平均天氣情境，並非預測（起始記憶，FM.origin_memory.v1）；未驗證；沒有不確定性帶狀，因為現有資料無法校準。",
+  ts_fm_mark: "{lm}：起始記憶結束（本模型中）", ts_fm_mark_s: "起始記憶（本模型中）", ts_fm_note: "{lm} 之後，水位線是本模型的平均天氣情境，並非預測（起始記憶，FM.origin_memory.v1）；第一年的正式預測是已登錄的統計層（E04；見「證據」）。", lg_zone: "南北向的直線邊緣是扇區分界（模型邊界）", lg_zone_short: "扇區分界",
   aria_map: "{t}，{y}年。全扇平均 {m} {u}；最大幅度 {big} {u}，位於{town}。{keys}", aria_cell: "方向鍵移動焦點網格，Enter 選取。",
   aria_swipe: "左右方向鍵移動分隔線，按住 Shift 微調。", swipe_at: "分隔線位於 {p}%",
   readout_idle: "將游標移到地圖上以讀取數值；點選以選取網格，Shift＋點選以選取鄉鎮。", readout_free: "（模型自行運算）",
@@ -2072,6 +2080,11 @@ function drawAllMaps() {
   ctx.fillText("A: " + polName(S.A), 10, 21); ctx.textAlign = "end"; ctx.fillText("B: " + polName(S.B), g.W - 10, 21); ctx.restore();
   legend(fa); ariaMap(cv, fb);
 }
+function fmMemory() {                  // FM.origin_memory.v1 (C30-scen; ruling R8.7): the start memory in this model, from its report in its declared case only
+  const mc = D.modelcard, r = (mc.results || {}).fm;
+  if (!(mc.registrations || {}).fm || !r || r.case !== "within_first_year" || r.clause_case !== "window_beyond_memory") return null;
+  return /^\d{4}-\d{2}$/.test(String(r.lstar_month)) ? r : null;
+}
 function legend(fd) {
   let lo, hi, cap = "";
   if (fd.kind === "div") { lo = `≤ −${fd.lim}`; hi = `≥ +${fd.lim}`;
@@ -2085,7 +2098,9 @@ function legend(fd) {
   const hat = fd.hatch && S.hatch ? `<div class="cap"><span class="hatchkey"></span>${tr("lg_hatch", {t: tr(fd.unit === "cm" ? "u_1mm" : "u_5cm"), ag: agTxt})}</div>` : "";
   const riv = S.ovl.rivers && D.rivers ? `<div class="cap"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="${CV.river}" stroke-width="2" stroke-dasharray="6 4"/></svg> ${tr("lg_river")} ${cavLink(5, tr("why_matters"))}</div>` : "";
   const hsr = S.ovl.hsr && D.hsr ? `<div class="cap"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="${CV.rail}" stroke-width="3"/></svg> ${tr("lg_rail")}</div>` : "";
-  const when = S.year <= YO ? "" : S.year <= M.yTested ? (TP() && TP().passed ? tr("lg_free_pass", {y: M.years[S.year], fair: FAIR() ? tr("lg_fair") : ""}) : tr("lg_free_fail", {y: M.years[S.year]})) : tr("lg_proj", {y: M.years[S.year]});
+  // ruling R8.7: after the start memory (FM.origin_memory.v1) the projection is labelled an average-weather scenario, not a forecast
+  const fm = fmMemory(), scen = fm && `${M.years[S.year]}-12` > fm.lstar_month;
+  const when = S.year <= YO ? "" : S.year <= M.yTested ? (TP() && TP().passed ? tr("lg_free_pass", {y: M.years[S.year], fair: FAIR() ? tr("lg_fair") : ""}) : tr("lg_free_fail", {y: M.years[S.year]})) : scen ? tr("lg_proj_scen", {y: M.years[S.year], lm: monthYear(fm.lstar_month)}) : tr("lg_proj", {y: M.years[S.year]});
   const zl = fd.kind === "seq" && fd.unit !== "m" ? `<div class="cap">${cavLink(8, tr("lg_zone"))}</div>` : "";
   const ends = `<span>${lo}</span><span>${fd.unit}</span><span>${hi}</span>`;
   setHtml($("legend"), `<div class="ttl">${esc(fd.title)}</div>
@@ -2242,6 +2257,11 @@ function renderTS() {
   const sx = X(M.starts[S.start]);
   if (!NOPOL() && !fit) g += `<line x1="${sx}" x2="${sx}" y1="${m.t}" y2="${H - m.b}" stroke="${pcol}" stroke-width="1.5"/>`;
   const cyx = X(xYear(Math.min(S.year, nY - 1))); g += `<line x1="${cyx}" x2="${cyx}" y1="${m.t}" y2="${H - m.b}" stroke="${CV.sel}" stroke-width="1.2" stroke-dasharray="2 2"/>`;
+  // ruling R8.7: the start-memory marker (FM.origin_memory.v1, in this model); after it the head line is an average-weather scenario
+  const fm = S.ts === "head" && !fit ? fmMemory() : null;
+  if (fm) { const [fy, fmo] = fm.lstar_month.split("-").map(Number), fx = X(fy + (fmo - 1) / 12);
+    g += `<line x1="${fx}" x2="${fx}" y1="${m.t}" y2="${H - m.b}" stroke="${ink3}" stroke-width="1" stroke-dasharray="1 3"/>`;
+    g += `<text x="${fx + 3}" y="${m.t + 28}" font-size="${fs}" fill="${ink3}">${esc(phone ? tr("ts_fm_mark_s") : tr("ts_fm_mark", {lm: monthYear(fm.lstar_month)}))}</text>`; }
   const bandLab = s.bandKind === "runs" ? (phone ? tr("lg_band_runs_s") : tr("lg_band_runs")) : s.bandKind === "runs_head" ? (phone ? tr("lg_band_head_s") : tr("lg_band_head"))
     : s.bandKind === "constructed" ? (phone ? tr("lg_band_con_s") : tr("lg_band_con")) : tr("lg_band_norm");
   const lg = [[ink, false, tr("lg_base")]];
@@ -2291,7 +2311,8 @@ function renderTS() {
   const artNote = S.ts !== "subs" || !art ? "" : FIXED() ? tr("art_fixed") : tr("art_removed", {n: art.n_cells, a: M.years[0], b: M.years[YO] + 1});
   const hopNote = !(MF() && MF().fan) ? tr("hop_need") : S.hopI == null ? "" : S.sel.k !== "fan" ? tr("hop_fan") : P.src === "basis" ? tr("hop_basis") : "";
   const cov = S.ts === "head" && s.bandKind === "runs_head" ? covLine() : "";
-  setHtml($("tsNote"), `${s.bandNote}${cov ? " <b>" + cov + "</b>" : ""}${artNote ? " " + artNote : ""} ${hopNote} ${cavLink(1, tr("why_unvalidated", {y: M.years[YO]}))}`);
+  const fmNote = fm ? " " + tr("ts_fm_note", {lm: monthYear(fm.lstar_month)}) : "";
+  setHtml($("tsNote"), `${s.bandNote}${cov ? " <b>" + cov + "</b>" : ""}${artNote ? " " + artNote : ""}${fmNote} ${hopNote} ${cavLink(1, tr("why_unvalidated", {y: M.years[YO]}))}`);
   const rows = M.years.slice(0, nY).map((yr, y) => `<tr><td>${yr}-12</td><td class="n">${s.base[y].toFixed(2)}</td><td class="n">${s.scen ? s.scen[y].toFixed(2) : "–"}</td><td class="n">${s.scen ? (S.ts === "subs" ? s.base[y] - s.scen[y] : s.scen[y] - s.base[y]).toFixed(3) : "–"}</td>${s.band ? `<td class="n">${s.band[0][y].toFixed(2)}</td><td class="n">${s.band[3][y].toFixed(2)}</td>` : ""}</tr>`).join("");
   setHtml($("tsTbl"), `<table class="t"><caption class="sr">${esc(s.label)}</caption><thead><tr><th scope="col">${tr("th_time")}</th><th scope="col">${tr("baseline")} (${s.unit})</th><th scope="col">${tr("policy")} (${s.unit})</th><th scope="col">${S.ts === "subs" ? tr("th_avoided") : tr("th_diff")} (${s.unit})</th>${s.band ? `<th scope="col">${tr("baseline")} p10</th><th scope="col">p90</th>` : ""}</tr></thead><tbody>${rows}</tbody></table>`);
   const nm = S.sel.k === "fan" ? tr("sel_fan", {n: A.toLocaleString("en")}) : S.sel.k === "cell" ? `${tr("sel_cell")} ${S.sel.c} · ${TNB(F.town[S.sel.c])}`
@@ -2776,6 +2797,7 @@ function evidenceItems() {              // what is known about how far to trust 
     const dl = rg.dr ? drLine() : ""; if (dl) out.push(["", dl]);
     // E02c and the external-well test: named only once the build found them in the registry
     if (rg.e02c) out.push(["", tr("evc_pro_e02c")]);
+    if (rg.e02z) out.push(["", tr("evc_pro_e02z")]);   // C30-scen's years-2/3 sub-label (E02z page_mapping.before_scoring; rulings R8.7, R8.14)
     if (rg.e02d) out.push(["", tr("evc_pro_e02d")]);
     const fl = rg.fm ? fmLine(qa, qb) : ""; if (fl) out.push(["", fl]);
     if (rg.ext) out.push(["", tr("evc_pro_ext")]);
@@ -2785,7 +2807,9 @@ function evidenceItems() {              // what is known about how far to trust 
   if (rg.no_band) out.push(["", tr("evc_band_none")]);
   if (mc.hybrid) { const h = mc.hybrid, ys = Object.keys(h.per_year || {}), y1 = ys.length ? ys[0] : "";
     out.push([h.ratio_stat < 1 ? "ok" : "warn", tr("evc_hyb", {s: f2(h.rmse_stat), c: f2(h.rmse_clim), r: f2(h.rmse_model), span: ncSpan(h), y1, s1: y1 ? f2(h.per_year[y1].stat) : "", c1: y1 ? f2(h.per_year[y1].clim) : "", p: f2(h.ratio_phys)})]);
-    const g = h.registration; if (g && g.test_start && g.test_end) out.push(["", tr("evc_hyb_reg", {reg: g.registered_on, a: monthYear(String(g.test_start).slice(0, 7)), b: monthYear(String(g.test_end).slice(0, 7)), n: g.stations})]);
+    const g = h.registration; if (g && g.test_start && g.test_end) { const ga = monthYear(String(g.test_start).slice(0, 7)), gb = monthYear(String(g.test_end).slice(0, 7));
+      out.push(["", tr("evc_hyb_reg", {reg: g.registered_on, a: ga, b: gb, n: g.stations})]);
+      out.push(["", tr("evc_hyb_for", {a: ga, b: gb})]); }      // ruling R8.7: E04 is the first-year forecast of record (C30-fc)
     out.push(...fvsLines()); }
   const rl = ringLine(); if (rl) out.push(["", rl]);
   const pl = pileLine(); if (pl) out.push(["", pl]);

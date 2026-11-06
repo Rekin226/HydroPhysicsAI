@@ -261,7 +261,12 @@ the area sinking faster than a threshold, the high-speed-rail gradient and the r
 sit in a labelled "model internals" section (claims ledger `hydrophysics/twin/claims_v1.json`),
 because their size is not supported by the registered tests. Below them sit a 2D map of the policy's change from
 baseline, drawn on a fixed symmetric scale, and a linked time series. The series marks the
-fitted and projected periods and has a policy-minus-baseline panel. Historical validation
+fitted and projected periods and has a policy-minus-baseline panel. Since 2026-11-06 (user
+ruling R8.7) the page says which line is a forecast and which is a scenario: the registered
+statistical layer (E04) is the forecast of record for the first year, 2026-11 to 2027-10, and
+after the start memory (2023-11 in this model, `FM.origin_memory.v1`) the physics head levels
+are an average-weather scenario, not a forecast; the head series marks that month and the map
+legend says so. Historical validation
 dates remain separate from future projection years. A slider per
 water-use class and a 2026/2030 start set the policy. When the policy matches a solved run
 the page uses the full 36-run fields; otherwise it builds the result from the per-class
@@ -385,7 +390,11 @@ in `docs/GPU_SERVER.md`.
   of the same forecast (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
   county, scored from 2029-01-15; synthetic decidability not shown weak: about 1.0 in Yunlin and
   0.69 in Changhua), and its expected outcome, from the published 2023-26 record, is the
-  pre-worded narrowing that the physics level stays an average-weather scenario. The
+  pre-worded narrowing that the physics level stays an average-weather scenario. Since the
+  C30 split of user ruling R8.7 (2026-11-06) that years-2/3 rule is on the page with the
+  scenario row (C30-scen), the first-year forecast of record is E04's row (C30-fc), and the
+  wording of every outcome of E02, E02c, E04 and E02z after the 2028 scores is fixed in the
+  claims ledger before any of them is scored. The
   departure-transfer band at N3F's never-calibrated wells is undecidable by design at the
   external wells (`U1.ext_transfer_power.v1`: Yunlin power 0.767 against 0.80; Changhua report-only), so E02x
   was not registered. The side of a Changhua coverage fail does not separate the pumping
