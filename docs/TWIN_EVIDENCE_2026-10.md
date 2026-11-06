@@ -2048,3 +2048,94 @@ registered or scored, and no status changes (C01 S, C01-w D, C01-sz N, C12 L).
 
 Progress: no figure in section 22's table changes; the head rows keep their statuses, and the
 headline number becomes the quantity N2's test is built on.
+
+## 25. PB decomposed band (ruling R8.13)
+
+User ruling R8.13 (2026-11-03, twelfth set; `results/dataprep/rulings/user_rulings_2026-11-03.json`,
+sha ec610b69): "Yes: per-well zone ribbon 'decided by a registered test, E02d, 2028' (min 5
+wells per zone, no station ids) plus the shared range 'cannot be tested before 2030 by
+design'." It replaces the drawn aggregate run spread of the head series (the fan-average
+layer-2 head's p10-p90 / p25-p75 band over the runs, ledger C14c). This section records the
+code (round-8 rank 16, part PB, `dataprep_staging/pb_band/`); no band, range or LOFO number
+has been built (see the disclosure below) and nothing on the page, the ledger or the claims
+changes.
+
+- **Declaration first.** `PB.decomposed_band.v1` (kind declaration) is drafted by
+  `prereg_pb.py` and validated with `prereg3.validate_prereg`; it is not written. The lead
+  registers it after the code is merged; `build_pb.py` refuses to build until then, and also
+  when its frozen code, the registered design, an upstream registration (E02d, E02y, FV v2, DR)
+  or any bound input's sha256 differs, or when the output already exists (written once).
+- **Inputs, by hash.** E02d's frozen artefact `results/twin/e02d_relative/sigma_idio_{A,B,C}.csv`
+  (b70da8b0, aa3d9695, 29ce843d; E02d's `interval.artefact.files`) and its `summary.json`
+  (7e23aee9); the centre those files carry (E02's registered predictions 16ac3c37 for window A,
+  the absolute registrations 49e23b7e and c494fa04 for B and C, as E02y recorded them); DR's
+  `wells_e02d.csv` (f3174c48); the 36 rerun members `members_wells.npz` (12c32ff4); and, for the
+  family part, FV v1's four truth forwards, E02's forward (cf2c7154), FV's same-code reference
+  `fv_zr0.npz` (a1833d5f; read for FV's report-only offset, which PB does not use; this hash
+  was recorded only by the FB builder, no registration records it), `wells_158.csv` and
+  `obs_mask.csv` at the sha256 FB recorded. Files under `results/twin/` are read from a
+  `--twin-dir`, because a checkout's `results/twin` may be partial. No observation product is
+  an input (the builder refuses one). The builder also refuses unless `summary.json`'s
+  decisions equal E02d's registered ones and its lead definition equals
+  `DR.relative_drift.v1`'s registered one ('origin'), with no fallback.
+- **Identity check (the plan's gate), 1e-9 m.** Against E02d's registered values: 158 wells by
+  the window's months, lead = months after 2022-12; county, group and `sd_fit_rel_m` equal DR's
+  table; `drift_m` = sqrt(tau2) |t - anchor| with E02d's registered decisions and lead definition;
+  `sigma_ens_rel_m` = `e02dlib.sigma_ens_rel` of the registered members; `sigma_idio_m` =
+  sqrt(sd^2 + ens^2 + drift^2); `half_width_m` = z90 sigma_idio; `predicted_m` equals the
+  registered centre. A failure is an engineering failure: nothing is computed or written.
+- **Part 1, the per-well zone ribbon.** Per DR zone (E02d's frozen group) and month: the median
+  over the zone's wells of E02d's frozen 90 % relative half-width, drawn as plus or minus that
+  value around the zone's common departure. The page draws window A only (2026-12..2027-10;
+  row C14a-r; lead decision), labelled 'decided by a registered test, E02d, 2028'; windows B and
+  C are computed in the output and not drawn. A zone with fewer than 5 wells is not drawn (the
+  five zones hold 61, 40, 34, 13 and 10 of the 158 wells, so none is removed); a month with
+  fewer than 5 finite rows is left empty; the output and the page carry zone names and well
+  counts, never a station id. After scoring, E02d's own page mapping decides the wording; a
+  county's fail withdraws its ribbon.
+- **Part 2, the shared range.** Per county and month of window A: the spread among model
+  variants only, the hull of 0 (E02's registered centre), the 36 members' county-median
+  deviation from the member mean, and the county-median departure from E02's registered forward
+  of the FV v1 baseline forwards of FV v2's four truth families (R0, Q0, R1c, X5R1; FV's frozen
+  departure, through `fb_inputs.load_mu`). Label: 'cannot be tested before 2030 by design'. It
+  excludes forcing-year variation (FV v2's registered forcing-year clause stays on the page
+  beside it) and the between-zone part of the departure (a county median, while E02d's operator
+  removes zone medians). It is model-only and not a predictive interval; FV v1's truth forwards
+  end in 2027-10, so it is not drawn after that month.
+- **Leave-one-family-out coverage per county (published, design-time, model-only).** For each
+  family, the share of window-A months in which its county-wide departure lies inside the hull
+  built without it; given per family and pooled over the four (inside / 44 family-months);
+  leaving out one of FB's two families {R0,Q0} / {R1c,X5R1} whole is report-only. No gate and no
+  status mapping. FV v2's published per-truth Changhua split already suggests that the two
+  Changhua families depart differently, so a low Changhua figure is the expected outcome; a high
+  one says the recipes agree with each other, not that the range holds the aquifer's departure.
+  Leave-one-forcing-year-out is dropped (plan #16) and never computed.
+- **U7 guard.** In `build_pb.py` and `tests/test_pb_band.py` only (not in
+  `hydrophysics/twin/coverage.py`, `bands.py` or `harness/coverage3.py`): no coverage of the
+  relative recipe is computed in any month (its 2023-26 coverage is sealed by E02d; its window
+  coverage is E02d's and E02y's to score), no coverage of any kind on a month before 2026-12,
+  and no observation product among the inputs.
+- **Page.** The wiring waits for the round-8 #14 page change and is prepared separately: a
+  two-part band panel on one common vertical scale replaces only the head series' drawn run
+  band (its note `bn_head`). Beside the shared range the page shows only the forcing-year clause
+  of FV v2's registered C14c wording, verbatim (`FV.decidability.v2_postfailure`, sha f7e35a17,
+  `readings.reading_2.wording.c14c`; ruling R7.fv_v2_page), without its run-spread sentence; the
+  full line `bn_head_fy` shows only without PB. The head series keeps its registered coverage
+  line, and a zone left undrawn (fewer than 5 wells; none at present) is named in one line.
+  Rows C14a-r (ribbon) and C14c (shared range). Until the band is built the page keeps its
+  current band.
+- **Disclosure.** While inspecting the artefact's layout the builder printed, once, the median
+  half-width per zone of each file, pooled over the zone's wells and the window's months
+  (E02d's registered model-derived values): 2.157-4.904 m in window A, 2.267-4.954 m in B and
+  2.408-5.014 m in C. The ribbon statistic (the median over the zone's wells, per month) was the
+  builder's choice, made with that print in hand; the 5-well minimum is R8.13's. Besides that
+  print, no member deviation, family departure, shared range, LOFO figure or coverage was
+  computed; the builder's functions ran on synthetic arrays only.
+
+The other parts of rank 16 are closed. `FB.family_power.v1` (registered sha bc8a935a; result
+sha bdc0589e) failed its gate in both counties (worst-row P(correct strong) 0.21 in Changhua
+and 0 in Yunlin, against 0.8), so no Bayes-factor test is registered and ledger row E29 reads
+'family BF not decidable by design'. EXS (the drift diagnostic) did not run: its precondition,
+E02x registered, failed, because `U1.ext_transfer_power.v1` (registered sha 1bfbf010; result
+sha daace1bf) failed its P-gate and E02x was never registered (row C14f-r N). Nothing is built
+for EXS.
