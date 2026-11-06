@@ -1441,3 +1441,31 @@ def test_r8_7_rain_year_rider_result_is_a_ledger_caveat_only():
     en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
     assert not any(rid in v or "Rain-year caveat" in v for d in (en, zh) for v in d.values())
     assert rid not in C.template_src() and not any(rid in k for k in DM()["i18n"])
+
+
+def test_round8_changhua_2008_09_window_is_closed_as_not_decidable():
+    """Round-8 #18: the count-only look on Changhua ls_cache 2008-09 stopped; its declared
+    wording is recorded on the rows that track the Changhua head windows (E26, C20, C21) and in
+    README Limits, with no status change and no page line."""
+    cl, wording = CL(), "'last possible Changhua head window checked, not decidable'"
+    rep = "results/twin_runs/chx/backcast_2008_09/avail/avail.json"
+    for cid in ("E26", "C20", "C21"):
+        n = cl[cid]["notes"]
+        for k in (wording, "I1CHB0:ls_cache_rowcounts_2008_2009", "found 0 of 24 Changhua",
+                  ">= 18 available months in 2008-01..2009-12", "constants sha256 d4b9ab77",
+                  "sha 508fd440", "P6:moea_public_well_tables",
+                  "moea_public_well_tables:2008-01..2024-12", "no status change"):
+            assert k in n, (cid, k)
+        assert rep in cl[cid]["cites"]["reports"], cid
+    assert _st("E26") == {"S"} and _st("C20") == {"N"} and _st("C21") == {"N"}
+    readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
+    assert ("so the last possible Changhua head window is checked and not decidable" in readme)
+    src = C.template_src()
+    assert "I1CHB0" not in src and "2008-09" not in src and "2008–09" not in src
+    path = C.REPO / rep
+    if path.exists():                        # the stopped result, as recorded
+        f = json.loads(path.read_text(encoding="utf-8"))["feasibility"]
+        assert C.sha256(path).startswith("508fd440")
+        assert f["passed"] is False and f["n_eligible"] == 0 and f["nest_included"]["n"] == 0
+        assert f["n_changhua_candidates"] == 24 and f["constants_sha256"].startswith("d4b9ab77")
+        assert f["on_stop"] == wording.strip("'")
