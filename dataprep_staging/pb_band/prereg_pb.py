@@ -121,9 +121,18 @@ def page_mapping() -> dict:
         "replaces": "the drawn aggregate run spread of the head series only (the fan-average "
                     "layer-2 head's p10-p90 / p25-p75 run band, template bandKind 'runs_head', "
                     "and its note bn_head; ledger C14c), per ruling R8.13",
-        "kept": {"bn_head_fy": "FV v2's registered C14c line (ruling R7.fv_v2_page; the "
-                               "model's forcing-year range) stays on the page, shown beside the "
-                               "shared range",
+        "kept": {"bn_head_fy_pb": {
+                     "what": "under PB the page shows ONLY the forcing-year clause of FV v2's "
+                             "registered C14c wording, verbatim (first letter capitalised), as "
+                             "template key bn_head_fy_pb beside the shared range; no "
+                             "run-spread sentence (ruling R7.fv_v2_page)",
+                     "registration": {"id": K.FV2_ID, "sha256": K.FV2_SHA,
+                                      "wording": K.FV2_C14C_PATH},
+                     "clause": {"en": K.FV2_C14C_CLAUSE_EN, "zh": K.FV2_C14C_CLAUSE_ZH},
+                     "bn_head_fy": "the full FV v2 line (with the run-spread sentence) is "
+                                   "shown only when PB is absent",
+                     "see_line": "the shared range's '(see FV v2's line below)' is shown only "
+                                 "when the clause is shown"},
                  "cov_line": "the head series' registered coverage line (covLine) stays under "
                              "bn_head_pb; PB removes no registered line"},
         "part_1_ribbon": {
@@ -133,9 +142,11 @@ def page_mapping() -> dict:
                          "on the page",
             "what": lab["ribbon_what"], "label_A": lab["ribbon_A"],
             "small_zones": f"a zone with fewer than {K.MIN_ZONE_WELLS} wells is not drawn "
-                           "(none at present)",
-            "zone_names": "DR's group names as stored (e.g. county:zone), untranslated, as "
-                          "the page shows zone names elsewhere (D.zoneNames)",
+                           "and the page says so in one line (pb_small, EN and ZH; none at "
+                           "present)",
+            "zone_names": "DR.relative_drift.v1's group names as stored in E02d's artefact "
+                          "(e.g. 'Changhua:mid+dist', 'Yunlin:prox'), shown untranslated in "
+                          "both languages",
             "draw": "per zone (zone name and well count, never a station id), +/- the zone's "
                     "median half-width around zero, monthly, 2026-12..2027-10",
             "after_scoring": "E02d's own page_mapping decides the wording; on a county's fail "
@@ -291,6 +302,11 @@ def problems(doc: dict, prereg_dir=None) -> list[str]:
                 bad.append(f"window {w} centre: pinned sha differs from E02y's inputs")
     fv2 = docs.get(K.FV2_ID)
     if fv2 is not None:
+        reg = fv2.get("readings", {}).get("reading_2", {}).get("wording", {}).get("c14c", {})
+        for lang, clause in (("en", K.FV2_C14C_CLAUSE_EN), ("zh", K.FV2_C14C_CLAUSE_ZH)):
+            if clause not in str(reg.get(lang, "")):
+                bad.append(f"FV v2's registered C14c wording ({lang}) does not hold the kept "
+                           f"clause verbatim")
         tags = [t["tag"] for t in fv2.get("truths", [])]
         if sorted(tags) != sorted(K.FAMILIES):
             bad.append(f"FV v2 truths {tags} != {list(K.FAMILIES)}")

@@ -264,6 +264,15 @@ def test_member_part_is_centred_county_median_by_hand():
     assert o3["Yunlin"][:, 0].tolist() == [-1.0, 1.0]       # median, not mean (+1.67/-1.67)
 
 
+def test_family_part_is_county_median_by_hand():
+    # 3 wells x 2 months per county; one outlying well: median 0.1 / -0.2, mean 3.4 / 2.6
+    w = np.array([[0.0, -0.2], [0.1, -0.3], [10.0, 8.3]])
+    mu = {c: {k: w + j for j, k in enumerate(K.FAMILIES)} for c in K.COUNTIES}
+    out = B.family_county_dep(mu)
+    assert np.allclose(out["Yunlin"]["R0"], [0.1, -0.2])
+    assert np.allclose(out["Changhua"]["X5R1"], [3.1, 2.8])
+
+
 def test_shared_range_by_hand():
     T = 2
     md = {c: np.array([[-0.3, -0.1], [0.2, 0.4]]) for c in K.COUNTIES}
@@ -439,7 +448,7 @@ def test_draft_validates_and_carries_the_design(tmp_path):
     p1 = pm["part_1_ribbon"]
     assert p1["rows"] == {"A": "C14a-r"} and p1["windows_drawn"] == ["A"]
     assert "E02y" not in json.dumps(p1) and "C14b" not in json.dumps(pm)
-    assert "bn_head_fy" not in pm["replaces"] and "bn_head_fy" in pm["kept"]
+    assert "bn_head_fy" not in pm["replaces"] and "bn_head_fy_pb" in pm["kept"]
     assert "cov_line" in pm["kept"]
     what = pm["part_2_shared"]["what"]["en"]
     assert "spread among model variants only" in what and "forcing-year" in what
@@ -451,6 +460,13 @@ def test_draft_validates_and_carries_the_design(tmp_path):
     assert "builder's choice" in ep and "61/40/34/13/10" in ep
     assert "A 2.157-4.904 m; B 2.267-4.954 m; C 2.408-5.014 m" in ep
     assert "dataprep_staging/e02c/score_e02c.py" in real["frozen_code"]
+    kept = pm["kept"]["bn_head_fy_pb"]
+    assert kept["registration"] == {"id": K.FV2_ID, "sha256": K.FV2_SHA,
+                                    "wording": "readings.reading_2.wording.c14c"}
+    assert kept["clause"]["en"].startswith("the model's own forcing-year range")
+    assert "run spread" not in kept["clause"]["en"] and "執行離散" not in kept["clause"]["zh"]
+    assert "Changhua:mid+dist" in p1["zone_names"] and "pb_small" in p1["small_zones"]
+    assert "強迫" not in json.dumps(real, ensure_ascii=False)
 
 
 def test_draft_main_writes_nothing(tmp_path, capsys):
@@ -515,6 +531,28 @@ def test_build_refuses_changed_design_inputs_observations_and_rewrite(tmp_path):
     (tmp_path / "out" / K.OUT_JSON).write_text("{}")
     with pytest.raises(io.Refused, match="written once"):
         B.run(twin, tmp_path / "out", prereg_dir=d4)
+
+
+def test_build_wires_the_summary_checks(tmp_path):
+    """run() refuses through summary_checks: lead_definition and decisions mismatches."""
+    twin = tmp_path / "twin"
+    (twin / "e02d_relative").mkdir(parents=True)
+    summ = twin / "e02d_relative" / "summary.json"
+    for case, body, msg in (
+            ("lead", {"decisions": DECISIONS, "lead_definition": "datum_centre"},
+             "lead_definition"),
+            ("nolead", {"decisions": DECISIONS}, "lead_definition"),
+            ("dec", {"decisions": {"Yunlin": {}}, "lead_definition": "origin"}, "decisions")):
+        summ.write_text(json.dumps(body))
+        d = tmp_path / f"reg_{case}"
+        d.mkdir()
+        _register_fake(d, _fake_doc({K.SUMMARY: io.sha256(summ)}))
+        _register_fake(d, {"id": K.E02D_ID, "wp": "E02d", "kind": "test", **E02D_DOC})
+        _register_fake(d, {"id": K.DR_ID, "wp": "DR", "kind": "declaration",
+                           "lead_definition": "origin"})
+        with pytest.raises(io.EngineeringFailure, match=msg):
+            B.run(twin, tmp_path / f"out_{case}", prereg_dir=d)
+        assert not (tmp_path / f"out_{case}").exists()
 
 
 def test_build_refuses_changed_frozen_code(tmp_path):

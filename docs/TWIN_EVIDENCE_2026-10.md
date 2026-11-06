@@ -1996,8 +1996,8 @@ changes.
   deviation from the member mean, and the county-median departure from E02's registered forward
   of the FV v1 baseline forwards of FV v2's four truth families (R0, Q0, R1c, X5R1; FV's frozen
   departure, through `fb_inputs.load_mu`). Label: 'cannot be tested before 2030 by design'. It
-  excludes forcing-year variation (FV v2's registered forcing-year line stays on the page beside
-  it) and the between-zone part of the departure (a county median, while E02d's operator
+  excludes forcing-year variation (FV v2's registered forcing-year clause stays on the page
+  beside it) and the between-zone part of the departure (a county median, while E02d's operator
   removes zone medians). It is model-only and not a predictive interval; FV v1's truth forwards
   end in 2027-10, so it is not drawn after that month.
 - **Leave-one-family-out coverage per county (published, design-time, model-only).** For each
@@ -2015,10 +2015,13 @@ changes.
   and no observation product among the inputs.
 - **Page.** The wiring waits for the round-8 #14 page change and is prepared separately: a
   two-part band panel on one common vertical scale replaces only the head series' drawn run
-  band (its note `bn_head`); FV v2's registered forcing-year line (`bn_head_fy`, C14c, ruling
-  R7.fv_v2_page) is shown beside the shared range and the head series keeps its registered
-  coverage line; rows C14a-r (ribbon) and C14c (shared range). Until the band is built the page
-  keeps its current band.
+  band (its note `bn_head`). Beside the shared range the page shows only the forcing-year clause
+  of FV v2's registered C14c wording, verbatim (`FV.decidability.v2_postfailure`, sha f7e35a17,
+  `readings.reading_2.wording.c14c`; ruling R7.fv_v2_page), without its run-spread sentence; the
+  full line `bn_head_fy` shows only without PB. The head series keeps its registered coverage
+  line, and a zone left undrawn (fewer than 5 wells; none at present) is named in one line.
+  Rows C14a-r (ribbon) and C14c (shared range). Until the band is built the page keeps its
+  current band.
 - **Disclosure.** While inspecting the artefact's layout the builder printed, once, the median
   half-width per zone of each file, pooled over the zone's wells and the window's months
   (E02d's registered model-derived values): 2.157-4.904 m in window A, 2.267-4.954 m in B and

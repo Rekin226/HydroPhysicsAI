@@ -60,6 +60,17 @@ E02Y_ID = "E02y.years23_2027-11_2029-10.v1"
 E02Y_SHA = "4bf7d91f928c8017176c5f53a60abffe5f86a9cc93386d521e5fd8bc7e0c6d12"
 FV2_ID = "FV.decidability.v2_postfailure"
 FV2_SHA = "f7e35a17482cce307c6be84013f9a2919f16f4be66e9a01cd7eeacbd08fb49d4"
+#: FV v2's registered C14c wording (readings.reading_2.wording.c14c; page_mapping.reading_2.
+#: C14c names the rewording); PB keeps only its forcing-year clause, verbatim, on the page as
+#: template key bn_head_fy_pb (first letter capitalised; {lbl} as the page renders it)
+FV2_C14C_PATH = "readings.reading_2.wording.c14c"
+FV2_C14C_CLAUSE_EN = ("the model's own forcing-year range ({n2_lo:+.2f} to {n2_hi:+.2f} m for "
+                      "the N2-unit mean and {l2_lo:+.2f} to {l2_hi:+.2f} m for the fan "
+                      "layer-2 mean in 2026-11..2027-10; {forcing}); not a predictive "
+                      "interval; the model's amplitude is damped (about 0.73) ({lbl})")
+FV2_C14C_CLAUSE_ZH = ("模型自身的逐年驅動範圍（2026-11..2027-10 期間 N2 單元平均 {n2_lo:+.2f} 至 "
+                      "{n2_hi:+.2f} m，扇地第 2 層平均 {l2_lo:+.2f} 至 {l2_hi:+.2f} m；"
+                      "{forcing}）；並非預測區間；模型振幅偏小（約 0.73）（{lbl}）")
 DR_ID = "DR.relative_drift.v1"
 DR_SHA = "f835af572a8b6e49bec6ae38d6edf7c37bb9d8e26abedb658b71e6e9c5fe873b"
 FB_ID = "FB.family_power.v1"
@@ -171,7 +182,7 @@ LABELS = {
                           "interval",
                     "zh": "全縣各井共有的範圍：僅為模型變體之間的差異（凍結預測、其 36 次模擬之"
                           "全縣偏移，以及 FV v2 四個真值族群之 FV v1 基準模擬的全縣偏移）；不含"
-                          "強迫年份變異（見旁邊 FV v2 的強迫年份說明）與分區之間的偏移；僅模型；"
+                          "驅動年份變異（見旁邊 FV v2 的驅動年份說明）與分區之間的偏移；僅模型；"
                           "不是預測區間"},
     "shared_end": {"en": "not drawn after 2027-10 (the family forwards end there)",
                    "zh": "2027-10 之後不繪製（族群模擬至此為止）"},
