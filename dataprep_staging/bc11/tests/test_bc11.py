@@ -262,7 +262,7 @@ def test_g0_g2_and_g3_pipelines_on_tiny_worlds():
     sig = np.full(len(county), 0.3)
     mask = np.ones(F1.shape, bool)
     r2 = BL.run_g0_g2(mf, F1, sig, county, mask, reps=2, seed=5)
-    assert set(r2["gate"]) == set(K.COUNTIES) and len(r2["cells"]) == 18
+    assert set(r2["gate"]) == set(K.COUNTIES) and len(r2["cells"]) == 19      # + 1 RO cell
     r3 = BL.run_g0_g3(mf, F1, F0, sig, county, mask, reps=2, seed=6, B=50)
     assert len(r3["cells"]) == 18 and "decidable" in r3["gate"]
     assert r3 == BL.run_g0_g3(mf, F1, F0, sig, county, mask, reps=2, seed=6, B=50)
@@ -524,13 +524,21 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
     np.savez(pz, **panel)
     import page_run as PR
 
+    # the inputs a real draft hashes, as tmp stand-ins
+    for path in (K.RULINGS, f"{K.CENSUS_V3}/MANIFEST.json", f"{K.CL_PRODUCT}/MANIFEST.json",
+                 K.PAGE_FORWARD, *K.PAGE_THETAS):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text("{}")
+    shas = K.code_shas()
     (tmp_path / K.PANEL_JSON).write_text(json.dumps({
         "panel_sha256": IO.sha256(pz), "code_head": K.WT_HEAD,
-        "thetas_sha256": PR.theta_shas()}))
+        "thetas_sha256": PR.theta_shas(), "code_sha256": shas}))
+    swap_c = {"yunlin": {"passed": True, "energy_ratio_ok": True},
+              "changhua": {"passed": False, "energy_ratio_ok": True}}
     for path, obj in ((K.E0_OUT, {"passed": True, "max_abs_diff_m": 1e-6, "code_head":
-                                  K.WT_HEAD}),
-                      (K.SWAP_OUT, {"passed": False, "counties": {"yunlin": {"passed": True},
-                                                                  "changhua": {"passed": False}}})):
+                                  K.WT_HEAD, "code_sha256": shas}),
+                      (K.SWAP_OUT, {"passed": False, "counties": swap_c,
+                                    "code_head": K.WT_HEAD, "code_sha256": shas})):
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(json.dumps(obj))
     l1_calls = []
@@ -551,7 +559,13 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
              "g3": {"decidable": True}, "yr": {"decidable": True}}
     for key, path in K.G0_FILES.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / path).write_text(json.dumps({"gate": gates[key], "reps": 1}))
+        (tmp_path / path).write_text(json.dumps({
+            "gate": gates[key], "reps": 1, "code_sha256": shas,
+            "created": "2026-01-01T00:00:00+00:00" if key == "g1" else "2099-01-01"}))
+    att = tmp_path / K.ATTEMPTS
+    rows_att = [{"step": st, "rc": 0} for st in (*K.ATTEMPT_STEPS, f"e0_{K.WT_HEAD}")]
+    rows_att.insert(0, {"step": "swap", "rc": 1, "note": "an engineering retry"})
+    att.write_text("".join(json.dumps(r) + "\n" for r in rows_att))
 
     # 3. the draft: valid, not blocked by the availability or product_build looks
     d = PB.doc(prereg_dir=pdir, registries=[])
@@ -563,6 +577,26 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
     ov = d["prior_looks_disclosed"]["probe"][K.UNIT_YL]["overlapping_looks"]
     assert {r["unit"] for r in ov} == {K.AVAIL_UNIT, K.PRODUCT_UNIT}
     assert d["pregates"]["product"]["manifest_sha256"] != "missing"
+    assert PB.readiness(d) == []                         # S2 bindings all hold
+    assert d["attempts_disclosed"][0]["rc"] == 1          # the failed retry is disclosed
+    assert d["recipe"]["worktree_head"] == K.WT_HEAD
+    assert "spinup_discontinuity_f1_2011_12_vs_native_2012_01" in d["pregates"]["panel"]
+    # S2 mutations: each one alone makes the draft not ready
+    bad = json.loads((tmp_path / K.G0_FILES["g2"]).read_text())
+    bad["code_sha256"] = {**shas, f"{K.X}/bc11_lib.py": "0" * 64}
+    (tmp_path / K.G0_FILES["g2"]).write_text(json.dumps(bad))
+    assert any("code shas differ" in x for x in PB.readiness(PB.doc(pdir, [])))
+    bad["code_sha256"] = shas
+    (tmp_path / K.G0_FILES["g2"]).write_text(json.dumps(bad))
+    sw = json.loads((tmp_path / K.SWAP_OUT).read_text())
+    (tmp_path / K.SWAP_OUT).write_text(json.dumps({**sw, "code_head": K.WT_HEAD + "-dirty"}))
+    assert any("code_head" in x for x in PB.readiness(PB.doc(pdir, [])))
+    (tmp_path / K.SWAP_OUT).write_text(json.dumps(sw))
+    att.write_text(att.read_text() + json.dumps({"step": "hindcast", "rc": 0}) + "\n")
+    assert any("hindcast has 2" in x for x in PB.readiness(PB.doc(pdir, [])))
+    att.write_text("".join(json.dumps(r) + "\n" for r in rows_att))
+    d = PB.doc(prereg_dir=pdir, registries=[])
+    assert PB.readiness(d) == []
     # no 2010-11 head has been read by anything so far
     assert all(c[0] != K.PRODUCT for c in l1_calls)
     with pytest.raises(SystemExit):                    # not registered: refused, nothing read
@@ -570,6 +604,8 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
     assert "product_read" not in events
 
     # 4. register in the tmp registry, then the product build refuses
+    # write_prereg hashes plain-path inputs against the REAL repository root
+    # (common.paths.REPO), not the tmp one: keep only the code entries in the tmp registry
     d["inputs"] = [x for x in d["inputs"] if isinstance(x, dict)]
     _, h = prereg3.write_prereg(d, prereg_dir=pdir, rows_dir=rows, units_registry=None,
                                 registries=[])
@@ -612,7 +648,7 @@ def test_scorer_refuses_drifted_pregate_files(tmp_path, monkeypatch):
     import score_bc11 as SC
 
     monkeypatch.setattr(IO, "REPO", tmp_path)
-    doc = {"pregates": {k: {"sha256": "x"} for k in SC.PREGATES},
+    doc = {"pregates": {k: {"sha256": "x", "path": p} for k, p in SC.PREGATES.items()},
            "g0": {k: {"sha256": "missing"} for k in K.G0_FILES}}
     doc["pregates"]["availability"]["passed"] = True
     doc["pregates"]["e0"]["passed"] = True
@@ -687,3 +723,227 @@ def test_g0_studies_read_no_head(tmp_path, monkeypatch):
     np.savez(pz, sid=P["sid_yl"], **P)
     rep = G.study("yr", tmp_path / "g0", panel=pz, reps=1)
     assert "gate" in rep and rep["params_from"] == K.G0_PARAMS_FROM
+
+
+# ----------------------------------------------------------------------------- review (S3)
+def test_level_adjusted_cl_uses_the_mean_2010_anomaly_only():
+    fit = BL.fit_stat(_fit_world())
+    CL = BL.cl_on(fit["cl_month"], BL.WIN_M)
+    win = np.array(CL)
+    win[:, :12] += np.arange(1.0, 13.0)              # non-constant 2010 anomalies, mean 6.5
+    win[:, 12:] += 100.0                             # 2011 never enters the level
+    win[3, 0] = np.nan                               # observed months only: mean of 2..12 = 7
+    fc = BL.stat_forecast(fit, win)
+    assert np.allclose(fc["level"][:3], 6.5) and np.isclose(fc["level"][3], 7.0)
+    assert np.allclose(fc["cl_adj"][:3], CL[:3] + 6.5)
+    assert np.allclose(fc["persist"][0, 12:], win[0, 11])     # December's value, not the mean
+
+
+def test_bootstrap_upper_bound_is_the_095_quantile():
+    rng = np.random.default_rng(3)
+    mp, mb = rng.uniform(0.2, 1.5, 30), rng.uniform(0.5, 1.2, 30)
+    idx = BL.boot_index(30, 400, 11)
+    r = np.sqrt(mp[idx].mean(axis=1)) / np.sqrt(mb[idx].mean(axis=1))
+    ub = BL.boot_ub(mp, mb, idx)
+    assert ub == float(np.quantile(r, 0.95)) and ub != float(np.quantile(r, 0.90))
+    assert K.BOOT_Q == 0.95
+
+
+def test_cell_gate_power_is_mean_of_power_cells_and_false_is_max_of_null_cells():
+    rows = ([{"kind": "ar", "p": p} for p in (0.9, 0.3, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6)]
+            + [{"kind": "null", "p": p} for p in (0.05, 0.19, 0.10)]
+            + [{"kind": "report_only_offset", "p": 1.0}, {"kind": "report_only_offset",
+                                                         "p": 0.0}])
+    g = BL.cell_gate(rows, "p", "ar", "null")
+    assert np.isclose(g["power"], 0.6) and g["false_pass"] == 0.19 and g["decidable"]
+
+
+def test_run_g0_g1_gate_uses_the_9_ar_cells_and_the_max_null(monkeypatch):
+    """Each world reveals its cell; only (rho 0.80, share 0) of the AR cells and (rho 0,
+    share 0.30) of the null cells pass, and the report-only cells always pass."""
+    def fake_world(county, rho, share, rng, T):
+        return np.full((len(county), T), 10 * rho + share)
+
+    def fake_score(y, mask, county, seed, B=0):
+        v = y[0, 30]
+        report_only = y[0, 5] != v                       # only the offset cells perturb 2010-11
+        ok = report_only or np.isclose(v, 8.0) or np.isclose(v, 0.30)
+        return {"verdict": "pass", "passed": bool(ok), "g1_passed": True, "g1b_passed": True,
+                "ratio_vs_cl": 0.9, "ub90_vs_cl": 0.95, "ratio_vs_cl_level_adjusted": 0.9,
+                "coverage90": 0.9}
+    monkeypatch.setattr(BL, "ar_world", fake_world)
+    monkeypatch.setattr(BL, "g1_world_score", fake_score)
+    r = BL.run_g0_g1(np.array(["yunlin"] * 3), np.ones((3, 24), bool), reps=2, seed=1)
+    assert np.isclose(r["gate"]["power"], 1 / 9) and r["gate"]["false_pass"] == 1.0
+    assert [c["p_pass"] for c in r["cells"] if c["kind"] == "report_only_offset"] == [1.0, 1.0]
+
+
+def test_stat_keep_needs_24_fitted_months():
+    obs = _fit_world(W=4)
+    obs[0, 23:] = np.nan                                   # 23 fitted months
+    obs[1, 24:] = np.nan                                   # 24 fitted months
+    fit = BL.fit_stat(obs)
+    win = BL.cl_on(fit["cl_month"], BL.WIN_M) + 0.5
+    keep = BL.stat_forecast(fit, win)["keep"]
+    assert list(fit["n_fit"][:2]) == [23, 24] and not keep[0] and keep[1]
+
+
+def _g2_arrays(n_yl, n_ch, seed=0):
+    rng = np.random.default_rng(seed)
+    W = n_yl + n_ch
+    of = rng.normal(0, 1, (W, 132))
+    mf = of + 0.1
+    os_ = rng.normal(0, 1, (W, 12))
+    county = np.array(["yunlin"] * n_yl + ["changhua"] * n_ch)
+    return mf, of, os_ + 0.05, os_, county
+
+
+def test_g2_county_floor_is_ten_wells():
+    r = BL.g2_score(*_g2_arrays(10, 9))
+    assert r["changhua"]["verdict"] == "not_evaluable" and r["yunlin"]["verdict"] != \
+        "not_evaluable"
+    assert BL.g2_score(*_g2_arrays(10, 10))["changhua"]["verdict"] in ("pass", "fail")
+
+
+def test_g2_and_g3_g0_null_truth_differs_from_power_truth(monkeypatch):
+    mf, F1, F0, county = _phys(W=30)
+    seen = []
+    real = BL.phys_world
+
+    def spy(model_fit, model_s, sigma, cty, rho, share, rng, truth_s):
+        seen.append(np.array(truth_s))
+        return real(model_fit, model_s, sigma, cty, rho, share, rng, truth_s)
+    monkeypatch.setattr(BL, "phys_world", spy)
+    sig = np.full(30, 0.3)
+    m = np.ones(F1.shape, bool)
+    BL.run_g0_g2(mf, F1, sig, county, m, reps=1, seed=1)
+    assert np.allclose(seen[0], F1) and np.allclose(seen[9], BL.model_clim_s(mf))
+    assert not np.allclose(seen[0], seen[9])
+    seen.clear()
+    BL.run_g0_g3(mf, F1, F0, sig, county, m, reps=1, seed=1, B=20)
+    assert np.allclose(seen[0], F1) and np.allclose(seen[9], F0)
+
+
+def test_phys_world_noise_is_in_time_order(monkeypatch):
+    monkeypatch.setattr(BL, "ar_world", lambda c, r, s, g, T: np.tile(np.arange(T, dtype=float),
+                                                                       (len(c), 1)))
+    of, os_ = BL.phys_world(np.zeros((2, 132)), None, np.ones(2), np.array(["a", "b"]), 0.9,
+                            0.0, None, np.zeros((2, 12)))
+    assert list(os_[0]) == list(range(12)) and of[0, 0] == 12.0      # 2011 precedes 2012
+
+
+def test_g1_keeps_a_well_with_exactly_six_scored_months_and_needs_g1b():
+    county = np.array(["yunlin"] * 15 + ["changhua"] * 10)
+    fc, obs, _ = _fc(25, 0.5, 1.0, 2.0)
+    obs[0, 18:] = np.nan                                  # 6 observed 2011 months
+    r = BL.g1_score(fc, obs, county, B=200)
+    assert r["n_wells_scored"] == 25 and r["dropped_well_index"] == []
+    fc, obs, _ = _fc(25, 0.5, 1.0, 2.0, hit_frac=0.8)
+    r = BL.g1_score(fc, obs, county, B=200)
+    assert r["g1_passed"] and not r["g1b_passed"] and not r["passed"]
+    assert r["verdict"] == "fail"
+
+
+def test_yunlin_gate_reads_power_from_the_rho_083_cell():
+    cells = [{"k": 1.0, "rho": 0.0, "report_only": False, "p_pass": 0.95},
+             {"k": 1.0, "rho": -0.83, "report_only": False, "p_pass": 0.59},
+             {"k": 0.0, "rho": 0.0, "report_only": False, "p_pass": 0.05},
+             {"k": 0.0, "rho": -0.83, "report_only": False, "p_pass": 0.15},
+             {"k": 1.0, "rho": -0.83, "report_only": True, "p_pass": 0.99}]
+    g = BL.yr_gate(cells)
+    assert g["power"] == 0.59 and g["false_pass"] == 0.15 and not g["decidable"]
+
+
+def test_roles_need_the_swap_pre_gates():
+    import prereg_bc11 as PB
+
+    dec = {"decidable": True}
+    g0 = {"g1": {"gate": dec}, "g2": {"gate": {"yunlin": dec, "changhua": dec}},
+          "yr": {"gate": dec}, "g3": {"gate": dec}}
+
+    def pg(yl_pass, yl_er, ch_er, all_pass):
+        return {"swap": {"passed": all_pass, "counties": {
+            "yunlin": {"passed": yl_pass, "energy_ratio_ok": yl_er},
+            "changhua": {"passed": False, "energy_ratio_ok": ch_er}}}}
+    r = PB.roles(pg(True, True, True, False), g0)
+    assert r == {"g1": "gating", "g2": {"yunlin": "gating", "changhua": "gating"},
+                 "yr": "gating", "g3": "report_only"}
+    r = PB.roles(pg(False, True, False, False), g0)
+    assert r["yr"] == "report_only" and r["g2"]["changhua"] == "report_only"
+    assert r["g2"]["yunlin"] == "gating"
+    assert PB.roles(pg(True, True, True, True), {**g0, "g1": {"gate": {"decidable": False}}}
+                    )["g1"] == "report_only"
+
+
+def test_load_window_returns_no_row_outside_2010_2011(tmp_path, monkeypatch):
+    pytest.importorskip("pyarrow")
+    import build_l1pre_v2 as BV
+
+    monkeypatch.setattr(IO, "REPO", tmp_path)
+    idx = pd.date_range("2009-06-01", "2012-03-31 23:00", freq="h")
+    v = np.where(idx < pd.Timestamp("2010-01-01"), -12345.0, 5.0)
+    lc = tmp_path / "chou-shui-data/data/ls_cache"
+    lc.mkdir(parents=True)
+    pd.DataFrame({"value": v}, index=pd.Index(idx, name="datetime")).to_parquet(
+        lc / "gw__09000001__raw.parquet", row_group_size=500)
+    s = BV.load_window("09000001")
+    assert s.index.min() >= pd.Timestamp("2010-01-01")
+    assert s.index.max() < pd.Timestamp("2012-01-01") and (s != -12345.0).all()
+    assert len(s) == int(((idx >= "2010-01-01") & (idx < "2012-01-01")).sum())
+    import inspect
+    assert inspect.signature(BV.build).parameters["loader"].default is BV.load_window
+
+
+def test_e0_failure_exits_3_and_ladder_rules(tmp_path, monkeypatch):
+    import page_run as PR
+    import prereg_bc11 as PB
+
+    monkeypatch.setattr(IO, "REPO", tmp_path)
+    monkeypatch.setattr(PR, "e0_compare", lambda n, r: {"max_abs_diff_m": 0.5, "tol_m": 0.01,
+                                                        "passed": False, "shape": []})
+    monkeypatch.setattr(PR, "page_forward", lambda keys=None: {})
+    monkeypatch.setattr(PR.HC, "code_head", lambda: K.E0_LADDER[0])
+    m = FakePage()
+    with pytest.raises(SystemExit) as e:
+        PR.e0(tmp_path / Path(K.E0_OUT_FMT.format(head=K.E0_LADDER[0])).parent, "cpu", model=m)
+    assert e.value.code == 3
+    ok, probs = PB.e0_passing(PB.e0_rungs())
+    assert ok is None and any("not run" in p for p in probs)
+    p1 = tmp_path / K.E0_OUT_FMT.format(head=K.E0_LADDER[1])
+    p1.parent.mkdir(parents=True)
+    p1.write_text(json.dumps({"passed": False}))
+    ok, probs = PB.e0_passing(PB.e0_rungs())
+    assert ok is None and any("NOT EVALUABLE" in p for p in probs)
+    p1.write_text(json.dumps({"passed": True, "code_head": K.E0_LADDER[1]}))
+    ok, probs = PB.e0_passing(PB.e0_rungs())
+    assert ok["head"] == K.E0_LADDER[1] and probs == []
+
+
+def test_g1_study_refuses_after_the_product_look_and_with_model_inputs(tmp_path, monkeypatch):
+    import g0_bc11 as G
+
+    monkeypatch.setattr(IO, "REPO", tmp_path)
+    with pytest.raises(SystemExit, match="avail.json only"):
+        G.g1_refusals(tmp_path / "panel.npz", None, tmp_path / "prereg")
+    (tmp_path / K.PRODUCT).mkdir(parents=True)
+    with pytest.raises(SystemExit, match="before the product"):
+        G.g1_refusals(None, None, tmp_path / "prereg")
+
+
+def test_no_head_reads_guard_refuses_ls_cache_and_heads_products(tmp_path):
+    import g0_bc11 as G
+
+    f = tmp_path / "chou-shui-data/data/ls_cache/gw__x__raw.parquet"
+    f.parent.mkdir(parents=True)
+    f.write_text("x")
+    h = tmp_path / "results/dataprep/heads/L1_pre2012/v2/heads_monthly.parquet"
+    h.parent.mkdir(parents=True)
+    h.write_text("x")
+    with G.no_head_reads():
+        for p in (f, h):
+            with pytest.raises(G.HeadRead), open(p):
+                pass
+        with pytest.raises(G.HeadRead):
+            IO.l1_monthly(["a"], ["2010-01"])
+        (tmp_path / "ok.txt").write_text("fine")                # other files are allowed
+    assert f.read_text() == "x"                                  # restored afterwards

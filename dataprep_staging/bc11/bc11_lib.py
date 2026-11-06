@@ -473,11 +473,24 @@ def g1_world_score(y: np.ndarray, mask_win: np.ndarray, county, boot_seed: int,
     return g1_score(fc, obs_win, county, B=B, seed=boot_seed, report=False)
 
 
+def cell_gate(rows: list[dict], key: str, power_kind: str, null_kind: str) -> dict:
+    """The G0 gate from per-cell rates: power = equal-weight MEAN of ``key`` over the cells
+    of kind ``power_kind`` only, false pass = MAX over the cells of kind ``null_kind`` only;
+    report-only cells (any other kind) never enter either."""
+    pw = [float(r[key]) for r in rows if r["kind"] == power_kind]
+    nl = [float(r[key]) for r in rows if r["kind"] == null_kind]
+    if not pw or not nl:
+        raise ValueError("a G0 gate needs power and null cells")
+    return g0_gate(float(np.mean(pw)), float(max(nl)))
+
+
 def run_g0_g1(county, mask_win: np.ndarray, *, reps: int = K.G0_K_G1,
               seed: int = K.G0_SEEDS["g1"], B: int = K.BOOT_B) -> dict:
     """G1's G0: P(primary pass) per cell; power = equal-weight mean over the 9 AR cells,
-    false pass = max over the 3 null cells; generators SeedSequence(seed).spawn(n cells) in
-    ``g0_cells_g1`` order, each world's bootstrap seed drawn from its cell's generator."""
+    false pass = max over the 3 null cells (``cell_gate``); generators
+    SeedSequence(seed).spawn(n cells) in ``g0_cells_g1`` order, each world's bootstrap seed
+    drawn from its cell's generator. Worlds are optimistic: 2012-22 fully observed and the
+    2010-11 months are the availability look's (an upper bound on the QC'd months)."""
     county = np.asarray(county).astype(str)
     T = len(WIN_M) + len(FIT_M)
     cells = g0_cells_g1()
@@ -509,11 +522,11 @@ def run_g0_g1(county, mask_win: np.ndarray, *, reps: int = K.G0_K_G1,
                     "median_ratio_vs_cl": _median(r_cl),
                     "median_ratio_vs_cl_level_adjusted": _median(r_adj),
                     "median_coverage90": _median(cov)})
-    power = float(np.mean([c["p_pass"] for c in out if c["kind"] == "ar"]))
-    false = float(max(c["p_pass"] for c in out if c["kind"] == "null"))
-    return {"cells": out, "gate": g0_gate(power, false), "reps": reps, "seed": seed,
-            "boot_B": B, "power_rule": "equal-weight mean of P(G1 and G1b) over the 9 AR cells",
-            "false_rule": "max of P(G1 and G1b) over the 3 rho = 0 cells"}
+    return {"cells": out, "gate": cell_gate(out, "p_pass", "ar", "null"), "reps": reps,
+            "seed": seed, "boot_B": B,
+            "power_rule": "equal-weight mean of P(G1 and G1b) over the 9 AR cells",
+            "false_rule": "max of P(G1 and G1b) over the 3 rho = 0 cells",
+            "optimistic": "2012-22 fully observed; 2010-11 months from the availability look"}
 
 
 def _median(v) -> float | None:
@@ -522,11 +535,13 @@ def _median(v) -> float | None:
 
 def phys_world(model_fit, model_s, sigma, county, rho, share, rng, truth_s) -> tuple:
     """One synthetic world for G2 / G3: AR noise (FV.stat.v2's generator x per-well
-    ``sigma``) on the model's 2012-22 heads (the model fits its fitted years) and on
-    ``truth_s`` in 2011 (the world's true 2011 heads)."""
+    ``sigma``) drawn in TIME ORDER, 2011 first (its first 12 months) then 2012-22, on
+    ``truth_s`` in 2011 (the world's true 2011 heads) and on the model's 2012-22 heads (the
+    model fits its fitted years)."""
     nf = np.asarray(model_fit).shape[1]
-    eps = ar_world(county, rho, share, rng, nf + len(SCORED_M)) * np.asarray(sigma)[:, None]
-    return np.asarray(model_fit, float) + eps[:, :nf], np.asarray(truth_s, float) + eps[:, nf:]
+    ns = len(SCORED_M)
+    eps = ar_world(county, rho, share, rng, ns + nf) * np.asarray(sigma)[:, None]
+    return np.asarray(model_fit, float) + eps[:, ns:], np.asarray(truth_s, float) + eps[:, :ns]
 
 
 def model_clim_s(model_fit) -> np.ndarray:
@@ -537,62 +552,82 @@ def model_clim_s(model_fit) -> np.ndarray:
                  SCORED_M)
 
 
+def discontinuity(F1_last, native_first) -> dict:
+    """Report only, model only: F1 at 2011-12 minus the page forward at 2012-01 at each
+    screen (the spin-up / placement discontinuity the 2012-22 datum cannot see)."""
+    d = np.asarray(F1_last, float) - np.asarray(native_first, float)
+    return {"n": int(d.size), "mean_m": float(np.mean(d)), "median_m": float(np.median(d)),
+            "rms_m": float(np.sqrt(np.mean(d ** 2))),
+            "p90_abs_m": float(np.percentile(np.abs(d), 90)),
+            "max_abs_m": float(np.max(np.abs(d)))}
+
+
+def g2_g0_cells() -> list[tuple]:
+    """(kind, rho, share): 9 power cells, 9 null cells, then the report-only power cell
+    with the datum discontinuity."""
+    grid = [(r, s) for r in K.G0_RHO_GRID for s in K.G0_SHARE_GRID]
+    return ([("power", r, s) for r, s in grid] + [("null", r, s) for r, s in grid]
+            + [("report_only_discontinuity", 0.86, 0.15)])
+
+
 def run_g0_g2(model_fit, model_s, sigma, county, mask_s, *, reps: int = K.G0_K_G2,
-              seed: int = K.G0_SEEDS["g2"]) -> dict:
-    """G2's G0 per county: power = mean over the 9 AR cells of P(G2 pass | 2011 truth = the
-    model + noise), false pass = max over the cells of P(G2 pass | 2011 truth = the
-    model's climatology + noise); generators spawned per (kind, cell)."""
+              seed: int = K.G0_SEEDS["g2"], disc=None) -> dict:
+    """G2's G0 per county: power = mean over the 9 power cells of P(G2 pass | 2011 truth =
+    the model + noise) -- about 1 by construction, so decidability rests on the false pass
+    --, false pass = max over the 9 null cells of P(G2 pass | 2011 truth = the model's own
+    2012-22 climatology + noise; it falls as F1's 2011 departure from that climatology,
+    spin-up drift included, grows). Report only: a power cell whose 2011 truth is the model
+    minus its 2011-12 -> 2012-01 discontinuity ``disc`` (truth continuous with the native
+    run; the datum from 2012-22 cannot remove it)."""
     county = np.asarray(county).astype(str)
-    cells = [(kind, r, s) for kind in ("power", "null") for r in K.G0_RHO_GRID
-             for s in K.G0_SHARE_GRID]
+    cells = g2_g0_cells()
     ss = np.random.SeedSequence(seed).spawn(len(cells))
-    null_s = model_clim_s(model_fit)
+    ms = np.asarray(model_s, float)
+    truths = {"power": ms, "null": model_clim_s(model_fit),
+              "report_only_discontinuity": ms - (0.0 if disc is None else
+                                                 np.asarray(disc, float)[:, None])}
     rows = []
     for (kind, r, s), sq in zip(cells, ss, strict=True):
         rng = np.random.default_rng(sq)
         n = dict.fromkeys(K.COUNTIES, 0)
-        truth = np.asarray(model_s, float) if kind == "power" else null_s
         for _ in range(reps):
-            of, os_ = phys_world(model_fit, model_s, sigma, county, r, s, rng, truth)
-            res = g2_score(np.asarray(model_fit, float), of, np.asarray(model_s, float),
+            of, os_ = phys_world(model_fit, model_s, sigma, county, r, s, rng, truths[kind])
+            res = g2_score(np.asarray(model_fit, float), of, ms,
                            np.where(mask_s, os_, np.nan), county)
             for c in K.COUNTIES:
                 n[c] += bool(res[c]["passed"])
         rows.append({"kind": kind, "rho": r, "share": s, "replicates": reps,
                      **{f"p_pass_{c}": n[c] / reps for c in K.COUNTIES}})
-    gate = {}
-    for c in K.COUNTIES:
-        p = float(np.mean([x[f"p_pass_{c}"] for x in rows if x["kind"] == "power"]))
-        f = float(max(x[f"p_pass_{c}"] for x in rows if x["kind"] == "null"))
-        gate[c] = g0_gate(p, f)
-    return {"cells": rows, "gate": gate, "reps": reps, "seed": seed}
+    gate = {c: cell_gate(rows, f"p_pass_{c}", "power", "null") for c in K.COUNTIES}
+    return {"cells": rows, "gate": gate, "reps": reps, "seed": seed,
+            "discontinuity_supplied": disc is not None}
 
 
 def run_g0_g3(model_fit, F1_s, F0_s, sigma, county, mask_s, *, reps: int = K.G0_K_G3,
               seed: int = K.G0_SEEDS["g3"], B: int = K.BOOT_B) -> dict:
-    """G3's G0 (pooled): power = mean over the 9 AR cells of P(value shown | 2011 truth =
-    F1 + noise), false pass = max over the cells of P(value shown | truth = F0 + noise)."""
+    """G3's G0 (pooled): power = mean over the 9 power cells of P(value shown | 2011 truth
+    = F1 + noise), false pass = max over the 9 null cells of P(value shown | truth = F0 +
+    noise)."""
     county = np.asarray(county).astype(str)
     cells = [(kind, r, s) for kind in ("power", "null") for r in K.G0_RHO_GRID
              for s in K.G0_SHARE_GRID]
     ss = np.random.SeedSequence(seed).spawn(len(cells))
     mf = np.asarray(model_fit, float)
+    truths = {"power": np.asarray(F1_s, float), "null": np.asarray(F0_s, float)}
     rows = []
     for (kind, r, s), sq in zip(cells, ss, strict=True):
         rng = np.random.default_rng(sq)
-        truth = np.asarray(F1_s if kind == "power" else F0_s, float)
         n = 0
         for _ in range(reps):
-            of, os_ = phys_world(mf, F1_s, sigma, county, r, s, rng, truth)
+            of, os_ = phys_world(mf, F1_s, sigma, county, r, s, rng, truths[kind])
             datum, _ = physics_datum(mf, of)
             res = g3_score(F1_s, F0_s, datum, np.where(mask_s, os_, np.nan), B=B,
                            seed=int(rng.integers(2 ** 31 - 1)))
             n += bool(res["passed"])
         rows.append({"kind": kind, "rho": r, "share": s, "replicates": reps,
                      "p_pass": n / reps})
-    p = float(np.mean([x["p_pass"] for x in rows if x["kind"] == "power"]))
-    f = float(max(x["p_pass"] for x in rows if x["kind"] == "null"))
-    return {"cells": rows, "gate": g0_gate(p, f), "reps": reps, "seed": seed, "boot_B": B}
+    return {"cells": rows, "gate": cell_gate(rows, "p_pass", "power", "null"), "reps": reps,
+            "seed": seed, "boot_B": B}
 
 
 def yr_g0_panel(P: dict, mask: np.ndarray) -> dict:
@@ -651,10 +686,14 @@ def run_g0_yr(P: dict, mask: np.ndarray, params: dict, *, reps: int = K.G0_K_YR,
         cells.append({"k": k, "rho": r, "noise_scale": ns, "replicates": reps,
                       "report_only": ns != 1.0, "p_pass": n / reps})
 
+    return {"informative": inf, "plumbing": plumb, "cells": cells, "gate": yr_gate(cells),
+            "reps": reps, "seed": seed, "boot_B": B}
+
+
+def yr_gate(cells: list[dict]) -> dict:
+    """The arm's G0 gate: power = P(pass | k 1, rho -0.83, declared noise), false pass = max
+    over rho in G0_YR_RHO of P(pass | k 0, declared noise); report-only cells never enter."""
     def p(k, r):
-        return next(c["p_pass"] for c in cells if c["noise_scale"] == 1.0
+        return next(c["p_pass"] for c in cells if not c["report_only"]
                     and c["k"] == k and c["rho"] == r)
-    power = p(1.0, -0.83)
-    false = max(p(0.0, r) for r in K.G0_YR_RHO)
-    return {"informative": inf, "plumbing": plumb, "cells": cells,
-            "gate": g0_gate(power, false), "reps": reps, "seed": seed, "boot_B": B}
+    return g0_gate(p(1.0, -0.83), max(p(0.0, r) for r in K.G0_YR_RHO))

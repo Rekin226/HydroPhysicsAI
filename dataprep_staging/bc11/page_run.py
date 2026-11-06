@@ -1,12 +1,14 @@
 """Model-only runs of I1.backcast_2010_11.v1 with the PAGE model (the lead runs this through
-``run_bc11.sh``, on the GPU, from the clean detached worktree at ``bc11_const.WT_HEAD``).
+``run_bc11.sh``, on the GPU, from a clean detached worktree at a rung of the declared E0
+ladder ``bc11_const.E0_LADDER``; every run after E0 uses the rung that passed).
 
 ``PageRun`` is a staging copy of ``ch_x/hindcast.py``'s ``R1cRun`` (hash-bound to E26 and
 I1.CHX.v1, never edited) WITHOUT its zone_county_split guard (R1cRun refuses the page theta,
 which has no county split) and over the page's 18 parameter sets (stage3_datum_gate, its 5
 folds and 12 posterior draws), rebuilt as ``forward.py`` rebuilds them: the same inputs
 (``load_twin_inputs`` with the page run's rain file, ``input_options(meta)``,
-``attach_sw_recharge``), ``build_model`` per set, ``rollout`` from each set's month-0 field.
+``attach_sw_recharge``), ``build_model`` per set, ``rollout`` from the page inputs' COMMON
+month-0 field ``inp.initial_heads(0)`` (forward.py's ``h0``, shared by every set).
 Heads are the ensemble mean over the 18 sets (the page's heads_mean averages 36 members = 18
 sets x 2 initial fields, which differ only after the 2022-12 origin).
 
@@ -18,7 +20,8 @@ Subcommands
 ``e0 --out DIR``
     E0: the native 2012-22 rollout of the ensemble must reproduce the registered page forward
     (datum_gate_innov.npz, sha cf2c7154), baseline scenario, months 2012-01..2022-12, every
-    layer and cell, within E0_TOL_M = 0.01 m -> e0.json.
+    layer and cell, within E0_TOL_M = 0.01 m -> e0.json (one directory per ladder rung).
+    A failed E0 writes its e0.json and exits 3 (the logged failure that moves the ladder).
 ``swap --out DIR``
     The pre-declared Yunlin+Changhua swap gate on 2012-22: census preorigin v3 energy in place
     of the page's native energy, per county (energy ratio, and the county-only contrast with
@@ -26,7 +29,7 @@ Subcommands
     correlation and RMS ratio of the per-cell-demeaned contrasts) -> swap.json. G3 gates only
     if both counties pass.
 ``backcast --stations PARQUET --out DIR``
-    From 2007-01 with each set's month-0 field (spin-up 2007-01..2009-12), recharge = the
+    From 2007-01 with the common month-0 field (spin-up 2007-01..2009-12), recharge = the
     page inputs' 2012-22 calendar-month climatology (climatological rain), arms F1 (recorded
     v3 energy), F0 (v3's per-cell calendar-month climatology over 2007-11: no year-to-year
     pumping information) and B_yl (Yunlin cells at their 2007 monthly pattern from 2008-01,
@@ -167,7 +170,8 @@ def _write_json_once(path: Path, obj: dict) -> None:
 
 def _stamp(device: str) -> dict:
     return {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-            "code_head": HC.code_head(), "declared_code_head": K.WT_HEAD, "device": device,
+            "code_head": HC.code_head(), "declared_ladder": list(K.E0_LADDER), "device": device,
+            "code_sha256": K.code_shas(),
             "thetas_sha256": theta_shas(), "rain": K.PAGE_RF,
             "rain_sha256": IO.sha_or_missing(IO.rp(K.PAGE_RF))}
 
@@ -201,6 +205,8 @@ def e0(out: Path, device: str, model=None, compile_matvec: bool = False) -> dict
            **e0_compare(m.native(), page_forward())}
     _write_json_once(target, rep)
     log(f"E0 max |diff| {rep['max_abs_diff_m']:.2e} m -> {'PASS' if rep['passed'] else 'FAIL'}")
+    if not rep["passed"]:
+        raise SystemExit(3)             # the logged E0 failure (moves the declared ladder)
     return rep
 
 
@@ -305,7 +311,8 @@ def backcast(stations: Path, out: Path, device: str, model=None,
                            "recharge": "the page inputs' 2012-22 recharge field (page rain "
                                        "file), calendar-month climatology (climatological "
                                        "rain)",
-                           "initial_field": "each set's own month-0 field (2012-01) at 2007-01",
+                           "initial_field": "the page inputs' common month-0 field "
+                                            "(2012-01, inp.initial_heads(0)) at 2007-01",
                            "spin_up": f"{K.BC_RUN[0]}..{K.SPINUP_END}"},
                "native_fit": f"{K.PAGE_FORWARD} heads_mean[baseline] months 0..131",
                "panel": str(target), "panel_sha256": IO.sha256(target),

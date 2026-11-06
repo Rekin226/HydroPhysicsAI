@@ -3,31 +3,40 @@
 # The code must be on main (PR, green CI) before step 1; long steps run inside tmux.
 #
 #   (0. done 2026-11-06: availability look logged and counted, PASS, origin 2010-12 only)
-#   1. bash dataprep_staging/bc11/run_bc11.sh build-look   log the product_build look (own unit)
+#   1. bash dataprep_staging/bc11/run_bc11.sh g0 g1        CPU: G1's G0 FIRST (avail.json only;
+#                                                         refused once the product look exists)
+#   2. bash dataprep_staging/bc11/run_bc11.sh build-look   log the product_build look (own unit)
 #      bash dataprep_staging/bc11/run_bc11.sh build        build heads/L1_pre2012 v2 (local)
-#   2. bash dataprep_staging/bc11/run_bc11.sh worktree     clean detached worktree at WT_HEAD
-#      bash dataprep_staging/bc11/run_bc11.sh e0           GPU: E0 against cf2c7154 (0.01 m)
-#   3. bash dataprep_staging/bc11/run_bc11.sh swap         GPU: the Yunlin+Changhua swap gate
-#      bash dataprep_staging/bc11/run_bc11.sh hindcast     GPU: F1, F0, B_yl from 2007-01
-#   4. bash dataprep_staging/bc11/run_bc11.sh baselines    CPU: 2012-22 CL / rho / sd / datum
-#   5. bash dataprep_staging/bc11/run_bc11.sh g0 g1|g2|g3|yr   CPU: synthetic G0 studies
-#   6. bash dataprep_staging/bc11/run_bc11.sh validate     the final draft (prints roles)
-#   7. (the lead registers: python -I dataprep_staging/bc11/prereg_bc11.py --write --quiet
+#   3. bash dataprep_staging/bc11/run_bc11.sh worktree     clean detached worktree at the rung
+#      BC11_DEVICE=cuda bash dataprep_staging/bc11/run_bc11.sh e0     GPU: E0 against cf2c7154
+#        E0 ladder (declared): rung 0 = 4c2723e; if E0 FAILS (exit 3, logged) rerun
+#        'worktree' and 'e0' with BC11_RUNG=1 (730f65b); every later step takes the same
+#        BC11_RUNG; if every rung fails: NOT EVALUABLE, stop (no registration)
+#   4. BC11_DEVICE=cuda bash dataprep_staging/bc11/run_bc11.sh swap       GPU: swap gate
+#      BC11_DEVICE=cuda bash dataprep_staging/bc11/run_bc11.sh hindcast   GPU: F1, F0, B_yl
+#   5. bash dataprep_staging/bc11/run_bc11.sh baselines    CPU: 2012-22 CL / rho / sd / datum
+#   6. bash dataprep_staging/bc11/run_bc11.sh g0 g2   (then g3, yr)   CPU: synthetic G0s
+#   7. bash dataprep_staging/bc11/run_bc11.sh validate     the final draft (roles, readiness)
+#   8. (the lead registers: python -I dataprep_staging/bc11/prereg_bc11.py --write --quiet
 #       --expect-self-sha <sha>)
-#   8. bash dataprep_staging/bc11/run_bc11.sh score        once
+#   9. bash dataprep_staging/bc11/run_bc11.sh score        once
 #
 # GPU steps: BC11_DEVICE=cuda, nvidia-smi checked first, at most 3 jobs under MPS, no edit of
 # hydrophysics/twin/* while they run. No step prints a head value; stdout carries counts,
-# check flags, gate words and sha256s. Every step's exit code goes to attempts.jsonl.
+# check flags, gate words and sha256s. Every step's exit code goes to attempts.jsonl; the
+# declaration needs exactly one rc 0 row per step and discloses every other row.
 set -euo pipefail
 X=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$X/../.." && pwd)
 cd "$REPO"
 ID=I1.backcast_2010_11.v1
-WT_HEAD=4c2723e
-WT="$HOME/HydroPhysicsAI-bc11run-4c2723e"
+LADDER=(4c2723e 730f65b)
+RUNG=${BC11_RUNG:-0}
+[ "$RUNG" -ge 0 ] && [ "$RUNG" -lt "${#LADDER[@]}" ] || { echo "REFUSED: BC11_RUNG" >&2; exit 1; }
+WT_HEAD=${LADDER[$RUNG]}
+WT="$HOME/HydroPhysicsAI-bc11run-$WT_HEAD"
 RUN=results/twin_runs/chx/backcast_2010_11
-PY=$RUN/py.sh
+PY=$RUN/py_$WT_HEAD.sh
 HPY="$HOME/miniforge3/envs/hydro/bin/python"
 DECL=results/dataprep/preregistration/$ID.json
 PRODUCT=results/dataprep/heads/L1_pre2012/v2
@@ -38,8 +47,8 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 DEV=${BC11_DEVICE:-cpu}
 
 die() { echo "REFUSED: $*" >&2; exit 1; }
-attempt() { mkdir -p "$RUN"; printf '{"time":"%s","step":"%s","rc":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" >> "$ATT"; }
+attempt() { mkdir -p "$RUN"; printf '{"time":"%s","step":"%s","rc":%s,"rung":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$WT_HEAD" >> "$ATT"; }
 run() { local step=$1; shift; set +e; "$@"; local rc=$?; set -e; attempt "$step" "$rc"; \
     [ "$rc" -eq 0 ] || die "$step failed (rc $rc)"; }
 worktree_ok() {
@@ -53,10 +62,26 @@ gpu_ok() {
     if [ "$DEV" = cuda ]; then nvidia-smi > /dev/null || die "nvidia-smi failed"; fi
 }
 not_registered() { [ ! -f "$DECL" ] || die "$ID is registered; this step precedes it"; }
+e0_passed() {
+    local f="$RUN/e0_$WT_HEAD/e0.json"
+    [ -f "$f" ] || die "no E0 at rung $WT_HEAD"
+    "$HPY" -c "import json,sys; sys.exit(0 if json.load(open('$f'))['passed'] else 1)" \
+        || die "E0 has not passed at rung $WT_HEAD"
+}
+earlier_rungs_failed() {
+    local k
+    for ((k = 0; k < RUNG; k++)); do
+        local f="$RUN/e0_${LADDER[$k]}/e0.json"
+        [ -f "$f" ] || die "rung ${LADDER[$k]} has no E0 (the ladder is climbed in order)"
+        "$HPY" -c "import json,sys; sys.exit(1 if json.load(open('$f'))['passed'] else 0)" \
+            || die "rung ${LADDER[$k]} passed E0; use it"
+    done
+}
 
 case "${1:-}" in
     build-look)
         not_registered
+        [ -f "$RUN/g0/g0_g1.json" ] || die "run 'g0 g1' first"
         "$HPY" $B/build_l1pre_v2.py --log-look --skip-if-logged
         ;;
     build)
@@ -65,6 +90,7 @@ case "${1:-}" in
         run build "$HPY" $B/build_l1pre_v2.py --build
         ;;
     worktree)
+        earlier_rungs_failed
         if [ ! -d "$WT" ]; then git worktree add --detach "$WT" "$WT_HEAD"; fi
         mkdir -p "$RUN"
         printf '#!/usr/bin/env bash\nexport PYTHONPATH=%s\nexec %s -P "$@"\n' "$WT" "$HPY" > "$PY"
@@ -73,19 +99,16 @@ case "${1:-}" in
         echo "worktree $WT at $WT_HEAD; launcher $PY"
         ;;
     e0)
-        not_registered; worktree_ok; gpu_ok
-        run e0 "$PY" $B/page_run.py e0 --out "$RUN/e0" --device "$DEV" --compile-matvec
+        not_registered; earlier_rungs_failed; worktree_ok; gpu_ok
+        run "e0_$WT_HEAD" "$PY" $B/page_run.py e0 --out "$RUN/e0_$WT_HEAD" --device "$DEV" \
+            --compile-matvec
         ;;
     swap)
-        not_registered; worktree_ok; gpu_ok
-        "$HPY" -c "import json,sys; sys.exit(0 if json.load(open('$RUN/e0/e0.json'))['passed'] else 1)" \
-            || die "E0 has not passed"
+        not_registered; worktree_ok; gpu_ok; e0_passed
         run swap "$PY" $B/page_run.py swap --out "$RUN/swap" --device "$DEV" --compile-matvec
         ;;
     hindcast)
-        not_registered; worktree_ok; gpu_ok
-        "$HPY" -c "import json,sys; sys.exit(0 if json.load(open('$RUN/e0/e0.json'))['passed'] else 1)" \
-            || die "E0 has not passed"
+        not_registered; worktree_ok; gpu_ok; e0_passed
         [ -f "$PRODUCT/station_meta.parquet" ] || die "build $PRODUCT first"
         run hindcast "$PY" $B/page_run.py backcast --stations "$PRODUCT/station_meta.parquet" \
             --out "$RUN/hindcast" --device "$DEV" --compile-matvec
@@ -100,7 +123,9 @@ case "${1:-}" in
         not_registered
         name=${2:-}
         case "$name" in
-            g1) run g0_g1 "$HPY" $B/g0_bc11.py g1 --out "$RUN/g0" ;;
+            g1)
+                [ ! -d "$PRODUCT" ] || die "g1 runs before the product (it is built)"
+                run g0_g1 "$HPY" $B/g0_bc11.py g1 --out "$RUN/g0" ;;
             g2|g3|yr)
                 [ -f "$RUN/baselines/bc11_baselines.npz" ] || die "no baselines"
                 run "g0_$name" "$HPY" $B/g0_bc11.py "$name" --out "$RUN/g0" \
@@ -113,7 +138,7 @@ case "${1:-}" in
     score)
         [ -f "$DECL" ] || die "register $ID first"
         "$HPY" $B/score_bc11.py --verify-registration
-        "$HPY" $B/score_bc11.py score
+        run score_runner "$HPY" $B/score_bc11.py score
         ;;
-    *) sed -n '2,20p' "$0"; exit 2 ;;
+    *) sed -n '2,27p' "$0"; exit 2 ;;
 esac

@@ -48,12 +48,12 @@ NA = prereg3.not_applicable
 THIS = f"{K.X}/prereg_bc11.py"
 TESTS_FILE = f"{K.X}/tests/test_bc11.py"
 RUNNER = f"{K.X}/run_bc11.sh"
-RUNNER_LINES = (f"ID={K.ID}", f"WT_HEAD={K.WT_HEAD}", f'WT="$HOME/{K.WT_NAME}"',
+RUNNER_LINES = (f"ID={K.ID}", f"LADDER=({' '.join(K.E0_LADDER)})",
                 f"RUN={K.RUN_DIR}")
 
 
 def frozen_code() -> dict:
-    return {p: IO.sha_or_missing(CODE / p) for p in S.FROZEN + (THIS, TESTS_FILE)}
+    return K.code_shas()
 
 
 def _json(path: str) -> dict | None:
@@ -61,10 +61,46 @@ def _json(path: str) -> dict | None:
     return json.loads(p.read_text()) if p.is_file() else None
 
 
+# ----------------------------------------------------------------------------- E0 ladder
+def e0_rungs() -> list[dict]:
+    """Every ladder rung's E0 record, in ladder order (missing rungs: None)."""
+    out = []
+    for h in K.E0_LADDER:
+        path = K.E0_OUT_FMT.format(head=h)
+        r = _json(path)
+        out.append({"head": h, "path": path, "sha256": IO.sha_or_missing(IO.rp(path)),
+                    "passed": None if r is None else bool(r.get("passed")),
+                    "code_head": None if r is None else r.get("code_head"),
+                    "max_abs_diff_m": None if r is None else r.get("max_abs_diff_m"),
+                    "code_sha256": None if r is None else r.get("code_sha256")})
+    return out
+
+
+def e0_passing(rungs: list[dict]) -> tuple[dict | None, list[str]]:
+    """The rung that passed and the ladder problems: a rung counts only if every earlier rung
+    ran and FAILED; none passing = not evaluable (stop)."""
+    probs = []
+    for k, r in enumerate(rungs):
+        if r["passed"] is None:
+            if not any(x["passed"] is not None for x in rungs[k:]):
+                probs.append(f"E0 rung {r['head']} not run")
+            else:
+                probs.append(f"E0 rung {r['head']} skipped before a later rung")
+            return None, probs
+        if r["passed"]:
+            return r, probs
+    probs.append("E0 FAILED on every ladder rung: NOT EVALUABLE; stop, do not register")
+    return None, probs
+
+
 # ----------------------------------------------------------------------------- pre-gates
 def pregates() -> dict:
+    rungs = e0_rungs()
+    ok, _ = e0_passing(rungs)
+    e0 = ok or rungs[0]
+    paths = {**S.PREGATES, "e0": e0["path"]}
     out = {}
-    for key, path in S.PREGATES.items():
+    for key, path in paths.items():
         out[key] = {"path": path, "sha256": IO.sha_or_missing(IO.rp(path))}
     a = _json(K.AVAIL_OUT)
     f = (a or {}).get("feasibility") or {}
@@ -75,14 +111,31 @@ def pregates() -> dict:
         "county_line": f.get("county_line"),
         "origin2_report_only_n": (f.get("origin2_report_only") or {}).get("n_eligible"),
         "constants_sha256": f.get("constants_sha256")})
-    e0 = _json(K.E0_OUT) or {}
-    out["e0"].update({"passed": bool(e0.get("passed")),
-                      "max_abs_diff_m": e0.get("max_abs_diff_m"), "tol_m": K.E0_TOL_M,
-                      "code_head": e0.get("code_head")})
+    out["e0"].update({"passed": bool(e0["passed"]), "head": e0["head"],
+                      "max_abs_diff_m": e0["max_abs_diff_m"], "tol_m": K.E0_TOL_M,
+                      "code_head": e0["code_head"], "ladder": list(K.E0_LADDER),
+                      "rungs": [{k: r[k] for k in ("head", "path", "sha256", "passed",
+                                                   "max_abs_diff_m")} for r in rungs]})
     sw = _json(K.SWAP_OUT) or {}
-    out["swap"].update({"passed": bool(sw.get("passed")),
-                        "counties": {c: (sw.get("counties") or {}).get(c, {}).get("passed")
+    sc = sw.get("counties") or {}
+    out["swap"].update({"passed": bool(sw.get("passed")), "code_head": sw.get("code_head"),
+                        "counties": {c: {"passed": (sc.get(c) or {}).get("passed"),
+                                         "energy_ratio_ok": (sc.get(c) or {}).get(
+                                             "energy_ratio_ok"),
+                                         "energy_ratio_2012_22": (sc.get(c) or {}).get(
+                                             "energy_ratio_2012_22")}
                                      for c in K.COUNTIES}})
+    pj = _json(K.PANEL_JSON) or {}
+    out["panel_json"]["code_head"] = pj.get("code_head")
+    pz = IO.rp(K.PANEL)
+    if pz.is_file():
+        import bc11_lib as BL
+        import numpy as np
+
+        with np.load(pz, allow_pickle=False) as z:
+            out["panel"]["spinup_discontinuity_f1_2011_12_vs_native_2012_01"] = \
+                BL.discontinuity(np.asarray(z["F1"], float)[:, -1],
+                                 np.asarray(z["native_fit"], float)[:, 0])
     mp = IO.rp(K.PRODUCT) / "MANIFEST.json"
     m = json.loads(mp.read_text()) if mp.is_file() else {}
     out["product"] = {"path": K.PRODUCT, "manifest_sha256": IO.sha_or_missing(mp),
@@ -102,8 +155,17 @@ def g0_results() -> dict:
         else:
             rec["gate"] = r["gate"]
             rec["reps"] = r.get("reps")
+            rec["created"] = r.get("created")
         out[key] = rec
     return out
+
+
+def attempts() -> list[dict]:
+    """Every row of attempts.jsonl (disclosed in the declaration)."""
+    p = IO.rp(K.ATTEMPTS)
+    if not p.is_file():
+        return []
+    return [json.loads(ln) for ln in p.read_text().splitlines() if ln.strip()]
 
 
 def _dec(gate) -> bool | None:
@@ -111,16 +173,32 @@ def _dec(gate) -> bool | None:
 
 
 def roles(pg: dict, g0: dict) -> dict:
-    """Each gate's role, fixed by the G0 results and the swap gate BEFORE registration:
-    'gating' iff its G0 is decidable (G3: and the swap gate passed); 'report_only'
-    otherwise; 'pending' while a G0 file is missing (the draft is then not ready)."""
+    """Each gate's role, fixed BEFORE registration by the G0 results and the swap gate:
+    'gating' iff its G0 is decidable AND its swap pre-gate passed, 'report_only' otherwise,
+    'pending' while a G0 file is missing (the draft is then not ready).
+
+    Swap pre-gates (lead ruling S1; E26's precedent pregates.s0 gated its contrast on the
+    same check): the Yunlin arm needs the Yunlin swap check (its contrast is the very thing
+    the swap validates); each county's G2 needs that county's energy_ratio_ok (G2 is a level
+    check, so only the energy level must transfer); G3 needs the whole swap gate (both
+    counties, every clause). A G1 G0 failure makes the whole primary test report-only."""
     def role(d, extra=True):
         return "pending" if d is None else ("gating" if d and extra else "report_only")
+    sc = pg["swap"]["counties"]
     g2 = g0["g2"]["gate"]
     return {"g1": role(_dec(g0["g1"]["gate"])),
-            "g2": {c: role(None if g2 is None else _dec(g2.get(c))) for c in K.COUNTIES},
-            "yr": role(_dec(g0["yr"]["gate"])),
+            "g2": {c: role(None if g2 is None else _dec(g2.get(c)),
+                           bool(sc[c]["energy_ratio_ok"])) for c in K.COUNTIES},
+            "yr": role(_dec(g0["yr"]["gate"]), bool(sc["yunlin"]["passed"])),
             "g3": role(_dec(g0["g3"]["gate"]), bool(pg["swap"]["passed"]))}
+
+
+ROLE_REASONS = {
+    "g1": "gating iff its G0 is decidable; otherwise the whole primary test is report-only",
+    "g2": "per county: gating iff its G0 is decidable AND that county's swap energy_ratio_ok",
+    "yr": "gating iff its G0 is decidable AND the Yunlin swap check passed (the swap "
+          "validates the v3 county-only contrast this arm scores; E26's pregates.s0 precedent)",
+    "g3": "gating iff its G0 is decidable AND the whole swap gate passed (both counties)"}
 
 
 # ----------------------------------------------------------------------------- units
@@ -135,9 +213,12 @@ def wells() -> dict:
 def unit_decl(county: str, ids: list[str]) -> dict:
     return {"description": f"{county.capitalize()} monitoring wells that qualified in "
                            f"{K.AVAIL_UNIT}'s logged availability count (>= 9 available "
-                           "months of 2011 and one in 2010-10..12, ring-nest wells "
-                           "excluded); heads/L1_pre2012 v2 (validator, design_time_evidence, "
-                           "initial_conditions; local only); design-time, window flagged",
+                           "months of 2011 and one in the availability origin window "
+                           "2010-10..2010-12, ring-nest wells excluded; at scoring G1 also "
+                           "accepts a last 2010 month of 2010-09, E04's max gap of 3 months "
+                           "before the 2010-12 origin); heads/L1_pre2012 v2 (validator, "
+                           "design_time_evidence, initial_conditions; local only); "
+                           "design-time, window flagged",
             "ids": ids, "window": K.WINDOW_TEXT}
 
 
@@ -178,7 +259,8 @@ def probe(units: dict, prereg_dir=None, registries=None) -> dict:
 def tests(w: dict) -> list[dict]:
     units = {K.UNIT_OF_COUNTY[c]: unit_decl(c, w[c]) for c in K.COUNTIES}
     yl = {K.UNIT_YL: units[K.UNIT_YL]}
-    common = {"data_scope": K.SCOPE, "label": S.S_LABEL + " on pass (R8.6b)"}
+    common = {"data_scope": K.SCOPE, "label": S.S_LABEL + " on pass (R8.6b, read by the lead "
+              "as: scored on the page's statistical-layer recipe (E04), refitted on 2012-22)"}
     return [
         {"test_id": K.TEST_G1, **common, "fresh_units": list(K.UNITS),
          "external_units": units, "role": "primary",
@@ -202,7 +284,9 @@ def tests(w: dict) -> list[dict]:
                           "observed 2011 months; G1 iff R_CL <= 1.0 and UB_CL < 1.0 and "
                           "R_adj <= 1.0 and UB_adj < 1.0; G1b iff pooled coverage in "
                           f"[{K.COVERAGE_BAND[0]}, {K.COVERAGE_BAND[1]}] (inclusive); PASS "
-                          "iff G1 and G1b (E04's own rule needs both)",
+                          "iff G1 and G1b (E04's own rule needs both). If G1's G0 is not "
+                          "decidable (power < 0.6 or false pass > 0.2) the WHOLE test is "
+                          "report-only (roles.g1)",
          "county_lines": f"the same rule per county with >= {K.COUNTY_LINE_MIN_WELLS} scored "
                          "wells; reported, never substituted for the pooled verdict",
          "report_only": ["full persistence against CL and level-adjusted CL",
@@ -217,7 +301,18 @@ def tests(w: dict) -> list[dict]:
                      "set reduced to CL: datum_w = mean(model - obs) over the well's observed "
                      "2012-22 months (the page forward's own 2012-22 heads); ratio = pooled "
                      "RMSE(model - datum) / pooled RMSE(CL) over the observed 2011 "
-                     "well-months; shape R2 about each well's observed 2012-22 mean",
+                     "well-months; shape R2 about each well's observed 2012-22 mean. "
+                     "DISCLOSED: the datum comes from the page forward's 2012-22 run and is "
+                     "applied to a DIFFERENT run (the 2007-11 backcast), whereas E07 uses a "
+                     "same-run datum; the backcast's 2011-12 -> page 2012-01 discontinuity "
+                     "(spin-up drift from placing the 2012-01 field at 2007-01) is reported "
+                     "model-only in pregates.panel. G2's G0 power is about 1 by "
+                     "construction (truth = the model + noise), so its decidability rests "
+                     "on the false pass, which falls as F1's 2011 departure from the native "
+                     "climatology grows, and that departure includes the spin-up drift; a "
+                     "report-only G0 power cell carries the discontinuity",
+         "role_rule": "per county: gating iff its G0 is decidable AND that county's swap "
+                      "energy_ratio_ok (lead ruling S1)",
          "decision_rule": f"per county with >= {K.COUNTY_LINE_MIN_WELLS} wells having >= "
                           f"{K.FAIR_MIN_FIT_MONTHS} observed 2012-22 months and an observed "
                           f"2011 month: PASS iff ratio <= {K.FAIR_K} and r2_shape(model) >= "
@@ -230,6 +325,9 @@ def tests(w: dict) -> list[dict]:
                          "line) and the p90 over the wells of |F1 - F0| per lead"]},
         {"test_id": K.TEST_YR, **common, "fresh_units": [K.UNIT_YL], "external_units": yl,
          "role": "secondary (R8.6c)",
+         "role_rule": "gating iff its own G0 is decidable AND the Yunlin swap check passed "
+                      "(the swap validates the v3 county-only contrast this arm scores; "
+                      "E26's pregates.s0 precedent; lead ruling S1)",
          "what": "Does the page model's Yunlin-only pumping contrast point the right way in "
                  "2010-11?",
          "estimand": "E26's primary (chx_lib.score_backcast): e = obs - B, c = A - B (A = F1, "
@@ -285,7 +383,8 @@ def doc(prereg_dir=None, registries=None) -> dict:
         "zones": "each well at its own forward-grid cell and twin layer (layer_code - 1); "
                  "counties from the station table; Yunlin / Changhua cells from the county "
                  "polygons (zone_county.county_of_points)",
-        "burn_in": f"each page parameter set's own month-0 field (2012-01) placed at "
+        "burn_in": "the page inputs' common month-0 field (2012-01, inp.initial_heads(0), "
+                   "forward.py's h0 shared by the 18 sets) placed at "
                    f"{K.BC_RUN[0]}; spin-up {K.BC_RUN[0]}..{K.SPINUP_END}; pre-origin "
                    f"{K.PRE[0]}..{K.PRE[1]}; scored {K.SCORED[0]}..{K.SCORED[1]}",
         "folds": NA("temporal holdout before every fit; no folds"),
@@ -295,7 +394,14 @@ def doc(prereg_dir=None, registries=None) -> dict:
                          "and the Yunlin arm",
         "recipe": {
             "thetas": list(K.PAGE_THETAS), "thetas_sha256": theta_shas(),
-            "worktree_head": K.WT_HEAD, "rain": K.PAGE_RF,
+            "worktree_head": pg["e0"]["head"] if pg["e0"]["passed"] else None,
+            "e0_ladder": {"rungs": list(K.E0_LADDER),
+                          "rule": "rung 0 first; a logged E0 failure (e0.json passed false, "
+                                  "exit 3) moves to the next rung; every later run uses the "
+                                  "passing rung; if every rung fails the backcast is NOT "
+                                  "EVALUABLE (stop, no registration; FS.start_invariance.v1's "
+                                  "precedent)"},
+            "rain": K.PAGE_RF,
             "rain_sha256": IO.sha_or_missing(IO.rp(K.PAGE_RF)),
             "page_forward": K.PAGE_FORWARD, "page_forward_sha256": K.PAGE_FORWARD_SHA,
             "model": "page_run.PageRun: a staging copy of hindcast.R1cRun without its "
@@ -312,11 +418,13 @@ def doc(prereg_dir=None, registries=None) -> dict:
             "cl": {"product": K.CL_PRODUCT, "use": K.CL_USE, "window_end": K.CL_WINDOW_END,
                    "frozen_file": K.BASELINES, "e04_frozen_rho": "never used"},
             "order": ["availability look (logged 2026-11-06; metadata only)",
-                      "product_build look (own unit) + L1_pre2012 v2 build",
-                      "E0 (GPU)", "swap gate (GPU)", "backcast panel (GPU)",
-                      "2012-22 baselines (CPU)", "G0 g1, g2, g3, yr (CPU, synthetic)",
+                      "G0 g1 (CPU, synthetic; avail.json only; before any 2010-11 value "
+                      "is read)", "product_build look (own unit) + L1_pre2012 v2 build",
+                      "E0 (GPU, declared ladder)", "swap gate (GPU)", "backcast panel (GPU)",
+                      "2012-22 baselines (CPU)", "G0 g2, g3, yr (CPU, synthetic)",
                       "final draft", "THIS REGISTRATION", "score once"]},
-        "pregates": pg, "g0": g0, "roles": rl,
+        "pregates": pg, "g0": g0, "roles": rl, "role_reasons": ROLE_REASONS,
+        "attempts_disclosed": attempts(),
         "thresholds": {
             "e0_tol_m": K.E0_TOL_M, "max_gap": K.MAX_GAP, "min_fit_months": K.MIN_FIT_MONTHS,
             "min_window_months": K.MIN_WINDOW_MONTHS, "min_pooled_wells": K.MIN_POOLED_WELLS,
@@ -364,6 +472,21 @@ def doc(prereg_dir=None, registries=None) -> dict:
                                 "applied BACKWARD to 2010-11",
             "fv_stat_v2_generator": "the G0 worlds reuse FV.stat.v2's AR(1) generator and "
                                     "grid (synthetic; FV.stat.v2 is scored)",
+            "g0_optimism": "the G1/G2/G3 G0 worlds are OPTIMISTIC: 2012-22 fully observed "
+                           "(the real flags-0-1 record of the 32 wells has 35-132 months, "
+                           "median 131, and one well starts in 2015-08) and the 2010-11 "
+                           "months are the availability look's (an upper bound on the QC'd "
+                           "months); the AR noise is drawn in time order",
+            "yunlin_arm_g0": "the Yunlin arm's G0 uses N2C's declared noise and confounder "
+                             "(synth_n2c.PARAMS), calibrated on R1c's CHANGHUA residuals "
+                             "(no Yunlin set is published), and its real 2010-11 residual "
+                             "also carries the climatological-rain error, which the worlds "
+                             "do not model (only its common part is absorbed by the "
+                             "month-of-sample effects); a noise x 1.5 cell is report-only",
+            "cl_value_column": "CL, rho and sd use L1_clean v3's governed 'value' (barometric "
+                               "loading removed where significant; 99th percentile |baro_m| "
+                               "0.09 m), E04's own column, while L1_pre2012 v2 is not "
+                               "barometrically corrected (no 2010-11 pressure product)",
             "probe": probe(units, prereg_dir, registries),
             "models": "the page model has never been run before 2012; E26 ran R1c on "
                       "2007-11 (Changhua contrast only)"},
@@ -402,7 +525,9 @@ def doc(prereg_dir=None, registries=None) -> dict:
                    + [K.AVAIL_OUT, K.RULINGS, f"{K.CENSUS_V3}/MANIFEST.json",
                       f"{K.CL_PRODUCT}/MANIFEST.json", K.PAGE_FORWARD]
                    + list(K.PAGE_THETAS)
-                   + [v for v in S.PREGATES.values() if v != K.AVAIL_OUT]
+                   + [g["path"] for k, g in pg.items() if k not in ("availability",
+                                                                    "product", "e0")]
+                   + [r["path"] for r in pg["e0"]["rungs"] if r["sha256"] != "missing"]
                    + [f"{K.PRODUCT}/MANIFEST.json"] + list(K.G0_FILES.values())),
         "no_prior_look_statement": "no 2010-11 head has been compared with any model, "
                                    "baseline or forecast for this test; the only read of "
@@ -423,8 +548,9 @@ def readiness(d: dict) -> list[str]:
             out.append(f"pre-gate {key} not run ({g['path']})")
     if pg["availability"]["sha256"] != "missing" and not pg["availability"]["passed"]:
         out.append("availability FAILED: record 'not evaluable'; do not register")
-    if pg["e0"]["sha256"] != "missing" and not pg["e0"]["passed"]:
-        out.append("E0 FAILED: engineering (code ladder); do not register")
+    passing, ladder = e0_passing(e0_rungs())
+    out += ladder
+    out += bindings(d, passing)
     if pg["product"]["manifest_sha256"] == "missing":
         out.append(f"{K.PRODUCT} not built")
     elif "design_time_evidence" not in (pg["product"]["allowed_uses"] or []):
@@ -445,6 +571,42 @@ def readiness(d: dict) -> list[str]:
     if IO.rp(K.REPORT).exists():
         out.append(f"{K.REPORT} exists")
     return sorted(set(out))
+
+
+def bindings(d: dict, passing: dict | None) -> list[str]:
+    """S2: every output must come from the declared code: its recorded code shas equal
+    frozen_code; e0, swap and the panel were run at the passing ladder rung, clean; each
+    step has exactly ONE rc = 0 attempt row (the other rows are disclosed in the
+    declaration); G1's G0 predates the product_build look."""
+    out = []
+    fz = d["frozen_code"]
+    head = None if passing is None else passing["head"]
+    recs = {"e0": None if passing is None else passing["path"], "swap": K.SWAP_OUT,
+            "panel": K.PANEL_JSON, "baselines": K.BASELINES_JSON,
+            **{f"g0_{k}": v for k, v in K.G0_FILES.items()}}
+    for key, path in recs.items():
+        r = _json(path) if path else None
+        if r is None:
+            continue                                     # reported as not run elsewhere
+        if r.get("code_sha256") != fz:
+            out.append(f"{path}: code shas differ from frozen_code (rerun at the final code)")
+        if key in ("e0", "swap", "panel"):
+            ch = str(r.get("code_head"))
+            if head is None or ch != head:
+                out.append(f"{path}: code_head {ch} is not the passing ladder rung {head} "
+                           "(or is dirty)")
+    rows = d.get("attempts_disclosed") or []
+    steps = list(K.ATTEMPT_STEPS) + ([f"e0_{head}"] if head else [])
+    for st in steps:
+        n = sum(1 for r in rows if r.get("step") == st and r.get("rc") == 0)
+        if n != 1:
+            out.append(f"attempts.jsonl: step {st} has {n} rc = 0 rows (exactly one needed)")
+    g1 = _json(K.G0_FILES["g1"]) or {}
+    bl = (d["pregates"]["product"].get("build_look") or {}).get("time")
+    if g1.get("created") and bl and not (prereg3.parse_time(str(g1["created"]))
+                                         < prereg3.parse_time(str(bl))):
+        out.append("G0 g1 does not predate the product_build look")
+    return out
 
 
 def blocking(d: dict, prereg_dir=None, registries=None) -> list:

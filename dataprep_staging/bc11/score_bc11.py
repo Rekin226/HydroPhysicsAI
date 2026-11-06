@@ -46,29 +46,22 @@ import chx_io as IO  # noqa: E402
 
 SCORER_VERSION = "1.0.0"
 CHX, X = K.CHX, K.X
-FROZEN = (f"{X}/bc11_const.py", f"{X}/bc11_lib.py", f"{X}/build_l1pre_v2.py",
-          f"{X}/page_run.py", f"{X}/baselines_bc11.py", f"{X}/g0_bc11.py",
-          f"{X}/score_bc11.py", f"{X}/run_bc11.sh",
-          f"{CHX}/avail_bc11.py", f"{CHX}/avail_lib.py", f"{CHX}/avail_l1pre.py",
-          f"{CHX}/bc_lib.py", f"{CHX}/build_l1pre.py", f"{CHX}/chx_const.py",
-          f"{CHX}/chx_io.py", f"{CHX}/chx_lib.py", f"{CHX}/hindcast.py",
-          "dataprep_staging/n2_policy/bootstrap_scorer.py", K.G0_PARAMS_FROM,
-          "dataprep_staging/fv_decidability_v2/stat_fv.py",
-          "dataprep_staging/fv_decidability_v2/osse_fv2.py",
-          "dataprep_staging/fv_decidability/osse_fv.py",
-          "dataprep_staging/h1_heads_qc/screens.py", "dataprep_staging/h1_heads_qc/config.py",
-          "hydrophysics/twin/hybrid.py", "hydrophysics/twin/coverage.py",
-          "hydrophysics/twin/drift_diag.py")
+FROZEN = K.FROZEN
+#: the pre-gate files; their registered path and sha256 live in doc["pregates"] (e0's path
+#: is the passing ladder rung's)
+PREGATE_KEYS = ("availability", "e0", "swap", "panel", "panel_json", "baselines",
+                "baselines_json")
 PREGATES = {"availability": K.AVAIL_OUT, "e0": K.E0_OUT, "swap": K.SWAP_OUT,
             "panel": K.PANEL, "panel_json": K.PANEL_JSON, "baselines": K.BASELINES,
             "baselines_json": K.BASELINES_JSON}
 S_LABEL = "S (design-time, window flagged)"
 NARROW_PHYSICS = "the physics level is a policy-comparison scenario only"
 WORDING = {
-    "g1_pass": f"{S_LABEL}: E04's recipe (CL and rho refitted on 2012-22) beat climatology "
-               "and level-adjusted climatology on 2011 heads from a 2010-12 start, with "
-               "90 % coverage {cov:.2f}, months no model has fitted (ratios {r_cl:.2f} / "
-               "{r_adj:.2f}; 90 % upper bounds {ub_cl:.2f} / {ub_adj:.2f}); beside E04",
+    "g1_pass": f"{S_LABEL}: scored on the page's statistical-layer recipe (E04), refitted "
+               "on 2012-22, the 2011 forecast from a 2010-12 start beat climatology and "
+               "level-adjusted climatology, with 90 % coverage {cov:.2f}, months no model "
+               "has fitted (ratios {r_cl:.2f} / {r_adj:.2f}; 90 % upper bounds "
+               "{ub_cl:.2f} / {ub_adj:.2f}); beside E04",
     "g1_fail": "E04's recipe did not beat both climatologies with calibrated 90 % intervals "
                "on 2011 heads from a 2010-12 start (design-time); E04 unchanged",
     "g2_pass": f"{S_LABEL} ({{county}}): the page physics, free-running on recorded pumping "
@@ -120,9 +113,10 @@ def registered_ids(doc: dict) -> dict:
 
 def check_files(doc: dict) -> None:
     probs = []
-    for key, path in PREGATES.items():
-        if IO.sha_or_missing(IO.rp(path)) != doc["pregates"][key]["sha256"]:
-            probs.append(f"{path} differs from the registration")
+    for key in PREGATE_KEYS:
+        rec = doc["pregates"][key]
+        if rec["sha256"] == "missing" or IO.sha_or_missing(IO.rp(rec["path"])) != rec["sha256"]:
+            probs.append(f"{rec['path']} differs from the registration")
     for key, path in K.G0_FILES.items():
         if IO.sha_or_missing(IO.rp(path)) != doc["g0"][key]["sha256"]:
             probs.append(f"{path} differs from the registration")
@@ -276,7 +270,9 @@ def score_all(doc: dict, P: dict, base: dict, fit: dict, ids: list[str], obs: np
             "lead_ratio_physics_f1_vs_cl": BL.lead_ratios(phys, cl_rows, ow[:, s], m),
             "lead_ratio_cf_vs_cl": BL.lead_ratios(cf[:, s], cl_rows, ow[:, s], m),
             "forcing_departure_p90_m": BL.forcing_departure_p90(F1[:, s], F0[:, s])},
-        "dropped_not_placed": [str(x) for x in P.get("not_placed", [])]}
+        "dropped_not_placed": [str(x) for x in P.get("not_placed", [])],
+        "spinup_discontinuity_f1_2011_12_vs_native_2012_01": BL.discontinuity(
+            F1[:, -1], mf[:, 0])}
     return out
 
 
@@ -289,6 +285,25 @@ def _attempt(rec: dict) -> None:
 
 
 def run_score(prereg_dir=None, rows_dir=None, l1=None) -> dict:
+    """``_score`` with its attempt row always logged (try/finally), with the exit code, the
+    stage reached and whether the scoring look was logged."""
+    state = {"stage": "start", "score_look": False}
+    rc = 1
+    try:
+        rep = _score(prereg_dir, rows_dir, l1, state)
+        rc = 0
+        return rep
+    except SystemExit as e:
+        rc = e.code if isinstance(e.code, int) else 1
+        raise
+    finally:
+        _attempt({"time": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                  "step": "score", "rc": rc, "stage": state["stage"],
+                  "score_look_logged": state["score_look"],
+                  "report_sha256": IO.sha_or_missing(IO.rp(K.REPORT))})
+
+
+def _score(prereg_dir, rows_dir, l1, state: dict) -> dict:
     out = IO.rp(K.REPORT)
     if out.exists():
         raise SystemExit(f"{K.REPORT} exists; {K.ID} is scored once")
@@ -309,9 +324,13 @@ def run_score(prereg_dir=None, rows_dir=None, l1=None) -> dict:
     fit = check_baselines(base, obs_fit)
     from harness import prereg3
 
+    state["stage"] = "assert_can_score"
     acc = prereg3.assert_can_score(K.ID, K.WP, **_kw(prereg_dir, rows_dir))
+    state["score_look"] = True
+    state["stage"] = "heads_read"
     obs, flag, notes = l1(ids, BL.WIN_M, product=K.PRODUCT, use=K.PRODUCT_USE,
                           window_end=K.WINDOW[1])
+    state["stage"] = "score_all"
     res = score_all(doc, P, base, fit, ids, obs, flag, obs_fit)
     rep = {"prereg_id": K.ID, "prereg_sha256": sha, "scorer_version": SCORER_VERSION,
            "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -322,8 +341,7 @@ def run_score(prereg_dir=None, rows_dir=None, l1=None) -> dict:
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("x") as f:
         json.dump(rep, f, indent=1, default=float)
-    _attempt({"time": rep["created"], "step": "score", "rc": 0,
-              "report_sha256": IO.sha256(out)})
+    state["stage"] = "report_written"
     print(f"{K.ID}: G1 {res['G1']['result']['verdict']} ({res['G1']['role']}); G2 "
           + ", ".join(f"{c} {res['G2'][c]['result']['verdict']}" for c in K.COUNTIES)
           + f"; YR {res['YR']['result']['verdict']}; G3 {res['G3']['result']['verdict']} "

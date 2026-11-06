@@ -96,9 +96,16 @@ PAGE_RF = "chou-shui-data/data/rf_timeseries_vendor_2012_2022.csv"   # the page 
 PAGE_FORWARD = "results/twin_forward/datum_gate_innov.npz"
 PAGE_FORWARD_SHA = "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
 PAGE_FIT_MONTHS = 132                            # months 0..131 = 2012-01..2022-12
-#: the code the page recipe reproduces at (FS.start_invariance.v1's first rung, scored)
-WT_HEAD = "4c2723e"
-WT_NAME = "HydroPhysicsAI-bc11run-4c2723e"
+#: E0's declared code ladder (FS.start_invariance.v1's precedent, declared BEFORE E0 runs):
+#: rung 0 = 4c2723e (FS reproduced the page recipe there and scored); a logged E0 failure
+#: (e0.json written with passed false, exit 3) moves to rung 1 = 730f65b (the first commit
+#: with --update-method, the last before the page run was written). Every later model run
+#: uses the rung that passed. If every rung fails, the backcast is NOT EVALUABLE: stop, no
+#: registration, ledger line only.
+E0_LADDER = ("4c2723e", "730f65b")
+WT_HEAD = E0_LADDER[0]
+WT_NAME_FMT = "HydroPhysicsAI-bc11run-{head}"
+WT_NAME = WT_NAME_FMT.format(head=WT_HEAD)
 COUNTY_GPKG = "chou-shui-data/data/water/Taiwan_countyV02/TW_COUNTY.gpkg"
 COUNTY_ZH = {"yunlin": "雲林縣", "changhua": "彰化縣"}
 CENSUS_V3 = "results/dataprep/pump_electricity/preorigin/v3"
@@ -106,7 +113,8 @@ E0_TOL_M = 0.01
 
 # ----------------------------------------------------------------------------- outputs
 RUN_DIR = "results/twin_runs/chx/backcast_2010_11"
-E0_OUT = f"{RUN_DIR}/e0/e0.json"
+E0_OUT_FMT = RUN_DIR + "/e0_{head}/e0.json"          # one directory per ladder rung
+E0_OUT = E0_OUT_FMT.format(head=WT_HEAD)
 SWAP_OUT = f"{RUN_DIR}/swap/swap.json"
 PANEL = f"{RUN_DIR}/hindcast/bc11_panel.npz"
 PANEL_JSON = f"{RUN_DIR}/hindcast/bc11_panel.json"
@@ -116,6 +124,10 @@ G0_DIR = f"{RUN_DIR}/g0"
 G0_FILES = {"g1": f"{G0_DIR}/g0_g1.json", "g2": f"{G0_DIR}/g0_g2.json",
             "yr": f"{G0_DIR}/g0_yr.json", "g3": f"{G0_DIR}/g0_g3.json"}
 ATTEMPTS = f"{RUN_DIR}/attempts.jsonl"
+#: the steps that must each have exactly ONE rc = 0 row in attempts.jsonl before the
+#: registration (e0 is 'e0_<head>' of the passing rung); every other row (failures,
+#: engineering retries) is copied into the declaration as disclosed
+ATTEMPT_STEPS = ("g0_g1", "build", "swap", "hindcast", "baselines", "g0_g2", "g0_g3", "g0_yr")
 REPORT = f"results/dataprep/reports/{ID}/report.json"
 PREREG_FILE = f"results/dataprep/preregistration/{ID}.json"
 
@@ -174,3 +186,33 @@ G0_YR_K = (0.0, 1.0)
 G0_YR_RHO = (0.0, -0.83)
 G0_YR_REPORT_NOISE = 1.5                         # report-only cell: noise x 1.5 at k = 1
 G0_PARAMS_FROM = "dataprep_staging/n2c_reading/synth_n2c.py"
+
+# ----------------------------------------------------------------------------- frozen code
+#: every file the declaration hashes (frozen_code); every model / G0 / baselines output
+#: records these shas and the declaration refuses unless they equal frozen_code
+FROZEN = (f"{X}/bc11_const.py", f"{X}/bc11_lib.py", f"{X}/build_l1pre_v2.py",
+          f"{X}/page_run.py", f"{X}/baselines_bc11.py", f"{X}/g0_bc11.py",
+          f"{X}/score_bc11.py", f"{X}/run_bc11.sh", f"{X}/prereg_bc11.py",
+          f"{X}/tests/test_bc11.py",
+          f"{CHX}/avail_bc11.py", f"{CHX}/avail_lib.py", f"{CHX}/avail_l1pre.py",
+          f"{CHX}/bc_lib.py", f"{CHX}/build_l1pre.py", f"{CHX}/chx_const.py",
+          f"{CHX}/chx_io.py", f"{CHX}/chx_lib.py", f"{CHX}/hindcast.py",
+          "dataprep_staging/n2_policy/bootstrap_scorer.py", G0_PARAMS_FROM,
+          "dataprep_staging/fv_decidability_v2/stat_fv.py",
+          "dataprep_staging/fv_decidability_v2/osse_fv2.py",
+          "dataprep_staging/fv_decidability/osse_fv.py",
+          "dataprep_staging/h1_heads_qc/screens.py", "dataprep_staging/h1_heads_qc/config.py",
+          "hydrophysics/twin/hybrid.py", "hydrophysics/twin/coverage.py",
+          "hydrophysics/twin/drift_diag.py")
+
+
+def code_shas() -> dict:
+    """sha256 of every frozen file in this checkout (recorded by every output)."""
+    import hashlib
+
+    root = HERE.parents[1]
+    out = {}
+    for p in FROZEN:
+        f = root / p
+        out[p] = hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() else "missing"
+    return out

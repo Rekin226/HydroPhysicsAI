@@ -91,7 +91,8 @@ def build(panel: Path, out: Path, loader=None) -> dict:
             "n_wells": W, "n_wells_kept_fit": int((fit["n_fit"] >= K.MIN_FIT_MONTHS).sum()),
             "n_own_rho": int(fit["own_rho"].sum()),
             "n_phys": int(np.isfinite(datum).sum()),
-            "baselines": str(target), "baselines_sha256": IO.sha256(target)}
+            "baselines": str(target), "baselines_sha256": IO.sha256(target),
+            "code_sha256": K.code_shas()}
     with (out / Path(K.BASELINES_JSON).name).open("x") as f:
         json.dump(summ, f, indent=1)
     print(f"baselines: {W} wells, {summ['n_wells_kept_fit']} with >= {K.MIN_FIT_MONTHS} fitted "

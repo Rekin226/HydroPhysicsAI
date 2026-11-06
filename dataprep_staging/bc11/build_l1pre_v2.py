@@ -18,6 +18,15 @@ QC exactly as v1 (``ch_x/build_l1pre.build_tables`` -> ``bc_lib.qc_monthly``): H
 sample screens with the 2010-11 window's own robust reference, clean samples -> hourly ->
 daily (>= 12 h) -> monthly (>= 20 days) means, flag 0; no barometric correction, no fill.
 
+Windowed read (``load_window``, in place of v1's frozen ``build_l1pre.load_raw``, which
+loads the whole file): ``pyarrow.parquet.read_table(columns=['datetime', 'value'],
+filters=[2010-01-01 <= datetime < 2012-01-01])``. The QC needs no row outside the window
+(``qc_monthly`` clips to 2010-01..2011-12 before anything, and its robust reference, screens
+and rolling medians are all computed on the window itself), so no 2009 or post-2011 row is
+returned or held. Row groups wholly outside the window are skipped by their statistics; a
+row group straddling a window edge is decoded inside pyarrow and filtered before anything
+is returned (disclosed).
+
     python dataprep_staging/bc11/build_l1pre_v2.py --log-look [--skip-if-logged]   (once)
     python dataprep_staging/bc11/build_l1pre_v2.py --build
 
@@ -53,6 +62,7 @@ import chx_io as IO  # noqa: E402
 
 CODE = (f"{K.X}/build_l1pre_v2.py", f"{K.X}/bc11_const.py", f"{K.CHX}/build_l1pre.py",
         f"{K.CHX}/bc_lib.py", f"{K.CHX}/chx_const.py", f"{K.CHX}/avail_bc11.py",
+        f"{K.CHX}/avail_lib.py", f"{K.CHX}/avail_l1pre.py", f"{K.CHX}/chx_io.py",
         "dataprep_staging/h1_heads_qc/screens.py", "dataprep_staging/h1_heads_qc/config.py")
 NOTE = ("heads/L1_pre2012 v2 build (user ruling R8.6a): QC and monthly aggregation of the "
         "2010-11 ls_cache records of the wells that qualified in the logged availability "
@@ -141,6 +151,29 @@ def log_look(prereg_dir=None, rows_dir=None, registries=None, skip_if_logged: bo
         registries=registries, **kw)
 
 
+# ----------------------------------------------------------------------------- reads
+WINDOW_TS = ("2010-01-01", "2012-01-01")           # [lo, hi): the product window only
+
+
+def load_window(sid: str):
+    """One well's raw 2010-01..2011-12 samples (value indexed by datetime); nothing outside
+    the window is returned (see the module docstring)."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    lo, hi = (pd.Timestamp(t) for t in WINDOW_TS)
+    tab = pq.read_table(AV.raw_path(sid), columns=["datetime", "value"],
+                        filters=[("datetime", ">=", lo), ("datetime", "<", hi)])
+    f = tab.to_pandas()
+    if "datetime" in f.columns:
+        f = f.set_index("datetime")
+    s = pd.to_numeric(f["value"], errors="coerce")
+    s.index = pd.to_datetime(s.index)
+    if len(s) and (s.index.min() < lo or s.index.max() >= hi):
+        raise SystemExit(f"ENGINEERING: {sid}: a row outside the window was returned")
+    return s
+
+
 # ----------------------------------------------------------------------------- tables
 def validate_v2(tb: dict, county: dict) -> dict:
     """Engineering checks plus post-QC counts (the scored-year rule; counts only)."""
@@ -204,7 +237,7 @@ def write_product(d: Path, tb: dict, val: dict, ids: list[str], av: dict, look: 
     return m
 
 
-def build(prereg_dir=None, loader=BLD.load_raw) -> Path:
+def build(prereg_dir=None, loader=load_window) -> Path:
     av = availability(prereg_dir)
     if registered(prereg_dir):
         raise SystemExit(f"REFUSED: {K.ID} is registered; the product is built before it")
