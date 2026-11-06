@@ -173,6 +173,9 @@ PAGE_REGISTRATIONS = {
     "n2rd": ("X5.n2_reading.v1",),
     "chx2c": ("I1.CHX.v1.twocontrast",),
     "sd2": ("SD.cut_response_spread.v2",),
+    # ruling R8.7 (C30 split): C30-scen's years-2/3 sub-label, named once E02z is registered
+    # (E02z page_mapping.before_scoring; ruling R8.14)
+    "e02z": ("E02z.level_years23.v1",),
 }
 # Results of the registered model-only studies that change what the page may say (claims E02,
 # E21, C30: FV; C13a: the two Changhua studies; C01: FS). A file is read only when it exists,
@@ -2003,7 +2006,12 @@ def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None
 def _hybrid_block(path: str | None, forward_npz: str | None,
                   registration: str | None) -> dict | None:
     """twin.hybrid's retrospective score (sha-checked against the forward run) and, when
-    given, the manifest of its prospective registration (hashed on its own parameters)."""
+    given, the manifest of its prospective registration (hashed on its own parameters).
+
+    Field contract (ruling R8.7, claim C30-fc): ``registration`` may carry ``result``, written
+    only when E04 is scored: ``"failed"`` or ``"not_evaluable"`` takes the forecast of record
+    away (the template's forecastOfRecord then names none); any other value, or no field (the
+    case until E04 is scored), keeps it. This build does not write the field yet."""
     report = _read_report(path, forward_npz, "hybrid report")
     if report is None:
         return None

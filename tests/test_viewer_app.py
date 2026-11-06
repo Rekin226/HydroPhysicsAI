@@ -1040,7 +1040,7 @@ def test_pending_registrations_are_named_only_once_in_the_registry(tmp_path, qui
     none = dict.fromkeys([*va.PAGE_REGISTRATIONS, *va.PAGE_ROLE_FLAGS], False)
     assert set(none) == {"e02c", "ext", "no_band", "n3", "n3sl", "fv", "x5clm", "x5n2c", "fs",
                          "e02d", "e02y", "dr", "fm", "fv2", "fvext", "fw1", "fw2",
-                         "chx", "chb", "fvs2", "n2rd", "chx2c", "sd2", "n3_conv12",
+                         "chx", "chb", "fvs2", "n2rd", "chx2c", "sd2", "e02z", "n3_conv12",
                          "n3_conv24"}
     assert va._registrations_block(str(index)) == none
     n3 = va.PAGE_REGISTRATIONS["n3"][-1]
@@ -2154,3 +2154,100 @@ def test_round8_lines_wait_for_registration_and_report(tmp_path, quiet, monkeypa
         assert "SD.cut_response_spread" not in got[k], k
     assert "模型內部數值（L）" in got["tAzh"] and "0.47–1.42 公分" in got["tAzh"]
 
+
+
+# --- ruling R8.7 (2026-11-06): forecast of record, scenario label, start-memory marker -------
+def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet, monkeypatch):
+    """The legend after the start memory reads 'average-weather scenario, not a forecast', the
+    head series marks the month FM's report gives and says which line is the forecast of
+    record, and E04 is named the first-year forecast of record; each from its record only."""
+    none = tmp_path / "none"
+    none.mkdir()
+    monkeypatch.setattr(va, "PAGE_RESULTS", _results_paths(none))
+    res = va._results_block(_results_paths(tmp_path, **{**_r7_reports(), **_r8_reports()}))
+    js = ("(res) => { const mc = D.modelcard; "
+          "mc.hybrid = mc.hybrid || {rmse_stat: 1, rmse_clim: 1.2, rmse_model: 2, ratio_stat: 0.9, "
+          "ratio_phys: 1, per_year: {}, registration: {registered_on: '2026-10-11', "
+          "stations: 147, test_start: '2026-11-01', test_end: '2027-10-31'}}; "
+          "mc.prospective = mc.prospective || {registered_on: '2026-10-11', stations: 158, "
+          "test_start: '2026-11-01', test_end: '2027-10-31', result: 'pending', "
+          "interval_bound: false}; "
+          "const leg = y => { S.year = y; legend(fieldFor('head', null, S.year)); "
+          "return $('legend').textContent; }; "
+          "const ts = () => { S.ts = 'head'; S.sel = {k: 'fan'}; S.tsFit = false; renderTS(); "
+          "return {svg: $('tsWrap').innerHTML, note: $('tsNote').textContent}; }; "
+          "const ev = () => evidenceItems().map(x => x[1]).join(' | '); "
+          "const snap = () => ({leg: leg(Y - 1), leg0: leg(YO), ts: ts(), ev: ev()}); "
+          "mc.registrations = {e02c: true}; mc.results = {}; const off = snap(); "
+          "mc.registrations = {e02c: true, e02z: true, fm: true, fvs2: true}; "
+          "mc.results = {fm: res.fm, fvs2: res.fvs2}; const on = snap(); "
+          "mc.results = {fm: {...res.fm, case: 'beyond_first_year'}}; const odd = snap(); "
+          "mc.results = {fm: res.fm, fvs2: res.fvs2}; LANG = 'zh'; const zh = snap(); "
+          "LANG = 'en'; S.tsFit = true; renderTS(); const fit = $('tsWrap').innerHTML; "
+          "S.tsFit = false; "
+          "const subs = ['abs', 'fwd', 'rate', 'dsubs'].map(l => { S.year = Y - 1; "
+          "legend(fieldFor(l, null, S.year)); return $('legend').textContent; }); "
+          "const dh = (() => { S.year = Y - 1; legend(fieldFor('dhead', null, S.year)); "
+          "return $('legend').textContent; })(); "
+          "const hyb = mc.hybrid; mc.hybrid = {...hyb, registration: {...hyb.registration, "
+          "result: 'failed'}}; const failed = snap(); mc.hybrid = null; const nohyb = snap(); "
+          "mc.hybrid = hyb; "
+          "return {off, on, odd, zh, fit, subs, dh, failed, nohyb, y: M.years[Y - 1]}; }")
+    phone = ("(res) => { const mc = D.modelcard; mc.registrations = {fm: true}; "
+             "mc.results = {fm: res.fm}; S.ts = 'head'; S.sel = {k: 'fan'}; S.tsFit = false; "
+             "renderTS(); return $('tsWrap').innerHTML; }")
+    _, out, _ = _build(tmp_path)
+    pw, browser = _browser()
+    try:
+        small = browser.new_page(viewport={"width": 390, "height": 800})
+        small.goto(out.as_uri())
+        small.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got_phone = small.evaluate(phone, res)
+        page = browser.new_page(viewport={"width": 1400, "height": 1000})
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(js, res)
+    finally:
+        browser.close()
+        pw.stop()
+    on, off, odd, zh = got["on"], got["off"], got["odd"], got["zh"]
+    # the legend: the scenario label only with FM's report, in its declared case
+    assert ("in this model an average-weather scenario after Nov 2023, not a forecast (start "
+            "memory, FM.origin_memory.v1); not validated") in on["leg"]
+    for s in (off, odd):
+        assert "average-weather scenario" not in s["leg"] and "not validated" in s["leg"]
+    assert "average-weather scenario" not in on["leg0"]          # a fitted year: no label
+    assert "平均天氣情境，並非預測" in zh["leg"] and "2023年11月" in zh["leg"]
+    # the head series: the marker and its note, from FM's month
+    assert "Nov 2023: start memory ends, in this model" in on["ts"]["svg"]
+    assert ("After Nov 2023 the head line is this model's average-weather scenario, not a "
+            "forecast") in on["ts"]["note"]
+    assert "forecast of record is the registered statistical layer (E04" in on["ts"]["note"]
+    for s in (off, odd):
+        assert "start memory ends" not in s["ts"]["svg"] and "start memory" not in s["ts"]["note"]
+    assert "start memory ends" not in got["fit"]                  # the fitted-only view
+    assert "start memory, in this model" in got_phone               # a phone: the short label
+    # subsidence, rate and avoided-subsidence legends never carry FM's label; head ones do
+    for leg in got["subs"]:
+        assert "average-weather scenario" not in leg and "FM.origin_memory" not in leg, leg
+    assert "average-weather scenario after Nov 2023" in got["dh"]
+    # after an E04 fail, or without the hybrid registration, no forecast of record is named
+    for k in ("failed", "nohyb"):
+        assert "Forecast of record" not in got[k]["ev"], k
+        assert "forecast of record" not in got[k]["ts"]["note"], k
+        assert "start memory ends" in got[k]["ts"]["svg"], k       # the marker is FM's alone
+    assert "2023年11月：起始記憶結束（本模型中）" in zh["ts"]["svg"]
+    # E04 named the forecast of record, before FV.stat.v2's two lines; E02z's sub-label
+    fr = ("Forecast of record for Nov 2026–Oct 2027: this registered statistical layer (E04), "
+          "not the physics model, is the page's first-year head forecast of record (user ruling "
+          "R8.7; not drawn on the map or the series)")
+    assert fr in on["ev"] and fr in off["ev"]                     # the ruling, not a test
+    assert on["ev"].index(fr) < on["ev"].index("FV.stat.v2")
+    sub = "strict level rule years 2-3 (E02z), per county; scored not before 2029-01-15"
+    assert sub in on["ev"] and sub not in off["ev"]
+    assert on["ev"].index("Stricter companion test E02c") < on["ev"].index(sub)
+    assert "第 2-3 年嚴格水位規則（E02z）" in zh["ev"] and "（E04）" in zh["ev"]
+    # nothing pre-declared for after 2028 is on the page
+    for bad in ("passed its registered test", "did not pass its registered test",
+                "FW.rider.v1", "Rain-year caveat"):
+        assert bad not in on["ev"] and bad not in on["ts"]["note"], bad

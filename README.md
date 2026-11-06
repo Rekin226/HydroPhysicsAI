@@ -261,7 +261,12 @@ the area sinking faster than a threshold, the high-speed-rail gradient and the r
 sit in a labelled "model internals" section (claims ledger `hydrophysics/twin/claims_v1.json`),
 because their size is not supported by the registered tests. Below them sit a 2D map of the policy's change from
 baseline, drawn on a fixed symmetric scale, and a linked time series. The series marks the
-fitted and projected periods and has a policy-minus-baseline panel. Historical validation
+fitted and projected periods and has a policy-minus-baseline panel. Since 2026-11-06 (user
+ruling R8.7) the page says which line is a forecast and which is a scenario: the registered
+statistical layer (E04) is the forecast of record for the first year, 2026-11 to 2027-10, and
+after the start memory (2023-11 in this model, `FM.origin_memory.v1`) the physics head levels
+are an average-weather scenario, not a forecast; the head series marks that month and the map
+legend says so. Historical validation
 dates remain separate from future projection years. A slider per
 water-use class and a 2026/2030 start set the policy. When the policy matches a solved run
 the page uses the full 36-run fields; otherwise it builds the result from the per-class
@@ -276,7 +281,7 @@ committed under `hydrophysics/twin/app/geodata/`).
 
 The new 2023–August 2026 groundwater challenge gives datum-adjusted RMSE **2.05 m**
 against **1.67 m** for seasonal climatology (158 wells, ratio 1.23; the innovation-update
-run the page shows). The current frozen forecast does not beat this baseline. Pass
+run the page shows). The current frozen run does not beat this baseline. Pass
 `--challenge results/twin/new_data_challenge_innov/report.json` to include that report in a
 rebuilt page; the report must match the forward file's hash.
 See [release and validation workflow](docs/TWIN_RELEASE.md) for data ingestion, independent
@@ -378,14 +383,18 @@ in `docs/GPU_SERVER.md`.
   but a world with no persistence passes the same rule with probability 0.48, so a 2028 pass is
   weak evidence and a fail is the more informative outcome (an erratum records that its county
   layout was 78/69 wells instead of E04's 81/66; the effect is far below its Monte Carlo error,
-  and it was not rerun). Whether the physics forecast adds to the statistical layer
+  and it was not rerun). Whether the frozen physics run adds to the statistical layer
   (`FE.encompass_2026-12.v1`) is registered report-only: its synthetic gate failed (with no
   physics information the rule reads "the layer encompasses it" only 0.51 of the time against
   0.80 required; physics-arm power 0.84). The strict level rule is registered for years 2 and 3
-  of the same forecast (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
+  of the same frozen run (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
   county, scored from 2029-01-15; synthetic decidability not shown weak: about 1.0 in Yunlin and
   0.69 in Changhua), and its expected outcome, from the published 2023-26 record, is the
-  pre-worded narrowing that the physics level stays an average-weather scenario. The
+  pre-worded narrowing that the physics level stays an average-weather scenario. Since the
+  C30 split of user ruling R8.7 (2026-11-06) that years-2/3 rule is on the page with the
+  scenario row (C30-scen), the first-year forecast of record is E04's row (C30-fc), and the
+  wording of every outcome of E02, E02c, E04 and E02z after the 2028 scores is fixed in the
+  claims ledger before any of them is scored. The
   departure-transfer band at N3F's never-calibrated wells is undecidable by design at the
   external wells (`U1.ext_transfer_power.v1`: Yunlin power 0.767 against 0.80; Changhua report-only), so E02x
   was not registered. The side of a Changhua coverage fail does not separate the pumping

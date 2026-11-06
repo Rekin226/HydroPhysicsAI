@@ -122,7 +122,14 @@ def required_labels(v: Value) -> tuple[str, ...]:
 
 
 def scoring() -> dict:
-    return load_rules()["scoring"]
+    """Pending claims with a registered scoring date (the stale-wording banner's dates)."""
+    return {k: v for k, v in load_rules()["scoring"].items() if v.get("not_before")}
+
+
+def scoring_undated() -> dict:
+    """Pending claims whose registration gives no scoring date (kept for the record; no
+    stale-wording date is checked for them)."""
+    return {k: v for k, v in load_rules()["scoring"].items() if not v.get("not_before")}
 
 
 def topics() -> dict:

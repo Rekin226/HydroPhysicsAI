@@ -57,7 +57,9 @@
     "E21": {"registration": "E02c", "not_before": "2028-01-15"},
     "E22": {"registration": "N3F external wells", "not_before": "2028-01-15"},
     "C13a": {"registration": "N2C", "not_before": "2028-01-15"},
-    "C31": {"registration": "N3", "not_before": "2028-01-15"}
+    "C31": {"registration": "N3", "not_before": "2028-01-15"},
+    "C30-fc": {"registration": "E04 (hybrid manifest)", "not_before": null,
+               "note": "no registered scoring date: E04's protocol gives its window (to 2027-10-31) and 'score once the window has closed'; no stale-wording date is checked for it"}
   },
   "topics": {
     "C01": "head change at the registered Yunlin monitoring wells under a policy (the answer)",
@@ -76,7 +78,9 @@
     "C13c": "Changhua subsidence lever (withdrawn)",
     "C28": "fast-estimate superposition error (model internals)",
     "E09": "leveling skill per township",
-    "E20": "Changhua head response test (pending)"
+    "E20": "Changhua head response test (pending)",
+    "C30-scen": "the physics model's projected levels after the start memory (an average-weather scenario, not a forecast)",
+    "C30-fc": "the first-year head forecast of record (the registered statistical layer, pending)"
   },
   "lexicon": {
     "en": ["avoided subsidence", "subsidence avoided", "area above", "km² above", "sinks a further",
