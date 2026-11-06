@@ -472,7 +472,10 @@ in `docs/GPU_SERVER.md`.
   Yunlin contrast, so the direction pass does not separate Changhua pumping from Yunlin
   spillover. 4 of the backcast's wells are among the 23 screens, and both checks share the
   regional-rain confounder. Both read their heads as design-time evidence, not as a scoring
-  target. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
+  target. The only earlier Changhua head window, 2008-09, was checked once by a count-only look
+  on the vendor head cache (`I1.CH_backcast_2008_09.availability.v1`, round 8): none of its 24
+  Changhua wells has 18 available months there, so the last possible Changhua head window is
+  checked and not decidable. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
   exploratory, narrowing only) puts the Yunlin contrast in the same regression: the Changhua
   slope becomes 0.15 [-0.04, 0.45], so the direction is not separable from Yunlin spill-over.
   The mechanism check CH-J (the secondary of `I1.CHX.v1`, report-only for good) did not reject

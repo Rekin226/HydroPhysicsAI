@@ -1728,6 +1728,15 @@ Each test below was scored once; the registry sha256 prefix is from
   (report-only). Reading "not_separable": E25 gains "direction not separable from Yunlin
   spill-over", a narrowing; its status is unchanged. Page (R8.8): the E25 line carries the
   placebo caveat and this clause.
+- **Changhua 2008-09 head window (round-8 #18 closure).** A count-only look on the vendor head
+  cache, `I1CHB0:ls_cache_rowcounts_2008_2009` (availability check, 2026-11-06; stop rule fixed
+  in `dataprep_staging/ch_x/avail_chb0809.py` before the look, constants sha d4b9ab77; datetime
+  column only), found 0 of 24 Changhua wells with at least 18 available months in 2008-01..2009-12
+  (ring-nest wells excluded from the gating count; 0 with them too). Result
+  `results/twin_runs/chx/backcast_2008_09/avail/avail.json` (sha 508fd440). Declared closure:
+  "last possible Changhua head window checked, not decidable". Disclosed: P6's inventory look on
+  the public MOEA well tables (scope 2008-01..2024-12, 2026-10-14) may overlap if those tables
+  carry Changhua 2008-09 heads. Ledger: E26, C20 and C21 notes; no status change, no page line.
 - **CH-J** (`I1.CHX.v1`, 794f6a7e, test I1CHX.chj_externals; report-only for good, R8.1b).
   Report `results/dataprep/reports/I1.CHX.v1/chj_report.json` (sha e5818b6a, written once at
   2026-11-05T23:38Z by a new wrapper around the frozen chj_block; engineering record frozen
