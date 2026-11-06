@@ -1060,7 +1060,7 @@ PRE_ROUND8_STATUS = {"C01": "S+D", "E25": "S", "E26": "S"}
 R8_MODEL_ONLY = ("FV.stat.v2", "X5.n2_reading.v1", "COLF.column_family_2028.v1",
                  "FE.encompass_2026-12.v1", "CB.coverage_side.v1", "FB.family_power.v1",
                  "U1.ext_transfer_power.v1", "X5.gnss_seasonal_family.gates.v1",
-                 "N2CS.osse_design.v1", "GOV.heads_window_product.v1")
+                 "N2CS.osse_design.v1", "GOV.heads_window_product.v1", "FW.rider.v1")
 
 
 def test_round8_rulings_and_rows_follow_the_scored_reports():
@@ -1400,16 +1400,44 @@ def test_r8_7_post_2028_wording_is_predeclared_for_every_branch():
         assert not any(bad in t for t in shown), bad
 
 
-def test_r8_7_rain_year_rider_is_a_ledger_caveat_slot_only():
-    """FW.rider.v1 is drafted, not registered: a SLOT in the notes and outcome_display only;
-    no registration is cited (the PENDING guard stays quiet), no page key, no status change."""
-    cl = CL()
-    assert "FW.rider.v1" not in L()["registry_hashes"]
-    for c in L()["claims"]:
-        assert "FW.rider.v1" not in c["cites"]["registrations"], c["id"]
-        assert "FW.rider.v1" not in c["wording_en"], c["id"]
+def test_r8_7_rain_year_rider_result_is_a_ledger_caveat_only():
+    """FW.rider.v1, registered and scored once (2026-11-06): its declared caveat, verbatim,
+    sits in the E21 and C30-scen notes and outcome_display only. It is cited as a model-only
+    study, adds no S and no status change, and no page key, README or model-card sentence
+    carries it (the R8.7 page wording is unchanged)."""
+    cl, hashes = CL(), L()["registry_hashes"]
+    rid, rep = "FW.rider.v1", "results/dataprep/reports/FW.rider.v1/report.json"
+    assert hashes[rid].startswith("20e8839d")
+    wording = ("Rain-year caveat (model-only rain-year rider FW.rider.v1): in the model's own "
+               "replayed 2012-22 rain and detrended pumping years (FW.weather_replay.v2, the "
+               "page ensemble), a model of the right kind passes E02c's level rule with "
+               "probability 1.00 (90 % interval over the 11 recorded years 1.00-1.00; single "
+               "sequences 0.99-1.00); the replayed rain years do not show the level test weak. "
+               "One-sided: this adds no other reading, and P is not the chance of a 2028 pass.")
+    path = C.REPO / rep
+    if path.exists():                       # the scored report, verbatim and at its sha
+        r = json.loads(path.read_text(encoding="utf-8"))
+        assert r["wording"]["en"] == wording and r["status"] == "scored"
+        assert r["reading"] == "not_shown_weak_in_replayed_years"
+        assert C.sha256(path).startswith("377afa62")
+        assert r["declaration_sha256"] == hashes[rid]
     for cid in ("E21", "C30-scen"):
-        assert "SLOT (FW.rider.v1" in cl[cid]["notes"], cid
-        assert cl[cid]["outcome_display"]["rider_caveat"].startswith("SLOT (FW.rider.v1"), cid
-        assert "Never on the page, no status change" in cl[cid]["outcome_display"][
-            "rider_caveat"], cid
+        c = cl[cid]
+        for blob in (c["notes"], c["outcome_display"]["rider_caveat"]):
+            assert f"'{wording}'" in blob, cid
+            for k in ("sha 377afa62", "registered sha 20e8839d",
+                      "'not_shown_weak_in_replayed_years'", "P 0.9989",
+                      "FWR:accidental_smoke_compute_20261106",
+                      "Ledger only; never on the page; no status change"):
+                assert k in blob, (cid, k)
+            assert "SLOT (" not in blob, cid
+        assert rid in c["cites"]["registrations"] and rep in c["cites"]["reports"], cid
+    assert _st("E21") == {"D"} and _st("C30-scen") == {"N"}          # no status change
+    for c in L()["claims"]:
+        assert rid not in c["wording_en"], c["id"]
+        if rid in c["cites"]["registrations"]:
+            assert "S" not in _st(c["id"]), c["id"]
+            assert c["id"] in ("E21", "C30-scen"), c["id"]
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert not any(rid in v or "Rain-year caveat" in v for d in (en, zh) for v in d.values())
+    assert rid not in C.template_src() and not any(rid in k for k in DM()["i18n"])
