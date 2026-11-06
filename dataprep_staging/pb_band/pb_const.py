@@ -7,13 +7,15 @@ the page's head series with a two-part band:
 1. a per-well ZONE RIBBON from E02d's frozen relative half-widths (sigma_idio_A/B/C.csv,
    registered by hash in E02d.decomposed_prospective_2026-12.v1): per DR zone (E02d's frozen
    ``group``) and month, the median over the zone's wells of half_width_m = z90 sigma_idio;
-   a zone with fewer than 5 wells is not drawn; no station id reaches the page. Label:
-   'decided by a registered test, E02d, 2028' (window A; windows B and C carry E02y's
-   registered wording);
-2. the SHARED RANGE (the county-wide part E02d removed), per county and month of window A:
+   a zone with fewer than 5 wells is not drawn; no station id reaches the page. The page
+   draws WINDOW A ONLY (row C14a-r), labelled 'decided by a registered test, E02d, 2028'
+   (lead decision B1/B2); windows B and C are computed in the output and not drawn;
+2. the SHARED RANGE per county and month of window A: the spread among model variants only,
    the hull of {0 (E02's registered centre), the 36 rerun members' county-median deviation
-   from the member mean, the four FV v2 truth families' county-median departure from E02's
-   registered forward}. Label: 'cannot be tested before 2030 by design'.
+   from the member mean, the county-median departure of the FV v1 baseline forwards of FV
+   v2's four truth families from E02's registered forward}. It excludes forcing-year
+   variation (FV v2's registered forcing-year line bn_head_fy stays beside it) and the
+   between-zone part of the departure. Label: 'cannot be tested before 2030 by design'.
 
 Beside the shared range PB publishes its leave-one-family-out (LOFO) coverage per county:
 design-time and model-only (no observation), on window A's months only. Leave-one-forcing-
@@ -23,8 +25,9 @@ and tests/test_pb_band.py only, never in hydrophysics/twin/coverage.py, bands.py
 harness/coverage3.py.
 
 Nothing here reads a file; every hash below was recorded by an upstream registration (E02d's
-interval.artefact.files and inputs, E02d's summary.json inputs, the INDEX rows) and is
-cross-checked against those documents by prereg_pb.problems before registration.
+interval.artefact.files and inputs, E02d's summary.json inputs, the INDEX rows) or, for
+fv_zr0.npz only, by the FB builder (fb_inputs.UPSTREAM_SOURCE); prereg_pb.problems
+cross-checks them before registration.
 """
 from __future__ import annotations
 
@@ -43,7 +46,10 @@ UPSTREAM_CODE = ("dataprep_staging/e02d/e02dlib.py", "dataprep_staging/e02d/e02d
                  "dataprep_staging/e02d/power_e02d.py",
                  "dataprep_staging/fb_family/fb_inputs.py",
                  "dataprep_staging/fb_family/fb_lib.py", "dataprep_staging/fb_family/fb_io.py",
-                 "dataprep_staging/fv_decidability/osse_fv.py")
+                 "dataprep_staging/fv_decidability/osse_fv.py",
+                 # osse_fv imports score_e02c at module level (its statistics); score_e02c's
+                 # own imports of export_baselines / prereg_e02c_ext are lazy and never run here
+                 "dataprep_staging/e02c/score_e02c.py")
 FROZEN = CODE_FILES + UPSTREAM_CODE
 
 # ----------------------------------------------------------------------------- registrations
@@ -101,7 +107,9 @@ MEMBERS_NPZ = "results/twin_runs/e02d/members_wells.npz"
 MEMBERS_SHA = "12c32ff45500f4c6827a6ea60b9e2e5e39b19c94835faed290f88db4d6292262"
 #: the family part reads FV v1's truth forwards, E02's forward, wells_158 and obs_mask through
 #: fb_inputs.load_mu (paths and FB-recorded sha256 in fb_inputs.UPSTREAM_SHA)
-FAMILY_INPUT_KEYS = ("wells_158", "obs_mask", "zr", "truth_R0", "truth_Q0", "truth_R1c",
+#: zr0 (fv_zr0.npz) is read by load_mu for FV's report-only ZR0 -> ZR offset; its sha256
+#: (a1833d5f) was recorded only by the FB builder (no registration records it)
+FAMILY_INPUT_KEYS = ("wells_158", "obs_mask", "zr", "zr0", "truth_R0", "truth_Q0", "truth_R1c",
                      "truth_X5R1")
 #: path fragments of observation products: no PB input may contain one (U7 / no heads)
 OBSERVATION_MARKERS = ("AMP_V2/data", "chou-shui-data", "data_fetch_api",
@@ -132,6 +140,8 @@ N_MEMBERS = 36
 FAMILIES = ("R0", "Q0", "R1c", "X5R1")
 #: FB's two-family partition (FB.family_power.v1 hypotheses.families); report-only LOFO
 FB_GROUPS = {"R0Q0": ("R0", "Q0"), "R1cX5R1": ("R1c", "X5R1")}
+#: the page draws window A's ribbon only (lead decision B1/B2); B and C are output only
+DRAWN_RIBBON_WINDOWS = ("A",)
 #: the shared range (and its LOFO coverage) exists where both parts exist: window A
 SHARED_WINDOW = "A"
 #: U7: months whose coverage was seen when the interval family was chosen
@@ -145,30 +155,29 @@ ROUND = 4                                       # metres, 4 decimals in the outp
 LABELS = {
     "ribbon_A": {"en": "decided by a registered test, E02d, 2028",
                  "zh": "由已登錄之檢定 E02d 於 2028 年判定"},
-    "ribbon_BC": {"en": "outside the first window, decided by registered tests for "
-                        "2027-11..2029-10 (E02y); untested beyond",
-                  "zh": "第一個檢驗期之外，由 2027-11..2029-10 的已登錄檢定（E02y）判定；"
-                        "其後未經檢驗"},
     "ribbon_what": {"en": "Per-well spread around the zone's common departure (median over "
                           "the zone's wells of E02d's frozen 90 % relative half-width); not "
                           "the level, not the policy contrast, not the full interval",
                     "zh": "各井相對於分區共同偏移的離散（E02d 凍結之 90 % 相對半寬，分區內各井"
                           "之中位數）；不是水位本身、不是政策對比、也不是完整區間"},
-    "ribbon_small": {"en": "zones with fewer than 5 wells are not drawn",
-                     "zh": "井數少於 5 口的分區不繪製"},
     "shared": {"en": "cannot be tested before 2030 by design",
                "zh": "依設計，2030 年前無法檢定"},
-    "shared_what": {"en": "Shared range, common to every well of the county: the hull of the "
-                          "frozen forecast, its 36 runs' county-wide deviation and the four "
-                          "recipe families' county-wide departure (model-only; not a "
-                          "predictive interval)",
-                    "zh": "全縣各井共有的範圍：凍結預測、其 36 次模擬之全縣偏移與四個配方族群之"
-                          "全縣偏移所圍成的範圍（僅模型；不是預測區間）"},
+    "shared_what": {"en": "Shared range, common to every well of the county: the spread among "
+                          "model variants only (the frozen forecast, its 36 runs' county-wide "
+                          "deviation and the county-wide departure of the FV v1 baseline "
+                          "forwards of FV v2's four truth families); it excludes forcing-year "
+                          "variation (see FV v2's forcing-year line beside it) and the "
+                          "between-zone part of the departure; model-only; not a predictive "
+                          "interval",
+                    "zh": "全縣各井共有的範圍：僅為模型變體之間的差異（凍結預測、其 36 次模擬之"
+                          "全縣偏移，以及 FV v2 四個真值族群之 FV v1 基準模擬的全縣偏移）；不含"
+                          "強迫年份變異（見旁邊 FV v2 的強迫年份說明）與分區之間的偏移；僅模型；"
+                          "不是預測區間"},
     "shared_end": {"en": "not drawn after 2027-10 (the family forwards end there)",
                    "zh": "2027-10 之後不繪製（族群模擬至此為止）"},
     "lofo": {"en": "leave-one-family-out coverage (design-time, model-only): {county} {k} of "
                    "{n} family-months inside the range built without that family",
-             "zh": "留一族群覆蓋（設計階段，僅模型）：{county} {n} 個族群月中有 {k} 個落在不含"
+             "zh": "留一族群涵蓋率（設計階段，僅模型）：{county} {n} 個族群月中有 {k} 個落在不含"
                    "該族群所建的範圍內"},
 }
 NEVER = ("calibrated", "校準", "the full interval passed", "predictive interval passed")

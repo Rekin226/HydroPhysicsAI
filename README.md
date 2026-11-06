@@ -355,10 +355,11 @@ in `docs/GPU_SERVER.md`.
   first window the interval is decided by `E02y.years23_2027-11_2029-10.v1` for 2027-11..2029-10
   (scored from 2029-01-15) and untested beyond. Under user ruling R8.13 the page's drawn run
   spread is to be replaced by a two-part band (`PB.decomposed_band.v1`, declared, not yet
-  registered or built): a per-well zone ribbon of E02d's frozen half-widths ('decided by a
-  registered test, E02d, 2028'; at least 5 wells per zone; no station ids) and a shared range
-  per county ('cannot be tested before 2030 by design'; model-only) with its
-  leave-one-family-out coverage (design-time). A design-time, in-sample read of the
+  registered or built): a per-well zone ribbon of E02d's frozen half-widths for December 2026
+  to October 2027 ('decided by a registered test, E02d, 2028'; at least 5 wells per zone; no
+  station ids) and a shared range per county ('cannot be tested before 2030 by design'; the
+  spread among model variants only, without forcing-year variation or the between-zone part)
+  with its leave-one-family-out coverage (design-time, model-only). A design-time, in-sample read of the
   pre-origin fit residuals (`DR.relative_drift.v1`) finds that each well's county-relative
   offset drifted by 0.82 m in Yunlin and 0.85 m in Changhua over about 6 years (a lower
   bound), so constant-width intervals are likely too narrow at 4-5-year leads. In this model

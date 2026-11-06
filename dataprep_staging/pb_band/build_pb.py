@@ -14,10 +14,13 @@ observation is read):
    for A, the absolute registrations for B and C); 158 wells x the window's months; lead =
    months after 2022-12. Any failure: nothing is computed or written;
 2. the per-well zone ribbon (pb_const docstring): per window, DR zone and month, the median
-   over the zone's wells of half_width_m; zones with fewer than 5 wells are not drawn;
-3. the shared range per county on window A: hull of {0, the members' county-median
-   deviation from the member mean, the four FV v2 truth families' county-median departure
-   (fb_inputs.load_mu: FV's frozen departure against E02's registered forward)};
+   over the zone's wells of half_width_m; zones with fewer than 5 wells are not drawn; the
+   page draws window A only (B and C are computed in the output, ``drawn`` false);
+3. the shared range per county on window A, the spread among model variants only: hull of
+   {0, the members' county-median deviation from the member mean, the county-median
+   departure of the FV v1 baseline forwards of FV v2's four truth families (fb_inputs.load_mu:
+   FV's frozen departure against E02's registered forward)}; it excludes forcing-year
+   variation and the between-zone part of the departure;
 4. its leave-one-family-out coverage per county (design-time, model-only, window A only):
    for each family k, is k's county-wide departure inside the hull built without k, month by
    month; per family, pooled over the four families, and (report-only) leaving out each of
@@ -144,6 +147,8 @@ def design_spec() -> dict:
             "statistic": "per window, zone and month: the median over the zone's wells with a "
                          "finite half_width_m that month (numpy.median); drawn as +/- that "
                          "value around zero (the zone's common departure)",
+            "drawn": "window A only (row C14a-r); windows B and C are computed in the output "
+                     "with drawn = false and no page label",
             "min_zone_wells": K.MIN_ZONE_WELLS,
             "min_rule": "a zone with fewer than min_zone_wells distinct wells in a window is "
                         "not drawn for that window (counted, never named by well); a month "
@@ -154,11 +159,16 @@ def design_spec() -> dict:
             "member_part": f"a_m = members[m] - mean over the {K.N_MEMBERS} rerun members "
                            "(members_wells.npz); per county and month the median over the "
                            "county's wells of a_m; min and max over m",
-            "family_part": "per truth family k in FV v2's truths (R0, Q0, R1c, X5R1): mu_k = "
-                           "fb_inputs.load_mu (osse_fv.departure of FV v1's truth forward k "
-                           "against E02's registered forward cf2c7154, datum-anchored on "
-                           "obs_mask availability) on 2026-12..2027-10; per county and month "
-                           "the median over the county's wells",
+            "family_part": "the FV v1 baseline forwards of FV v2's four truth families (R0, "
+                           "Q0, R1c, X5R1): mu_k = fb_inputs.load_mu (osse_fv.departure of "
+                           "the baseline scenario of FV v1's truth forward k against E02's "
+                           "registered forward cf2c7154, datum-anchored on obs_mask "
+                           "availability) on 2026-12..2027-10; per county and month the "
+                           "median over the county's wells",
+            "what": "the spread among model variants only (runs and recipe families); it "
+                    "excludes forcing-year variation (FV v2's registered forcing-year line "
+                    "stays beside it) and the between-zone part of the departure (a county "
+                    "median, while E02d's relative operator removes zone medians)",
             "range": "lo = min(0, member min, min_k family), hi = max(0, member max, max_k "
                      "family), metres relative to E02's registered centre",
             "after_window": "not drawn after 2027-10 (the family forwards end there)"},
@@ -187,7 +197,9 @@ def design_spec() -> dict:
                                 "county from the station code; group and sd_fit_rel_m = "
                                 "wells_e02d.csv",
                                 "drift_m = sqrt(tau2) |year_frac - anchor| (E02d dr.decisions, "
-                                "summary lead_definition)",
+                                "DR.relative_drift.v1's registered lead_definition)",
+                                "summary.json decisions = E02d binds.dr.decisions and "
+                                "lead_definition = DR.relative_drift.v1's (no fallback)",
                                 "sigma_ens_rel_m = e02dlib.sigma_ens_rel(members)",
                                 "sigma_idio_m = sqrt(sd^2 + ens^2 + drift^2)",
                                 "half_width_m = z90 sigma_idio_m",
@@ -353,9 +365,10 @@ def ribbon(arts: dict, min_wells: int = K.MIN_ZONE_WELLS) -> dict:
             county = sorted(set(s["county"].astype(str)))
             zones.append({"zone": z, "county": county[0] if len(county) == 1 else "mixed",
                           "n_wells": n, "half_width_m": hw})
-        lab = K.LABELS["ribbon_A"] if win == "A" else K.LABELS["ribbon_BC"]
-        out[win] = {"months": months, "label": dict(lab), "decided_by": K.WINDOW_TEST[win],
-                    "zones": zones, "not_drawn": skipped}
+        drawn = win in K.DRAWN_RIBBON_WINDOWS
+        out[win] = {"months": months, "drawn": drawn,
+                    "label": dict(K.LABELS["ribbon_A"]) if drawn else None,
+                    "decided_by": K.WINDOW_TEST[win], "zones": zones, "not_drawn": skipped}
     return out
 
 
@@ -466,6 +479,21 @@ def assemble(arts: dict, wells: pd.DataFrame, decisions: dict, lead_definition: 
     return out
 
 
+def summary_checks(summ: dict, e02d_doc: dict, dr_doc: dict) -> tuple[dict, str]:
+    """(decisions, lead_definition) of E02d's artefact after the checks: summary.json's
+    decisions equal E02d's registered binds.dr.decisions, and its lead_definition equals
+    DR.relative_drift.v1's registered lead_definition (no fallback)."""
+    dec = e02d_doc["binds"]["dr"]["decisions"]
+    if summ.get("decisions") != dec:
+        raise io.EngineeringFailure("summary.json decisions differ from E02d's registered dr")
+    lead = dr_doc.get("lead_definition")
+    if lead not in L.LEAD_DEFINITIONS or summ.get("lead_definition") != lead:
+        raise io.EngineeringFailure(f"summary.json lead_definition "
+                                    f"{summ.get('lead_definition')!r} != DR's registered "
+                                    f"{lead!r}")
+    return dec, lead
+
+
 def _attempt(rec: dict) -> None:
     p = io.repo_path(K.ATTEMPTS)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -492,9 +520,9 @@ def run(twin_dir, out_dir=None, prereg_dir=None) -> int:
     if target.exists():
         raise io.Refused(f"{target} exists (the band is written once)")
     e02d, _ = io.registered(K.E02D_ID, prereg_dir)
+    dr_doc, _ = io.registered(K.DR_ID, prereg_dir)
     summ = json.loads(resolve(K.SUMMARY, twin_dir).read_text(encoding="utf-8"))
-    if summ.get("decisions") != e02d["binds"]["dr"]["decisions"]:
-        raise io.EngineeringFailure("summary.json decisions differ from E02d's registered dr")
+    decisions, lead = summary_checks(summ, e02d, dr_doc)
     arts = {w: read_sigma(resolve(K.SIGMA[w], twin_dir)) for w in K.WINDOWS}
     centres = {w: pd.read_csv(resolve(K.CENTRE[w], twin_dir), dtype={"station_id": str},
                               usecols=["station_id", "date", "predicted_m"])
@@ -508,8 +536,7 @@ def run(twin_dir, out_dir=None, prereg_dir=None) -> int:
     by = {c: {"ids": w.loc[w["county"] == c, "station_id"].astype(str).tolist()}
           for c in K.COUNTIES}
     mu, _, _ = FI.load_mu(by)
-    out = assemble(arts, wells, e02d["binds"]["dr"]["decisions"],
-                   summ.get("lead_definition", "datum_centre"), members, centres, mu)
+    out = assemble(arts, wells, decisions, lead, members, centres, mu)
     out["declaration"] = {"id": K.PB_ID, "sha256": sha}
     out["inputs_sha256"] = dict(sorted(want.items()))
     out["fb_status"], out["exs_status"] = K.FB_STATUS, K.EXS_STATUS

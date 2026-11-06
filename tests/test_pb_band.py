@@ -144,6 +144,35 @@ def test_identity_refuses_a_shifted_centre_a_bad_lead_and_a_missing_row(world):
         _ident(world, arts=arts)
 
 
+def _consistent(arts, win, row, col, delta):
+    """Perturb ``col`` at one row and recompute sigma_idio / half_width consistently, so only
+    the recomputation of ``col`` itself can catch it."""
+    a = {k: v.copy() for k, v in arts.items()}
+    f = a[win]
+    f.loc[row, col] += delta
+    f.loc[row, "sigma_idio_m"] = float(np.sqrt(f.loc[row, "sd_fit_rel_m"] ** 2
+                                               + f.loc[row, "sigma_ens_rel_m"] ** 2
+                                               + f.loc[row, "drift_m"] ** 2))
+    f.loc[row, "half_width_m"] = K.Z90 * f.loc[row, "sigma_idio_m"]
+    return a
+
+
+@pytest.mark.parametrize("col", ["drift_m", "sd_fit_rel_m", "sigma_ens_rel_m"])
+def test_identity_recomputes_each_term(world, col):
+    arts = _consistent(world[2], "A", 5, col, 1e-6)
+    with pytest.raises(io.EngineeringFailure, match=col):
+        _ident(world, arts=arts)
+
+
+def test_identity_recomputes_drift_where_the_county_has_no_drift(world):
+    wells = world[0]
+    row = int(np.flatnonzero(world[2]["C"]["county"].to_numpy() == "Yunlin")[0])
+    assert not DECISIONS["Yunlin"]["include_drift"] and wells is not None
+    arts = _consistent(world[2], "C", row, "drift_m", 0.05)
+    with pytest.raises(io.EngineeringFailure, match="drift_m"):
+        _ident(world, arts=arts)
+
+
 def test_identity_refuses_a_group_change_and_a_member_change(world):
     arts = {k: v.copy() for k, v in world[2].items()}
     arts["A"].loc[0, "group"] = "Changhua:z2"
@@ -157,13 +186,17 @@ def test_identity_refuses_a_group_change_and_a_member_change(world):
 
 
 # ----------------------------------------------------------------------------- ribbon
+BIG_HW = (1.0, 1.0, 1.0, 1.0, 1.0, 10.0)      # asymmetric: median 1.0, mean 2.5
+
+
 def _tiny_art(n_small=4, n_big=6):
     rows = []
-    for z, n, hw in (("Yunlin:big", n_big, 2.0), ("Yunlin:small", n_small, 9.0)):
+    for z, n, base in (("Yunlin:big", n_big, None), ("Yunlin:small", n_small, 9.0)):
         for i in range(n):
             for m in B.month_list(*K.WINDOWS["A"]):
+                hw = BIG_HW[i] if base is None else base + 0.1 * i
                 rows.append({"station_id": f"09{z[-3:]}{i}", "county": "Yunlin", "group": z,
-                             "date": f"{m}-01", "half_width_m": hw + 0.1 * i})
+                             "date": f"{m}-01", "half_width_m": hw})
     a = pd.DataFrame(rows)
     return {"A": a, "B": a.iloc[:0].copy(), "C": a.iloc[:0].copy()}
 
@@ -173,18 +206,31 @@ def test_ribbon_median_and_zone_minimum():
     assert [z["zone"] for z in r["zones"]] == ["Yunlin:big"]
     z = r["zones"][0]
     assert z["n_wells"] == 6 and z["county"] == "Yunlin"
-    assert z["half_width_m"] == [round(float(np.median(2.0 + 0.1 * np.arange(6))), 4)] * 11
+    assert z["half_width_m"] == [1.0] * 11                     # the median, not the mean 2.5
     assert r["not_drawn"] == {"zones": 1, "wells": 4}
-    assert r["label"]["en"] == "decided by a registered test, E02d, 2028"
+    assert r["label"]["en"] == "decided by a registered test, E02d, 2028" and r["drawn"]
     assert r["decided_by"]["registration"] == K.E02D_ID
     r5 = B.ribbon(_tiny_art(n_small=5, n_big=6))["A"]
     assert [z["zone"] for z in r5["zones"]] == ["Yunlin:big", "Yunlin:small"]
 
 
-def test_ribbon_labels_by_window_and_no_ids(world):
+def test_ribbon_month_with_fewer_than_5_rows_is_null():
+    arts = _tiny_art(n_small=4, n_big=6)
+    a = arts["A"]
+    first = B.month_list(*K.WINDOWS["A"])[0]
+    drop = a[(a["group"] == "Yunlin:big") & (a["date"] == f"{first}-01")].index[:2]
+    a.loc[drop, "half_width_m"] = np.nan            # 4 finite rows left in the first month
+    z = B.ribbon(arts)["A"]["zones"][0]
+    assert z["n_wells"] == 6 and z["half_width_m"][0] is None
+    assert z["half_width_m"][1:] == [1.0] * 10
+
+
+def test_ribbon_draws_window_a_only_and_carries_no_ids(world):
     r = B.ribbon(world[2])
-    assert r["A"]["label"] == K.LABELS["ribbon_A"]
-    assert r["B"]["label"] == r["C"]["label"] == K.LABELS["ribbon_BC"]
+    assert r["A"]["label"] == K.LABELS["ribbon_A"] and r["A"]["drawn"] is True
+    assert r["B"]["drawn"] is r["C"]["drawn"] is False
+    assert r["B"]["label"] is None and r["C"]["label"] is None
+    assert K.DRAWN_RIBBON_WINDOWS == ("A",)
     assert r["B"]["decided_by"]["test_id"] == "E02yP.rel_2027-11"
     assert r["C"]["decided_by"]["not_before"] == "2030-01-15"
     assert all(len(z["half_width_m"]) == K.WINDOW_MONTHS_N[w] for w in r for z in r[w]["zones"])
@@ -203,6 +249,29 @@ def test_hull_includes_zero_members_and_families():
     assert lo.tolist() == [0.0, -0.2] and hi.tolist() == [0.5, 0.5]
     lo, hi = B.hull(np.full((2, 2), 5.0), {k: np.full(2, 5.0) for k in K.FAMILIES})
     assert lo.tolist() == [0.0, 0.0]
+
+
+def test_member_part_is_centred_county_median_by_hand():
+    # 2 members x 3 wells (2 Yunlin, 1 Changhua) x 1 month; member mean differs per well
+    X = np.array([[[1.0], [5.0], [0.0]],
+                  [[3.0], [5.0], [2.0]]])
+    out = B.member_county_dev(X, ["Yunlin", "Yunlin", "Changhua"], [0])
+    # centred: a = X - mean_m X -> wells (-1, 1), (0, 0), (-1, 1)
+    assert out["Changhua"][:, 0].tolist() == [-1.0, 1.0]
+    assert out["Yunlin"][:, 0].tolist() == [-0.5, 0.5]      # median of 2 wells
+    X3 = np.array([[[0.0], [0.0], [9.0], [0.0]], [[2.0], [2.0], [-9.0], [0.0]]])
+    o3 = B.member_county_dev(X3, ["Yunlin", "Yunlin", "Yunlin", "Changhua"], [0])
+    assert o3["Yunlin"][:, 0].tolist() == [-1.0, 1.0]       # median, not mean (+1.67/-1.67)
+
+
+def test_shared_range_by_hand():
+    T = 2
+    md = {c: np.array([[-0.3, -0.1], [0.2, 0.4]]) for c in K.COUNTIES}
+    fam = {c: {"R0": np.array([0.5, -0.6]), "Q0": np.zeros(T), "R1c": np.zeros(T),
+               "X5R1": np.zeros(T)} for c in K.COUNTIES}
+    r = B.shared_range(md, fam, ["2026-12", "2027-01"])["Yunlin"]
+    assert r["lo_m"] == [-0.3, -0.6] and r["hi_m"] == [0.5, 0.4]
+    assert r["member_lo_m"] == [-0.3, -0.1] and r["member_hi_m"] == [0.2, 0.4]
 
 
 def test_lofo_by_hand():
@@ -241,6 +310,40 @@ def test_assemble_on_synthetic_world(world):
     assert out["wells_by_county"] == {"Yunlin": 84, "Changhua": 74}
     text = json.dumps(out)
     assert not any(s in text for s in wells["station_id"])
+
+
+def test_assemble_refuses_a_station_id_in_the_output(world):
+    wells, members, arts, centres, mu = world
+    sid = wells.loc[0, "station_id"]
+    zone = wells.loc[0, "group"]
+    w2 = wells.copy()
+    w2.loc[w2["group"] == zone, "group"] = sid               # a zone named after a well
+    a2 = {k: v.assign(group=v["group"].where(v["group"] != zone, sid)) for k, v in arts.items()}
+    with pytest.raises(io.EngineeringFailure, match="station ids"):
+        B.assemble(a2, w2, DECISIONS, "origin", members, centres, mu)
+
+
+# ----------------------------------------------------------------------------- summary checks
+E02D_DOC = {"binds": {"dr": {"decisions": DECISIONS}}}
+
+
+def test_summary_checks():
+    dec, lead = B.summary_checks({"decisions": DECISIONS, "lead_definition": "origin"},
+                                 E02D_DOC, {"lead_definition": "origin"})
+    assert dec == DECISIONS and lead == "origin"
+    bad = json.loads(json.dumps(DECISIONS))
+    bad["Yunlin"]["tau2_per_year2"] = 0.011
+    with pytest.raises(io.EngineeringFailure, match="decisions"):
+        B.summary_checks({"decisions": bad, "lead_definition": "origin"}, E02D_DOC,
+                         {"lead_definition": "origin"})
+    for summ_lead, dr_lead in (("datum_centre", "origin"), (None, "origin"),
+                               ("origin", None), ("origin", "datum_centre")):
+        summ = {"decisions": DECISIONS}
+        if summ_lead is not None:
+            summ["lead_definition"] = summ_lead
+        with pytest.raises(io.EngineeringFailure, match="lead_definition"):
+            B.summary_checks(summ, E02D_DOC, {} if dr_lead is None else
+                             {"lead_definition": dr_lead})
 
 
 # ----------------------------------------------------------------------------- U7
@@ -332,6 +435,22 @@ def test_draft_validates_and_carries_the_design(tmp_path):
     assert all(len(h) == 64 for h in files.values())
     assert not any(str(r["path"]).startswith("/") for r in real["inputs"])
     assert not any(r["path"].startswith(K.TWIN_PREFIX) for r in real["inputs"])
+    # lead decisions B1/B2, S1, S2, S4, S5
+    p1 = pm["part_1_ribbon"]
+    assert p1["rows"] == {"A": "C14a-r"} and p1["windows_drawn"] == ["A"]
+    assert "E02y" not in json.dumps(p1) and "C14b" not in json.dumps(pm)
+    assert "bn_head_fy" not in pm["replaces"] and "bn_head_fy" in pm["kept"]
+    assert "cov_line" in pm["kept"]
+    what = pm["part_2_shared"]["what"]["en"]
+    assert "spread among model variants only" in what and "forcing-year" in what
+    assert "between-zone" in what and "FV v1 baseline forwards of FV v2's four truth" in what
+    assert "results/twin_forward/fv_zr0.npz" in files
+    assert files["results/twin_forward/fv_zr0.npz"].startswith("a1833d5f")
+    assert "FB builder" in real["disclosures"]["zr0"]
+    ep = real["disclosures"]["engineering_print"]
+    assert "builder's choice" in ep and "61/40/34/13/10" in ep
+    assert "A 2.157-4.904 m; B 2.267-4.954 m; C 2.408-5.014 m" in ep
+    assert "dataprep_staging/e02c/score_e02c.py" in real["frozen_code"]
 
 
 def test_draft_main_writes_nothing(tmp_path, capsys):

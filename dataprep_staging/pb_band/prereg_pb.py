@@ -67,14 +67,24 @@ BUILDER_READS = [
     "path; FV's constants T_RUN / HORIZON were read from osse_fv.py instead)",
     "NOT read or computed: any observed head, any member deviation, family departure, shared "
     "range or LOFO number, any coverage of anything"]
+PRINTED_ZONE_MEDIANS_M = {"A": (2.157, 4.904), "B": (2.267, 4.954), "C": (2.408, 5.014)}
+ZONE_WELLS = {"Changhua:mid+dist": 61, "Yunlin:dist": 40, "Yunlin:mid": 34,
+              "Changhua:prox": 13, "Yunlin:prox": 10}
 DISCLOSURES = {
     "engineering_print": "while inspecting the artefact layout on 2026-11-06 the builder "
-                         "printed the median half_width_m per DR zone for windows A, B and C "
-                         "(2.16-4.90 m in A; E02d's registered model-derived values, no "
-                         "observation). It fixes nothing in this design: the ribbon statistic "
-                         "(median over the zone's wells) and the zone minimum (5, R8.13) were "
-                         "set by the plan and the ruling before the print; every zone has 10 "
-                         "or more wells, so the minimum removes none",
+                         "printed, once, the median half_width_m per DR zone of each "
+                         "sigma_idio file, pooled over the zone's wells and the window's "
+                         "months (E02d's registered model-derived values, no observation): "
+                         "zone medians ranged "
+                         + "; ".join(f"{w} {lo:.3f}-{hi:.3f} m" for w, (lo, hi)
+                                     in PRINTED_ZONE_MEDIANS_M.items())
+                         + ". The ribbon statistic (the median over the zone's wells, per "
+                         "month) was the builder's choice, made with this print in hand. The "
+                         "5-well zone minimum is R8.13's and removes no zone: the five zones "
+                         "hold " + "/".join(str(n) for n in ZONE_WELLS.values())
+                         + " of the 158 wells. Besides this print, no member deviation, "
+                         "family departure, shared range, LOFO figure or coverage was "
+                         "computed",
     "known_to_designers": "FV v2's published per-truth Changhua coverage split (Q0 0.004, R0 "
                           "0.012, R1c 0.992, X5R1 0.996) implies that in Changhua the families "
                           "{R0,Q0} and {R1c,X5R1} depart differently from E02's forward, so "
@@ -83,41 +93,61 @@ DISCLOSURES = {
     "u7": "E02d's U7 disclosure carries over: the interval family was chosen after its "
           "2023-26 coverage was seen; the ribbon is E02d's frozen relative form of it. PB "
           "computes no coverage of the relative recipe in any month",
-    "model_only": "the shared range and its LOFO coverage are model-only (rerun members and "
-                  "FV v2's truth recipes, which share the model family): a high LOFO coverage "
-                  "says the recipes agree with each other, not that the range holds the "
-                  "aquifer's county-wide departure; the range is not a predictive interval",
+    "model_only": "the shared range and its LOFO coverage are model-only and are the spread "
+                  "among model variants only (the 36 rerun members and the FV v1 baseline "
+                  "forwards of FV v2's four truth families, which share the model family): "
+                  "they exclude forcing-year variation (FV v2's registered forcing-year line "
+                  "stays on the page beside the range) and the between-zone part of the "
+                  "departure; a high LOFO coverage says the variants agree with each other, "
+                  "not that the range holds the aquifer's county-wide departure; the range is "
+                  "not a predictive interval",
     "window_A_only": "FV v1's truth forwards end in 2027-10, so the shared range and the LOFO "
-                     "coverage exist for window A only; the ribbon covers A, B and C",
+                     "coverage exist for window A only; the page draws window A's ribbon only "
+                     "(lead decision B1/B2); B and C are computed in the output, not drawn",
     "zones": "the ribbon's zones are DR.relative_drift.v1's frozen groups (E02d's relative "
              "operator removes their leave-one-out median); the shared range is per county "
-             "(the county median of the per-well parts), as the page draws it",
-    "multiplicity": "PB scores no test; E02d and E02y decide the ribbon's wording",
+             "(the county median of the per-well parts), as the page draws it, so the "
+             "between-zone part of the departure is in neither part",
+    "zr0": "fv_zr0.npz (FV's same-code reference ZR0, read by fb_inputs.load_mu for FV's "
+           "report-only ZR0 -> ZR offset, which PB does not use) is bound at sha256 a1833d5f, "
+           "a hash recorded only by the FB builder on 2026-11-03; no registration records it",
+    "multiplicity": "PB scores no test; E02d decides the drawn ribbon's wording",
 }
 
 
 def page_mapping() -> dict:
     lab = K.LABELS
     return {
-        "replaces": "the drawn aggregate run spread of the head series (the fan-average "
-                    "layer-2 head's p10-p90 / p25-p75 run band; template bandKind 'runs_head', "
-                    "notes bn_head / bn_head_fy; ledger C14c), per ruling R8.13",
+        "replaces": "the drawn aggregate run spread of the head series only (the fan-average "
+                    "layer-2 head's p10-p90 / p25-p75 run band, template bandKind 'runs_head', "
+                    "and its note bn_head; ledger C14c), per ruling R8.13",
+        "kept": {"bn_head_fy": "FV v2's registered C14c line (ruling R7.fv_v2_page; the "
+                               "model's forcing-year range) stays on the page, shown beside the "
+                               "shared range",
+                 "cov_line": "the head series' registered coverage line (covLine) stays under "
+                             "bn_head_pb; PB removes no registered line"},
         "part_1_ribbon": {
-            "rows": {"A": "C14a-r", "B": "C14b", "C": "C14b"},
-            "what": lab["ribbon_what"], "label_A": lab["ribbon_A"], "label_BC": lab["ribbon_BC"],
-            "small_zones": lab["ribbon_small"],
+            "rows": {"A": "C14a-r"},
+            "windows_drawn": list(K.DRAWN_RIBBON_WINDOWS),
+            "not_drawn": "windows B and C are computed in the output (drawn = false), never "
+                         "on the page",
+            "what": lab["ribbon_what"], "label_A": lab["ribbon_A"],
+            "small_zones": f"a zone with fewer than {K.MIN_ZONE_WELLS} wells is not drawn "
+                           "(none at present)",
+            "zone_names": "DR's group names as stored (e.g. county:zone), untranslated, as "
+                          "the page shows zone names elsewhere (D.zoneNames)",
             "draw": "per zone (zone name and well count, never a station id), +/- the zone's "
-                    "median half-width around zero, monthly, 2026-12..2029-10",
-            "after_scoring": "E02d's (window A) and E02y's (B, C) own page_mapping decide the "
-                             "wording; on a county's fail its ribbon is withdrawn for that "
-                             "window (rel_fail); PB adds no wording"},
+                    "median half-width around zero, monthly, 2026-12..2027-10",
+            "after_scoring": "E02d's own page_mapping decides the wording; on a county's fail "
+                             "its ribbon is withdrawn (rel_fail); PB adds no wording"},
         "part_2_shared": {
             "rows": {"A": "C14c"},
             "what": lab["shared_what"], "label": lab["shared"],
             "after_window": lab["shared_end"], "lofo_line": lab["lofo"],
             "draw": "per county, [lo, hi] around zero (E02's registered centre), monthly, "
-                    "2026-12..2027-10; the LOFO line beside it (pooled inside / family-months "
-                    "per county)"},
+                    "2026-12..2027-10; FV v2's bn_head_fy line and the LOFO line (pooled "
+                    "inside / family-months per county) beside it"},
+        "scale": "both parts are drawn on one common vertical scale (metres per pixel)",
         "separate": "the two parts are drawn and labelled separately and never combined into "
                     "one band",
         "before_build": "the page is unchanged",
@@ -154,9 +184,10 @@ def draft_prereg(prereg_dir=None, *, code_sha: dict | None = None) -> dict:
                  "leave-one-family-out coverage (design-time, model-only); identity check "
                  "1e-9 m; CPU only",
         "why": "R8.13 replaces the drawn aggregate run spread with a band that shows what can "
-               "be decided: the per-well part is decided by registered tests (E02d 2028, E02y "
-               "2029-30); the shared part cannot be tested before 2030 by design. Declared "
-               "before any band number is computed (plan #16: 'PB declaration before build').",
+               "be decided: the drawn per-well part (window A) is decided by a registered "
+               "test (E02d, 2028); the shared part cannot be tested before 2030 by design. "
+               "Declared before any member, family, range or LOFO number is computed (plan "
+               "#16: 'PB declaration before build'; see disclosures.engineering_print).",
         "plan_entry": PLAN_ENTRY,
         "ruling": {"id": K.RULING_ID, "file": K.RULINGS, "sha256": K.RULINGS_SHA,
                    "decision": K.RULING_DECISION},
@@ -165,14 +196,17 @@ def draft_prereg(prereg_dir=None, *, code_sha: dict | None = None) -> dict:
                   "files_note": "results/twin/* are read from the builder's --twin-dir and "
                                 "verified by sha256 (E02d interval.artefact.files and summary "
                                 "inputs; E02y inputs); the rest are also hashed by "
-                                "write_prereg"},
+                                "write_prereg; fv_zr0.npz's sha256 was recorded only by the "
+                                "FB builder (disclosures.zr0)"},
         "page_mapping": page_mapping(),
         "status_16": {"FB": K.FB_STATUS, "EXS": K.EXS_STATUS},
         "disclosures": DISCLOSURES,
         "builder_reads": BUILDER_READS,
         "smoke_disclosure": "build_pb's functions ran on SYNTHETIC arrays only "
-                            "(tests/test_pb_band.py); no real band, range or LOFO number was "
-                            "computed",
+                            "(tests/test_pb_band.py); on real files only the per-zone median "
+                            "half-widths pooled over wells and months were printed once "
+                            "(disclosures.engineering_print); no member, family, range, LOFO "
+                            "or coverage number was computed",
         "frozen_code": fc,
         "run": {"command": f"python -I {K.BUILDER} build --twin-dir <results/twin>",
                 "output": f"{K.OUT_DIR}/{K.OUT_JSON} (written once)",
