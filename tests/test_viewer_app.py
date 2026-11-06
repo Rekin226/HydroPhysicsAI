@@ -2305,6 +2305,34 @@ def test_pb_block_only_from_the_registered_declaration(tmp_path):
         va._pb_block(str(p), str(tmp_path / "absent.jsonl"))
 
 
+def test_pb_payload_paths_exactly_with_the_pb_band_source(tmp_path, quiet, monkeypatch):
+    """R8.13: a page built with --pb-band names the source 'pb_band' (basename + sha) and its
+    numeric pb paths are exactly the ledger's payload_conditional.pb; without it, neither."""
+    from hydrophysics.twin import claims as C
+
+    index = tmp_path / "INDEX.jsonl"
+    index.write_text(json.dumps({"id": "PB.decomposed_band.v1", "sha256": "a" * 64}) + "\n")
+    monkeypatch.setattr(va, "PREREG_INDEX", str(index))
+    band = tmp_path / "pb_band.json"
+    band.write_text(json.dumps(_pb_output()))
+    want = set(C.load_ledger(allow_pending=True)["display_map"]["payload_conditional"]["pb"]
+               ["paths"])
+    got = {}
+    for key, pb in (("with", str(band)), ("without", None)):
+        sub = tmp_path / key
+        sub.mkdir()
+        _, out, _ = _build(sub, pb_band_json=pb)
+        D = C.payload_structure(out)
+        got[key] = (D["release"]["sources"],
+                    {p for p in C.numeric_paths(D)
+                     if p.startswith(("modelcard.pb.", "release.sources.pb_band"))})
+    srcs, paths = got["with"]
+    assert srcs["pb_band"]["name"] == "pb_band.json" and len(srcs["pb_band"]["sha256"]) == 64
+    assert paths == want
+    srcs, paths = got["without"]
+    assert "pb_band" not in srcs and not paths
+
+
 def test_page_draws_the_two_part_band_instead_of_the_run_spread(tmp_path, quiet):
     index = tmp_path / "INDEX.jsonl"
     index.write_text(json.dumps({"id": "PB.decomposed_band.v1", "sha256": "a" * 64}) + "\n")
@@ -2616,6 +2644,9 @@ def test_all30_range_line_and_the_irrigation_factor_only_from_2026(tmp_path, all
     got = _eval_page(page, f"() => ({START_RUN_JS})({json.dumps(cases)})")
     for lang, bare in (("en", "size depends on the pumping conversion"),
                        ("zh", "大小取決於抽水換算")):
+        # tW_r's general note names the measured start for the irrigation factor
+        assert ("from 2026: ×1.27" if lang == "en" else "2026 年起灌溉 ×0.7") in \
+            got[f"irrL_{lang}"]["r"], lang
         a = got[f"a30_{lang}"]
         assert a["s"] == 2026 and a["w30"] is all30
         assert "1.03–1.05" in a["r"] and "all30" in a["r"] and bare not in a["r"], lang

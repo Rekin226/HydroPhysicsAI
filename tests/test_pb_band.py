@@ -577,8 +577,13 @@ def test_real_draft_is_ready_or_is_what_was_registered():
     assert {k: v for k, v in doc.items() if k != "inputs"} == \
         {k: reg[k] for k in doc if k != "inputs"}
     assert len(reg["inputs"]) == len(doc["inputs"])        # registered paths may be resolved
-    assert all(str(r["path"]).endswith(d["path"]) and r["sha256"] == d.get("sha256", r["sha256"])
-               for r, d in zip(reg["inputs"], doc["inputs"], strict=True))
+    shas = {**P.frozen_code(), K.DRAFT: io.sha256(io.repo_path(K.DRAFT)),
+            K.TESTS: io.sha256(io.repo_path(K.TESTS))}
+    for r, d in zip(reg["inputs"], doc["inputs"], strict=True):
+        want = d["sha256"] if "sha256" in d else shas[d["path"]]   # every input has a sha
+        assert str(r["path"]).endswith(d["path"]), d["path"]
+        if d["path"] != K.TESTS:                 # the test file may change after registration
+            assert r["sha256"] == want, d["path"]
 
 
 @NEED_RESULTS

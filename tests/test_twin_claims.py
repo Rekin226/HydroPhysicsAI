@@ -322,7 +322,9 @@ def test_every_numeric_payload_path_is_mapped_exactly():
     for name, blk in DM().get("payload_conditional", {}).items():
         _ids_ok(f"payload_conditional.{name}", blk["paths"])
         assert not set(blk["paths"]) & set(m), name
-        if blk["source"] in srcs:
+        if blk["source"] in srcs:            # present exactly when the page names its source
+            missing = set(blk["paths"]) - paths
+            assert not missing, f"{name}: source present, paths missing {sorted(missing)}"
             m.update(blk["paths"])
         else:
             assert not set(blk["paths"]) & paths, f"{name}: paths without the source {srcs}"
@@ -1525,8 +1527,31 @@ BARE = {"en": "size depends on the pumping conversion", "zh": "大小取決於�
 IRR_CLAUSE = {"en": "size depends on the pumping conversion (×1.27 Yunlin; "
                     "X5.lever_class_share.v1, report-only)",
               "zh": "大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1，僅供報告）"}
-AT_MOST = {"en": "size depends on the pumping conversion (irrigation ×0.7: ×1.27 Yunlin)",
-           "zh": "大小取決於抽水換算（灌溉 ×0.7：雲林 ×1.27）"}
+AT_MOST = {"en": "size depends on the pumping conversion (irrigation ×0.7 from 2026: ×1.27 "
+                 "Yunlin)",
+           "zh": "大小取決於抽水換算（2026 年起灌溉 ×0.7：雲林 ×1.27）"}
+
+
+def test_pb_payload_block_is_mapped_and_sourced():
+    """R8.13: PB's numbers enter the payload only with viewer_app --pb-band (release.sources
+    'pb_band'); the conditional block maps the ribbon to C14a-r, the shared range and its
+    leave-one-family-out counts to C14c, and the source bytes to E18 (as all30)."""
+    blk = DM()["payload_conditional"]["pb"]
+    assert blk["source"] == "pb_band"
+    ps = blk["paths"]
+    assert {p for p, v in ps.items() if v == ["C14a-r"]} == {
+        "modelcard.pb.ribbon.small", "modelcard.pb.ribbon.zones[].hw[]",
+        "modelcard.pb.ribbon.zones[].n"}
+    assert ps["release.sources.pb_band.bytes"] == ["E18"]
+    for c in ("Yunlin", "Changhua"):
+        for k in (f"lofo.{c}.inside", f"lofo.{c}.n", f"shared.counties.{c}.lo[]",
+                  f"shared.counties.{c}.hi[]"):
+            assert ps[f"modelcard.pb.{k}"] == ["C14c"], k
+    assert len(ps) == 12
+    src = (C.REPO / "hydrophysics" / "twin" / "viewer_app.py").read_text(encoding="utf-8")
+    assert '"pb_band": pb_band_json if modelcard.get("pb") is not None else None' in src
+    note = L()["status_note"]
+    assert "R8.13" in note and "8cd8c44c" in note and "c23de702" in note
 
 
 def test_r8_9_review_leftovers_c13b_all30_range_and_irrigation_start():

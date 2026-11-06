@@ -1709,6 +1709,8 @@ def build(forward_npz: str, basis_npz: str | None, out_html: str,
         "all30": all30_npz if all30 is not None and n2_unit is not None else None,
         "all30_provenance": (all30.sidecar_path if all30 is not None and n2_unit is not None
                              else None),
+        # ruling R8.13: PB's band file, named exactly when the page carries modelcard.pb
+        "pb_band": pb_band_json if modelcard.get("pb") is not None else None,
         **{f"result_{k}": p for k, (_, p) in PAGE_RESULTS.items() if k in results},
         "temporal": temporal_npz, "column": column_csv, "basemap": basemap_npz,
         "alternative": alt_npz, "alternative_theta": alt_theta,
