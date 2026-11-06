@@ -475,7 +475,10 @@ in `docs/GPU_SERVER.md`.
   target. The only earlier Changhua head window, 2008-09, was checked once by a count-only look
   on the vendor head cache (`I1.CH_backcast_2008_09.availability.v1`, round 8): none of its 24
   Changhua wells has 18 available months there, so the last possible Changhua head window is
-  checked and not decidable. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
+  checked and not decidable. The planned backcast on 2010-11, the only months no theta has fitted,
+  `I1.backcast_2010_11.v1`, is not decidable by design: its primary's synthetic G0 gives power
+  0.53 < 0.6 (false pass 0.06), so the whole test would be report-only; by user ruling R8.15 it
+  was stopped before any 2010-11 head was read (window unspent). An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
   exploratory, narrowing only) puts the Yunlin contrast in the same regression: the Changhua
   slope becomes 0.15 [-0.04, 0.45], so the direction is not separable from Yunlin spill-over.
   The mechanism check CH-J (the secondary of `I1.CHX.v1`, report-only for good) did not reject

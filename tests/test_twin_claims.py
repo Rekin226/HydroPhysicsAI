@@ -1469,3 +1469,33 @@ def test_round8_changhua_2008_09_window_is_closed_as_not_decidable():
         assert f["passed"] is False and f["n_eligible"] == 0 and f["nest_included"]["n"] == 0
         assert f["n_changhua_candidates"] == 24 and f["constants_sha256"].startswith("d4b9ab77")
         assert f["on_stop"] == wording.strip("'")
+
+
+def test_round8_2010_11_backcast_is_closed_by_ruling_r8_15():
+    """Round-8 #12: the 2010-11 backcast's synthetic G0 failed (power 0.53 < 0.6), so by user
+    ruling R8.15 it stopped before any 2010-11 head was read. The declared line is on E04, E07
+    and E26 and in README Limits; R8.15 is a recorded ruling; no status changes."""
+    cl, rid = CL(), "user ruling 2026-11-06 (thirteenth set) (R8.15)"
+    line = ("I1.backcast_2010_11.v1 not decidable by design: its primary's synthetic G0 gives "
+            "power 0.53 < 0.6 (false pass 0.06), so the whole test would be report-only; by "
+            "user ruling R8.15 it was stopped before any 2010-11 head was read (window unspent).")
+    rulings = {r["id"]: r["text"] for r in L()["rulings"]}
+    assert rid in rulings and "user_rulings_2026-11-06.json (sha256 c2d3b0f3)" in rulings[rid]
+    assert "Stop before any 2010-11 head is read" in rulings[rid]
+    g0 = "results/twin_runs/chx/backcast_2010_11/g0/g0_g1.json"
+    for cid in ("E04", "E07", "E26"):
+        c = cl[cid]
+        for k in (line, "sha b0622bc9", "sha 1f592b31", "sha c2d3b0f3", "seed 71120611",
+                  "I1BC11:ls_cache_dates_2009_2011", "no status change"):
+            assert k in c["notes"], (cid, k)
+        assert g0 in c["cites"]["reports"] and rid in c["ruling_also"], cid
+    assert _st("E04") == {"D"} and _st("E07") == {"N"} and _st("E26") == {"S"}
+    readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
+    assert line.split(": ", 1)[1] in readme and "`I1.backcast_2010_11.v1`" in readme
+    assert "I1.backcast_2010_11" not in C.template_src()
+    assert "I1.backcast_2010_11.v1" not in L()["registry_hashes"]       # never registered
+    path = C.REPO / g0
+    if path.exists():                      # the failed gate, as recorded
+        g = json.loads(path.read_text(encoding="utf-8"))
+        assert C.sha256(path).startswith("b0622bc9") and g["gate"]["decidable"] is False
+        assert round(g["gate"]["power"], 2) == 0.53 and round(g["gate"]["false_pass"], 2) == 0.06
