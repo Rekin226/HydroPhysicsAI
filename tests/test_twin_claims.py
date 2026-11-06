@@ -1081,11 +1081,13 @@ def test_round8_rulings_and_rows_follow_the_scored_reports():
     row C14f-r (N), FB is row E29 (N), and no model-only study supports anything."""
     ids = {r["id"] for r in L()["rulings"]}
     for rid in ("R8.1a", "R8.1b", "R8.1c", "R8.1d", "R8.1e", "R8.1f", "R8.2", "R8.3", "R8.4a",
-                "R8.5", "R8.7", "R8.8", "R8.9", "R8.10", "R8.11", "R8.14"):
+                "R8.5", "R8.7", "R8.8", "R8.9", "R8.10", "R8.11", "R8.13", "R8.14"):
         assert _r8(rid) in ids, rid
     # R8.7 (forecast of record, C30 split) is wired since 2026-11-06 (test_r8_7_*); R8.9 (the
     # all30 headline lever) since 2026-11-06 (test_r8_9_*)
-    for rid in ("R8.6a", "R8.6b", "R8.6c", "R8.13"):   # wired separately
+    # R8.13 (PB's two-part head band) is wired with the PB page change (C14c)
+    assert _r8("R8.13") in _also(CL()["C14c"])
+    for rid in ("R8.6a", "R8.6b", "R8.6c"):   # wired separately
         assert _r8(rid) not in ids, rid
     assert all("user_rulings_2026-11-03.json (sha256 ec610b69)" in r["text"]
                for r in L()["rulings"] if r["id"].startswith("user ruling 2026-11-03"))
@@ -1525,6 +1527,32 @@ IRR_CLAUSE = {"en": "size depends on the pumping conversion (×1.27 Yunlin; "
               "zh": "大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1，僅供報告）"}
 AT_MOST = {"en": "size depends on the pumping conversion (irrigation ×0.7: ×1.27 Yunlin)",
            "zh": "大小取決於抽水換算（灌溉 ×0.7：雲林 ×1.27）"}
+
+
+def test_r8_9_review_leftovers_c13b_all30_range_and_irrigation_start():
+    """#14 review leftovers: C13b quotes evc_pr_ch_class's all30 wording; with all30 selected
+    the head tile's range line is the all30 one (x1.03-1.05, never 'size depends on the
+    pumping conversion'); x1.27 attaches only to irrigation x0.7 from 2026-01. EN and ZH."""
+    cl = CL()
+    w = cl["C13b"]["wording_en"]
+    assert "the all-class x0.7 cut (all30) differs x1.03-1.05" in w
+    assert "all-class levers differ" not in w
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    assert "the all-class ×0.7 cut (all30) differs ×1.03–1.05" in en["evc_pr_ch_class"]
+    for lang, t in (("en", en), ("zh", zh)):
+        assert "1.03–1.05" in t["tW_r_w30"] and "all30" in t["tW_r_w30"], lang
+        assert BARE[lang] not in t["tW_r_w30"] and "1.27" not in t["tW_r_w30"], lang
+        assert t["tW_r_w30"].split("（N" if lang == "zh" else "(N;")[0] == \
+            t["tW_r"].split("（N" if lang == "zh" else "(N;")[0], lang
+    for cid in ("C01", "C01-w", "C01-sz"):
+        assert "i18n:tW_r_w30" in cl[cid]["text_keys"], cid
+    js = C.template_js()
+    assert "const IRR30_FROM = 2026;" in js
+    assert 'isIrr30m(f, yr) ? tr("hl_sz_irr") : tr("hl_sz_cls")' in C.function_source("hlSize")
+    tiles = C.function_source("renderTiles")
+    assert 'isIrr30m(S.f, M.starts[S.start]) ? tr("tW_cls_irr")' in tiles
+    assert 'all30 ? tr("tW_r_w30") : tr("tW_r")' in tiles
+    assert "tW_r_w30" in C.function_keys("renderTiles")
 
 
 def test_r8_9_all30_is_the_headline_lever_and_the_class_levers_are_labelled_en_zh():

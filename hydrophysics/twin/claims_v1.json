@@ -238,6 +238,10 @@
    "text": "Adopt the END-GOAL convention (withdrawn-with-reason / registered-undecidable rows count as honestly narrowed)? Decision: Adopted as bookkeeping only, always shown beside the official rubric figure and the disclosure downgrades, never alone; no status changes. Applies to: progress rubric (F4). Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
   },
   {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.13)",
+   "text": "Replace the drawn aggregate run spread with the two-part band? Decision: Yes: per-well zone ribbon 'decided by a registered test, E02d, 2028' (min 5 wells per zone, no station ids) plus the shared range 'cannot be tested before 2030 by design'. Applies to: PB (round-8 rank 16), page band. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
    "id": "user ruling 2026-11-03 (twelfth set) (R8.14)",
    "text": "Is E02z (strict year-2/3 level rule on E02y's windows) covered by R7.heads_years23, implemented via the GOV template without editing uses.py? Decision: Confirmed. Applies to: E02z.level_years23, GOV.heads_window_product.v1. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
   },
@@ -248,7 +252,7 @@
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "e5c28571c23633d6a40a20280260c119eee12e9f9e174a7f2fd5d19aeb8ff485",
+  "template_sha256": "ad3692d35f0fcd5334c158bbb7b671f5c2d401706cd052f37428bd8e85f3bb47",
   "html": "results/twin/twin_app_20261106r14b.html",
   "html_note": "gitignored candidate build of the template under ruling R8.9 and the lead's review decisions (a: x1.03-1.05 only for all30; b: x1.27 only on the irrigation x0.7 lever, the bare label elsewhere), not promoted and never to be promoted, built WITHOUT --all30 (the all30 scenario forward does not exist yet): without n2Unit.all30 the page shows no headline lever, no all-pumping preset and none of the headline-lever lines, and differs from 20261106e only by the per-policy conversion clauses (hl_sz_irr, hl_sz_cls, hl_sz_all, tW_cls_irr, tW_cls, tW_r, def_tW, rank_limit, evc_pr_ch_class). Its payload equals 20261106e's except release.code_sha256. Built with the command of results/twin/twin_app_20261106e.build.log with --out changed to results/twin/twin_app_20261106r14b.html (log beside it; r14a is the build before the review fixes). The final page adds --all30 results/twin_forward/all30_page.npz after the lead's GPU forward (dataprep_staging/all30/run_all30.py); the page of record stays results/twin/twin_app.html (sha256 204985fd) until then (a promotion guard test refuses an R8.9-template page of record without n2Unit.all30).",
   "forward": "datum_gate_innov.npz",
@@ -416,6 +420,7 @@
     "i18n:d_head",
     "i18n:d_head_s",
     "i18n:def_tW",
+    "i18n:def_tW_w30",
     "i18n:evc_pr_heads_size",
     "i18n:fs_arm_s1",
     "i18n:fs_arm_s2",
@@ -423,18 +428,18 @@
     "i18n:fs_p90",
     "i18n:fs_pass",
     "i18n:fs_s2_only",
+    "i18n:hl_pol",
+    "i18n:hl_sz_w30",
+    "i18n:hl_w30",
     "i18n:start_note_fs",
     "i18n:tHead",
-    "i18n:tW_d",
-    "tile:tW",
-    "i18n:tW_r",
-    "i18n:hl_pol",
-    "i18n:hl_w30",
-    "i18n:tW_w30",
     "i18n:tW_cls",
-    "i18n:hl_sz_w30",
-    "i18n:def_tW_w30",
-    "i18n:tW_cls_irr"
+    "i18n:tW_cls_irr",
+    "i18n:tW_d",
+    "i18n:tW_r",
+    "i18n:tW_r_w30",
+    "i18n:tW_w30",
+    "tile:tW"
    ],
    "doc_anchors": {}
   },
@@ -467,14 +472,15 @@
    },
    "notes": "X5.n2_reading.v1 (registered sha bca3540e; scored once 2026-11-03, report results/dataprep/reports/X5.n2_reading.v1/report.json sha 80bba98e; seed 42643811; the shared scorer f8990d61 wrapped, not edited; the harness reproduced N2's page-model replay to 0.0 m; exact plumbing beta = 1 on all 7 replays) reads 'informative', not decisive. Registered sentence (thresholds.reading.wording.informative, filled): 'N2's rule is informative but not decisive for Yunlin (X5.n2_reading.v1): false pass 0.20 < 0.25, but wrong-size pass at k = 0.5 / 2 0.75 / 0.01 or 90 % interval coverage at k = 1 0.84 misses its threshold (0.25 / 0.80); an N2 verdict is printed with these rates; power 0.95 (0.15 with the canal confounder); no forcing error between X1 and the true pumping is modelled in the gating cells (report-only forcing-error cell, lambda 0.8: power 0.50)'. Rates by confounder condition (the registered sentence prints the worst case of each): false pass P(supported | k = 0) 0.000 at rho 0 and 0.202 at rho -0.87 (the canal confounder); wrong-size pass at k = 0.5 0.126 at rho 0 and 0.752 at rho -0.87, at k = 2 0.010 at rho 0 and 0.000 at rho -0.87; 90 % interval coverage of k = 1 0.836 at rho 0 and 0.002 at rho -0.87; power P(supported | k = 1) 0.948 at rho 0 and 0.148 at rho -0.87. Under the canal confounder the rule cannot decide: there a true response passes less often (0.148) than no response (0.202), and the interval almost never covers the true size; a response is detectable only without that confounder. The report-only forcing-error cell (lambda 0.8) gives power 0.504. C01-w is D with measured decidability, worded 'informative' with the rates beside any N2 verdict; whether 'informative' counts as 'the test can decide' under the section-21 rubric is open (see evidence section 22). Round 8 rank 14 (ruling R8.9): the headline lever is all30, the all-pumping cut, because N2 tests total recorded anomalies, not classes; N2 decides the within-window response (D), not the size of that lever (C01-sz). No status moves.",
    "text_keys": [
-    "i18n:evc_n2_rd",
-    "i18n:tW_r",
     "i18n:def_tW",
+    "i18n:def_tW_w30",
+    "i18n:evc_n2_rd",
     "i18n:hl_pol",
-    "tile:tW",
-    "i18n:hl_w30",
     "i18n:hl_sz_w30",
-    "i18n:def_tW_w30"
+    "i18n:hl_w30",
+    "i18n:tW_r",
+    "i18n:tW_r_w30",
+    "tile:tW"
    ],
    "doc_anchors": {}
   },
@@ -508,20 +514,21 @@
    "text_keys": [
     "i18n:d_head",
     "i18n:d_head_s",
-    "i18n:tW_d",
+    "i18n:def_tW",
+    "i18n:def_tW_w30",
     "i18n:evc_pr_heads_size",
     "i18n:hl_pol",
-    "i18n:def_tW",
-    "i18n:tW_r",
-    "tile:tW",
-    "i18n:hl_w30",
-    "i18n:tW_w30",
-    "i18n:tW_cls",
-    "i18n:hl_sz_irr",
     "i18n:hl_sz_all",
+    "i18n:hl_sz_irr",
     "i18n:hl_sz_w30",
+    "i18n:hl_w30",
+    "i18n:tW_cls",
     "i18n:tW_cls_irr",
-    "i18n:def_tW_w30"
+    "i18n:tW_d",
+    "i18n:tW_r",
+    "i18n:tW_r_w30",
+    "i18n:tW_w30",
+    "tile:tW"
    ],
    "doc_anchors": {
     "README.md": {
@@ -1033,7 +1040,7 @@
    "status_before": "W",
    "status_current": "W",
    "changes": true,
-   "wording_en": "'Changhua class-specific levers: withdrawn under every outcome': an irrigation-only lever differs x1.39 between two energy-to-volume conversions whose hindcasts correlate 0.98, while all-class levers differ x1.03-1.05 (X5.lever_class_share.v1, model-only declaration). No N2C verdict changes it.",
+   "wording_en": "'Changhua class-specific levers: withdrawn under every outcome': an irrigation-only lever differs x1.39 between two energy-to-volume conversions whose hindcasts correlate 0.98, while the all-class x0.7 cut (all30) differs x1.03-1.05 (X5.lever_class_share.v1, model-only declaration). No N2C verdict changes it.",
    "cites": {
     "registrations": [
      "X5.lever_class_share.v1",
@@ -1231,7 +1238,7 @@
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (d)",
-   "notes": "The rename stands on pre-origin grounds alone: the band is a parameter spread with no registered coverage test (coverage.py: 'not a preregistered prospective validation'). The 2023-26 coverage is an after-the-fact measurement already published; it did not drive the rename (U7). The registered synthetic coverage tests A1.coverage_confirm.v1 and A1r2.coverage3_confirm.v1 concern recovery on synthetic data, not this band's coverage of observations, so they are context, not support. Forcing-year range at leads 47-58 (2026-11..2027-10), min..max over the 11 replayed sequences: N2-unit mean -0.564..+0.614 m, fan layer-2 mean -0.385..+0.426 m (report sha facf4a10); pumping years only, rain at climatology.",
+   "notes": "The rename stands on pre-origin grounds alone: the band is a parameter spread with no registered coverage test (coverage.py: 'not a preregistered prospective validation'). The 2023-26 coverage is an after-the-fact measurement already published; it did not drive the rename (U7). The registered synthetic coverage tests A1.coverage_confirm.v1 and A1r2.coverage3_confirm.v1 concern recovery on synthetic data, not this band's coverage of observations, so they are context, not support. Forcing-year range at leads 47-58 (2026-11..2027-10), min..max over the 11 replayed sequences: N2-unit mean -0.564..+0.614 m, fan layer-2 mean -0.385..+0.426 m (report sha facf4a10); pumping years only, rain at climatology. Round 8 (user ruling R8.13; PB.decomposed_band.v1, declaration, built only after registration): the drawn run spread of the head series is replaced by PB's two parts, window A's per-well zone ribbon (C14a-r, 'decided by a registered test, E02d, 2028') and the shared range per county ('cannot be tested before 2030 by design'; the spread among model variants only) with its leave-one-family-out line (design-time, model-only); the coverage line (cov_line) and FV v2's forcing-year clause are kept, the clause as bn_head_fy_pb, verbatim from FV v2's registered C14c wording (sha f7e35a17, readings.reading_2.wording.c14c) without the run-spread sentence; bn_head_fy shows only when PB is absent.",
    "doc_anchors": {},
    "id": "C14c",
    "where": "page head time-series bands, coverage line, evidence lines",
@@ -1239,7 +1246,7 @@
    "status_before": "N",
    "status_current": "N",
    "changes": true,
-   "wording_en": "'run spread, a parameter spread, not a predictive interval': an interval for a mean of correlated wells is untested, and the band is 'not tested by E02 (a different interval)' (E02c page_mapping.before_scoring.C14_run_spread) and a cell without a well has no datum. The runs' 2023-26 coverage stays an after-the-fact measurement ('covered {a} of {span} observations, measured after the fact'); 'no band ... for averages over N2's wells or townships ... no held data can calibrate one (registered narrowing U1.no_band.v1)', shown only once U1.no_band.v1 is in the registry (viewer_app registrations.no_band); the fan average is not listed there, because its head run spread stays on the head series under this wording. Round 7 (FV.decidability.v2 reading_2.C14c, post-failure, exploratory; ruling R7.fv_v2_page): once the reading is scored, the fan-average head band note is reworded (bn_head_fy) with the declared text 'run spread, a parameter spread, plus the model's own forcing-year range (-0.56 to +0.61 m for the N2-unit mean and -0.39 to +0.43 m for the fan layer-2 mean in 2026-11..2027-10; pumping years only, rain at climatology); not a predictive interval; the model's amplitude is damped (about 0.73) (post-failure exploratory, FV.decidability.v2)'; the other C14c keys keep their wording.",
+   "wording_en": "'run spread, a parameter spread, not a predictive interval': an interval for a mean of correlated wells is untested, and the band is 'not tested by E02 (a different interval)' (E02c page_mapping.before_scoring.C14_run_spread) and a cell without a well has no datum. The runs' 2023-26 coverage stays an after-the-fact measurement ('covered {a} of {span} observations, measured after the fact'); 'no band ... for averages over N2's wells or townships ... no held data can calibrate one (registered narrowing U1.no_band.v1)', shown only once U1.no_band.v1 is in the registry (viewer_app registrations.no_band); the fan average is not listed there, because its head run spread stays on the head series under this wording. Round 7 (FV.decidability.v2 reading_2.C14c, post-failure, exploratory; ruling R7.fv_v2_page): once the reading is scored, the fan-average head band note is reworded (bn_head_fy) with the declared text 'run spread, a parameter spread, plus the model's own forcing-year range (-0.56 to +0.61 m for the N2-unit mean and -0.39 to +0.43 m for the fan layer-2 mean in 2026-11..2027-10; pumping years only, rain at climatology); not a predictive interval; the model's amplitude is damped (about 0.73) (post-failure exploratory, FV.decidability.v2)'; the other C14c keys keep their wording. Round 8 (user ruling R8.13; PB.decomposed_band.v1, declaration, built only after registration): the drawn run spread of the head series is replaced by PB's two parts, window A's per-well zone ribbon (C14a-r, 'decided by a registered test, E02d, 2028') and the shared range per county ('cannot be tested before 2030 by design'; the spread among model variants only) with its leave-one-family-out line (design-time, model-only); the coverage line (cov_line) and FV v2's forcing-year clause are kept, the clause as bn_head_fy_pb, verbatim from FV v2's registered C14c wording (sha f7e35a17, readings.reading_2.wording.c14c) without the run-spread sentence; bn_head_fy shows only when PB is absent.",
    "cites": {
     "registrations": [
      "U1.no_band.v1",
@@ -1260,14 +1267,23 @@
    "text_keys": [
     "i18n:bn_head",
     "i18n:bn_head_fy",
+    "i18n:bn_head_fy_pb",
+    "i18n:bn_head_pb",
     "i18n:cov_line",
     "i18n:evc_band_none",
     "i18n:evc_cov",
     "i18n:fv2_forcing_clim",
-    "i18n:fv2_forcing_rep"
+    "i18n:fv2_forcing_rep",
+    "i18n:pb_lofo",
+    "i18n:pb_lofo_c",
+    "i18n:pb_range",
+    "i18n:pb_see_fy",
+    "i18n:pb_shared_h",
+    "i18n:pb_shared_what"
    ],
    "ruling_also": [
-    "user ruling 2026-11-01 (sixth set) (R7.fv_v2_page)"
+    "user ruling 2026-11-01 (sixth set) (R7.fv_v2_page)",
+    "user ruling 2026-11-03 (twelfth set) (R8.13)"
    ]
   },
   {
@@ -4771,6 +4787,48 @@
     "C01",
     "C01-w",
     "C01-sz"
+   ],
+   "bn_head_pb": [
+    "C14c"
+   ],
+   "pb_title": [
+    "C14a-r",
+    "C14c"
+   ],
+   "pb_ribbon_h": [
+    "C14a-r"
+   ],
+   "pb_ribbon_what": [
+    "C14a-r"
+   ],
+   "pb_wells": [
+    "C14a-r"
+   ],
+   "pb_shared_h": [
+    "C14c"
+   ],
+   "pb_shared_what": [
+    "C14c"
+   ],
+   "pb_lofo": [
+    "C14c"
+   ],
+   "pb_lofo_c": [
+    "C14c"
+   ],
+   "pb_range": [
+    "C14c"
+   ],
+   "bn_head_fy_pb": [
+    "C14c"
+   ],
+   "pb_small": [
+    "C14a-r"
+   ],
+   "tW_r_w30": [
+    "C01",
+    "C01-w",
+    "C01-sz"
    ]
   },
   "card_rows": {
@@ -5249,6 +5307,13 @@
     "C01",
     "C01-w",
     "C01-sz"
+   ],
+   "renderPB": [
+    "C14a-r",
+    "C14c"
+   ],
+   "fyClause": [
+    "C14c"
    ]
   },
   "arrays": {

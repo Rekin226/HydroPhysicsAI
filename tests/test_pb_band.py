@@ -565,10 +565,20 @@ def test_build_refuses_changed_frozen_code(tmp_path):
 
 # ----------------------------------------------------------------------------- real registry
 @NEED_RESULTS
-def test_real_draft_is_ready():
+def test_real_draft_is_ready_or_is_what_was_registered():
     doc = P.draft_prereg()
-    assert P.problems(doc) == []
-    assert io.index_record(K.PB_ID) is None
+    if io.index_record(K.PB_ID) is None:
+        assert P.problems(doc) == []
+        return
+    # registered: the only readiness problem is that, and the registered document is this
+    # draft (every drafted field except the inputs, which write_prereg hashes and sizes)
+    assert P.problems(doc) == [f"{K.PB_ID} is already registered"]
+    reg, _ = io.registered(K.PB_ID, frozen=K.FROZEN)
+    assert {k: v for k, v in doc.items() if k != "inputs"} == \
+        {k: reg[k] for k in doc if k != "inputs"}
+    assert len(reg["inputs"]) == len(doc["inputs"])        # registered paths may be resolved
+    assert all(str(r["path"]).endswith(d["path"]) and r["sha256"] == d.get("sha256", r["sha256"])
+               for r, d in zip(reg["inputs"], doc["inputs"], strict=True))
 
 
 @NEED_RESULTS
@@ -577,3 +587,60 @@ def test_real_draft_is_ready():
 def test_bound_files_hash_in_this_checkout():
     want = B.bound_files()
     assert B.sha_problems(B.file_shas(want, REPO / "results" / "twin"), want) == []
+
+
+# ----------------------------------------------------------------------------- kept FV v2 clause
+#: the page's placeholders for pb_const's registered format fields, and FV v2's {lbl} as the
+#: page renders it in bn_head_fy (EN and ZH)
+CLAUSE_FIELDS = {"{n2_lo:+.2f}": "{n2lo}", "{n2_hi:+.2f}": "{n2hi}", "{l2_lo:+.2f}": "{l2lo}",
+                 "{l2_hi:+.2f}": "{l2hi}", "{forcing}": "{forcing}"}
+CLAUSE_LBL = {"en": "post-failure exploratory, FV.decidability.v2",
+              "zh": "失敗後探索性研究，FV.decidability.v2"}
+
+
+def _template_key(lang: str, key: str) -> str:
+    import re
+
+    text = (REPO / "hydrophysics" / "twin" / "app" / "template.html").read_text(encoding="utf-8")
+    en, zh = text.split("const T = {")[1].split("\nzh: {")
+    block = en if lang == "en" else zh.split("\n}};")[0]
+    m = re.findall(rf'(?<![\w"]){key}:\s*"([^"]*)"', block)
+    assert len(m) == 1, (lang, key, m)
+    return m[0]
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_template_fy_clause_is_the_registered_clause_verbatim(lang):
+    clause = K.FV2_C14C_CLAUSE_EN if lang == "en" else K.FV2_C14C_CLAUSE_ZH
+    for f, page in CLAUSE_FIELDS.items():
+        assert f in clause, f
+        clause = clause.replace(f, page)
+    clause = clause.replace("{lbl}", CLAUSE_LBL[lang])
+    if lang == "en":
+        clause = clause[0].upper() + clause[1:]
+    page = _template_key(lang, "bn_head_fy_pb")
+    assert page == clause + ("." if lang == "en" else "。")
+    # the full line keeps the same {lbl} rendering, so the clause is that line's clause
+    assert CLAUSE_LBL[lang] in _template_key(lang, "bn_head_fy")
+
+
+def _fv2_doc(en: str, zh: str) -> dict:
+    return {"id": K.FV2_ID, "wp": "FV", "kind": "declaration",
+            "truths": [{"tag": t, "v1_forward": {"sha256": "0" * 64}} for t in K.FAMILIES],
+            "readings": {"reading_2": {"wording": {"c14c": {"en": en, "zh": zh}}}}}
+
+
+def test_readiness_checks_the_kept_clause_verbatim(tmp_path):
+    doc = P.draft_prereg(code_sha={f: "0" * 64 for f in K.FROZEN})
+    msg = "does not hold the kept clause verbatim"
+    good = tmp_path / "good"
+    good.mkdir()
+    _register_fake(good, _fv2_doc("run spread, a parameter spread, plus " +
+                                  K.FV2_C14C_CLAUSE_EN, "前文" + K.FV2_C14C_CLAUSE_ZH))
+    assert not [b for b in P.problems(doc, good) if msg in b]
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    _register_fake(bad, _fv2_doc(K.FV2_C14C_CLAUSE_EN.replace("damped", "reduced"),
+                                 K.FV2_C14C_CLAUSE_ZH))
+    hits = [b for b in P.problems(doc, bad) if msg in b]
+    assert hits == [f"FV v2's registered C14c wording (en) {msg}"]

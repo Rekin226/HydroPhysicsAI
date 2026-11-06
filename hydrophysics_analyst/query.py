@@ -559,6 +559,17 @@ def _prov(b: PageBundle, pol: PolicyFields, kp: dict, lang: str) -> tuple[str, l
 
 
 IRR30 = (0.7, 1.0, 1.0, 1.0, 1.0, 1.0)
+IRR30_FROM = 2026          # x1.27 was measured for the irrigation x0.7 lever from 2026-01 only
+
+
+def _irr30m(f, yr) -> bool:
+    return _near(f, IRR30) and int(yr) == IRR30_FROM
+
+
+def _all30_2026(pol, f, yr) -> bool:
+    """``renderTiles``' all30 range line: the headline run, or all30 from 2026 on the fast
+    estimate."""
+    return bool(pol.w30) or (_near(f, (0.7,) * len(f)) and int(yr) == 2026)
 
 
 def _near(f, g) -> bool:
@@ -575,7 +586,7 @@ def hl_size(c: Ctx, pol: PolicyFields, f, yr: int, lang: str) -> tuple[str, str]
     if pol.w30:
         k = "hl_sz_w30"
     elif _near(f, IRR30):
-        k = "hl_sz_irr"
+        k = "hl_sz_irr" if _irr30m(f, yr) else "hl_sz_cls"
     elif not _uniform_cut(f):
         k = "hl_sz_cls"
     elif _near(f, (0.7,) * len(f)) and int(yr) == 2026:
@@ -601,8 +612,10 @@ def tile_w(b: PageBundle, p: Policy, year: int, lang: str = "en") -> tuple[str, 
                                    "H": c.years[c.Y - 1]}) if w else ""
         pre = ""
     else:
-        rk, r = "tW_r", c.tr(lang, "tW_r")
-        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _near(p.f, IRR30) else
+        sy = c.starts[pol.si]
+        rk = "tW_r_w30" if _all30_2026(pol, p.f, sy) else "tW_r"
+        r = c.tr(lang, rk)
+        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _irr30m(p.f, sy) else
               "" if _uniform_cut(p.f) else "tW_cls")
         pre = c.tr(lang, pk) if pk else ""
     d = pre + c.tr(lang, "tW_d", {"year": c.years[y],
@@ -676,9 +689,11 @@ def headline(b: PageBundle, p: Policy, year: int, lang: str = "en") -> QueryResu
                                 functions=("headWhere",), quantity="head_change",
                                 region="n2_yunlin_wells" if hw["n2"] else "fan_l2",
                                 aggregation="mean_own_layer" if hw["n2"] else "cell_mean"))
+        sy = c.starts[pol.si]
         if not isB:
-            snippets.append(Snippet("tW_r", lang, c.tr(lang, "tW_r")))
-        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _near(p.f, IRR30) else
+            rk = "tW_r_w30" if _all30_2026(pol, p.f, sy) else "tW_r"
+            snippets.append(Snippet(rk, lang, c.tr(lang, rk)))
+        pk = ("tW_w30_src" if pol.w30 else "tW_cls_irr" if _irr30m(p.f, sy) else
               "" if _uniform_cut(p.f) else "tW_cls") if not isB else ("tW_w30" if w30(c) else "")
         if pk:
             w = w30(c)
