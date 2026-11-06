@@ -367,17 +367,20 @@ def cheapest_for_head(b, p, lang):
 
 
 def how_sure(b, p, lang):
-    """How far the result is tested: the page's evidence line and registered-test lines. W
-    claims these lines merely mention are not cited (a W claim is never listed beside an answer)."""
+    """How far the result is tested: the page's evidence line, the head tile's reading, every
+    line of the trust drawer except its band keys, and the head series' band at the page's
+    default view (the R8.13 two-part band with its coverage line). W claims these lines merely
+    mention are not cited (a W claim is never listed beside an answer)."""
     import dataclasses as dc
     import datetime as dt
 
     from hydrophysics.twin import claims as C
     c = Q.ctx(b)
     res = BD.bind(Q.evidence(b, lang), b)
+    band = BD.bind(Q.head_band(b, lang), b)
     st = {x["id"]: x["status_current"] for x in b.ledger["claims"]}
     spans = []
-    for s in spans_from(res, block="evidence"):
+    for s in spans_from(res, block="evidence") + spans_from(band, block="evidence"):
         keep = tuple(x for x in s.claims if "W" not in C.codes(st.get(x, "")))
         spans.append(dc.replace(s, claims=keep))
     today = dt.date.fromisoformat(os.environ.get("ANALYST_TODAY", dt.date.today().isoformat()))
@@ -386,7 +389,7 @@ def how_sure(b, p, lang):
     if due:
         spans.append(Span("frame", S(lang, "frame_scoring_due"), key="frame_scoring_due", block="meta"))
     link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1], lang=lang, tab="trust")
-    return _answer(b, "how_sure", p, lang, spans, [res], link)
+    return _answer(b, "how_sure", p, lang, spans, [res, band], link)
 
 
 REFUSE_PAGE = {   # the page's own sentence shown with a refusal, and the claims it cites

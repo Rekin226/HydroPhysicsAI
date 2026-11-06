@@ -51,6 +51,15 @@ python -m hydrophysics_analyst eval --page <page.html> --arms rules,opus-low --r
 pytest -q tests/test_analyst_*.py
 ```
 
+**Question sets are frozen.** `hydrophysics_analyst/evalsets/MANIFEST.json` holds the sha256 of
+every set; `eval` refuses a set that is not listed there or whose bytes changed. A held-out set
+(`role: heldout`) runs once, on the page it was frozen for, bound strictly: the attempt is
+appended to `evalsets/attempts.jsonl` before the first question is routed, a completed attempt
+refuses any rerun, and an unfinished one reruns only with `--retry-reason` (an engineering
+retry; report every attempt). `eval_questions_heldout_v1.jsonl` is spent (its first run on
+2026-11-01 is the fair score); `eval_questions_heldout_v2.jsonl` is the fresh set for the
+round-8 page `twin_app_20261107a.html`. Commit `attempts.jsonl` with the run's summary.
+
 ## Private deployment (water authority)
 
 1. **Build the private page** with `viewer_app --private`. Name it `*.local.html` so it is

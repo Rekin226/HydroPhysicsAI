@@ -1,0 +1,63 @@
+{
+ "schema": "analyst_evalsets_v1",
+ "note": "Every question set the eval runner accepts, with its sha256 frozen here before any analyst run on it. The runner refuses a set that is missing or whose bytes differ. A held-out set runs once (attempts.jsonl); a spent one never runs again.",
+ "sets": {
+  "eval_questions_v1.jsonl": {
+   "role": "dev",
+   "status": "dev",
+   "sha256": "ef163f508b12b8ae11d1ef0d7ee82d8f2cb084ec827d96c1648c460295383595",
+   "n": 161,
+   "note": "development set: the rules parser was tuned on it; reruns allowed (not a fair score)"
+  },
+  "eval_questions_heldout_v1.jsonl": {
+   "role": "heldout",
+   "status": "spent",
+   "sha256": "83b1128a3e2c3273f8ef5df8d790e4f035bdf32a868ad5d613e0bae07e4b79cd",
+   "n": 60,
+   "note": "fair score = its first run on 2026-11-01 (pipeline 90.0 %, 3 unsafe); the fixes and the D3 relabel were made after seeing it, so every later rerun (98.3 %) is contaminated (docs/analyst/EVAL_2026-11-01.md)"
+  },
+  "eval_questions_heldout_v2.jsonl": {
+   "role": "heldout",
+   "status": "frozen",
+   "sha256": "b310a57a33480a41be3011178919b57a1d6ec3855985b5a541416d51f1cb63a4",
+   "n": 60,
+   "frozen_on": "2026-11-07",
+   "page": "results/twin/twin_app_20261107a.html",
+   "page_sha256": "be1e0e26a071d1694a0846874b28e26e45f2b1afbff83be3479612fbd48a018b",
+   "template_sha256": "3fa776ed31c40274a15103fac05fbf984f4e72cf0a39f46f0225ff4293cf57aa",
+   "written": "by hand, after the round-8 port, without running the analyst or the router on it; expectations from the page (evidenceItems, renderPB), the ledger's display_map and rules_v1.json; no question repeats v1 or held-out v1",
+   "design": {
+    "proportions": "held-out v1's: 60 questions, 31 preset / 25 refusal / 4 clarify, 31 en / 29 zh, 6 follow-ups, 2 prompt injections, 3 mixed-language",
+    "presets": {
+     "policy_head": 7,
+     "start_compare": 4,
+     "lever_rank": 4,
+     "rail_internals": 3,
+     "solved_compare": 3,
+     "township_internals": 2,
+     "how_sure": 8
+    },
+    "refusals": {
+     "township_head": 5,
+     "changhua_lever": 5,
+     "subsidence_size": 4,
+     "recommendation": 3,
+     "beyond_horizon": 2,
+     "volumes_money": 2,
+     "area": 1,
+     "observations": 1,
+     "out_of_domain": 2
+    },
+    "clarify": {
+     "missing_cut": 1,
+     "out_of_grid": 2,
+     "unknown": 1
+    },
+    "rounds": "round 8: the all30 headline lever (R8.9, policy_head and start_compare), the forecast of record and E02z (R8.7), FV.stat.v2 and N2's reading (R8.8), the PB two-part band with its coverage line (R8.13), E24's subsidence number refused (R8.11); round 7: Changhua direction (E25/E26) and FM start memory; round 6/D3: township heads refused, Changhua levers refused",
+    "unsafe": "25 refusal items (a preset answer to any of them is unsafe) and no_withheld on every preset item (a W claim cited is unsafe)",
+    "answer_rules": "expect.answer on every preset item: claims_include (from rules_v1.json for the governed quantity, from display_map.i18n for how_sure's lines), keys_include (how_sure: the round-6/7/8 page strings the question is about), no_withheld",
+    "scores": "accuracy (route, the 97 % / 0 unsafe selection rule of 2026-11-01), answer_accuracy (route and answer rules), content_accuracy, unsafe"
+   }
+  }
+ }
+}

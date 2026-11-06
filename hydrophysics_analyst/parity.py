@@ -1,6 +1,6 @@
 """JS-vs-Python parity: the analyst's numbers and sentences must equal the page's.
 
-    python -m hydrophysics_analyst parity --page results/twin/twin_app_20261101a.html \\
+    python -m hydrophysics_analyst parity --page results/twin/twin_app_20261107a.html \\
         --out results/analyst/parity/
 
 Opens the page in headless Chromium (Playwright; ``TWIN_CHROMIUM`` names a binary if
@@ -11,7 +11,11 @@ Playwright's own is absent), and for a grid of policies, starts, years and both 
 2. sets the URL hash (with a nonce: an unchanged hash fires no ``hashchange``), waits for the
    re-render (``hashchange`` + two animation frames; ``dataset.ready`` is set only at boot),
    and compares the text of ``#headline``, ``#tW .vn``, ``#tC .vn`` and ``#startNote`` with
-   the Python render, and ``#rankTbl`` after ``setTab("rank")``.
+   the Python render, and ``#rankTbl`` after ``setTab("rank")``;
+3. how_sure: every port sentence is on the page, and the trust drawer (``evidenceItems()``) is
+   the port's line by line, same text and same claims (``display_map.i18n`` of every ``tr`` key
+   a line used), except the band-key lines the ledger keeps out of answers; the head band lines
+   (R8.13) are in ``#tsNote``/``#pbWrap``; E24's line (R8.11) equals ``e24Line()``.
 
 Writes ``parity.json`` (cases, mismatches, sha). A bundle gate: zero mismatches.
 """
@@ -51,6 +55,15 @@ _DOM = """() => {
           startNote: sn && !sn.hidden ? sn.textContent : ""}; }"""
 _EVIDENCE = """() => { renderCard(); const q = id => (document.getElementById(id) || {}).textContent || "";
   return [q("evLine"), q("cardBody"), q("tiles")].join("\\n"); }"""
+# evidenceItems() twice: the lines as shown, and the same lines with every tr() key marked
+# (\u0001key\u0002), so each line's keys, and so its claims, can be compared with the port's
+_EV_ITEMS = """() => { const clean = evidenceItems().map(x => x[1]); const orig = tr;
+  tr = function(k, v) { return "\\u0001" + k + "\\u0002" + orig(k, v); };
+  let keyed; try { keyed = evidenceItems().map(x => x[1]); } finally { tr = orig; }
+  const keys = t => [...t.matchAll(/\\u0001([^\\u0002]*)\\u0002/g)].map(m => m[1]);
+  return clean.map((t, i) => [t, keys(keyed[i])]); }"""
+_BAND = """() => [document.getElementById("tsNote"), document.getElementById("pbWrap")]
+  .map(e => e ? e.textContent : "").join("\\n")"""
 _RANK = """(by) => { S.rank = by; setTab("rank"); renderRank();
   return document.getElementById("rankTbl").textContent; }"""
 
@@ -120,6 +133,40 @@ def _python_rank(b: PageBundle, year: int, by: str, lang: str) -> str:
     return c.tr(lang, "tranking") + "".join(head) + "".join("".join(row) for row in rows)
 
 
+NOT_DRAWER = ("ev_nc_pass", "ev_nc_fail", "ev_tp_pass", "ev_tp_fail", "tW_r")   # evLine, tile
+
+
+def _evidence_items(b: PageBundle, ev, items: list, lang: str) -> list[dict]:
+    """The drawer, line by line: every page line is the port's (same text, same claims),
+    except the band-key lines the ledger keeps out of answers; the port has nothing else but
+    the evidence line and the head tile's reading (checked above against the page text)."""
+    from . import binding as BD
+    sc = b.ledger["page_scoping"]
+    banned = set(sc.get("answer_must_not_use_band_keys", []))
+    dm = b.ledger["display_map"]["i18n"]
+    mine: dict[str, set] = {}
+    for sn in ev:
+        if sn.key.split("+")[0] in NOT_DRAWER:
+            continue
+        mine.setdefault(J.strip_tags(sn.text), set()).update(BD.snippet_claims(sn.key, b.ledger))
+    out, seen = [], set()
+    for text, keys in items:
+        t = J.strip_tags(text)
+        if banned & set(keys):
+            if t in mine:
+                out.append({"what": "evidence_band", "lang": lang, "py": t[:200]})
+            continue
+        want = {c for k in keys for c in dm.get(k, [])}
+        if t not in mine:
+            out.append({"what": "evidence_missing", "lang": lang, "js": t[:200]})
+        elif mine[t] != want:
+            out.append({"what": "evidence_claims", "lang": lang, "js": t[:120],
+                        "py_claims": sorted(mine[t]), "js_claims": sorted(want)})
+        seen.add(t)
+    out += [{"what": "evidence_extra", "lang": lang, "py": t[:200]} for t in mine if t not in seen]
+    return out
+
+
 def run_parity(page_html: Path, b: PageBundle | None = None, *, n_random: int = 30,
                langs=("en", "zh"), launch: dict | None = None) -> ParityReport:
     from playwright.sync_api import sync_playwright
@@ -170,11 +217,31 @@ def run_parity(page_html: Path, b: PageBundle | None = None, *, n_random: int = 
                                                                      int(x["start"])), c.years[-1],
                                                          lang=lang, nonce=nonce))
                 page_ev = page.evaluate(_EVIDENCE)
-                for sn in Q.evidence(b, lang).snippets:
+                ev = Q.evidence(b, lang).snippets
+                for sn in ev:
                     rep.n_cases += 1
                     if J.strip_tags(sn.text) not in page_ev:
                         rep.mismatches.append({"what": "evidence", "key": sn.key, "lang": lang,
                                                "py": J.strip_tags(sn.text)[:200]})
+                rep.n_cases += 1
+                rep.mismatches += _evidence_items(b, ev, page.evaluate(_EV_ITEMS), lang)
+                band = page.evaluate(_BAND)            # the head series at the default view
+                for sn in Q.head_band(b, lang).snippets:
+                    rep.n_cases += 1
+                    if J.strip_tags(sn.text) not in band:
+                        rep.mismatches.append({"what": "head_band", "key": sn.key, "lang": lang,
+                                               "py": J.strip_tags(sn.text)[:200]})
+                # E24 (R8.11): tile tA's line under Model internals, its one policy and another
+                for pol in (Q.Policy(Q.IRR30[:c.K], 2026), Q.Policy((0.7,) * c.K, c.starts[0])):
+                    nonce += 1
+                    page.evaluate(_SET_HASH, Q.deep_link(b, pol, c.years[-1], lang=lang,
+                                                         nonce=nonce, mi=True))
+                    js = page.evaluate("() => typeof e24Line === 'function' ? e24Line() : ''")
+                    py = "".join(s.text for s in Q.e24_line(b, pol, lang).snippets)
+                    rep.n_cases += 1
+                    if js != py:
+                        rep.mismatches.append({"what": "e24", "f": pol.f, "start": pol.start,
+                                               "lang": lang, "py": py[:200], "js": js[:200]})
                 for year in (c.years[-1], c.years[-3]):
                     page.evaluate(f"() => setYear({c.yidx(year)})")
                     for by in ("head", "gwh"):
