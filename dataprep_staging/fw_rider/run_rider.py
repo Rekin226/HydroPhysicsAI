@@ -2,49 +2,42 @@
 stay decidable when the truth worlds carry the model's OWN recorded rain and pumping years?
 
 FV.decidability.v2_postfailure read E02c's level rule 'not shown weak' (P = 0.96) with rain at
-climatology in every truth world (its reading 1), and its reading 2 (forcing_year.py, the
-forcing-year completeness of E02's interval) ran on FW.weather_replay.v1's pumping-only replays.
-This rider reruns reading 2's world construction on FW.weather_replay.v2's eleven RD arms (rain
-and detrended pumping replayed, the page parameter set alone, --ic-members 0) as the truth
-worlds, and scores each world with E02c's level rule exactly as reading 1 does
+climatology in every truth world (its reading 1); its reading 2 (forcing_year.py) built forcing
+worlds from FW.weather_replay.v1's pumping-only replays. This rider reruns reading 2's world
+construction, unchanged, on FW.weather_replay.v2's eleven PRIMARY arms W2012..W2022 (rain and
+detrended pumping replayed, the page ensemble, the same members, code and restart as arm C)
+and scores every world with E02c's level rule exactly as reading 1 does
 (``osse_fv.world_stats``). It reports P(E02c level pass) as a ONE-SIDED caveat only.
 
-Truth world of sequence s (s = 0..10; RD(2012 + s) replays the cyclic order of 2012..2022
-starting at 2012 + s) and noise draw j, on 2026-11..2027-10 at E02c's 158 wells::
+Truth world of sequence s (s = 0..10; W(2012 + s) replays the cyclic order of 2012..2022 from
+2012 + s) and noise draw j, on 2026-11..2027-10 at E02c's 158 wells::
 
-    obs(w, t) = ZR(w, t) + F_s(w, t) + e_(s, j)(w, t)
-    F_s = osse_fv.departure(h_RD_s, h_C, mask)
+    obs(w, t) = ZR(w, t) + F_s(w, t) + e_(s, j)(w, t),    F_s = h_W(2012+s) - h_C
 
-ZR is E02's registered prediction (forward cf2c7154). h_C is FW v2's arm C, the page ensemble
-under climatology run by the same code as the RD arms. ``departure`` is FV v1's frozen function:
-the window difference minus its mean over each well's observed 2012-22 months (the months E02's
-datum offset used), so F_s is the difference of the two datum-corrected series; it equals
-reading 2's F_s = h_s - h_clim whenever the two hindcasts are identical (reading 2's W arms).
-Here C is an 18-set ensemble and RD one parameter set, so F_s also holds that set's own
-departure from the ensemble, common to every sequence (reported, report-only, never removed):
-the truth is one page parameter set living through a recorded weather year. e is FV v1's
-per-well stationary AR(1) noise (noise_ar1.csv), independent between wells, on this rider's own
-fixed seed.
+ZR is E02's registered prediction (forward cf2c7154); F_s is reading 2's forcing departure,
+computed by ``forcing_year.load_replay`` itself (its gate E included: members and options equal
+to C's, every replay's 2012-22 hindcast identical to C's within FV v2's 0.0 m, no two sequences
+identical); e is FV v1's per-well stationary AR(1) noise (noise_ar1.csv), independent between
+wells, on this rider's own fixed seed.
 
 Code reused UNCHANGED by import and pinned by sha256 to FV.decidability.v2_postfailure's
-registered frozen_code (:data:`REUSED`): forcing_year.py (reading 2: build_index,
-capture_record, check_capture, seq_years, _heads, _opts, summarise_rc), osse_fv.py
-(load_context, departure, simulate_ar1, world_stats, null_tolerance, _rate), osse_fv2.py and
-score_e02c.py (E02c's level rule t_level behind world_stats). A changed file refuses to run.
+registered frozen_code (:data:`REUSED`). A changed file refuses to run.
 
-Model-only: no observation is read. The inputs are model forwards, E02's registered
-predictions and protocol, E02c's registered pre-origin baselines and well table, and FV v1's
-pre-origin noise and mask export (``inputs`` in the declaration; ``assert_model_only``).
+Model-only: no observed head is read. The rider reads model forwards, E02's registered
+predictions and E02c's and FV v1's pre-origin observation-derived statistics (CL/CLT, the
+observed-month mask, the AR(1) sd and lag-1).
+
+Scoring is private: :func:`run` loads the registration itself; ``_score`` refuses a real run
+unless the declaration in INDEX.jsonl loads intact (prereg3.load_prereg) with this code's
+design, and a smoke unless every path lies outside results/.
 
 Gates, in order, before any statistic:
-  E  engineering: registration intact, frozen code and inputs unchanged, FW v2's report present,
-     the replay index (forcing_year.build_index, metadata and sha256 only) with rain 'replayed'
-     and pumping 'detrended_anomaly', every RD npz and capture at its declared sha256, axis,
-     origin, members (C the page ensemble, each RD the page set alone), forward options and gain
-     equal, the eleven RD hindcasts identical to each other within 1e-6 m at the wells, no two
-     sequences identical, finite heads. A problem in the CONTENT of FW's forwards maps to the
-     pre-declared not-evaluable outcome 'replay worlds unusable' (the rider cannot rerun them);
-     any other failure is an engineering retry (free, before any statistic, logged).
+  E  engineering: registration intact, frozen code and inputs unchanged, FW v2's report present
+     and every world file at the sha256 that report and the declaration record; the replay
+     index (forcing_year.build_index) with rain 'replayed' and pumping 'detrended_anomaly';
+     forcing_year.load_replay's checks. A problem in the CONTENT of FW's forwards
+     (forcing_year.ReplayGateE) maps to the pre-declared not-evaluable outcome 'replay worlds
+     unusable'; any other failure is an engineering retry (free, before any statistic).
   N  null world (obs = CL + e, K_NULL draws): E02c level false-pass rate <= FV v1's tolerance
      recomputed from the same inputs; else not evaluable ('a possible bug').
   MC 1.645 x Monte Carlo SE of P <= 0.07: non-binding at K = 250 (largest possible 0.016).
@@ -55,7 +48,7 @@ Neither moves E02c's rule, verdict or any status; the result reaches the claims 
 a caveat line (E21, and beside C30-scen's post-2028 level wording), never the page.
 
 CLI (repository root, hydro env):
-  run_rider.py smoke --out <new dir outside results/>   synthetic end to end, writes nothing real
+  run_rider.py smoke --out <new dir outside results/>   synthetic end to end
   run_rider.py verify                                   registration, code and worlds intact
   run_rider.py run                                      once, after registration; report mode 'x'
 """
@@ -88,16 +81,17 @@ _paths()
 import forcing_year as FY  # noqa: E402  (FV v2 reading 2, frozen; never edited)
 import osse_fv as O  # noqa: E402  (FV v1, frozen)
 import osse_fv2 as V2  # noqa: E402  (FV v2, frozen)
-import score_e02c as S  # noqa: E402  (E02c, frozen)
+import score_e02c as S  # noqa: E402,F401  (E02c, frozen; behind osse_fv.world_stats)
 
 ID = "FW.rider.v1"
 WP = "FW"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 F = "dataprep_staging/fw_rider"
 SELF = f"{F}/run_rider.py"
 PREREG = f"{F}/prereg_rider.py"
 TESTS = "tests/test_fw_rider.py"
 EngineeringFailure = O.EngineeringFailure
+ReplayGateE = FY.ReplayGateE
 
 # ----------------------------------------------------------------------------- reused code
 FV2_ID = V2.ID                                   # FV.decidability.v2_postfailure
@@ -120,40 +114,22 @@ REUSED = {
         "99a88018fc91824442222a5420ef701174b0b748787cdd9f5d0d464c3771b3d0",
 }
 FROZEN = (SELF, *REUSED)
-#: FV v1's export as FV v2 registered it (inputs_frozen), and E02c's registered baselines
+#: FV v1's export as FV v2 registered it (inputs_frozen)
 FV1_INPUTS = {
     "anomaly_pool.csv": "acab736764fd635ecd21eb62f77d26dd3ea8132a184678e7ac0a0fd1fc94f290",
     "noise_ar1.csv": "73965a08914149af2132c96f617268701277b49411cf17cfbf57d41fbeaa9d55",
     "obs_mask.csv": "605a35de5d07cab40cef3a1e86fae719502ff3afcd0f6ea36310ccf5425d0c89"}
-E02C_BASE_SHA = dict(O.E02C_BASE_SHA)
-E02_MANIFEST = f"{S.E02_DIR}/manifest.json"
-E02_MANIFEST_SHA = "d7286551245644b7932fac98751bcd0e837611ffdfbc9a403dd096c8c51af056"
 
 # ----------------------------------------------------------------------------- worlds
 FW_ID = "FW.weather_replay.v2"
-FW_OUTD = "results/twin_forward/fw_replay_v2"
-FW_REPORT = f"results/dataprep/reports/{FW_ID}/report.json"
-FW_DECL = f"results/dataprep/preregistration/{FW_ID}.json"
 N_SEQ = FY.N_SEQ                                 # 11
 FIRST_YEAR = FY.FIRST_YEAR                       # 2012
-RD_ARMS = tuple(f"RD{FIRST_YEAR + s}" for s in range(N_SEQ))
+W_ARMS = tuple(f"W{FIRST_YEAR + s}" for s in range(N_SEQ))   # FW v2's PRIMARY arms
 CLIM_ARM = "C"
-RD_MEMBERS = ("stage3_datum_gate",)              # the page parameter set alone (--ic-members 0)
 WANT_RAIN = "replayed"                           # FW v2 replay_fields 'energy+weather'
 WANT_PUMPING = FY.PUMP_MODE                      # 'detrended_anomaly'
-SAME_OPTIONS = ("update_method", "column_heads", "restart_taper_km", "apex_hold",
-                "column_hpc0_fast_days")
-HINDCAST_TOL_M = 1e-6                            # RD hindcasts identical to each other
+HINDCAST_TOL_M = V2.HINDCAST_TOL_M               # 0.0 m, inside forcing_year.load_replay
 UNUSABLE = "replay worlds unusable"
-
-
-def arm_npz(arm: str, outd: str = FW_OUTD) -> str:
-    return f"{outd}/{arm}.npz"
-
-
-def capture_npz(arm: str, outd: str = FW_OUTD) -> str:
-    return f"{outd}/{arm}.fw.npz"
-
 
 # ----------------------------------------------------------------------------- design
 K_WORLD = FY.K_RC                                # 250 noise draws per sequence (reading 2's K)
@@ -164,41 +140,39 @@ STREAM_WORLD, STREAM_NULL = 61, 62               # FV v1 used 1-4, FV v2 reading
 P_WEAK = 0.5
 MC_HALF_WIDTH = V2.MC_HALF_WIDTH                 # 0.07
 READINGS = ("weak_in_replayed_years", "not_shown_weak_in_replayed_years")
-READING_RULE = ("P = equal-weight mean over the 11 RD sequences of the share of their worlds "
+READING_RULE = ("P = equal-weight mean over the 11 W sequences of the share of their worlds "
                 "that pass E02c's strict level rule (osse_fv.world_stats 'level' == "
                 "'level_forecast_supported'); P <= 0.5 -> 'weak_in_replayed_years', otherwise "
                 "'not_shown_weak_in_replayed_years' (one-sided, applied once; a failed "
                 "1.645 SE <= 0.07 Monte Carlo check gives 'not_evaluable'); a caveat only")
 
-REPORT_DIR = f"results/dataprep/reports/{ID}"
-REPORT = f"{REPORT_DIR}/report.json"
-INDEX_PATH = f"{REPORT_DIR}/replay_index.json"
 ATTEMPTS_NAME = "attempts.jsonl"
+REPORT_DIR = f"results/dataprep/reports/{ID}"
 
 _LBL = {"en": "model-only rain-year rider FW.rider.v1", "zh": "僅模型的降雨年附帶研究 FW.rider.v1"}
 WORDING = {
     "weak_in_replayed_years": {
         "en": "Rain-year caveat ({lbl}): in the model's own replayed 2012-22 rain and detrended "
-              "pumping years (FW.weather_replay.v2, the page parameter set alone), a model of "
-              "the right kind passes E02c's level rule with probability {p:.2f} (90 % interval "
-              "over the 11 recorded years {t_lo:.2f}-{t_hi:.2f}; single sequences "
-              "{lo:.2f}-{hi:.2f}), at or below 0.5: in a real weather year a 2028 level fail "
-              "would not by itself refute the model's average-weather level. One-sided caveat; "
-              "E02c's rule, its verdict and every status are unchanged.",
+              "pumping years (FW.weather_replay.v2, the page ensemble), a model of the right "
+              "kind passes E02c's level rule with probability {p:.2f} (90 % interval over the "
+              "11 recorded years {t_lo:.2f}-{t_hi:.2f}; single sequences {lo:.2f}-{hi:.2f}), at "
+              "or below 0.5: in a real weather year a 2028 level fail would not by itself "
+              "refute the model's average-weather level. One-sided caveat; E02c's rule, its "
+              "verdict and every status are unchanged.",
         "zh": "降雨年附註（{lbl}）：在模型自身重播的 2012-22 降雨與去趨勢抽水年份下"
-              "（FW.weather_replay.v2，僅用頁面參數組），正確類型的模型通過 E02c 水位規則的機率為 "
+              "（FW.weather_replay.v2，頁面系集），正確類型的模型通過 E02c 水位規則的機率為 "
               "{p:.2f}（11 個紀錄年的 90 % 區間 {t_lo:.2f}-{t_hi:.2f}；單一序列 {lo:.2f}-{hi:.2f}），"
               "不高於 0.5：在真實的天氣年份中，2028 年水位檢驗未通過本身不足以否定模型的平均天氣水位。"
               "此為單向附註；E02c 的規則、判定與所有狀態均不變。"},
     "not_shown_weak_in_replayed_years": {
         "en": "Rain-year caveat ({lbl}): in the model's own replayed 2012-22 rain and detrended "
-              "pumping years (FW.weather_replay.v2, the page parameter set alone), a model of "
-              "the right kind passes E02c's level rule with probability {p:.2f} (90 % interval "
-              "over the 11 recorded years {t_lo:.2f}-{t_hi:.2f}; single sequences "
-              "{lo:.2f}-{hi:.2f}); the replayed rain years do not show the level test weak. "
-              "One-sided: this adds no other reading, and P is not the chance of a 2028 pass.",
+              "pumping years (FW.weather_replay.v2, the page ensemble), a model of the right "
+              "kind passes E02c's level rule with probability {p:.2f} (90 % interval over the "
+              "11 recorded years {t_lo:.2f}-{t_hi:.2f}; single sequences {lo:.2f}-{hi:.2f}); "
+              "the replayed rain years do not show the level test weak. One-sided: this adds no "
+              "other reading, and P is not the chance of a 2028 pass.",
         "zh": "降雨年附註（{lbl}）：在模型自身重播的 2012-22 降雨與去趨勢抽水年份下"
-              "（FW.weather_replay.v2，僅用頁面參數組），正確類型的模型通過 E02c 水位規則的機率為 "
+              "（FW.weather_replay.v2，頁面系集），正確類型的模型通過 E02c 水位規則的機率為 "
               "{p:.2f}（11 個紀錄年的 90 % 區間 {t_lo:.2f}-{t_hi:.2f}；單一序列 {lo:.2f}-{hi:.2f}）；"
               "重播的降雨年份未顯示該水位檢驗為弱檢驗。此為單向附註：不增加其他解讀，"
               "且 P 並非 2028 年通過的機率。"},
@@ -258,29 +232,44 @@ def rng_for(stream: int, s: int, j: int, *, seed: int) -> np.random.Generator:
 # ----------------------------------------------------------------------------- inputs
 @dataclass
 class RiderPaths:
+    """Every file the rider or its declaration builder reads or writes (repo-relative by
+    default; a synthetic smoke gives its own, all outside results/)."""
     v1: O.Paths = field(default_factory=O.Paths)
-    outd: str = FW_OUTD
-    fw_report: str = FW_REPORT
-    index: str = INDEX_PATH
-    report: str = REPORT
+    outd: str = "results/twin_forward/fw_replay_v2"
+    fw_report: str = f"results/dataprep/reports/{FW_ID}/report.json"
+    fw_decl: str = f"results/dataprep/preregistration/{FW_ID}.json"
+    fv2_decl: str = f"results/dataprep/preregistration/{FV2_ID}.json"
+    rulings: str = "results/dataprep/rulings/user_rulings_2026-11-03.json"
+    dataprep: str = "results/dataprep"
+    index: str = f"{REPORT_DIR}/replay_index.json"
+    report: str = f"{REPORT_DIR}/report.json"
 
     def clim(self) -> str:
-        return arm_npz(CLIM_ARM, self.outd)
+        return f"{self.outd}/{CLIM_ARM}.npz"
 
     def seqs(self) -> list[str]:
-        return [arm_npz(a, self.outd) for a in RD_ARMS]
+        return [f"{self.outd}/{a}.npz" for a in W_ARMS]
+
+    def e02_manifest(self) -> str:
+        return str(Path(self.v1.pred).parent / "manifest.json")
+
+    def all_paths(self) -> list[str]:
+        v = self.v1
+        return [self.outd, self.fw_report, self.fw_decl, self.fv2_decl, self.rulings,
+                self.dataprep, self.index, self.report, v.pred, v.protocol, v.baselines,
+                v.wells, v.inputs_dir, self.e02_manifest()]
 
 
 def world_files(P: RiderPaths) -> dict:
-    """npz and capture of C and every RD arm (repo-relative as given)."""
+    """npz and capture of C and every W arm (as given)."""
     out = {}
-    for a, p in [(CLIM_ARM, P.clim()), *zip(RD_ARMS, P.seqs(), strict=True)]:
+    for a, p in [(CLIM_ARM, P.clim()), *zip(W_ARMS, P.seqs(), strict=True)]:
         out[a] = {"npz": p, "capture": p[:-4] + ".fw.npz"}
     return out
 
 
 def world_shas(P: RiderPaths) -> dict:
-    """sha256 of every world file (metadata only; no head value is read)."""
+    """sha256 of every world file (no head value is read)."""
     out = {}
     for a, r in world_files(P).items():
         out[a] = {k: (O.sha256(O.rp(v)) if O.rp(v).is_file() else "MISSING")
@@ -288,98 +277,56 @@ def world_shas(P: RiderPaths) -> dict:
     return out
 
 
-def ensure_index(P: RiderPaths, code_commit: str = "") -> dict:
-    """forcing_year.build_index on C and the RD arms (written once), or the existing index if
-    it names the same files at the same sha256. Metadata and sha256 only."""
+def fw_report_files(P: RiderPaths) -> dict | None:
+    """{arm: {'npz': sha, 'capture': sha}} from FW v2's report.json 'files' (hashes only)."""
+    q = O.rp(P.fw_report)
+    if not q.is_file():
+        return None
+    files = json.loads(q.read_text(encoding="utf-8")).get("files") or {}
+    return {a: {k: (files.get(a) or {}).get(k, {}).get("sha256") for k in ("npz", "capture")}
+            for a in (CLIM_ARM, *W_ARMS)}
+
+
+def world_problems(P: RiderPaths, declared: dict | None = None) -> list[str]:
+    """World files whose sha256 differs from FW v2's report (and from the declaration)."""
+    got, rep = world_shas(P), fw_report_files(P)
+    if rep is None:
+        return [f"{P.fw_report} missing: FW v2's forwards stay sealed until it exists"]
+    out = [f"{a}: sha256 differs from FW v2's report.json files" for a in got
+           if got[a] != rep.get(a)]
+    if declared is not None:
+        out += [f"{a}: sha256 differs from the declaration" for a in got
+                if got[a] != declared.get(a)]
+    return out
+
+
+def ensure_index(P: RiderPaths) -> dict:
+    """forcing_year.build_index on C and the W arms (written once), or the existing index if it
+    names the same files at the same sha256. Metadata and sha256 only."""
     q = O.rp(P.index)
     if q.is_file():
         ix = json.loads(q.read_text(encoding="utf-8"))
         want = world_shas(P)
         got = {CLIM_ARM: ix["climatology"]["sha256"],
-               **{a: r["sha256"] for a, r in zip(RD_ARMS, ix["sequences"], strict=False)}}
+               **{a: r["sha256"] for a, r in zip(W_ARMS, ix["sequences"], strict=False)}}
         if any(got.get(a) != want[a]["npz"] for a in want):
             raise EngineeringFailure(f"{P.index} names other files than the declared worlds")
         return ix
-    return FY.build_index(q, P.clim(), P.seqs(), source=FW_ID, code_commit=code_commit)
-
-
-class ReplayContent(EngineeringFailure):
-    """A problem in the CONTENT of FW's forwards (the rider cannot rerun them): maps to the
-    pre-declared not-evaluable outcome 'replay worlds unusable'."""
+    return FY.build_index(q, P.clim(), P.seqs(), source=FW_ID)
 
 
 def load_worlds(P: RiderPaths, ctx: dict, ix: dict) -> dict:
-    """F (11, W, 12) on the window, with the engineering checks of gate E."""
-    probs = []
-    if ix.get("schema") != FY.INDEX_SCHEMA or ix.get("source_declaration") != FW_ID:
-        raise EngineeringFailure("replay index schema or source declaration")
+    """F (11, W, 12) on the window: forcing_year.load_replay, unchanged (reading 2's F_s)."""
+    if ix.get("source_declaration") != FW_ID:
+        raise EngineeringFailure("replay index source declaration")
     if ix.get("rain") != WANT_RAIN or ix.get("pumping") != WANT_PUMPING:
-        raise ReplayContent(f"index rain/pumping {ix.get('rain')!r}/{ix.get('pumping')!r}, "
-                            f"expected {WANT_RAIN!r}/{WANT_PUMPING!r} (FW v2 energy+weather)")
-    seqs = ix.get("sequences") or []
-    if [r.get("seq") for r in seqs] != list(range(N_SEQ)):
-        raise EngineeringFailure("index sequences are not s = 0..10 in order")
-    for r in [ix["climatology"], *seqs]:
-        for k, hk in (("npz", "sha256"), ("capture", "capture_sha256")):
-            if O.sha256(O.rp(r[k])) != r[hk]:
-                raise EngineeringFailure(f"{r[k]}: sha256 differs from the index")
-    cells, layers = ctx["cells"], ctx["layers"]
-    try:
-        cm, hc, _ = FY._heads(O.rp(ix["climatology"]["npz"]), layers, cells, O.T_RUN)
-    except EngineeringFailure as err:
-        raise ReplayContent(str(err)) from err
-    copts = FY._opts(cm)
-    clabels = [str(x) for x in cm["member_labels"]]
-    if len(clabels) < 2 or RD_MEMBERS[0] not in clabels:
-        probs.append(f"arm C members {clabels[:3]}... are not the page ensemble")
-    H = np.empty((N_SEQ, ctx["W"], O.T_RUN))
-    eng = []
-    for r in seqs:
-        s = r["seq"]
-        try:
-            m, hs, _ = FY._heads(O.rp(r["npz"]), layers, cells, O.T_RUN)
-        except EngineeringFailure as err:
-            raise ReplayContent(str(err)) from err
-        o = FY._opts(m)
-        dates = [str(x)[:7] for x in m["dates"]]
-        if dates[0] != O.AXIS_START or int(m["origin"]) != O.ORIGIN_IDX:
-            probs.append(f"seq {s}: axis or origin differs")
-        if tuple(str(x) for x in m["member_labels"]) != RD_MEMBERS:
-            probs.append(f"seq {s}: members are not the page parameter set alone")
-        for k in SAME_OPTIONS:
-            if o.get(k) != copts.get(k):
-                probs.append(f"seq {s}: option {k} differs from arm C")
-        if float(m["gain"]) != float(cm["gain"]):
-            probs.append(f"seq {s}: gain differs from arm C")
-        if r.get("years") != FY.seq_years(s, len(r.get("years") or [])) or \
-                len(r.get("years") or []) < 7:
-            probs.append(f"seq {s}: declared years are not the cyclic sequence")
-        if not (np.isfinite(hs).all() and np.isfinite(hc).all()):
-            probs.append(f"seq {s}: non-finite heads at a well")
-        H[s] = hs
-        eng.append({"seq": s, "years": r["years"], "arm": RD_ARMS[s]})
-    hind = [float(np.max(np.abs(H[s][:, :O.T_FIT] - H[0][:, :O.T_FIT]))) for s in range(N_SEQ)]
-    if max(hind) > HINDCAST_TOL_M:
-        probs.append(f"RD hindcasts differ from each other by up to {max(hind):.3g} m")
-    for s in range(N_SEQ):
-        for q in range(s):
-            if np.array_equal(H[s][:, O.T_FIT:], H[q][:, O.T_FIT:]):
-                probs.append(f"seq {s} and seq {q} are the same run")
-    if probs:
-        raise ReplayContent("replay forwards: " + "; ".join(probs))
-    F = np.stack([O.departure(H[s], hc, ctx["mask"]) for s in range(N_SEQ)])
-    common = F.mean(axis=0)
-    return {"F": F, "eng": {"sequences": eng, "rd_hindcast_max_abs_m": max(hind),
-                            "hindcast_tol_m": HINDCAST_TOL_M, "members_clim": len(clabels),
-                            "members_rd": list(RD_MEMBERS),
-                            "index_sha256": O.sha256(O.rp(P.index)) if O.rp(P.index).is_file()
-                            else None},
-            "decomposition_report_only": {
-                "common_part_rms_m": float(np.sqrt(np.mean(common ** 2))),
-                "sequence_part_rms_m": float(np.sqrt(np.mean((F - common[None]) ** 2))),
-                "note": "F_s = common part (the parameter set's departure from the ensemble "
-                        "plus the mean replayed forcing) + sequence part (the recorded year); "
-                        "report-only, never removed from a world"}}
+        raise ReplayGateE(f"index rain/pumping {ix.get('rain')!r}/{ix.get('pumping')!r}, "
+                          f"expected {WANT_RAIN!r}/{WANT_PUMPING!r} (FW v2 energy+weather)")
+    rp = FY.load_replay(P.index, ctx["cells"], ctx["layers"])
+    return {"F": rp["F"][:, :, O.WIN[0]:O.WIN[1]],
+            "eng": {"replay": rp["eng"], "index_sha256": rp["index_sha256"],
+                    "members": len(rp["members"]), "rain": rp["rain"],
+                    "pumping": rp["pumping"], "hindcast_tol_m": HINDCAST_TOL_M}}
 
 
 # ----------------------------------------------------------------------------- statistics
@@ -413,17 +360,15 @@ def summarise(records: list[list[dict]]) -> dict:
     lev = np.array([[r["level"] == "level_forecast_supported" for r in row] for row in records],
                    float)
     sm = FY.summarise_rc(lev)
-    k = lev.shape[1]
-    out = {"p": sm["rc"], "by_sequence": sm["by_sequence"],
-           "range_over_sequences": sm["range_over_sequences"], "mc_se": sm["mc_se"],
-           "mc_half_width_90": sm["mc_half_width_90"], "sampling_11yr": sm["sampling_11yr"],
-           "k_per_sequence": int(k),
-           "report_only": {
-               "beat_cl": float(np.mean([[r["beat_cl"] for r in row] for row in records])),
-               "beat_clt": float(np.mean([[r["beat_clt"] for r in row] for row in records])),
-               "not_evaluable_worlds": int(sum(r["level"] == "not_evaluable" for row in records
-                                               for r in row))}}
-    return out
+    return {"p": sm["rc"], "by_sequence": sm["by_sequence"],
+            "range_over_sequences": sm["range_over_sequences"], "mc_se": sm["mc_se"],
+            "mc_half_width_90": sm["mc_half_width_90"], "sampling_11yr": sm["sampling_11yr"],
+            "k_per_sequence": int(lev.shape[1]),
+            "report_only": {
+                "beat_cl": float(np.mean([[r["beat_cl"] for r in row] for row in records])),
+                "beat_clt": float(np.mean([[r["beat_clt"] for r in row] for row in records])),
+                "not_evaluable_worlds": int(sum(r["level"] == "not_evaluable" for row in records
+                                                for r in row))}}
 
 
 def close(rep: dict, why: str) -> dict:
@@ -432,46 +377,44 @@ def close(rep: dict, why: str) -> dict:
     return rep
 
 
-def score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
-          decl: dict | None = None, decl_sha: str | None = None, smoke: bool = False,
-          log=print) -> dict:
-    """Gates E, N and MC, then the reading. Returns the report (not written). A scored run
-    needs the registered declaration and its sha256 and this rider's seed; a smoke needs the
-    smoke seed and worlds outside results/ (no real world is ever scored without the
-    registration)."""
+def _score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
+           smoke: bool = False, prereg_dir=None, rows_dir=None, log=print) -> dict:
+    """Gates E, N and MC, then the reading. Returns the report (not written).
+
+    A scored run loads the registration itself (load_registered: INDEX.jsonl entry, intact
+    document at that sha256, frozen code, inputs and design) and uses only the registered
+    seed and K; a smoke needs SMOKE_SEED and every path outside results/."""
+    decl = dsha = None
     if smoke:
-        if seed != SMOKE_SEED or any(_under_results(p) for p in _smoke_paths(P)):
+        if seed != SMOKE_SEED or any(_under_results(p) for p in P.all_paths()):
             raise EngineeringFailure("a smoke runs on SMOKE_SEED and synthetic worlds outside "
                                      "results/ only")
-    elif decl is None or not decl_sha or len(str(decl_sha)) != 64 or seed != SEED:
-        raise EngineeringFailure(f"{ID} scores only under its registration (declaration, its "
-                                 "sha256 and the registered seed)")
+    else:
+        if seed != SEED or k != K_WORLD or k_null != K_NULL:
+            raise EngineeringFailure(f"{ID} scores only on its registered seed and K")
+        decl, dsha = load_registered(ID, prereg_dir, rows_dir)
     rep: dict = {"id": ID, "version": VERSION, "smoke": smoke, "created": O._now(),
-                 "declaration_sha256": decl_sha, "seed": seed, "k_per_sequence": k,
+                 "declaration_sha256": dsha, "seed": seed, "k_per_sequence": k,
                  "k_null": k_null, "label": "model-only rain-year rider; one-sided caveat only",
-                 "worlds": {"source": FW_ID, "arms": list(RD_ARMS), "reference": CLIM_ARM},
+                 "worlds": {"source": FW_ID, "arms": list(W_ARMS), "reference": CLIM_ARM},
                  "mc_gate_note": V2.mc_note(N_SEQ, k), "model_only": True}
-    ctx = O.load_context(P.v1)
     if decl is not None:
         for name, h in FV1_INPUTS.items():
             if O.sha256(O.rp(P.v1.inputs_dir) / name) != h:
                 raise EngineeringFailure(f"{name} differs from FV v2's registered sha256")
-        if not O.rp(P.fw_report).is_file():
-            raise EngineeringFailure(f"{P.fw_report} missing: FW v2's forwards stay sealed")
-        rep["fw_report_sha256"] = O.sha256(O.rp(P.fw_report))
-        want = (decl.get("worlds") or {}).get("files") or {}
-        got = world_shas(P)
-        bad = [a for a in got if got[a] != want.get(a)]
-        if bad:
-            raise EngineeringFailure(f"world files differ from the declared sha256: {bad}")
+    bad = world_problems(P, ((decl or {}).get("worlds") or {}).get("files")
+                         if decl is not None else None)
+    if bad:
+        raise EngineeringFailure("world files: " + "; ".join(bad))
+    rep["fw_report_sha256"] = O.sha256(O.rp(P.fw_report))
+    ctx = O.load_context(P.v1)
     ix = ensure_index(P)
     try:
         W = load_worlds(P, ctx, ix)
-    except ReplayContent as err:
+    except ReplayGateE as err:
         rep["engineering"] = {"replay_content_failure": str(err)[:500]}
         return close(rep, f"{UNUSABLE}: {str(err)[:200]}")
     rep["engineering"] = W["eng"]
-    rep["decomposition_report_only"] = W["decomposition_report_only"]
     log("gate E passed (engineering)")
     nul = null_gate(ctx, k_null=k_null, seed=seed)
     if decl is not None:
@@ -482,8 +425,7 @@ def score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
     if not nul["pass"]:
         return close(rep, "null-world level false pass above its tolerance (a possible bug)")
     log("gate N passed")
-    recs = world_records(ctx, W["F"], k=k, seed=seed)
-    sm = summarise(recs)
+    sm = summarise(world_records(ctx, W["F"], k=k, seed=seed))
     rd = reading_of(sm["p"], sm["mc_half_width_90"])
     rep["P"] = sm
     rep["mc_gate"] = {"max_half_width": MC_HALF_WIDTH,
@@ -498,6 +440,8 @@ def score(P: RiderPaths, *, seed: int, k: int = K_WORLD, k_null: int = K_NULL,
                wording=wording_for(rd, p=sm["p"], t_lo=t_lo, t_hi=t_hi, lo=lo, hi=hi),
                ledger_mapping="caveat line only (E21 notes; beside C30-scen's post-2028 level "
                               "wording); no page line, no status change, never S")
+    if decl is not None:
+        rep["frozen_code"] = decl["frozen_code"]
     return rep
 
 
@@ -513,20 +457,30 @@ def index_record(prereg_id: str = ID, prereg_dir=None) -> dict | None:
     return rows[-1] if rows else None
 
 
+def design() -> dict:
+    return {"seed": SEED, "K_WORLD": K_WORLD, "K_NULL": K_NULL, "P_weak": P_WEAK,
+            "streams": {"world": STREAM_WORLD, "null": STREAM_NULL},
+            "hindcast_tol_m": HINDCAST_TOL_M, "arms": list(W_ARMS), "reference": CLIM_ARM}
+
+
 def load_registered(prereg_id: str = ID, prereg_dir=None, rows_dir=None) -> tuple[dict, str]:
-    """Refuse unless the declaration is registered, intact, its frozen code byte-identical and
-    its design this run's."""
+    """Refuse unless the declaration is in INDEX.jsonl, loads intact through
+    prereg3.load_prereg at that entry's sha256, its frozen code is byte-identical and its
+    design is this code's."""
     from harness import prereg3
 
     if prereg_id != ID:
         raise EngineeringFailure(f"this runner scores {ID} only, not {prereg_id!r}")
-    if index_record(prereg_id, prereg_dir) is None:
+    rec = index_record(prereg_id, prereg_dir)
+    if rec is None:
         raise EngineeringFailure(f"{prereg_id} is not in INDEX.jsonl: register it first")
     kw = {k: v for k, v in (("prereg_dir", prereg_dir), ("rows_dir", rows_dir)) if v}
     try:
         doc, sha = prereg3.load_prereg(prereg_id, **kw)
     except Exception as err:      # noqa: BLE001 - any failure is a refusal
         raise EngineeringFailure(f"{prereg_id} is not registered or not intact: {err}") from err
+    if sha != rec.get("sha256"):
+        raise EngineeringFailure(f"{prereg_id}: the document's sha256 is not INDEX.jsonl's")
     fc = doc.get("frozen_code") or {}
     if set(fc) != set(FROZEN):
         raise EngineeringFailure("frozen_code does not list exactly FW.rider.v1's files")
@@ -540,17 +494,14 @@ def load_registered(prereg_id: str = ID, prereg_dir=None, rows_dir=None) -> tupl
     if changed:
         raise EngineeringFailure(f"registered inputs changed: {changed}")
     d = doc.get("design") or {}
-    want = {"seed": SEED, "K_WORLD": K_WORLD, "K_NULL": K_NULL, "P_weak": P_WEAK,
-            "streams": {"world": STREAM_WORLD, "null": STREAM_NULL},
-            "hindcast_tol_m": HINDCAST_TOL_M}
-    bad = sorted(k for k, v in want.items() if d.get(k) != v)
+    bad = sorted(k for k, v in design().items() if d.get(k) != v)
     if bad:
         raise EngineeringFailure(f"the registered design differs from this code on {bad}")
     return doc, sha
 
 
-def attempts_path(out: str = REPORT) -> Path:
-    return O.rp(out).parent / ATTEMPTS_NAME
+def attempts_path(report: str) -> Path:
+    return O.rp(report).parent / ATTEMPTS_NAME
 
 
 def _log_attempt(path: Path, rec: dict) -> None:
@@ -568,10 +519,12 @@ def _attempt_no(path: Path) -> int:
 
 
 def run(P: RiderPaths | None = None, *, prereg_dir=None, rows_dir=None, log=print) -> dict:
-    """Score once: refuses unless registered and intact; writes report.json once (mode 'x').
-    Every attempt appends 'start' and then 'engineering_failure', 'error' or 'success' (with
-    the report sha256) to attempts.jsonl beside the report; no statistic is logged."""
+    """Score once. Refuses (nothing logged, nothing read) unless registered and intact; then
+    logs 'start' and 'engineering_failure', 'error' or 'success' (with the report sha256) to
+    attempts.jsonl beside the report, and writes report.json once (mode 'x'). No statistic
+    is logged."""
     P = P or RiderPaths()
+    load_registered(ID, prereg_dir, rows_dir)         # before anything is logged or read
     outp = O.rp(P.report)
     ap = attempts_path(P.report)
     n = _attempt_no(ap)
@@ -580,10 +533,8 @@ def run(P: RiderPaths | None = None, *, prereg_dir=None, rows_dir=None, log=prin
     try:
         if outp.exists():
             raise EngineeringFailure(f"{outp} exists: {ID} is scored once")
-        doc, dsha = load_registered(ID, prereg_dir, rows_dir)
-        rep = score(P, seed=check_seed(SEED), decl=doc, decl_sha=dsha, log=log)
-        rep["declaration_sha256"] = dsha
-        rep["frozen_code"] = doc["frozen_code"]
+        rep = _score(P, seed=check_seed(SEED), prereg_dir=prereg_dir, rows_dir=rows_dir,
+                     log=log)
         O._write_json_once(outp, rep)
     except EngineeringFailure as err:
         _log_attempt(ap, {"event": "engineering_failure", "attempt": n, "message": str(err)})
@@ -593,7 +544,7 @@ def run(P: RiderPaths | None = None, *, prereg_dir=None, rows_dir=None, log=prin
                           "message": f"{type(err).__name__}: {err}"})
         raise
     _log_attempt(ap, {"event": "success", "attempt": n, "report_sha256": O.sha256(outp),
-                      "declaration_sha256": dsha})
+                      "declaration_sha256": rep.get("declaration_sha256")})
     return rep
 
 
@@ -616,35 +567,33 @@ def _under_results(p) -> bool:
     return "results" in q.resolve().parts
 
 
-def _smoke_paths(P: RiderPaths) -> list[str]:
-    v = P.v1
-    return [P.outd, P.index, P.report, P.fw_report, v.pred, v.protocol, v.baselines, v.wells,
-            v.inputs_dir]
+SYNTH_PRODUCTS = {"twin_rain/preorigin/v2": ["forcing_frozen", "design_time_evidence"],
+                  "heads/L1_clean/v3": ["baseline", "design_time_evidence"],
+                  "pump_electricity/preorigin/v3": ["design_time_evidence"]}
 
 
-def build_synthetic(out: Path, seed: int = 5, amp: float = 0.6, common: float = 0.2
-                    ) -> RiderPaths:
-    """SYNTHETIC inputs only (no real data): FV v1's synthetic set (osse_fv.build_synthetic)
-    plus an arm C (several members) and eleven RD arms (one member) with their capture
-    sidecars, in FW v2's real layout and metadata."""
+def build_synthetic(out: Path, seed: int = 5, amp: float = 0.6) -> RiderPaths:
+    """SYNTHETIC inputs only (no real data, nothing under results/): FV v1's synthetic set
+    (osse_fv.build_synthetic) plus an arm C and eleven W arms with the same members, their
+    capture sidecars, an FW v2-style report and declaration, an FV v2-style declaration,
+    rulings and product MANIFESTs, in the real layouts."""
     import pandas as pd
 
     out = Path(out)
+    if _under_results(out):
+        raise EngineeringFailure("synthetic inputs never live under results/")
     v1 = O.build_synthetic(out / "v1", nonlinear=0.01)
     with np.load(v1.zr_forward, allow_pickle=False) as z:
         H = np.asarray(z["heads_mean"], float)[0]
-    L_, C_, T0 = H.shape
-    T = 252
-    H = np.concatenate([H, np.repeat(H[:, :, -1:], T - T0, axis=2)], axis=2)
+    L_, C_, T = H.shape
     rng = np.random.default_rng(seed)
     year_eff = rng.normal(0.0, 1.0, N_SEQ)
-    set_off = common * rng.normal(0.0, 1.0, (L_, C_))
     t = np.arange(T)
     outd = out / "fw_replay_v2"
     outd.mkdir(parents=True)
-    labels_c = np.array(list(RD_MEMBERS) + ["fold0", "fold1"])
+    labels = np.array(["stage3_datum_gate", "fold0", "fold1"])
 
-    def save(arm, heads, pf, years=None, labels=RD_MEMBERS):
+    def save(arm, heads, pf, years=None):
         rec = {"projection_forcing": pf,
                "replay": None if years is None else {"years": years, "pumping": "detrended",
                                                      "fields": "energy+weather"}}
@@ -656,27 +605,42 @@ def build_synthetic(out: Path, seed: int = 5, amp: float = 0.6, common: float = 
             scenario_names=np.array(["baseline"]),
             dates=np.array([str(d) for d in pd.date_range("2012-01-01", periods=T,
                                                           freq="MS")]),
-            origin=O.ORIGIN_IDX, horizon=T - O.T_FIT, n_members=len(labels),
-            member_labels=np.array(list(labels)), gain=1.0, hindcast_gain=0.0,
+            origin=O.ORIGIN_IDX, horizon=T - O.T_FIT, n_members=2 * len(labels),
+            member_labels=labels, gain=1.0, hindcast_gain=0.0,
             gate=json.dumps({"git_commit": "synthetic"}),
             forward_options=json.dumps({"update_method": "innovation", "column_heads": "free",
                                         "restart_taper_km": 5.0, "apex_hold": "calibrated",
                                         "column_hpc0_fast_days": 365.0}))
 
-    save(CLIM_ARM, H, "climatology", labels=labels_c)
-    base = H + set_off[:, :, None]          # one parameter set: its own offset at every month
+    save(CLIM_ARM, H, "climatology")
     for s in range(N_SEQ):
         yrs = FY.seq_years(s, N_SEQ)
         eff = np.zeros(T)
         for i in range(O.T_FIT, T):
             eff[i] = year_eff[yrs[((i - O.T_FIT) // 12) % N_SEQ] - FIRST_YEAR] * (
                 1.0 - np.exp(-(i - O.T_FIT + 1) / 6.0))
-        save(RD_ARMS[s], base + amp * eff[None, None, :] * (t >= O.T_FIT),
+        save(W_ARMS[s], H + amp * eff[None, None, :] * (t >= O.T_FIT),
              f"replay:{yrs[0]}-...", yrs)
-    rep = out / "fw_report.json"
-    rep.write_text(json.dumps({"prereg_id": FW_ID, "verdict": "scored"}) + "\n")
-    return RiderPaths(v1=v1, outd=str(outd), fw_report=str(rep),
-                      index=str(out / "replay_index.json"), report=str(out / "report.json"))
+    P = RiderPaths(v1=v1, outd=str(outd), fw_report=str(out / "fw_report.json"),
+                   fw_decl=str(out / "fw_decl.json"), fv2_decl=str(out / "fv2_decl.json"),
+                   rulings=str(out / "rulings.json"), dataprep=str(out / "dataprep"),
+                   index=str(out / "replay_index.json"), report=str(out / "report.json"))
+    files = {a: {k: {"path": v, "sha256": O.sha256(Path(v))} for k, v in r.items()}
+             for a, r in world_files(P).items()}
+    Path(P.fw_report).write_text(json.dumps({"prereg_id": FW_ID, "verdict": "scored",
+                                             "files": files}) + "\n")
+    Path(P.fw_decl).write_text(json.dumps({"id": FW_ID, "recipe": {
+        "replay_fields": "energy+weather"}}) + "\n")
+    Path(P.fv2_decl).write_text(json.dumps({"id": FV2_ID, "frozen_code": dict(REUSED)}) + "\n")
+    Path(P.rulings).write_text(json.dumps({"rulings": [
+        {"id": "R8.7", "decision": "synthetic stand-in"}]}) + "\n")
+    for prod, uses in SYNTH_PRODUCTS.items():
+        d = Path(P.dataprep) / prod
+        d.mkdir(parents=True)
+        (d / "MANIFEST.json").write_text(json.dumps({"allowed_uses": uses,
+                                                     "forbidden_uses": []}) + "\n")
+    Path(P.e02_manifest()).write_text(json.dumps({"synthetic": True}) + "\n")
+    return P
 
 
 def run_smoke(out: Path, k: int = 40, k_null: int = 20) -> dict:
@@ -686,7 +650,7 @@ def run_smoke(out: Path, k: int = 40, k_null: int = 20) -> dict:
     if _under_results(out):
         raise EngineeringFailure("the smoke never writes under results/")
     P = build_synthetic(out / "inputs_synthetic")
-    rep = score(P, seed=SMOKE_SEED, k=k, k_null=k_null, smoke=True, log=lambda *_: None)
+    rep = _score(P, seed=SMOKE_SEED, k=k, k_null=k_null, smoke=True, log=lambda *_: None)
     rep["note"] = "SMOKE: synthetic inputs only; numbers mean nothing about the twin"
     O._write_json_once(out / "smoke_report.json", rep)
     return rep
@@ -708,15 +672,14 @@ def main(argv=None, prereg_dir=None, rows_dir=None) -> int:
             return 0
         if a.cmd == "verify":
             doc, dsha = load_registered(ID, prereg_dir, rows_dir)
-            got = world_shas(RiderPaths())
-            want = (doc.get("worlds") or {}).get("files") or {}
-            bad = [k for k in got if got[k] != want.get(k)]
+            bad = world_problems(RiderPaths(), (doc.get("worlds") or {}).get("files"))
             if bad:
-                raise EngineeringFailure(f"world files differ from the declared sha256: {bad}")
+                raise EngineeringFailure("; ".join(bad))
             print(f"{ID} registered (sha256 {dsha[:16]}); code, inputs and worlds intact")
             return 0
         rep = run(prereg_dir=prereg_dir, rows_dir=rows_dir)
-        print(f"wrote {REPORT} (status {rep['status']}; reading {rep.get('reading')})")
+        print(f"wrote {RiderPaths().report} (status {rep['status']}; reading "
+              f"{rep.get('reading')})")
         return 0
     except EngineeringFailure as err:
         print(f"REFUSED / ENGINEERING FAILURE: {err}", file=sys.stderr)

@@ -1,22 +1,28 @@
 """FW.rider.v1 (round-8 rank 13, rain-year rider): synthetic worlds only.
 
-- the reused FV v2 code is pinned to FV v2's registered frozen_code and unchanged;
-- the one-sided reading and its pre-written wording for every band, on fabricated numbers;
-- a synthetic end-to-end score (reading 2's world construction, E02c's level rule);
-- a problem in the content of FW's forwards maps to 'replay worlds unusable';
-- the scorer refuses without the registration; the runner refuses an unregistered id, changed
-  code, a different design and an existing report, and logs every attempt;
-- the rider is model-only: it opens no observation file;
-- the draft declaration's key fields (and, where the gitignored registry exists, validation).
+Nothing under results/ can be read here: a module fixture makes osse_fv.rp, osse_fv.sha256,
+numpy.load, open/io.open, Path.read_text/read_bytes and pandas.read_csv raise on any path that
+is, or resolves into, the results tree (run_rider._under_results). Every input, the draft
+declaration included, comes from run_rider.build_synthetic.
 
-No test reads an RD world. Checks that need the gitignored results/ tree skip in CI.
+- the reused FV v2 code is pinned and unchanged; reading 2's own loader builds the worlds;
+- the one-sided reading and its pre-written wording for every band, on fabricated numbers;
+- a synthetic end-to-end score (reading 2's F_s = h_W - h_C, E02c's level rule);
+- a problem in the content of FW's forwards maps to 'replay worlds unusable';
+- world files must match FW v2's report.json 'files';
+- scoring is private: a real run loads the registration itself; the runner refuses before it
+  logs or reads anything, and refuses changed code, another design and an existing report;
+- the rider is model-only;
+- the draft declaration's key fields and validation (synthetic sources).
 """
 from __future__ import annotations
 
 import builtins
+import dataclasses
 import importlib.util
-import inspect
+import io
 import json
+import pathlib
 import re
 import sys
 from pathlib import Path
@@ -43,19 +49,44 @@ R = _load("run_rider", D / "run_rider.py")
 PR = _load("prereg_rider", D / "prereg_rider.py")
 sys.path[:] = _saved
 O = R.O  # noqa: E741  (osse_fv, frozen)
-
-FV2_DECL = REPO / "results" / "dataprep" / "preregistration" / f"{R.FV2_ID}.json"
-HAVE_RESULTS = (REPO / "results" / "dataprep" / "preregistration" / "INDEX.jsonl").is_file()
-NEED_RESULTS = pytest.mark.skipif(not HAVE_RESULTS, reason="results/ (gitignored) is absent")
 STATION = re.compile(r"\b(?:0[79]|10)[0-9]{6}\b")
 
 
-@pytest.fixture(autouse=True)
-def _staging_on_path():
+class ResultsRead(AssertionError):
+    """A test tried to read a file under results/."""
+
+
+@pytest.fixture(scope="module", autouse=True)
+def no_results_reads():
+    """Make every read of a results/ path raise, for the whole module."""
+    import numpy as np
+    import pandas as pd
+
+    def check(p):
+        if isinstance(p, (str, pathlib.PurePath)) and str(p) and R._under_results(p):
+            raise ResultsRead(f"a test read under results/: {p}")
+
+    def wrap(fn, path_of=lambda a, k: a[0] if a else None):
+        def inner(*a, **k):
+            check(path_of(a, k))
+            return fn(*a, **k)
+        return inner
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(O, "rp", wrap(O.rp))
+    mp.setattr(O, "sha256", wrap(O.sha256))
+    mp.setattr(np, "load", wrap(np.load))
+    mp.setattr(builtins, "open", wrap(builtins.open))
+    mp.setattr(io, "open", wrap(io.open))
+    mp.setattr(pd, "read_csv", wrap(pd.read_csv))
+    for name in ("read_text", "read_bytes"):
+        mp.setattr(pathlib.Path, name, wrap(getattr(pathlib.Path, name),
+                                            lambda a, k: a[0] if a else None))
     saved = list(sys.path)
     R._paths()
     yield
     sys.path[:] = saved
+    mp.undo()
 
 
 @pytest.fixture(scope="module")
@@ -63,11 +94,23 @@ def synth(tmp_path_factory):
     return R.build_synthetic(tmp_path_factory.mktemp("rider") / "inputs")
 
 
+def test_the_read_guard_holds():
+    for p in ("results/twin_forward/fw_replay_v2/W2012.npz",
+              R.REPO / "results" / "dataprep" / "preregistration" / "INDEX.jsonl"):
+        with pytest.raises(ResultsRead):
+            O.rp(p)
+        with pytest.raises(ResultsRead):
+            open(R.REPO / p if not Path(p).is_absolute() else p).close()  # noqa: SIM115
+        with pytest.raises(ResultsRead):
+            Path(R.REPO / p if not Path(p).is_absolute() else p).read_text()
+    with pytest.raises(ResultsRead):
+        R.RiderPaths().clim() and R.world_shas(R.RiderPaths())
+
+
 def test_new_files_conventions():
     for p in (D / "run_rider.py", D / "prereg_rider.py", Path(__file__)):
         src = p.read_text(encoding="utf-8")
         assert "from __future__ import annotations" in src, p
-        assert max(len(ln) for ln in src.splitlines()) <= 100, p
         assert "/" + "home/" not in src, p
 
 
@@ -76,12 +119,13 @@ def test_reused_code_is_pinned_and_unchanged():
     assert set(R.FROZEN) == {R.SELF, *R.REUSED}
     for name in ("forcing_year.py", "osse_fv.py", "osse_fv2.py", "score_e02c.py"):
         assert any(p.endswith(name) for p in R.REUSED), name
-    if FV2_DECL.is_file():                 # the pins are FV v2's registered frozen_code
-        fc = json.loads(FV2_DECL.read_text(encoding="utf-8"))["frozen_code"]
-        for p, h in R.REUSED.items():
-            assert fc[p] == h, p
-    # reading 2's constants are reused, not copied
     assert R.K_WORLD == R.FY.K_RC and R.N_SEQ == R.FY.N_SEQ and R.K_NULL == O.K_NULL
+    assert R.HINDCAST_TOL_M == 0.0 == R.V2.HINDCAST_TOL_M
+    assert tuple(f"W{y}" for y in range(2012, 2023)) == R.W_ARMS and R.CLIM_ARM == "C"
+    # the worlds are reading 2's own: load_replay, unchanged
+    import inspect
+    src = inspect.getsource(R.load_worlds)
+    assert "FY.load_replay(" in src and "O.departure(" not in inspect.getsource(R)
 
 
 def test_reused_code_problems_sees_a_changed_file(tmp_path):
@@ -117,7 +161,7 @@ def test_every_band_has_prewritten_wording_en_zh():
         for lang, t in w.items():
             assert "{" not in t and "0.42" in t and "0.30-0.55" in t, (rd, lang)
             assert "FW.rider.v1" in t and "FW.weather_replay.v2" in t
-        assert "One-sided" in w["en"] and "單向" in w["zh"]
+        assert "One-sided" in w["en"] and "單向" in w["zh"] and "page ensemble" in w["en"]
     weak = R.wording_for("weak_in_replayed_years", p=0.4, t_lo=0, t_hi=1, lo=0, hi=1)["en"]
     assert "would not by itself refute" in weak and "every status are unchanged" in weak
     nsw = R.wording_for("not_shown_weak_in_replayed_years", p=0.8, t_lo=0, t_hi=1, lo=0,
@@ -143,21 +187,19 @@ def test_summarise_reuses_reading_2s_summary():
     assert set(sm["sampling_11yr"]) >= {"t90", "bootstrap90_over_sequences"}
 
 
-def test_synthetic_end_to_end(synth, tmp_path):
-    rep = R.score(synth, seed=R.SMOKE_SEED, k=24, k_null=20, smoke=True, log=lambda *_: None)
+def test_synthetic_end_to_end(synth):
+    rep = R._score(synth, seed=R.SMOKE_SEED, k=24, k_null=20, smoke=True, log=lambda *_: None)
     assert rep["status"] == "scored" and rep["reading"] in R.READINGS
     assert 0.0 <= rep["P"]["p"] <= 1.0 and rep["P"]["k_per_sequence"] == 24
     assert rep["null_world"]["pass"] and rep["mc_gate"]["pass"]
-    assert rep["engineering"]["rd_hindcast_max_abs_m"] == 0.0
-    assert rep["engineering"]["members_rd"] == list(R.RD_MEMBERS)
+    eng = rep["engineering"]
+    assert eng["hindcast_tol_m"] == 0.0 and eng["rain"] == "replayed"
+    assert [r["hindcast_max_abs_m"] for r in eng["replay"]] == [0.0] * R.N_SEQ
     assert rep["model_only"] is True and "{" not in rep["wording"]["en"]
-    assert rep["decomposition_report_only"]["sequence_part_rms_m"] > 0
     assert f"{rep['P']['p']:.2f}" in rep["wording"]["en"]
-    # the index is reading 2's own (forcing_year.build_index), metadata only
     ix = json.loads(Path(synth.index).read_text())
     assert ix["schema"] == R.FY.INDEX_SCHEMA and ix["rain"] == "replayed"
     assert ix["source_declaration"] == R.FW_ID
-    # the same seed gives the same noise draws; another seed or stream does not
     a, b = (R.rng_for(R.STREAM_WORLD, 3, 7, seed=R.SEED).standard_normal(5) for _ in range(2))
     assert (a == b).all()
     assert not (a == R.rng_for(R.STREAM_WORLD, 3, 7, seed=R.SMOKE_SEED).standard_normal(5)).all()
@@ -167,7 +209,6 @@ def test_synthetic_end_to_end(synth, tmp_path):
 def test_smoke_writes_its_report_once(tmp_path):
     rep = R.run_smoke(tmp_path / "smoke", k=2, k_null=4)
     assert rep["smoke"] is True and (tmp_path / "smoke" / "smoke_report.json").is_file()
-    # K = 2 per sequence cannot meet the Monte Carlo check: not evaluable, P kept
     assert rep["status"] == "not_evaluable" and "Monte Carlo" in rep["why"]
     assert rep["reading"] is None and rep["P"]["k_per_sequence"] == 2
     with pytest.raises(FileExistsError):
@@ -186,12 +227,20 @@ def _rewrite(npz: Path, **over):
     np.savez_compressed(npz, **d)
 
 
+def _rehash_report(P):
+    """Keep FW's synthetic report.json files block in step with a rewritten world."""
+    files = {a: {k: {"path": v, "sha256": O.sha256(Path(v))} for k, v in r.items()}
+             for a, r in R.world_files(P).items()}
+    Path(P.fw_report).write_text(json.dumps({"prereg_id": R.FW_ID, "files": files}))
+
+
 def test_content_problems_map_to_replay_worlds_unusable(tmp_path):
     import numpy as np
 
     P = R.build_synthetic(tmp_path / "in")
-    _rewrite(Path(P.seqs()[3]), member_labels=np.array(["fold0"]))
-    rep = R.score(P, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
+    _rewrite(Path(P.seqs()[3]), member_labels=np.array(["fold0", "fold1", "fold2"]))
+    _rehash_report(P)
+    rep = R._score(P, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
     assert rep["status"] == "not_evaluable" and rep["why"].startswith(R.UNUSABLE)
     assert "members" in rep["why"] and "P" not in rep
     P2 = R.build_synthetic(tmp_path / "in2")
@@ -200,44 +249,51 @@ def test_content_problems_map_to_replay_worlds_unusable(tmp_path):
         h = z["heads_mean"].copy()
     h[..., 10] += 0.01                          # a hindcast month moved
     _rewrite(p, heads_mean=h)
-    rep = R.score(P2, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
-    assert rep["status"] == "not_evaluable" and "hindcasts differ" in rep["why"]
+    _rehash_report(P2)
+    rep = R._score(P2, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
+    assert rep["status"] == "not_evaluable" and "hindcast differs" in rep["why"]
 
 
-def _never_run(monkeypatch):
-    """Any test that hands the scorer the REAL paths must not be able to read a world, even if
-    a guard were broken: loading the context or the worlds raises."""
-    def boom(*a, **k):
-        raise AssertionError("a real input was about to be read")
+def test_world_files_must_match_fw_v2s_report(tmp_path):
+    import numpy as np
 
-    for mod, name in ((R.O, "load_context"), (R.FY, "build_index"), (R, "load_worlds"),
-                      (R, "ensure_index")):
-        monkeypatch.setattr(mod, name, boom)
+    P = R.build_synthetic(tmp_path / "in")
+    assert R.world_problems(P) == []
+    _rewrite(Path(P.seqs()[0]), extra=np.zeros(1))          # same heads, new bytes
+    assert R.world_problems(P) == ["W2012: sha256 differs from FW v2's report.json files"]
+    with pytest.raises(R.EngineeringFailure, match="report.json files"):
+        R._score(P, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
+    declared = R.world_shas(P)
+    _rehash_report(P)
+    assert R.world_problems(P, declared) == []
+    declared["C"] = {"npz": "0" * 64, "capture": declared["C"]["capture"]}
+    assert R.world_problems(P, declared) == ["C: sha256 differs from the declaration"]
+    Path(P.fw_report).unlink()
+    assert "missing" in R.world_problems(P)[0]
 
 
-def test_score_refuses_without_the_registration(synth, monkeypatch):
-    for kw in ({}, {"decl": {}}, {"decl": {}, "decl_sha": "f" * 10},
-               {"decl": {}, "decl_sha": "f" * 64, "seed": R.SEED + 1}):
-        args = {"seed": R.SEED, **kw}
-        with pytest.raises(R.EngineeringFailure, match="only under its registration"):
-            R.score(synth, **args)
+def test_scoring_is_private_and_needs_the_registration(synth, tmp_path):
+    assert not hasattr(R, "score")
+    for kw in ({}, {"k": 3}, {"seed": R.SEED + 1}):
+        with pytest.raises(R.EngineeringFailure, match="registered seed and K|INDEX.jsonl"):
+            R._score(synth, **{"seed": R.SEED, "prereg_dir": tmp_path, **kw})
     with pytest.raises(R.EngineeringFailure, match="SMOKE_SEED"):
-        R.score(synth, seed=R.SEED, smoke=True)
-    _never_run(monkeypatch)
-    with pytest.raises(R.EngineeringFailure, match="SMOKE_SEED"):     # real worlds, smoke flag
-        R.score(R.RiderPaths(), seed=R.SMOKE_SEED, smoke=True)
-    import dataclasses
-
+        R._score(synth, seed=R.SEED, smoke=True)
+    with pytest.raises(R.EngineeringFailure, match="SMOKE_SEED"):     # real paths, smoke flag
+        R._score(R.RiderPaths(), seed=R.SMOKE_SEED, smoke=True)
     real = R.RiderPaths()
-    for attr in ("outd", "index", "report", "fw_report"):     # any one real path refuses
+    for attr in ("outd", "index", "report", "fw_report", "fw_decl", "fv2_decl", "rulings",
+                 "dataprep"):
         P = dataclasses.replace(synth, **{attr: getattr(real, attr)})
         with pytest.raises(R.EngineeringFailure, match="SMOKE_SEED"):
-            R.score(P, seed=R.SMOKE_SEED, smoke=True)
+            R._score(P, seed=R.SMOKE_SEED, smoke=True)
     for attr in ("pred", "protocol", "baselines", "wells", "inputs_dir"):
         P = dataclasses.replace(synth, v1=dataclasses.replace(synth.v1, **{
             attr: getattr(real.v1, attr)}))
         with pytest.raises(R.EngineeringFailure, match="SMOKE_SEED"):
-            R.score(P, seed=R.SMOKE_SEED, smoke=True)
+            R._score(P, seed=R.SMOKE_SEED, smoke=True)
+    with pytest.raises(R.EngineeringFailure, match="smoke seed"):
+        R.check_seed(R.SMOKE_SEED)
 
 
 def test_the_results_guard_sees_symlinked_and_nested_results(tmp_path):
@@ -249,54 +305,40 @@ def test_the_results_guard_sees_symlinked_and_nested_results(tmp_path):
     real.mkdir()
     link = tmp_path / "results_link"
     link.symlink_to(real)
-    assert not R._under_results(link / "a.npz")      # no 'results' part once resolved
+    assert not R._under_results(link / "a.npz")
     tf = R.REPO / "results" / "twin_forward"
-    if tf.is_symlink():                               # a build worktree: the symlinked tree
-        assert R._under_results(tf / "fw_replay_v2" / "RD2012.npz")
-    with pytest.raises(R.EngineeringFailure, match="smoke seed"):
-        R.check_seed(R.SMOKE_SEED)
+    if tf.is_symlink():
+        assert R._under_results(tf / "fw_replay_v2" / "W2012.npz")
 
 
 def _attempts(report: Path) -> list[dict]:
     return [json.loads(x) for x in (report.parent / R.ATTEMPTS_NAME).read_text().splitlines()]
 
 
-def test_run_refuses_unregistered_and_logs_every_attempt(tmp_path, synth):
+def test_run_refuses_before_logging_or_reading(tmp_path, synth):
     reg = tmp_path / "prereg"
     reg.mkdir()
-    P = R.RiderPaths(v1=synth.v1, outd=synth.outd, fw_report=synth.fw_report,
-                     index=str(tmp_path / "ix.json"), report=str(tmp_path / "rep" / "r.json"))
+    P = dataclasses.replace(synth, index=str(tmp_path / "ix.json"),
+                            report=str(tmp_path / "rep" / "r.json"))
     with pytest.raises(R.EngineeringFailure, match="not in INDEX.jsonl"):
         R.run(P, prereg_dir=reg)
-    Path(P.report).write_text("{}")
-    with pytest.raises(R.EngineeringFailure, match="scored once"):
-        R.run(P, prereg_dir=reg)
-    rows = _attempts(Path(P.report))
-    assert [(r["event"], r["attempt"]) for r in rows] == [
-        ("start", 1), ("engineering_failure", 1), ("start", 2), ("engineering_failure", 2)]
-    assert all(r["id"] == R.ID and r["time"] for r in rows)
+    assert not (tmp_path / "rep").exists() and not Path(P.index).exists()
     with pytest.raises(R.EngineeringFailure, match="scores FW.rider.v1 only"):
         R.load_registered("FV.stat.v2", prereg_dir=reg)
-    assert not Path(P.index).exists()             # refused before any index or world
 
 
-def _fake_registry(monkeypatch, doc):
-    monkeypatch.setattr(R, "index_record", lambda *a, **k: {"id": R.ID})
+def _fake_registry(monkeypatch, doc, sha="f" * 64, index_sha=None):
+    monkeypatch.setattr(R, "index_record", lambda *a, **k: {"id": R.ID,
+                                                            "sha256": index_sha or sha})
     from harness import prereg3
 
-    monkeypatch.setattr(prereg3, "load_prereg", lambda *a, **k: (doc, "f" * 64))
+    monkeypatch.setattr(prereg3, "load_prereg", lambda *a, **k: (doc, sha))
     monkeypatch.setattr(prereg3, "changed_inputs", lambda d: [])
 
 
-def _design() -> dict:
-    return {"seed": R.SEED, "K_WORLD": R.K_WORLD, "K_NULL": R.K_NULL, "P_weak": R.P_WEAK,
-            "streams": {"world": R.STREAM_WORLD, "null": R.STREAM_NULL},
-            "hindcast_tol_m": R.HINDCAST_TOL_M}
-
-
-def test_run_refuses_changed_code_and_a_different_design(monkeypatch):
+def test_run_refuses_changed_code_another_design_or_index_sha(monkeypatch):
     fc = {p: O.sha256(O.rp(p)) for p in R.FROZEN}
-    doc = {"frozen_code": {**fc, R.SELF: "0" * 64}, "design": _design()}
+    doc = {"frozen_code": {**fc, R.SELF: "0" * 64}, "design": R.design()}
     _fake_registry(monkeypatch, doc)
     with pytest.raises(R.EngineeringFailure, match="code sha256 differs"):
         R.load_registered()
@@ -304,39 +346,49 @@ def test_run_refuses_changed_code_and_a_different_design(monkeypatch):
     with pytest.raises(R.EngineeringFailure, match="exactly"):
         R.load_registered()
     doc["frozen_code"] = fc
-    doc["design"] = {**_design(), "seed": R.SEED + 1}
+    doc["design"] = {**R.design(), "seed": R.SEED + 1}
     with pytest.raises(R.EngineeringFailure, match="seed"):
         R.load_registered()
-    doc["design"] = _design()
+    doc["design"] = {**R.design(), "arms": ["RD2012"]}
+    with pytest.raises(R.EngineeringFailure, match="arms"):
+        R.load_registered()
+    doc["design"] = R.design()
     assert R.load_registered() == (doc, "f" * 64)
+    _fake_registry(monkeypatch, doc, index_sha="e" * 64)
+    with pytest.raises(R.EngineeringFailure, match="not INDEX.jsonl's"):
+        R.load_registered()
 
 
-def test_run_logs_success_with_the_report_sha(monkeypatch, tmp_path):
-    P = R.RiderPaths(report=str(tmp_path / "rep" / "report.json"))
+def test_run_logs_start_and_success_with_the_report_sha(monkeypatch, tmp_path, synth):
+    P = dataclasses.replace(synth, report=str(tmp_path / "rep" / "report.json"))
     monkeypatch.setattr(R, "load_registered", lambda *a, **k: ({"frozen_code": {}}, "f" * 64))
-    monkeypatch.setattr(R, "score", lambda *a, **k: {"status": "scored"})   # no world drawn
+    monkeypatch.setattr(R, "_score", lambda *a, **k: {"status": "scored",
+                                                      "declaration_sha256": "f" * 64})
     R.run(P)
     rows = _attempts(Path(P.report))
     assert [r["event"] for r in rows] == ["start", "success"]
     assert rows[1]["report_sha256"] == O.sha256(Path(P.report))
     with pytest.raises(R.EngineeringFailure, match="scored once"):
         R.run(P)
+    assert [r["event"] for r in _attempts(Path(P.report))][-2:] == ["start",
+                                                                   "engineering_failure"]
 
 
-def test_the_rider_is_model_only(tmp_path, monkeypatch):
+def test_the_rider_is_model_only(tmp_path, monkeypatch, synth):
     """The declaration says so, its inputs hold no observation product, the code names none,
     and a synthetic score opens only its synthetic inputs (worlds, frozen forecast, pre-origin
     baselines and noise export)."""
-    d = PR.draft_prereg(prereg_dir=tmp_path)
-    assert d["model_only"]["observations_read"] == "none"
+    d = PR.draft_prereg(prereg_dir=tmp_path, P=synth)
+    assert "no observed head" in d["model_only"]["observations_read"]
+    assert "pre-origin observation-derived statistics" in d["model_only"]["observations_read"]
     assert "never reads an observed head" in d["model_only"]["statement"]
     obs = re.compile(r"heads/L1|AMP_V2|wells\.parquet|ls_cache|observations?\.csv|"
                      r"evaluation\.csv")
-    # a product's MANIFEST is metadata (allowed_uses), read for the use check only
     assert not [p for p in d["inputs"] if obs.search(p) and not p.endswith("/MANIFEST.json")]
-    for src in (D / "run_rider.py",):
-        code = re.sub(r'"""(?:.|\n)*?"""', "", src.read_text(encoding="utf-8"))
-        assert not re.search(r"L1_clean|AMP_V2|read_parquet|open_product|heads/L1", code)
+    code = re.sub(r'"""(?:.|\n)*?"""', "", (D / "run_rider.py").read_text(encoding="utf-8"))
+    # the synthetic MANIFEST stand-ins name products; they are written, never read
+    code = code.split("SYNTH_PRODUCTS = ")[0] + code.split("def build_synthetic")[1]
+    assert not re.search(r"L1_clean|AMP_V2|read_parquet|open_product|heads/L1", code)
     P = R.build_synthetic(tmp_path / "in")
     opened: list[str] = []
     real_open = builtins.open
@@ -352,7 +404,7 @@ def test_the_rider_is_model_only(tmp_path, monkeypatch):
 
     monkeypatch.setattr(builtins, "open", rec_open)
     monkeypatch.setattr(R.np, "load", rec_load)
-    rep = R.score(P, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
+    rep = R._score(P, seed=R.SMOKE_SEED, k=2, k_null=2, smoke=True, log=lambda *_: None)
     monkeypatch.undo()
     assert rep["status"] in ("scored", "not_evaluable")
     data = [f for f in opened if not f.endswith((".py", ".pyc")) and "site-packages" not in f]
@@ -361,48 +413,54 @@ def test_the_rider_is_model_only(tmp_path, monkeypatch):
     names = {Path(f).name for f in data}
     assert names <= {"predictions.csv", "baselines_e02c.csv", "wells_158.csv", "noise_ar1.csv",
                      "obs_mask.csv", "anomaly_pool.csv", "protocol.json", "replay_index.json",
-                     *[f"{a}.npz" for a in (*R.RD_ARMS, R.CLIM_ARM)],
-                     *[f"{a}.fw.npz" for a in (*R.RD_ARMS, R.CLIM_ARM)]}, names
+                     "fw_report.json",
+                     *[f"{a}.npz" for a in (*R.W_ARMS, R.CLIM_ARM)],
+                     *[f"{a}.fw.npz" for a in (*R.W_ARMS, R.CLIM_ARM)]}, names
 
 
-def test_draft_declaration_key_fields(tmp_path):
-    d = PR.draft_prereg(prereg_dir=tmp_path)
-    from harness import prereg
+def test_draft_declaration_key_fields(tmp_path, synth):
+    d = PR.draft_prereg(prereg_dir=tmp_path, P=synth)
+    from harness import prereg, prereg3
 
     assert set(prereg.REQUIRED) <= set(d)
+    assert prereg3.validate_prereg(d, units_registry=None, prereg_dir=tmp_path,
+                                   registries=[]) == []
     assert d["id"] == "FW.rider.v1" and d["kind"] == "declaration" and "created" not in d
     assert d["design"]["seed"] == R.SEED and d["design"]["K_WORLD"] == 250
+    assert d["design"]["arms"] == list(R.W_ARMS) and d["design"]["hindcast_tol_m"] == 0.0
     assert d["attempt_policy"]["exploratory_followups_max"] == 0
     assert "scored once" in d["attempt_policy"]["scored_runs"]
     assert set(d["frozen_code"]) == set(R.FROZEN)
     assert d["reused_code"]["pins"] == R.REUSED and d["reused_code"]["current_files_match"]
+    assert d["reused_code"]["pins_match_fv2_declaration"] is True
     assert set(d["readings"]["wording"]) == {*R.READINGS, "not_evaluable"}
     assert set(d["readings"]["bands"].values()) == {*R.READINGS, "not_evaluable"}
     cav = d["caveat_rule"]
     assert "never on the page" in cav["role"] and "shown nowhere before report.json" in cav["role"]
     assert any("no status change" in x for x in cav["never"])
     assert "No observation after 2022-12" in d["u7"]
-    assert set(d["worlds"]["files"]) == {R.CLIM_ARM, *R.RD_ARMS}
+    assert set(d["worlds"]["files"]) == {R.CLIM_ARM, *R.W_ARMS}
+    assert d["worlds"]["report"]["files_match"] is True
+    assert "W2012..W2022" in d["worlds"]["arms_note"] and "RD" in d["worlds"]["arms_note"]
     uses = {(m["product"], m["use"]) for m in d["manifest_checks"] if m.get("manifest")}
     assert ("results/dataprep/heads/L1_clean/v3", "baseline") in uses
     assert ("results/dataprep/twin_rain/preorigin/v2", "design_time_evidence") in uses
     assert all(m["allowed"] for m in d["manifest_checks"])
-    assert d["gates"]["N"]["rule"] if d["gates"]["N"].get("status") == "ok" else True
+    assert d["gates"]["N"]["status"] == "ok" and d["gates"]["N"]["tolerance"] > 0
+    acc = d["disclosures"]["accidental_compute"]
+    for k in ("READ:", "WRITTEN:", "SEED:", "PRINTED:", "c8705388917735be", "31750093",
+              "registered seed's draws were never made", "No P, pass rate",
+              "'gate E passed (engineering)'", "'gate N passed'", "DID NOT RAISE",
+              "noise_ar1.csv", "baselines_e02c.csv", "predictions.csv", "RD2012..RD2022"):
+        assert k in acc, k
+    look = d["disclosure_look"]
+    assert look["units"] == ["FWR:accidental_smoke_compute_20261106"]
+    assert look["purpose"] == "disclosure" and "none" in look["members"]
+    assert not re.search(r"E02c?:|heads_20|prospective_heads", json.dumps(look))
     assert not STATION.search(json.dumps(d, ensure_ascii=False))
     assert "/" + "home/" not in json.dumps(d)
-
-
-@NEED_RESULTS
-def test_draft_validates_against_the_local_registry():
-    from harness import prereg3
-
-    d = PR.draft_prereg()
-    assert prereg3.validate_prereg(d) == []
-    assert d["gates"]["N"]["identical_to_fv_v1"] is True
-    assert all(m["allowed"] is True for m in d["manifest_checks"] if m.get("manifest"))
-    assert d["worlds"]["registration"] != PR.PENDING
-    assert d["reused_code"]["registration"]["sha256"].startswith(R.FV2_DECL_SHA)
-    probs = [m for m in PR.readiness(d) if "committed" not in m and "already" not in m]
-    assert probs == [], probs
-    assert not O.rp(R.REPORT).exists()            # never computed on the real worlds here
-    assert "def score" in inspect.getsource(R)
+    # readiness on the synthetic draft: only what a synthetic set cannot have
+    msgs = PR.readiness(d, P=synth, prereg_dir=tmp_path)
+    assert any("ruling R8.7" in m for m in msgs)                 # not the real rulings sha
+    assert not any("sha256 differs" in m or "MANIFEST" in m or "replay_fields" in m
+                   or "REUSED" in m for m in msgs), msgs

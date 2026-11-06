@@ -1846,14 +1846,19 @@ scored, and no number on the page is new.
   draws a marker at November 2023 labelled "start memory ends, in this model" (`ts_fm_mark`),
   and its note says that after that month the head line is this model's average-weather
   scenario and that the first-year forecast of record is the statistical layer (`ts_fm_note`).
-  The month and the 11 months come from `FM.origin_memory.v1`'s report (L* = 11 months,
+  Subsidence, rate and avoided-subsidence legends keep the earlier wording. The page's own words
+  no longer call the physics level a forecast ("frozen run" in the E02c and external-well lines
+  and in the elastic-split note); registered names such as E02c's "the frozen 2022-12 level
+  forecast" are quoted as registered, a declared exception. The month and the 11 months come from `FM.origin_memory.v1`'s report (L* = 11 months,
   2023-11; registered sha e2d261fb, report sha d93c0e6d) through the page payload, never typed
   in; a build without that report keeps the earlier legend and draws no marker.
 - **E04 named the forecast of record.** A line after the statistical layer's registration line
   (`evc_hyb_for`): "Forecast of record for November 2026–October 2027: this registered
   statistical layer (E04), not the physics model, is the page's first-year head forecast (user
-  ruling R8.7); its registered test decides it once the window has closed. For the same months
-  the physics model's head levels are its average-weather scenario, not a forecast." FV.stat.v2's
+  ruling R8.7; not drawn on the map or the series); its registered test decides it once the
+  window has closed. For the same months the physics model's head levels are its average-weather
+  scenario, not a forecast." It, and the head-series note, show only while the registration names
+  its window and no E04 outcome has taken the forecast of record away. FV.stat.v2's
   two registered lines follow it unchanged (P 0.93; the rho = 0 null reading P0 0.48; "a 2028
   fail is the more informative outcome").
 - **C30 split.** C30 becomes C30-scen and C30-fc, following the C01 -> C01 / C01-w / C01-sz
@@ -1861,8 +1866,8 @@ scored, and no number on the page is new.
   average-weather scenario with C30's registered sub-labels unchanged: E02c's level rule (year
   1), E02z (years 2 and 3; its registered before-scoring text is now on the page as
   `evc_pro_e02z`, once E02z is in the registry), N3's pile cells and N3S-L's coast. Its status
-  is written N+D: N is the ruling's scenario status, and +D marks those sub-labels, as E02c's
-  and E02z's page mappings word it ("N with D sub-label"). C30-fc is new, status D: the
+  is plain N, as the ruling words it; those sub-labels stay as notes on the row and are decided
+  in their own rows (C30-fc, E02/E21, E30, C31, C05/C26). C30-fc is new, status D: the
   first-year forecast of record is E04's, decided by E04's registered rule (equal-station RMSE
   ratio to climatology at most 1.0 and pooled 90 % coverage in [0.85, 0.95], at least 100
   stations with 6 window months). Every display key, function and payload path that named
@@ -1880,25 +1885,34 @@ scored, and no number on the page is new.
   or fail moves E02 and the per-well interval line only. None of this wording is on the page,
   the README or the model card before its outcome exists.
 - **Rain-year rider, declaration drafted (pending).** `FW.rider.v1` (model-only) reruns FV v2
-  reading 2's world construction with `FW.weather_replay.v2`'s eleven RD replays (rain and
-  detrended pumping replayed, the page parameter set alone) as the truth worlds, scored by
-  E02c's level rule exactly as FV v2's reading 1 scores it. The truth of sequence s is the
-  frozen forecast plus the datum-anchored departure of RD(2012 + s) from FW v2's climatology arm
-  C, plus FV v1's AR(1) noise; it never reads an observed head. Estimand P(E02c level pass),
-  the mean over the 11 sequences; 250 noise draws each, its own fixed seed, 500 null worlds
-  against FV v1's tolerance. One-sided: P at or below 0.5 adds the caveat that in a real weather
-  year a 2028 level fail would not by itself refute the model's average-weather level; above
-  0.5 it says only that the replayed rain years do not show the level test weak. Either way it
-  is a caveat line in the ledger (E21, beside C30-scen's level wording), never a page line, and
-  it changes no status. The code (`dataprep_staging/fw_rider/`) reuses FV v2's frozen files
-  unchanged by import, pinned to their registered sha256; it validates with prereg3 and is not
-  registered: the lead registers it after the code is on main, and the runner refuses to
-  compute before that. Disclosure: on 2026-11-06 a guard bug in the builder's own test run let
-  one test score the real worlds on the smoke seed; the result was discarded unseen (only the
-  two gate messages were printed), the index file it wrote was deleted, and the guard is fixed.
-  The declaration records it for the lead to log before registering.
+  reading 2's world construction, unchanged, with `FW.weather_replay.v2`'s eleven primary arms
+  W2012..W2022 (rain and detrended pumping replayed, the page ensemble) as the truth worlds,
+  scored by E02c's level rule exactly as FV v2's reading 1 scores it. The truth of sequence s is
+  the frozen run's predictions plus reading 2's departure F_s = h_W - h_C of that replay from FW
+  v2's climatology arm C (same members, code and restart; `forcing_year.load_replay`, with its
+  0.0 m hindcast identity), plus FV v1's AR(1) noise. It never reads an observed head; it reads
+  pre-origin observation-derived statistics only (CL/CLT, the mask, the AR(1) sd and lag-1).
+  Estimand P(E02c level pass), the mean over the 11 sequences; 250 noise draws each, its own
+  fixed seed, 500 null worlds against FV v1's tolerance. One-sided: P at or below 0.5 adds the
+  caveat that in a real weather year a 2028 level fail would not by itself refute the model's
+  average-weather level; above 0.5 it says only that the replayed rain years do not show the
+  level test weak. Either way it is a caveat line in the ledger (E21, beside C30-scen's level
+  wording), never a page line, and it changes no status. The plan text named FW v2's "RD"
+  arms but described rain plus detrended pumping, which is the W arms; RD is the page parameter
+  set alone, so RD - C would mix that set's departure from the ensemble into the worlds, and the
+  lead chose W. Every world file must match FW v2's `report.json` file hashes. The code
+  (`dataprep_staging/fw_rider/`) reuses FV v2's frozen files unchanged by import, pinned to their
+  registered sha256; scoring is private to its runner, which loads the registration itself and
+  refuses before it reads or logs anything. It validates with prereg3 and is not registered.
+  Disclosure: on 2026-11-06, before the first commit, a guard bug in the builder's own test run
+  let one test score the real worlds of the then design (the RD arms) on the smoke seed; it read
+  arm C and the RD arms, E02's predictions, E02c's baselines and FV v1's exports, wrote a
+  metadata-only replay index into the shared results tree (deleted), and printed only the two
+  gate messages; no P or other statistic was seen, and the registered seed's draws were never
+  made. The declaration records it, with the disclosure look the lead logs before registering.
 - **Candidate page.** Built with the command of `results/twin/twin_app_20261106c.build.log`,
-  `--out` changed to `results/twin/twin_app_20261106d.html` (log beside it); not promoted.
+  `--out` changed to `results/twin/twin_app_20261106e.html` (log beside it; `20261106d` is the
+  build before the review fixes); not promoted.
 
-Progress: no figure in section 22's table changes. C30's one row becomes two (C30-scen N+D,
+Progress: no figure in section 22's table changes. C30's one row becomes two (C30-scen N,
 C30-fc D); the rubric points of the split rows are not recomputed here.

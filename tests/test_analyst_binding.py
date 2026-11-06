@@ -44,6 +44,10 @@ def test_scoring_dates_appear_in_the_ledger_wording():
         s = BD.scoring()[cid]
         blob = by[cid]["wording_en"] + json.dumps(by[cid].get("outcome_display", {}))
         assert s["not_before"] in blob, cid
+    # a claim whose registration gives no scoring date says so, in the rules and the ledger
+    for cid, s in BD.scoring_undated().items():
+        assert cid in by and "no registered scoring date" in s["note"], cid
+        assert "no registered scoring date" in by[cid]["wording_en"] + by[cid]["notes"], cid
 
 
 def test_classes_follow_the_status_codes():

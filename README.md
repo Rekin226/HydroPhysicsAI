@@ -281,7 +281,7 @@ committed under `hydrophysics/twin/app/geodata/`).
 
 The new 2023–August 2026 groundwater challenge gives datum-adjusted RMSE **2.05 m**
 against **1.67 m** for seasonal climatology (158 wells, ratio 1.23; the innovation-update
-run the page shows). The current frozen forecast does not beat this baseline. Pass
+run the page shows). The current frozen run does not beat this baseline. Pass
 `--challenge results/twin/new_data_challenge_innov/report.json` to include that report in a
 rebuilt page; the report must match the forward file's hash.
 See [release and validation workflow](docs/TWIN_RELEASE.md) for data ingestion, independent
@@ -383,11 +383,11 @@ in `docs/GPU_SERVER.md`.
   but a world with no persistence passes the same rule with probability 0.48, so a 2028 pass is
   weak evidence and a fail is the more informative outcome (an erratum records that its county
   layout was 78/69 wells instead of E04's 81/66; the effect is far below its Monte Carlo error,
-  and it was not rerun). Whether the physics forecast adds to the statistical layer
+  and it was not rerun). Whether the frozen physics run adds to the statistical layer
   (`FE.encompass_2026-12.v1`) is registered report-only: its synthetic gate failed (with no
   physics information the rule reads "the layer encompasses it" only 0.51 of the time against
   0.80 required; physics-arm power 0.84). The strict level rule is registered for years 2 and 3
-  of the same forecast (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
+  of the same frozen run (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
   county, scored from 2029-01-15; synthetic decidability not shown weak: about 1.0 in Yunlin and
   0.69 in Changhua), and its expected outcome, from the published 2023-26 record, is the
   pre-worded narrowing that the physics level stays an average-weather scenario. Since the

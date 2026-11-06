@@ -2184,7 +2184,15 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
           "mc.results = {fm: {...res.fm, case: 'beyond_first_year'}}; const odd = snap(); "
           "mc.results = {fm: res.fm, fvs2: res.fvs2}; LANG = 'zh'; const zh = snap(); "
           "LANG = 'en'; S.tsFit = true; renderTS(); const fit = $('tsWrap').innerHTML; "
-          "S.tsFit = false; return {off, on, odd, zh, fit, y: M.years[Y - 1]}; }")
+          "S.tsFit = false; "
+          "const subs = ['abs', 'fwd', 'rate', 'dsubs'].map(l => { S.year = Y - 1; "
+          "legend(fieldFor(l, null, S.year)); return $('legend').textContent; }); "
+          "const dh = (() => { S.year = Y - 1; legend(fieldFor('dhead', null, S.year)); "
+          "return $('legend').textContent; })(); "
+          "const hyb = mc.hybrid; mc.hybrid = {...hyb, registration: {...hyb.registration, "
+          "result: 'failed'}}; const failed = snap(); mc.hybrid = null; const nohyb = snap(); "
+          "mc.hybrid = hyb; "
+          "return {off, on, odd, zh, fit, subs, dh, failed, nohyb, y: M.years[Y - 1]}; }")
     phone = ("(res) => { const mc = D.modelcard; mc.registrations = {fm: true}; "
              "mc.results = {fm: res.fm}; S.ts = 'head'; S.sel = {k: 'fan'}; S.tsFit = false; "
              "renderTS(); return $('tsWrap').innerHTML; }")
@@ -2219,10 +2227,20 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
         assert "start memory ends" not in s["ts"]["svg"] and "start memory" not in s["ts"]["note"]
     assert "start memory ends" not in got["fit"]                  # the fitted-only view
     assert "start memory, in this model" in got_phone               # a phone: the short label
+    # subsidence, rate and avoided-subsidence legends never carry FM's label; head ones do
+    for leg in got["subs"]:
+        assert "average-weather scenario" not in leg and "FM.origin_memory" not in leg, leg
+    assert "average-weather scenario after Nov 2023" in got["dh"]
+    # after an E04 fail, or without the hybrid registration, no forecast of record is named
+    for k in ("failed", "nohyb"):
+        assert "Forecast of record" not in got[k]["ev"], k
+        assert "forecast of record" not in got[k]["ts"]["note"], k
+        assert "start memory ends" in got[k]["ts"]["svg"], k       # the marker is FM's alone
     assert "2023年11月：起始記憶結束（本模型中）" in zh["ts"]["svg"]
     # E04 named the forecast of record, before FV.stat.v2's two lines; E02z's sub-label
     fr = ("Forecast of record for Nov 2026–Oct 2027: this registered statistical layer (E04), "
-          "not the physics model, is the page's first-year head forecast (user ruling R8.7)")
+          "not the physics model, is the page's first-year head forecast of record (user ruling "
+          "R8.7; not drawn on the map or the series)")
     assert fr in on["ev"] and fr in off["ev"]                     # the ruling, not a test
     assert on["ev"].index(fr) < on["ev"].index("FV.stat.v2")
     sub = "strict level rule years 2-3 (E02z), per county; scored not before 2029-01-15"

@@ -941,13 +941,16 @@ def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
     # the statistical layer's registered-test lines (evidenceItems' hybrid block, without the
     # retrospective evc_hyb score): its registration, the forecast of record (ruling R8.7, claim
     # C30-fc) and FV.stat.v2's two lines (fvsLines, ruling R8.8)
-    g = (mc.get("hybrid") or {}).get("registration") or {}
-    if mc.get("hybrid") and g.get("test_start") and g.get("test_end"):
-        ga = month_year(str(g["test_start"])[:7], lang)
-        gb = month_year(str(g["test_end"])[:7], lang)
-        add("evc_hyb_reg", {"reg": g["registered_on"], "a": ga, "b": gb, "n": g["stations"]})
-        add("evc_hyb_for", {"a": ga, "b": gb})
-        f = res.get("fvs2")
+    if mc.get("hybrid"):                                     # the page's `if (mc.hybrid)`
+        g = mc["hybrid"].get("registration") or {}
+        if g.get("test_start") and g.get("test_end"):
+            ga = month_year(str(g["test_start"])[:7], lang)
+            gb = month_year(str(g["test_end"])[:7], lang)
+            add("evc_hyb_reg", {"reg": g["registered_on"], "a": ga, "b": gb,
+                                "n": g["stations"]})
+            if g.get("result") not in ("failed", "not_evaluable"):     # forecastOfRecord
+                add("evc_hyb_for", {"a": ga, "b": gb})
+        f = res.get("fvs2")                                  # fvsLines: under mc.hybrid only
         if (rg.get("fvs2") and f and f.get("status") == "scored"
                 and f.get("reading") == "not_shown_weak"):
             v = {"p": J.f2(f["p"]), "p0": J.f2(f["p0"]), "q": J.f2(1 - f["p"])}

@@ -584,7 +584,7 @@ def test_c31_is_decided_by_n3_and_no_cut_number_can_become_s():
     assert "never gates" in t["never"] and "no Changhua subsidence lever" in t["never"]
     assert "no correction factor" in t["not_supported"]
     assert {"intended", "scoped"} <= set(c31["coverage"]) and "2 " in c31["coverage"]["scoped"]
-    assert _st("C09") == {"W", "D"} and _st("C30-scen") == {"N", "D"} and _st("C03") == {"W"}
+    assert _st("C09") == {"W", "D"} and _st("C30-scen") == {"N"} and _st("C03") == {"W"}
     for cid in ("C09", "C30-scen"):
         assert N3_SUB in cl[cid]["wording_en"] and n3 in cl[cid]["cites"]["registrations"], cid
         assert f"{FOURTH} (a)" in _also(cl[cid]), cid
@@ -1244,14 +1244,20 @@ POST2028 = {
 
 
 def test_r8_7_c30_is_split_into_the_scenario_and_the_forecast_of_record():
-    """R8.7: C30 -> C30-scen (the physics average-weather scenario, N with C30's registered D
-    sub-labels) and C30-fc (E04 named the first-year forecast of record, D via E04)."""
+    """R8.7: C30 -> C30-scen (the physics average-weather scenario, N; C30's D sub-labels kept
+    as notes and decided in their own rows) and C30-fc (E04 named the first-year forecast of
+    record, D via E04). Lead decision on the review: plain N, status_before C30's own N."""
     cl, ids = CL(), {r["id"] for r in L()["rulings"]}
     assert _r8("R8.7") in ids and "C30" not in cl
     scen, fc = cl["C30-scen"], cl["C30-fc"]
-    assert _st("C30-scen") == {"N", "D"} and _st("C30-fc") == {"D"}
+    assert _st("C30-scen") == {"N"} and _st("C30-fc") == {"D"}
     assert scen["ruling"] == fc["ruling"] == _r8("R8.7")
-    assert scen["status_before"] == fc["status_before"] == "N+D"
+    assert scen["status_before"] == fc["status_before"] == "N"
+    assert "status N (ruling R8.7: 'C30-scen (N)')" in scen["wording_en"]
+    for cid in ("C26", "C29", "C31", "E02", "E21", "E30"):        # the alias note
+        assert "'C30' in this row means C30-scen" in cl[cid]["notes"], cid
+    assert "C30-fc" in DM()["functions"]["renderTS"]
+    assert "results/twin/prospective_2026-11_hybrid/protocol.json" in fc["cites"]["reports"]
     # the scenario keeps every C30 citation; the forecast row cites E04's manifest and FV.stat.v2
     for r in ("E02c.prospective_2026-11.v1", "E02z.level_years23.v1", "N3.piles_prospective.v1",
               "N3SL.township_prospective_roc116-117.v1", "FM.origin_memory.v1",
@@ -1313,6 +1319,16 @@ def test_r8_7_page_says_which_line_is_a_forecast_and_which_a_scenario_en_zh():
     assert ev.index('tr("evc_hyb_reg"') < ev.index('tr("evc_hyb_for"') < ev.index(
         "out.push(...fvsLines());")
     assert 'if (rg.e02z) out.push(["", tr("evc_pro_e02z")]);' in ev
+    # the physics level is never called a forecast in the page's own (non-registered) words
+    for k in ("evc_pro_e02c", "evc_pro_ext", "cv9_b_split"):
+        assert "frozen run" in en[k] or "projection's mean forcing" in en[k], k
+        assert not re.search(r"(?i)level forecast|the forecast passes|forecast's mean", en[k]), k
+        assert "水位預測" not in zh[k] and "預測必須" not in zh[k] and "預報的平均" not in zh[k], k
+    assert 'fd.unit === "m"' in lg                               # head fields only
+    fr = C.function_source("forecastOfRecord")
+    assert 'g.result === "failed"' in fr and 'g.result === "not_evaluable"' in fr
+    assert "forecastOfRecord()" in ts and 'const fr = forecastOfRecord(); if (fr)' in ev
+    assert "not drawn on the map or the series" in en["evc_hyb_for"]
     for fn in L()["page_scoping"]["answer_functions"]:     # the answer row is unchanged
         keys = C.function_keys(fn, follow=True)
         assert not keys & {"evc_hyb_for", "lg_proj_scen", "ts_fm_note", "evc_pro_e02z"}, fn
@@ -1329,6 +1345,8 @@ def test_r8_7_post_2028_wording_is_predeclared_for_every_branch():
         assert "before any E02, E02c, E04 or E02z score" in od["declared"], cid
         assert "nothing here is shown" in od["declared"], cid
         assert od["never"], cid
+        assert any(x.startswith("declared exception: registered artefact names") for x in
+                       od["never"]), cid
     scen, fc, e21 = (cl[c]["outcome_display"] for c in ("C30-scen", "C30-fc", "E21"))
     assert "S-limited" in scen["e02c_level_forecast_supported"]
     assert "not a forecast" in scen["e02c_level_forecast_supported"]
@@ -1353,9 +1371,18 @@ def test_r8_7_post_2028_wording_is_predeclared_for_every_branch():
             assert f"'{cw[w]}' [verbatim]" in e21[k], k
     decl = C.PREREG / "E02z.level_years23.v1.json"
     if decl.exists():
-        zw = json.loads(decl.read_text(encoding="utf-8"))["page_mapping"]["wording"]
+        pm = json.loads(decl.read_text(encoding="utf-8"))["page_mapping"]
+        zw, zs = pm["wording"], pm["decidability_suffix"]
         for k in ("level_supported", "level_not_supported", "level_not_evaluable"):
             assert f"'{zw[k]}' [verbatim]" in scen[f"e02z_{k}"], k
+            if k != "level_not_evaluable":
+                assert f"'{zs['not_shown_weak']}'" in scen[f"e02z_{k}"], k
+        assert f"'{zs['not_run']}' [verbatim]" in scen["e02z_level_not_evaluable"]
+        assert "the same registered suffix" in scen["e02z_level_not_evaluable"]
+    for k in ("e02z_level_supported", "e02z_level_not_supported"):
+        assert "decidability_suffix.not_shown_weak" in scen[k], k
+    assert "ledger, README and MODEL_CARD only, never on the page (ruling R8.8)" in e21[
+        "coverage_supported"]
     decl = C.PREREG / "FV.stat.v2.json"
     if decl.exists():
         pas = json.loads(decl.read_text(encoding="utf-8"))["readings"][
