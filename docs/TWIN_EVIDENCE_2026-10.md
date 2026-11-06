@@ -2049,6 +2049,8 @@ registered or scored, and no status changes (C01 S, C01-w D, C01-sz N, C12 L).
 Progress: no figure in section 22's table changes; the head rows keep their statuses, and the
 headline number becomes the quantity N2's test is built on.
 
+**Result (2026-11-06).** The one all30 forward ran at rung main (main f95c7bb, attempt 1, status ok): `results/twin_forward/all30_page.npz` sha a68ca9a0, sidecar 56211724. The bound forward cf2c7154 stayed byte-identical, and baseline, cut30 and retire_aqua reproduce the page run within 0.01 m (cut30 +1.19 m and retire_aqua +1.41 m at N2's unit, Dec 2032, as published). all30 at N2's unit, Dec 2032: **+2.04 m** (model output; size N). The page `twin_app_20261107a.html`, built with `--all30` and `--pb-band`, is promoted to `results/twin/twin_app.html`.
+
 ## 25. PB decomposed band (ruling R8.13)
 
 User ruling R8.13 (2026-11-03, twelfth set; `results/dataprep/rulings/user_rulings_2026-11-03.json`,
