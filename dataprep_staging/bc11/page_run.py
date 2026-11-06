@@ -1,6 +1,6 @@
 """Model-only runs of I1.backcast_2010_11.v1 with the PAGE model (the lead runs this through
-``run_bc11.sh``, on the GPU, from a clean detached worktree at a rung of the declared E0
-ladder ``bc11_const.E0_LADDER``; every run after E0 uses the rung that passed).
+``run_bc11.sh``, on the GPU, from a clean detached worktree at the ONE declared E0 commit
+``bc11_const.WT_HEAD`` = 4c2723e; an E0 failure there means not evaluable: stop).
 
 ``PageRun`` is a staging copy of ``ch_x/hindcast.py``'s ``R1cRun`` (hash-bound to E26 and
 I1.CHX.v1, never edited) WITHOUT its zone_county_split guard (R1cRun refuses the page theta,
@@ -20,8 +20,8 @@ Subcommands
 ``e0 --out DIR``
     E0: the native 2012-22 rollout of the ensemble must reproduce the registered page forward
     (datum_gate_innov.npz, sha cf2c7154), baseline scenario, months 2012-01..2022-12, every
-    layer and cell, within E0_TOL_M = 0.01 m -> e0.json (one directory per ladder rung).
-    A failed E0 writes its e0.json and exits 3 (the logged failure that moves the ladder).
+    layer and cell, within E0_TOL_M = 0.01 m -> e0.json. A failed E0 writes its e0.json and
+    exits 3 (logged): the backcast is then NOT EVALUABLE (stop).
 ``swap --out DIR``
     The pre-declared Yunlin+Changhua swap gate on 2012-22: census preorigin v3 energy in place
     of the page's native energy, per county (energy ratio, and the county-only contrast with
@@ -170,7 +170,8 @@ def _write_json_once(path: Path, obj: dict) -> None:
 
 def _stamp(device: str) -> dict:
     return {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-            "code_head": HC.code_head(), "declared_ladder": list(K.E0_LADDER), "device": device,
+            "code_head": HC.code_head(), "declared_code_head": K.WT_HEAD,
+            "device": device,
             "code_sha256": K.code_shas(),
             "thetas_sha256": theta_shas(), "rain": K.PAGE_RF,
             "rain_sha256": IO.sha_or_missing(IO.rp(K.PAGE_RF))}
@@ -206,7 +207,7 @@ def e0(out: Path, device: str, model=None, compile_matvec: bool = False) -> dict
     _write_json_once(target, rep)
     log(f"E0 max |diff| {rep['max_abs_diff_m']:.2e} m -> {'PASS' if rep['passed'] else 'FAIL'}")
     if not rep["passed"]:
-        raise SystemExit(3)             # the logged E0 failure (moves the declared ladder)
+        raise SystemExit(K.E0_FAIL_RC)  # the logged E0 failure: not evaluable, stop
     return rep
 
 
@@ -334,13 +335,18 @@ def main(argv=None) -> int:
             p.add_argument("--stations", required=True, type=Path,
                            help="L1_pre2012 v2's station_meta.parquet")
     a = ap.parse_args(argv)
+    import attempts_bc11 as AT
+
     if a.cmd == "e0":
-        e0(a.out, a.device, compile_matvec=a.compile_matvec)
-    elif a.cmd == "swap":
-        swap(a.out, a.device, compile_matvec=a.compile_matvec)
-    else:
-        backcast(a.stations, a.out, a.device, compile_matvec=a.compile_matvec)
-    return 0
+        return AT.run_step("e0", lambda: e0(a.out, a.device, compile_matvec=a.compile_matvec),
+                           [str(a.out / "e0.json")])
+    if a.cmd == "swap":
+        return AT.run_step("swap", lambda: swap(a.out, a.device,
+                                                compile_matvec=a.compile_matvec),
+                           [str(a.out / "swap.json")])
+    return AT.run_step("hindcast", lambda: backcast(a.stations, a.out, a.device,
+                                                    compile_matvec=a.compile_matvec),
+                       [str(a.out / Path(K.PANEL).name), str(a.out / Path(K.PANEL_JSON).name)])
 
 
 if __name__ == "__main__":

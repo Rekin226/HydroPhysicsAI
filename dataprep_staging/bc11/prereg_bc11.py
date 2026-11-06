@@ -48,7 +48,7 @@ NA = prereg3.not_applicable
 THIS = f"{K.X}/prereg_bc11.py"
 TESTS_FILE = f"{K.X}/tests/test_bc11.py"
 RUNNER = f"{K.X}/run_bc11.sh"
-RUNNER_LINES = (f"ID={K.ID}", f"LADDER=({' '.join(K.E0_LADDER)})",
+RUNNER_LINES = (f"ID={K.ID}", f"WT_HEAD={K.WT_HEAD}", f'WT="$HOME/{K.WT_NAME}"',
                 f"RUN={K.RUN_DIR}")
 
 
@@ -76,27 +76,28 @@ def e0_rungs() -> list[dict]:
     return out
 
 
-def e0_passing(rungs: list[dict]) -> tuple[dict | None, list[str]]:
-    """The rung that passed and the ladder problems: a rung counts only if every earlier rung
-    ran and FAILED; none passing = not evaluable (stop)."""
+def e0_passing(rungs: list[dict], rows: list[dict] | None = None
+               ) -> tuple[dict | None, list[str]]:
+    """The one declared E0 commit (4c2723e): (its record if it passed, problems). A failed
+    E0, or ANY logged E0 failure row (step e0, rc 3) even beside a later pass, means NOT
+    EVALUABLE: stop, do not register. Engineering crashes (rc 1) stay retryable and are
+    disclosed with every other row."""
     probs = []
-    for k, r in enumerate(rungs):
-        if r["passed"] is None:
-            if not any(x["passed"] is not None for x in rungs[k:]):
-                probs.append(f"E0 rung {r['head']} not run")
-            else:
-                probs.append(f"E0 rung {r['head']} skipped before a later rung")
-            return None, probs
-        if r["passed"]:
-            return r, probs
-    probs.append("E0 FAILED on every ladder rung: NOT EVALUABLE; stop, do not register")
-    return None, probs
+    r = rungs[0]
+    if any(x.get("step") == "e0" and x.get("rc") == K.E0_FAIL_RC for x in (rows or [])):
+        return None, [f"E0 FAILED at {r['head']} (logged rc {K.E0_FAIL_RC}): NOT EVALUABLE; "
+                      "stop, do not register"]
+    if r["passed"] is None:
+        return None, [f"E0 at {r['head']} not run"]
+    if not r["passed"]:
+        return None, [f"E0 FAILED at {r['head']}: NOT EVALUABLE; stop, do not register"]
+    return r, probs
 
 
 # ----------------------------------------------------------------------------- pre-gates
 def pregates() -> dict:
     rungs = e0_rungs()
-    ok, _ = e0_passing(rungs)
+    ok, _ = e0_passing(rungs, attempts())
     e0 = ok or rungs[0]
     paths = {**S.PREGATES, "e0": e0["path"]}
     out = {}
@@ -162,10 +163,9 @@ def g0_results() -> dict:
 
 def attempts() -> list[dict]:
     """Every row of attempts.jsonl (disclosed in the declaration)."""
-    p = IO.rp(K.ATTEMPTS)
-    if not p.is_file():
-        return []
-    return [json.loads(ln) for ln in p.read_text().splitlines() if ln.strip()]
+    import attempts_bc11 as AT
+
+    return AT.read()
 
 
 def _dec(gate) -> bool | None:
@@ -181,11 +181,15 @@ def roles(pg: dict, g0: dict) -> dict:
     same check): the Yunlin arm needs the Yunlin swap check (its contrast is the very thing
     the swap validates); each county's G2 needs that county's energy_ratio_ok (G2 is a level
     check, so only the energy level must transfer); G3 needs the whole swap gate (both
-    counties, every clause). A G1 G0 failure makes the whole primary test report-only."""
+    counties, every clause). A G1 G0 failure makes the WHOLE declaration report-only (lead
+    ruling S6): G1, G1b, G2 in both counties, the Yunlin arm and G3."""
     def role(d, extra=True):
         return "pending" if d is None else ("gating" if d and extra else "report_only")
     sc = pg["swap"]["counties"]
     g2 = g0["g2"]["gate"]
+    if _dec(g0["g1"]["gate"]) is False:
+        return {"g1": "report_only", "g2": dict.fromkeys(K.COUNTIES, "report_only"),
+                "yr": "report_only", "g3": "report_only"}
     return {"g1": role(_dec(g0["g1"]["gate"])),
             "g2": {c: role(None if g2 is None else _dec(g2.get(c)),
                            bool(sc[c]["energy_ratio_ok"])) for c in K.COUNTIES},
@@ -194,7 +198,8 @@ def roles(pg: dict, g0: dict) -> dict:
 
 
 ROLE_REASONS = {
-    "g1": "gating iff its G0 is decidable; otherwise the whole primary test is report-only",
+    "g1": "gating iff its G0 is decidable; a G1 G0 failure makes the WHOLE declaration "
+          "report-only (G1, G1b, G2 both counties, the Yunlin arm, G3; lead ruling S6)",
     "g2": "per county: gating iff its G0 is decidable AND that county's swap energy_ratio_ok",
     "yr": "gating iff its G0 is decidable AND the Yunlin swap check passed (the swap "
           "validates the v3 county-only contrast this arm scores; E26's pregates.s0 precedent)",
@@ -285,8 +290,9 @@ def tests(w: dict) -> list[dict]:
                           "R_adj <= 1.0 and UB_adj < 1.0; G1b iff pooled coverage in "
                           f"[{K.COVERAGE_BAND[0]}, {K.COVERAGE_BAND[1]}] (inclusive); PASS "
                           "iff G1 and G1b (E04's own rule needs both). If G1's G0 is not "
-                          "decidable (power < 0.6 or false pass > 0.2) the WHOLE test is "
-                          "report-only (roles.g1)",
+                          "decidable (power < 0.6 or false pass > 0.2) the WHOLE "
+                          "declaration is report-only: G1, G1b, G2 in both counties, the "
+                          "Yunlin arm and G3 (roles; lead ruling S6)",
          "county_lines": f"the same rule per county with >= {K.COUNTY_LINE_MIN_WELLS} scored "
                          "wells; reported, never substituted for the pooled verdict",
          "report_only": ["full persistence against CL and level-adjusted CL",
@@ -396,11 +402,13 @@ def doc(prereg_dir=None, registries=None) -> dict:
             "thetas": list(K.PAGE_THETAS), "thetas_sha256": theta_shas(),
             "worktree_head": pg["e0"]["head"] if pg["e0"]["passed"] else None,
             "e0_ladder": {"rungs": list(K.E0_LADDER),
-                          "rule": "rung 0 first; a logged E0 failure (e0.json passed false, "
-                                  "exit 3) moves to the next rung; every later run uses the "
-                                  "passing rung; if every rung fails the backcast is NOT "
-                                  "EVALUABLE (stop, no registration; FS.start_invariance.v1's "
-                                  "precedent)"},
+                          "rule": "one declared commit, 4c2723e (FS.start_invariance.v1 "
+                                  "reproduced the page recipe there; 730f65b cannot import "
+                                  "forward.extra_hist / zone_county, so it is no rung): an E0 "
+                                  "failure there (e0.json passed false, exit 3, logged) means "
+                                  "the backcast is NOT EVALUABLE: stop, no registration; any "
+                                  "logged rc 3 row refuses a later pass; engineering crashes "
+                                  "(rc 1) are retryable and disclosed"},
             "rain": K.PAGE_RF,
             "rain_sha256": IO.sha_or_missing(IO.rp(K.PAGE_RF)),
             "page_forward": K.PAGE_FORWARD, "page_forward_sha256": K.PAGE_FORWARD_SHA,
@@ -420,7 +428,7 @@ def doc(prereg_dir=None, registries=None) -> dict:
             "order": ["availability look (logged 2026-11-06; metadata only)",
                       "G0 g1 (CPU, synthetic; avail.json only; before any 2010-11 value "
                       "is read)", "product_build look (own unit) + L1_pre2012 v2 build",
-                      "E0 (GPU, declared ladder)", "swap gate (GPU)", "backcast panel (GPU)",
+                      "E0 (GPU, at 4c2723e only)", "swap gate (GPU)", "backcast panel (GPU)",
                       "2012-22 baselines (CPU)", "G0 g2, g3, yr (CPU, synthetic)",
                       "final draft", "THIS REGISTRATION", "score once"]},
         "pregates": pg, "g0": g0, "roles": rl, "role_reasons": ROLE_REASONS,
@@ -483,6 +491,14 @@ def doc(prereg_dir=None, registries=None) -> dict:
                              "also carries the climatological-rain error, which the worlds "
                              "do not model (only its common part is absorbed by the "
                              "month-of-sample effects); a noise x 1.5 cell is report-only",
+            "windowed_read": "the L1_pre2012 v2 build reads each well's ls_cache file with "
+                             "pyarrow (columns datetime and value, filter 2010-01-01 <= t < "
+                             "2012-01-01). Every qualifying file is a single row group whose "
+                             "datetime range (statistics only) starts in or after 2010-01 and "
+                             "runs past 2011-12, so pyarrow decodes each whole file natively "
+                             "and returns only the window rows: nothing outside 2010-01.."
+                             "2011-12 reaches Python, the QC or the product; the "
+                             "product_build look's window stays 2010-01..2011-12",
             "cl_value_column": "CL, rho and sd use L1_clean v3's governed 'value' (barometric "
                                "loading removed where significant; 99th percentile |baro_m| "
                                "0.09 m), E04's own column, while L1_pre2012 v2 is not "
@@ -548,7 +564,7 @@ def readiness(d: dict) -> list[str]:
             out.append(f"pre-gate {key} not run ({g['path']})")
     if pg["availability"]["sha256"] != "missing" and not pg["availability"]["passed"]:
         out.append("availability FAILED: record 'not evaluable'; do not register")
-    passing, ladder = e0_passing(e0_rungs())
+    passing, ladder = e0_passing(e0_rungs(), d.get("attempts_disclosed") or [])
     out += ladder
     out += bindings(d, passing)
     if pg["product"]["manifest_sha256"] == "missing":
@@ -575,9 +591,10 @@ def readiness(d: dict) -> list[str]:
 
 def bindings(d: dict, passing: dict | None) -> list[str]:
     """S2: every output must come from the declared code: its recorded code shas equal
-    frozen_code; e0, swap and the panel were run at the passing ladder rung, clean; each
-    step has exactly ONE rc = 0 attempt row (the other rows are disclosed in the
-    declaration); G1's G0 predates the product_build look."""
+    frozen_code; e0, swap and the panel ran at the declared E0 commit, clean; each step has
+    exactly ONE rc = 0 attempt row, written by the step itself, whose output sha256s equal
+    the files now on disk (the other rows are disclosed in the declaration); G1's G0
+    predates the product_build look."""
     out = []
     fz = d["frozen_code"]
     head = None if passing is None else passing["head"]
@@ -593,14 +610,23 @@ def bindings(d: dict, passing: dict | None) -> list[str]:
         if key in ("e0", "swap", "panel"):
             ch = str(r.get("code_head"))
             if head is None or ch != head:
-                out.append(f"{path}: code_head {ch} is not the passing ladder rung {head} "
+                out.append(f"{path}: code_head {ch} is not the declared E0 commit {head} "
                            "(or is dirty)")
     rows = d.get("attempts_disclosed") or []
-    steps = list(K.ATTEMPT_STEPS) + ([f"e0_{head}"] if head else [])
-    for st in steps:
-        n = sum(1 for r in rows if r.get("step") == st and r.get("rc") == 0)
-        if n != 1:
-            out.append(f"attempts.jsonl: step {st} has {n} rc = 0 rows (exactly one needed)")
+    for st, outs in K.STEP_OUTPUTS.items():
+        ok = [r for r in rows if r.get("step") == st and r.get("rc") == 0]
+        if len(ok) != 1:
+            out.append(f"attempts.jsonl: step {st} has {len(ok)} rc = 0 rows (exactly one "
+                       "needed; an output deleted and rerun leaves two)")
+            continue
+        rec = ok[0].get("outputs") or {}
+        for path in outs:
+            now = IO.sha_or_missing(IO.rp(path))
+            if now == "missing" or rec.get(path) != now:
+                out.append(f"attempts.jsonl: step {st}'s rc 0 row does not record {path} as it "
+                           "is now (sha256 mismatch: replaced or rerun)")
+        if ok[0].get("code_sha256") != fz:
+            out.append(f"attempts.jsonl: step {st} ran at code other than frozen_code")
     g1 = _json(K.G0_FILES["g1"]) or {}
     bl = (d["pregates"]["product"].get("build_look") or {}).get("time")
     if g1.get("created") and bl and not (prereg3.parse_time(str(g1["created"]))

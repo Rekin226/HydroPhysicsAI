@@ -562,10 +562,13 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
         (tmp_path / path).write_text(json.dumps({
             "gate": gates[key], "reps": 1, "code_sha256": shas,
             "created": "2026-01-01T00:00:00+00:00" if key == "g1" else "2099-01-01"}))
+    import attempts_bc11 as AT
+
     att = tmp_path / K.ATTEMPTS
-    rows_att = [{"step": st, "rc": 0} for st in (*K.ATTEMPT_STEPS, f"e0_{K.WT_HEAD}")]
-    rows_att.insert(0, {"step": "swap", "rc": 1, "note": "an engineering retry"})
-    att.write_text("".join(json.dumps(r) + "\n" for r in rows_att))
+    AT.log("swap", 1, K.STEP_OUTPUTS["swap"], note="an engineering crash (retryable)")
+    for st, outs in K.STEP_OUTPUTS.items():
+        AT.log(st, 0, outs)
+    good_att = att.read_text()
 
     # 3. the draft: valid, not blocked by the availability or product_build looks
     d = PB.doc(prereg_dir=pdir, registries=[])
@@ -592,9 +595,28 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
     (tmp_path / K.SWAP_OUT).write_text(json.dumps({**sw, "code_head": K.WT_HEAD + "-dirty"}))
     assert any("code_head" in x for x in PB.readiness(PB.doc(pdir, [])))
     (tmp_path / K.SWAP_OUT).write_text(json.dumps(sw))
-    att.write_text(att.read_text() + json.dumps({"step": "hindcast", "rc": 0}) + "\n")
+    # B: an output deleted and rerun leaves two rc 0 rows; a replaced output a sha mismatch
+    AT.log("hindcast", 0, K.STEP_OUTPUTS["hindcast"])
     assert any("hindcast has 2" in x for x in PB.readiness(PB.doc(pdir, [])))
-    att.write_text("".join(json.dumps(r) + "\n" for r in rows_att))
+    att.write_text(good_att)
+    bj = tmp_path / K.BASELINES_JSON
+    keep = bj.read_bytes()
+    bj.write_bytes(keep + b" ")
+    assert any("step baselines's rc 0 row does not record" in x
+               for x in PB.readiness(PB.doc(pdir, [])))
+    bj.write_bytes(keep)
+    # C: a logged E0 failure (rc 3) refuses a later pass; an rc 1 crash does not
+    AT.log("e0", 1, K.STEP_OUTPUTS["e0"])
+    assert PB.readiness(PB.doc(pdir, [])) == []
+    AT.log("e0", K.E0_FAIL_RC, K.STEP_OUTPUTS["e0"])
+    assert any("NOT EVALUABLE" in x for x in PB.readiness(PB.doc(pdir, [])))
+    att.write_text(good_att)
+    # (1) G1's G0 must predate the product_build look
+    g1p = tmp_path / K.G0_FILES["g1"]
+    keep = g1p.read_bytes()
+    g1p.write_text(json.dumps({**json.loads(keep), "created": "2099-01-01T00:00:00+00:00"}))
+    assert any("does not predate" in x for x in PB.readiness(PB.doc(pdir, [])))
+    g1p.write_bytes(keep)
     d = PB.doc(prereg_dir=pdir, registries=[])
     assert PB.readiness(d) == []
     # no 2010-11 head has been read by anything so far
@@ -619,6 +641,21 @@ def test_end_to_end_order_refusals_and_score_once(tmp_path, monkeypatch):
         events.append("score_look")
         return real_acs(*a, **kw)
     monkeypatch.setattr(prereg3, "assert_can_score", spy_acs)
+    # (3) a failure after assert_can_score still logs the score attempt row (try/finally)
+    real_all = SC.score_all
+
+    def boom(*a, **k):
+        raise RuntimeError("engineering crash after the scoring look")
+    SC.score_all = boom
+    try:
+        with pytest.raises(RuntimeError):
+            SC.run_score(prereg_dir=pdir, rows_dir=rows, l1=fake_l1)
+    finally:
+        SC.score_all = real_all
+    last = AT.read()[-1]
+    assert last["step"] == "score" and last["rc"] == 1 and last["stage"] == "score_all"
+    assert last["score_look_logged"] is True and not (tmp_path / K.REPORT).exists()
+    events.clear()
     rep = SC.run_score(prereg_dir=pdir, rows_dir=rows, l1=fake_l1)
     assert events == ["score_look", "product_read"]
     assert rep["prereg_sha256"] == h and rep["G1"]["role"] == "gating"
@@ -894,29 +931,83 @@ def test_load_window_returns_no_row_outside_2010_2011(tmp_path, monkeypatch):
     assert inspect.signature(BV.build).parameters["loader"].default is BV.load_window
 
 
-def test_e0_failure_exits_3_and_ladder_rules(tmp_path, monkeypatch):
+def test_e0_single_commit_failure_is_not_evaluable(tmp_path, monkeypatch):
     import page_run as PR
     import prereg_bc11 as PB
 
+    assert K.E0_LADDER == ("4c2723e",) and K.WT_HEAD == "4c2723e"
     monkeypatch.setattr(IO, "REPO", tmp_path)
-    monkeypatch.setattr(PR, "e0_compare", lambda n, r: {"max_abs_diff_m": 0.5, "tol_m": 0.01,
-                                                        "passed": False, "shape": []})
     monkeypatch.setattr(PR, "page_forward", lambda keys=None: {})
-    monkeypatch.setattr(PR.HC, "code_head", lambda: K.E0_LADDER[0])
-    m = FakePage()
-    with pytest.raises(SystemExit) as e:
-        PR.e0(tmp_path / Path(K.E0_OUT_FMT.format(head=K.E0_LADDER[0])).parent, "cpu", model=m)
-    assert e.value.code == 3
+    monkeypatch.setattr(PR.HC, "code_head", lambda: K.WT_HEAD)
     ok, probs = PB.e0_passing(PB.e0_rungs())
     assert ok is None and any("not run" in p for p in probs)
-    p1 = tmp_path / K.E0_OUT_FMT.format(head=K.E0_LADDER[1])
-    p1.parent.mkdir(parents=True)
-    p1.write_text(json.dumps({"passed": False}))
+    monkeypatch.setattr(PR, "e0_compare", lambda n, r: {"max_abs_diff_m": 0.5, "tol_m": 0.01,
+                                                        "passed": False, "shape": []})
+    with pytest.raises(SystemExit) as e:
+        PR.e0(tmp_path / Path(K.E0_OUT).parent, "cpu", model=FakePage())
+    assert e.value.code == K.E0_FAIL_RC == 3
     ok, probs = PB.e0_passing(PB.e0_rungs())
     assert ok is None and any("NOT EVALUABLE" in p for p in probs)
-    p1.write_text(json.dumps({"passed": True, "code_head": K.E0_LADDER[1]}))
-    ok, probs = PB.e0_passing(PB.e0_rungs())
-    assert ok["head"] == K.E0_LADDER[1] and probs == []
+    (tmp_path / K.E0_OUT).write_text(json.dumps({"passed": True, "code_head": K.WT_HEAD}))
+    ok, probs = PB.e0_passing(PB.e0_rungs(), [{"step": "e0", "rc": 1}])
+    assert ok["head"] == K.WT_HEAD and probs == []               # a crash stays retryable
+    ok, probs = PB.e0_passing(PB.e0_rungs(), [{"step": "e0", "rc": 3}])
+    assert ok is None and any("logged rc 3" in p for p in probs)  # C
+
+
+def test_runner_has_no_second_rung():
+    sh = (X / "run_bc11.sh").read_text()
+    assert "730f65b" not in sh and "WT_HEAD=4c2723e" in sh.splitlines()
+    assert 'die "$step failed' in sh and ">> \"$ATT\"" not in sh  # rows come from Python
+
+
+def test_run_step_logs_rc_outputs_and_code(tmp_path, monkeypatch):
+    import attempts_bc11 as AT
+
+    monkeypatch.setattr(IO, "REPO", tmp_path)
+    out = tmp_path / "o.json"
+
+    def ok():
+        out.write_text("{}")
+    assert AT.run_step("swap", ok, [str(out)]) == 0
+    with pytest.raises(SystemExit):
+        AT.run_step("e0", lambda: (_ for _ in ()).throw(SystemExit(3)), [str(out)])
+    with pytest.raises(ValueError):
+        AT.run_step("hindcast", lambda: (_ for _ in ()).throw(ValueError("x")), [])
+    rows = AT.read()
+    assert [(r["step"], r["rc"]) for r in rows] == [("swap", 0), ("e0", 3), ("hindcast", 1)]
+    assert rows[0]["outputs"][str(out)] == IO.sha256(out)
+    assert rows[0]["code_sha256"] == K.code_shas()
+
+
+def test_g1_g0_failure_makes_the_whole_declaration_report_only():
+    import prereg_bc11 as PB
+
+    dec = {"decidable": True}
+    g0 = {"g1": {"gate": {"decidable": False}}, "g2": {"gate": {"yunlin": dec, "changhua": dec}},
+          "yr": {"gate": dec}, "g3": {"gate": dec}}
+    pg = {"swap": {"passed": True, "counties": {c: {"passed": True, "energy_ratio_ok": True}
+                                                for c in K.COUNTIES}}}
+    assert PB.roles(pg, g0) == {"g1": "report_only",
+                                "g2": {"yunlin": "report_only", "changhua": "report_only"},
+                                "yr": "report_only", "g3": "report_only"}
+    assert "WHOLE declaration" in PB.ROLE_REASONS["g1"]
+
+
+def test_g1_refusals_refuse_on_the_product_look_alone(tmp_path, monkeypatch):
+    import g0_bc11 as G
+    from harness import prereg3
+
+    monkeypatch.setattr(IO, "REPO", tmp_path)
+    pdir = tmp_path / "prereg"
+    G.g1_refusals(None, None, pdir)                              # no look, no product: fine
+    prereg3.record_look([K.PRODUCT_UNIT], K.SCOPE, K.WP, K.PRODUCT_PURPOSE,
+                        members={K.PRODUCT_UNIT: {"ids": ["09000001"], "window": K.WINDOW_TEXT,
+                                                  "description": "synthetic"}},
+                        prereg_dir=pdir, rows_dir=tmp_path / "rows", registries=[])
+    assert not (tmp_path / K.PRODUCT).exists()
+    with pytest.raises(SystemExit, match="before the product"):
+        G.g1_refusals(None, None, pdir)
 
 
 def test_g1_study_refuses_after_the_product_look_and_with_model_inputs(tmp_path, monkeypatch):

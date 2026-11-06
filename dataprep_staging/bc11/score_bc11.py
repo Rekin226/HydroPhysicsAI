@@ -48,7 +48,7 @@ SCORER_VERSION = "1.0.0"
 CHX, X = K.CHX, K.X
 FROZEN = K.FROZEN
 #: the pre-gate files; their registered path and sha256 live in doc["pregates"] (e0's path
-#: is the passing ladder rung's)
+#: is the declared E0 commit's)
 PREGATE_KEYS = ("availability", "e0", "swap", "panel", "panel_json", "baselines",
                 "baselines_json")
 PREGATES = {"availability": K.AVAIL_OUT, "e0": K.E0_OUT, "swap": K.SWAP_OUT,
@@ -277,13 +277,6 @@ def score_all(doc: dict, P: dict, base: dict, fit: dict, ids: list[str], obs: np
 
 
 # ----------------------------------------------------------------------------- run
-def _attempt(rec: dict) -> None:
-    p = IO.rp(K.ATTEMPTS)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a") as f:
-        f.write(json.dumps(rec) + "\n")
-
-
 def run_score(prereg_dir=None, rows_dir=None, l1=None) -> dict:
     """``_score`` with its attempt row always logged (try/finally), with the exit code, the
     stage reached and whether the scoring look was logged."""
@@ -297,10 +290,10 @@ def run_score(prereg_dir=None, rows_dir=None, l1=None) -> dict:
         rc = e.code if isinstance(e.code, int) else 1
         raise
     finally:
-        _attempt({"time": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                  "step": "score", "rc": rc, "stage": state["stage"],
-                  "score_look_logged": state["score_look"],
-                  "report_sha256": IO.sha_or_missing(IO.rp(K.REPORT))})
+        import attempts_bc11 as AT
+
+        AT.log("score", rc, [K.REPORT], stage=state["stage"],
+               score_look_logged=state["score_look"])
 
 
 def _score(prereg_dir, rows_dir, l1, state: dict) -> dict:

@@ -19,13 +19,14 @@ sample screens with the 2010-11 window's own robust reference, clean samples -> 
 daily (>= 12 h) -> monthly (>= 20 days) means, flag 0; no barometric correction, no fill.
 
 Windowed read (``load_window``, in place of v1's frozen ``build_l1pre.load_raw``, which
-loads the whole file): ``pyarrow.parquet.read_table(columns=['datetime', 'value'],
+returns the whole file): ``pyarrow.parquet.read_table(columns=['datetime', 'value'],
 filters=[2010-01-01 <= datetime < 2012-01-01])``. The QC needs no row outside the window
 (``qc_monthly`` clips to 2010-01..2011-12 before anything, and its robust reference, screens
-and rolling medians are all computed on the window itself), so no 2009 or post-2011 row is
-returned or held. Row groups wholly outside the window are skipped by their statistics; a
-row group straddling a window edge is decoded inside pyarrow and filtered before anything
-is returned (disclosed).
+and rolling medians are all computed on the window itself). Every qualifying ls_cache file
+is a single row group whose datetime range (column statistics only) starts in or after
+2010-01 and runs past 2011-12, so pyarrow decodes each whole file natively and returns only
+the window rows: nothing outside 2010-01..2011-12 reaches Python, the QC or the product
+(disclosed in the declaration). The product_build look's window stays 2010-01..2011-12.
 
     python dataprep_staging/bc11/build_l1pre_v2.py --log-look [--skip-if-logged]   (once)
     python dataprep_staging/bc11/build_l1pre_v2.py --build
@@ -283,7 +284,9 @@ def main(argv=None) -> int:
         print("product_build look already logged" if r is None else
               f"logged product_build look at {r['time']}")
     else:
-        build()
+        import attempts_bc11 as AT
+
+        return AT.run_step("build", build, [f"{K.PRODUCT}/MANIFEST.json"])
     return 0
 
 

@@ -111,8 +111,11 @@ def main(argv=None) -> int:
     ap.add_argument("--panel", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     a = ap.parse_args(argv)
-    build(a.panel, a.out)
-    return 0
+    import attempts_bc11 as AT
+
+    return AT.run_step("baselines", lambda: build(a.panel, a.out),
+                       [str(a.out / Path(K.BASELINES).name),
+                        str(a.out / Path(K.BASELINES_JSON).name)])
 
 
 if __name__ == "__main__":
