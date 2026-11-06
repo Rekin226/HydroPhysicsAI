@@ -165,6 +165,14 @@ PAGE_REGISTRATIONS = {
     # user ruling 2026-11-02 (R7.changhua_page): the two Changhua direction rows (E25, E26)
     "chx": ("I1.CHX.v1",),
     "chb": ("I1.CH_backcast.v1",),
+    # round 8 (user rulings 2026-11-03, twelfth set: R8.8, R8.10, R8.11): the statistical
+    # layer's decidability study (E04), N2's operating characteristics (C01), CHX's
+    # two-contrast narrowing (E25) and the model-form spread on tile tA (E24, Model internals);
+    # each is worded only from its report (PAGE_RESULTS)
+    "fvs2": ("FV.stat.v2",),
+    "n2rd": ("X5.n2_reading.v1",),
+    "chx2c": ("I1.CHX.v1.twocontrast",),
+    "sd2": ("SD.cut_response_spread.v2",),
 }
 # Results of the registered model-only studies that change what the page may say (claims E02,
 # E21, C30: FV; C13a: the two Changhua studies; C01: FS). A file is read only when it exists,
@@ -192,6 +200,15 @@ PAGE_RESULTS = {
     # E25/E26 (user ruling 2026-11-02, R7.changhua_page): direction only, size not supported
     "chx": ("I1.CHX.v1", "results/dataprep/reports/I1.CHX.v1/report.json"),
     "chb": ("I1.CH_backcast.v1", "results/dataprep/reports/I1.CH_backcast.v1/report.json"),
+    # round 8 (R8.8, R8.10, R8.11): E04's synthetic decidability with its null reading, N2's
+    # synthetic operating characteristics, CHX's two-contrast narrowing, SD v2's model-form
+    # spread (tile tA, Model internals)
+    "fvs2": ("FV.stat.v2", "results/dataprep/reports/FV.stat.v2/report.json"),
+    "n2rd": ("X5.n2_reading.v1", "results/dataprep/reports/X5.n2_reading.v1/report.json"),
+    "chx2c": ("I1.CHX.v1.twocontrast",
+              "results/dataprep/reports/I1.CHX.v1/twocontrast_report.json"),
+    "sd2": ("SD.cut_response_spread.v2",
+            "results/dataprep/reports/SD.cut_response_spread.v2/report.json"),
 }
 # FS.start_invariance.v1's pre-declared wording cases (evidence_and_ledger_mapping)
 FS_CASES = ("pass", "S2_only", "S1_only", "S1_and_S2", "not_evaluable")
@@ -1860,11 +1877,81 @@ def _direction_result(verdict: str, block: str | None):
     return read
 
 
+def _chb_result(rep: dict, reg_id: str) -> dict:
+    """I1.CH_backcast.v1 (E26): the direction pass as round 7 words it, plus the report-only
+    synthetic rates the round-8 caveat quotes (ruling R8.8: 'a weak test', P(direction) with
+    and without a true response); without computed rates the caveat is not printed."""
+    out = _direction_result("direction_supported", None)(rep, reg_id)
+    syn = rep.get("report_only_synthetic_power") or {}
+    if syn.get("computed") and syn.get("p_direction_k0") is not None \
+            and syn.get("p_direction_k1") is not None:
+        out.update(p_k0=float(syn["p_direction_k0"]), p_k1=float(syn["p_direction_k1"]))
+    return out
+
+
+def _fvs2_result(rep: dict, reg_id: str) -> dict:
+    """FV.stat.v2 (E04; ruling R8.8): the one-sided reading of the statistical layer's
+    registered test with its report-only rho = 0 null reading (page_mapping.not_shown_weak:
+    P, the null-reading caveat and the pass clause). Only 'not_shown_weak' has page wording."""
+    if rep.get("status") == "not_evaluable":
+        return {"status": "not_evaluable"}          # page_mapping.not_evaluable: no line
+    rd, nr = rep.get("readings") or {}, rep.get("null_reading") or {}
+    if rep.get("status") != "scored" or rd.get("e04") != "not_shown_weak":
+        raise _no_wording(reg_id, (rep.get("status"), rd.get("e04")))
+    if nr.get("report_only") is not True:
+        raise _no_wording(reg_id, "null reading not report-only")
+    return {"status": "scored", "reading": "not_shown_weak", "p": float(rep["P"]["p"]),
+            "p0": float(nr["P"]["p"])}
+
+
+def _n2rd_result(rep: dict, reg_id: str) -> dict:
+    """X5.n2_reading.v1 (C01's D part; ruling R8.8): N2's synthetic operating
+    characteristics, worded by the declared tier; only 'informative' has page wording."""
+    rd = rep.get("reading") or {}
+    if rd.get("status") != "estimated" or rd.get("wording") != "informative":
+        raise _no_wording(reg_id, (rd.get("status"), rd.get("wording")))
+    ws = rd["wrong_size_pass"]
+    return {"wording": "informative", "false_pass": float(rd["false_pass_max_over_rho"]),
+            "ws05": float(ws["k0.5"]), "ws2": float(ws["k2"]),
+            "cov": float(rd["coverage90_k1_rho0"]), "power": float(rd["power_k1_rho0"]),
+            "power_canal": float(rd["power_k1_rho_m087"]),
+            "power_forcing": float(rd["power_k1_forcing_error_report_only"])}
+
+
+def _chx2c_result(rep: dict, reg_id: str) -> dict:
+    """I1.CHX.v1.twocontrast (E25; rulings R8.10, R8.8): CHX's single exploratory follow-up,
+    narrowing only. Only 'not_separable' past the reproduction pre-gate has page wording; the
+    Changhua coefficient and its interval are kept, the Yunlin one is report-only."""
+    rd = rep.get("reading") or {}
+    if not rep.get("cannot_promote") or rd.get("key") != "not_separable" \
+            or not (rep.get("pregate") or {}).get("passed"):
+        raise _no_wording(reg_id, rd.get("key"))
+    ch = (rep.get("joint") or {})["changhua"]
+    return {"reading": "not_separable", "beta": float(ch["beta"]), "lo": float(ch["ci90"][0]),
+            "hi": float(ch["ci90"][1])}
+
+
+def _sd2_result(rep: dict, reg_id: str) -> dict:
+    """SD.cut_response_spread.v2 (E24; ruling R8.11): the Tier A+B model-form spread of the
+    Yunlin cut30 avoided subsidence by 2028-12, for the tA definition under Model internals
+    only (L, 'model-form spread, not an interval'); never an answer number."""
+    if rep.get("label") != "model-form spread, not an interval" or not rep.get("evaluable"):
+        raise _no_wording(reg_id, rep.get("label"))
+    ab = (rep.get("readings") or {})["A+B"]
+    r = ab["2028-12"]
+    lo, hi = r["yunlin_cm_range"]
+    return {"label": rep["label"], "n_columns": len(ab["columns"]), "lo_cm": float(lo),
+            "hi_cm": float(hi), "inland_ratio": float(r["inland"]["ratio"])}
+
+
 _ROUND7_READERS = {"fm": _fm_result, "dr": _dr_result, "fv2": _fv2_result,
                    "fv2fy": _fv2fy_result, "fvext": _fvext_result,
                    "fw1": _fw_result("fw1"), "fw2": _fw_result("fw2"),
                    "chx": _direction_result("direction_supported_size_not", "primary"),
-                   "chb": _direction_result("direction_supported", None)}
+                   "chb": _chb_result,
+                   # round 8
+                   "fvs2": _fvs2_result, "n2rd": _n2rd_result, "chx2c": _chx2c_result,
+                   "sd2": _sd2_result}
 
 
 def _prospective_block(path: str | None, forward_npz: str | None) -> dict | None:

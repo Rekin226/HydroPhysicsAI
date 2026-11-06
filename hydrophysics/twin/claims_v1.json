@@ -1,7 +1,7 @@
 {
  "schema": "twin-claims-ledger/1",
  "created": "2026-10-29",
- "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29, the round-5 amendment (user rulings 2026-10-29, third set) and the round-6 amendment (user rulings 2026-11-01, fourth set: N3 deep piles, the C13a display caps, the E02/E02c decidability reading, the subsidence decomposition and N3S-L). Round-6 results (2026-11-01; evidence update section 19): FV.decidability.v1 not evaluable, X5.changhua_lever_model.v1 F = 0.49 (C13a capped at N), X5.n2c_reading.v1 estimated, N3 registered level-only, FS.start_invariance.v1 pass (row E23). Round-7 amendment (user rulings 2026-11-01, sixth to tenth sets; evidence update section 20): E02d (new sub-claim C14a-r, N+D) and E02y (C14b N -> N+D) registered; DR's design-time drift line on C14b; FM start memory (E02/E21 clause, C30 heads narrowing, E23 horizon); FH context notes; FV.decidability.v2 (post-failure, exploratory) readings on E02/E21/C30, C14a and C14c; FV.ext on E22; FV.stat not evaluable (engineering); N3.G0prime.v1 failed (C31 note); SD.cut_response_spread.v2 as row E24 (L, ledger and README only); FW.weather_replay v1 and v2 all elastic (C15/C25/C27; page qualitative note only); I1.CHX.v1 and I1.CH_backcast.v1 as rows E25/E26 (S, design-time, direction only; size not supported; on the page, README and model card by user ruling 2026-11-02, eleventh set, which also drops C11's leader wording (Tier A+B) and adds the census-audit README sentence); C14f relabel. Not a registration; no look logged. Round-8 step-0 audit fixes (2026-11-03; ledger, README, MODEL_CARD and evidence sections 13 and 17-21 only; no status changes, no page wording, which waits for ruling R8.8): stale records corrected (E22, page promotion, C14b), missing cites added (C01, C12, C31, C14a, C14b, E04, C13c, C27), and the disclosures of the 2026-11-02 audit written into the notes of C01, C03, C12, C14a, C25, C27, C30, E02, E21, E25 and E26. Registrations still to be written are cited with the hash PENDING, and claims.load_ledger refuses the ledger until each is replaced by its registry sha256. Placeholders for results that do not exist yet are marked 'SLOT' or 'PLACEHOLDER' in notes only; the page never shows them.",
+ "status_note": "Every number the decision page or the README/MODEL_CARD shows, with what it claims and the record it rests on. Current state after the page scoping of 2026-10-29, the round-5 amendment (user rulings 2026-10-29, third set) and the round-6 amendment (user rulings 2026-11-01, fourth set: N3 deep piles, the C13a display caps, the E02/E02c decidability reading, the subsidence decomposition and N3S-L). Round-6 results (2026-11-01; evidence update section 19): FV.decidability.v1 not evaluable, X5.changhua_lever_model.v1 F = 0.49 (C13a capped at N), X5.n2c_reading.v1 estimated, N3 registered level-only, FS.start_invariance.v1 pass (row E23). Round-7 amendment (user rulings 2026-11-01, sixth to tenth sets; evidence update section 20): E02d (new sub-claim C14a-r, N+D) and E02y (C14b N -> N+D) registered; DR's design-time drift line on C14b; FM start memory (E02/E21 clause, C30 heads narrowing, E23 horizon); FH context notes; FV.decidability.v2 (post-failure, exploratory) readings on E02/E21/C30, C14a and C14c; FV.ext on E22; FV.stat not evaluable (engineering); N3.G0prime.v1 failed (C31 note); SD.cut_response_spread.v2 as row E24 (L, ledger and README only); FW.weather_replay v1 and v2 all elastic (C15/C25/C27; page qualitative note only); I1.CHX.v1 and I1.CH_backcast.v1 as rows E25/E26 (S, design-time, direction only; size not supported; on the page, README and model card by user ruling 2026-11-02, eleventh set, which also drops C11's leader wording (Tier A+B) and adds the census-audit README sentence); C14f relabel. Not a registration; no look logged. Round-8 step-0 audit fixes (2026-11-03; ledger, README, MODEL_CARD and evidence sections 13 and 17-21 only; no status changes, no page wording, which waits for ruling R8.8): stale records corrected (E22, page promotion, C14b), missing cites added (C01, C12, C31, C14a, C14b, E04, C13c, C27), and the disclosures of the 2026-11-02 audit written into the notes of C01, C03, C12, C14a, C25, C27, C30, E02, E21, E25 and E26. Round-8 results (2026-11-03..06; user rulings 2026-11-03, twelfth set; evidence update section 22): FV.stat.v2 not shown weak (E04 D-measured; null P0 0.48), X5.n2_reading.v1 informative (C01 split S+D+N, D-measured), E02z registered with measured decidability (row E30), the CHX two-contrast check not separable (E25 narrowing), CH-J report-only (sw off bound; C20/C21 note), COLF 0 decidable pairs (E24/C09/C11 narrowing), FE report-only, E02x not registered (row C14f-r, N), CB side does not separate (C14a), FB not decidable (row E29), the GNSS seasonal G0 failed (closure, no look) and N2CS's OSSE failed (C20/C21 size N line); page lines only under rulings R8.8 and R8.11. Registrations still to be written are cited with the hash PENDING, and claims.load_ledger refuses the ledger until each is replaced by its registry sha256. Placeholders for results that do not exist yet are marked 'SLOT' or 'PLACEHOLDER' in notes only; the page never shows them.",
  "status_codes": {
   "S": "supported by a registered test (window flagged when design-time)",
   "D": "decided by a registered prospective test (pending)",
@@ -164,13 +164,65 @@
   {
    "id": "user ruling 2026-11-02 (eleventh set) (R7.audit_readme)",
    "text": "Add the Changhua census-audit forcing bookkeeping note to README Limits? Decision: Yes, one sentence in README Limits; no page change. Applies to: Changhua census audit (round 7 rank 8). Source: results/dataprep/rulings/user_rulings_2026-11-02.json (sha256 9f1701ff)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.1b)",
+   "text": "Does the chj_fail narrowing of C20/C21 ('co-located canal/paddy recharge rejected') apply under the declared fallback, with CH-J's external gates report-only for good? Decision: Yes, ruled before any CH-J fit: Changhua sw fraction at its 0.01 bound for either seed -> C20/C21 mechanism note 'co-located canal/paddy recharge rejected (CH-J, design-time)' and README Limits names the closure; any other outcome is a report-only line with the amplitude ratio. Off-bound is never read as support; chj_pass is not claimable. Applies to: I1.CHX.v1 (CH-J secondary), C20, C21. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.1c)",
+   "text": "CH-J: which Changhua sw fraction feeds the frozen chj_block (deliveries [0] and percolation [2] are both free)? Decision: The max of the two: 'co-located recharge rejected' only when BOTH sit at the 0.01 bound; both values reported. Fixed before any fit. Applies to: I1.CHX.v1 (CH-J). Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.2)",
+   "text": "Approve N2CS (second prospective Changhua test on N2C's 74 wells, 2026-12..2027-10, one-sided first-year size class, OSSE-gated, scored after N2C step 2 on 2028-01-15; C20/C21 size clause N -> N+D plus new row E27)? Decision: Approved, 11-month window only; the 24-month variant is declined. C13a, E20, the N2C clauses and the F<0.5 cap untouched; no correction factor follows. Applies to: N2CS, C20, C21, E27. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.3)",
+   "text": "E02x: Nantou 6 wells report-only; on a pass, does C14f-r go on the page (evc_pro_ext)? Decision: Nantou report-only (no pooling); on a 2028 pass C14f-r appears on the page in evc_pro_ext, and always on the ledger and README. Applies to: E02x.ext_transfer_2026-12.v1, C14f-r. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.4a)",
+   "text": "Column-family freeze: report-only ranking role on N3's months 2026-12..2028-11 and gating role on 2028-12..2029-11 (not evaluable under 8 months)? Decision: Approved, both roles (one role per number); 秀潭 70 m excluded unless deep_benchmarks_printed v3 grants prospective_scorer. Applies to: column-family freeze (round-8 rank 7), E24, C09, C11. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.4b)",
+   "text": "Does a D decided only after 2030-01-15 count toward the end goal in progress reporting? Decision: Yes, as D-pending under the published rubric (0.6, or 0.7 once decidability is measured). Applies to: progress rubric (F4). Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.5)",
+   "text": "Label for X5.gnss_seasonal_family.v1 on a pass (v1's pre-look redesign)? Decision: Extend R7.gnss_seasonal_S: 'S (design-time, window flagged, outcome partly known)'. The screen is design-time narrowing, not selection; E24 shows the screened range BESIDE the full range, never replacing it. Applies to: X5.gnss_seasonal_family.v1, E24, C27. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.8)",
+   "text": "Which wording disclosures also go on the page? Decision: Page: E25/E26 caveats (amends R7.changhua_page); C27 restated with registered numbers (changes ruling 2026-10-29 (1)) and the x1.27 conversion clause on C01/C12; C01 split (direction S-dt / window D / size N) and the N2 and FV.stat.v2 operating-characteristic lines once scored. NOT on the page: the FV v2 per-truth split (stays ledger/README/MODEL_CARD; R7.fv_v2_page wording unchanged). Applies to: E25, E26, C27, C01, C12, N2, FV.stat.v2. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.10)",
+   "text": "Spend CHX's single exploratory slot? Decision: On the two-contrast narrowing (cannot promote); not on CH-R, which becomes its own registration. Applies to: I1.CHX.v1, E25. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.11)",
+   "text": "E24 model-form spread on tile tA? Decision: Yes, under Model internals, L label, 'model-form spread, not an interval'; no cm number in the answer; C03 stays W. Applies to: E24, C03. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.12a)",
+   "text": "Headline progress as two numbers (science trust, claim honesty) instead of the 6-part mean? Decision: No: keep the 6-part mean as the headline, with science trust (5 parts) and claim honesty shown beside it. Applies to: progress rubric (F4). Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.12b)",
+   "text": "Adopt the END-GOAL convention (withdrawn-with-reason / registered-undecidable rows count as honestly narrowed)? Decision: Adopted as bookkeeping only, always shown beside the official rubric figure and the disclosure downgrades, never alone; no status changes. Applies to: progress rubric (F4). Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
+  },
+  {
+   "id": "user ruling 2026-11-03 (twelfth set) (R8.14)",
+   "text": "Is E02z (strict year-2/3 level rule on E02y's windows) covered by R7.heads_years23, implemented via the GOV template without editing uses.py? Decision: Confirmed. Applies to: E02z.level_years23, GOV.heads_window_product.v1. Source: results/dataprep/rulings/user_rulings_2026-11-03.json (sha256 ec610b69)."
   }
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "ed6accfb811f01708cd47e76fedf040a7b06487b29647323e96201e199760a4b",
-  "html": "results/twin/twin_app_20261102b.html",
-  "html_note": "gitignored build of the round-7 template after the eleventh set (E25/E26 Changhua direction lines; C11's column-dependent township ranking; the round-6 lines, plus: E02d's line C14a-r and E02y's C14b sentence once each is in the registry; DR's design-time drift line, FM's start-memory line, FV.decidability.v2's post-failure exploratory level, coverage and forcing-year lines, FV.ext's E22 line and FW's qualitative internals note once each report exists; the C14c band note reworded once FV v2 reading 2 exists); built with the command of results/twin/twin_app_20261101a.build.log with --out changed to results/twin/twin_app_20261102b.html (log beside it); promoted to results/twin/twin_app.html at main af97301 (PR #68, commit ec5f171): the two files are byte-identical (sha256 956ec5d1)",
+  "template_sha256": "b3209a8f3302b5e1a87af444b93ab4fbf39f5df26d9783351720b33bbbe50d4a",
+  "html": "results/twin/twin_app_20261106a.html",
+  "html_note": "gitignored candidate build of the round-8 template (user rulings 2026-11-03, twelfth set: R8.8 page wording, R8.10 two-contrast clause, R8.11 E24 on tile tA under Model internals): the round-7 lines plus FV.stat.v2's two lines beside evc_hyb_reg (E04), N2's operating-characteristics line evc_n2_rd (C01), the C01 split on the tile range line, definition and headline, the x1.27 conversion clause (C01, C12), C27 in registered numbers, the E25 placebo and two-contrast clauses and the E26 synthetic-rate and non-independence clauses, and E24's model-form spread in the tA definition (Model internals); built with the command of results/twin/twin_app_20261102b.build.log with --out changed to results/twin/twin_app_20261106a.html (log beside it). Not promoted: results/twin/twin_app.html is still the round-7 build 20261102b (promoted at main af97301, sha256 956ec5d1); promotion is the lead's decision after review.",
   "forward": "datum_gate_innov.npz",
   "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
   "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
@@ -219,7 +271,8 @@
    "bn_runs",
    "bn_constructed",
    "dn_yr",
-   "dn_con"
+   "dn_con",
+   "def_tA_e24"
   ],
   "template_absent": [
    "size decided by N2",
@@ -242,7 +295,8 @@
    "hl_hot",
    "hl_runs",
    "hl_rheo",
-   "hl_rheo_ft"
+   "hl_rheo_ft",
+   "def_tA_e24"
   ],
   "default_layer": "dhead",
   "default_series": "head",
@@ -297,19 +351,23 @@
    "id": "C01",
    "where": "page tile tW + time series (head)",
    "claim": "Head change under a policy in N2's unit (headline, tile tW, start note)",
-   "status_before": "U",
-   "status_current": "S+D",
+   "status_before": "S+D",
+   "status_current": "S+D+N",
    "changes": true,
-   "wording_en": "Head change, policy minus baseline, in this model: the mean over N2's 84 Yunlin monitoring wells, each in its own screened layer (N2's scoring unit; built into the page as an aggregate, payload n2Unit). Tile range line: 'direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only'. Direction supported by the registered masked 2016-18 refit in Yunlin (step C, N1P.C_heads_yunlin), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to the page model only by a post-hoc, model-only comparison (science-05 transfer file); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping. Size likely too small (slopes reported, not gated; no calibrated correction factor follows). N2 decides the within-window response to recorded Yunlin pumping anomalies: 'response supported' needs the 90 % interval of the per-well-demeaned anomaly slope to exclude 0, the slope inside [1/1.5, 1.5] and RMSE(PR) < RMSE(ZR); a 'not supported' result cannot separate the model from its X1 forcing; the level is report-only; scored no earlier than 2028-01-15. Carrying it to a class lever is a linear, model-only transfer. The tile's definition adds the model-only start-state check (FS.start_invariance.v1, row E23): 'does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1)', with the measured largest departure.",
-   "ruling": "user ruling 2026-10-29 (1)",
-   "ruling_also": "user ruling 2026-10-29 (second set)",
+   "wording_en": "Round 8 split (ruling R8.8): direction S (design-time, R0 recipe); within-window anomaly response D (N2; decidability measured by X5.n2_reading.v1: informative, not decisive by design); size N (model-only: the Dec-2032 class-specific size, likely too small and, for an irrigation-only lever, dependent on the pumping conversion, about x1.27 in Yunlin). On the page: tile range line 'direction supported (S, design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15 (D); size model-only (N; depends on the pumping conversion); level report-only'; the tile definition labels its Direction (S, design-time), Size (N, model-only, with the x1.27 / x1.03-1.05 conversion clause) and Within-window anomaly response (D) parts; the headline adds 'an irrigation-only lever's size depends on the pumping conversion (about x1.27 in Yunlin, model-only)'; and an evidence line evc_n2_rd prints N2's synthetic operating characteristics. Earlier wording: Head change, policy minus baseline, in this model: the mean over N2's 84 Yunlin monitoring wells, each in its own screened layer (N2's scoring unit; built into the page as an aggregate, payload n2Unit). Tile range line: 'direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only'. Direction supported by the registered masked 2016-18 refit in Yunlin (step C, N1P.C_heads_yunlin), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to the page model only by a post-hoc, model-only comparison (science-05 transfer file); the 2015 drought spring (G1) agrees but mixes canal water and rain with pumping. Size likely too small (slopes reported, not gated; no calibrated correction factor follows). N2 decides the within-window response to recorded Yunlin pumping anomalies: 'response supported' needs the 90 % interval of the per-well-demeaned anomaly slope to exclude 0, the slope inside [1/1.5, 1.5] and RMSE(PR) < RMSE(ZR); a 'not supported' result cannot separate the model from its X1 forcing; the level is report-only; scored no earlier than 2028-01-15. Carrying it to a class lever is a linear, model-only transfer. The tile's definition adds the model-only start-state check (FS.start_invariance.v1, row E23): 'does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1)', with the measured largest departure.",
+   "ruling": "user ruling 2026-11-03 (twelfth set) (R8.8)",
+   "ruling_also": [
+    "user ruling 2026-10-29 (1)",
+    "user ruling 2026-10-29 (second set)"
+   ],
    "cites": {
     "registrations": [
      "N1.phase12_response.v1",
      "N1.policy_response.v1",
      "N2.policy_response.prospective_2026-11.v1",
      "FS.start_invariance.v1",
-     "X5.lever_class_share.v1"
+     "X5.lever_class_share.v1",
+     "X5.n2_reading.v1"
     ],
     "tests": [
      "N1P.C_heads_yunlin",
@@ -322,11 +380,12 @@
      "results/dataprep/reports/N1_policy/SUMMARY.md",
      "results/dataprep/reports/N1_policy/page_labels_v2.json",
      "results/dataprep/reports/FS.start_invariance.v1/report.json",
-     "results/dataprep/reports/X5.lever_class_share.v1/report.json"
+     "results/dataprep/reports/X5.lever_class_share.v1/report.json",
+     "results/dataprep/reports/X5.n2_reading.v1/report.json"
     ],
     "manifests": []
    },
-   "notes": "Model output, recomputed in the page build from the forward run (cut30 / retire_aqua at Dec 2032): N2 unit +1.19 / +1.41 m (84 of 84 registered Yunlin wells found; station ids from the registered prospective predictions.csv, county code 09; cells and layers from the calibration wells, the same mapping as twin.coverage). Layer-2 context kept in the tile's detail line: named-Yunlin-township cell mean +1.37 m, fan average +0.90 m (about 20 % Changhua spillover). The S part rests on R0 tests only; G1 is consistent context, not the pumping-response test. The page carries no station id, cell or layer: n2Unit holds only the per-year means. Rank 7 result: FS.start_invariance.v1 (registered 2026-11-01, sha 9f8a7115; scored once, report results/dataprep/reports/FS.start_invariance.v1/report.json sha 6130a3bf): verdict pass, wording case 'pass'. Largest |R - 1| over the 20 gated cells 9.74e-06 % (S1 free-run start 3.42e-06 %, S2 old untapered field restart 9.74e-06 %); largest per-well p90 deviation 9.07e-07; no failing arm. The invariance holds to numerical precision, as expected because the head solver is linear in the start state; this is a different property from FV.decidability.v1's failed pumping superposition (0.28 m), which concerned nonlinearity in the pumping multipliers. The start moves the levels only early (N2-unit baseline shift, arm minus S0: Jan 2023 -0.23 m for S1 and +0.77 m for S2; Dec 2026 about 1e-06 m; Dec 2032 0), not the policy differences. C01 gains, on the tile tW definition, 'In this model the head change does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1): largest departure < 0.001 %.' (fs_pass, row E23), and the start note adds start_note_fs when it is shown. No status moves (C01 stays S+D); the start itself is decided only by the prospective tests (E02, N2). Round 8 disclosure (X5.lever_class_share.v1, report-only part, model-only; measured between the q0c (Q0 family) and x5r1 calibrations, not on the page model): the irrigation-only cut30 head lever's size depends on the pumping energy-to-volume conversion: in Yunlin it differs x1.26-1.28 by horizon (about x1.27), while the all-class all30 lever is invariant: gated ratios x1.03-1.05 (1.034-1.052 in both counties, inside [0.9, 1.1]; by horizon 1.02-1.06, report-only). Changhua's x1.39 is why C13b was withdrawn. N2 tests total recorded anomalies, not classes; the page wording waits for ruling R8.8. The cut30 +1.19 m at N2's unit is therefore conversion-dependent by about x1.27.",
+   "notes": "Model output, recomputed in the page build from the forward run (cut30 / retire_aqua at Dec 2032): N2 unit +1.19 / +1.41 m (84 of 84 registered Yunlin wells found; station ids from the registered prospective predictions.csv, county code 09; cells and layers from the calibration wells, the same mapping as twin.coverage). Layer-2 context kept in the tile's detail line: named-Yunlin-township cell mean +1.37 m, fan average +0.90 m (about 20 % Changhua spillover). The S part rests on R0 tests only; G1 is consistent context, not the pumping-response test. The page carries no station id, cell or layer: n2Unit holds only the per-year means. Rank 7 result: FS.start_invariance.v1 (registered 2026-11-01, sha 9f8a7115; scored once, report results/dataprep/reports/FS.start_invariance.v1/report.json sha 6130a3bf): verdict pass, wording case 'pass'. Largest |R - 1| over the 20 gated cells 9.74e-06 % (S1 free-run start 3.42e-06 %, S2 old untapered field restart 9.74e-06 %); largest per-well p90 deviation 9.07e-07; no failing arm. The invariance holds to numerical precision, as expected because the head solver is linear in the start state; this is a different property from FV.decidability.v1's failed pumping superposition (0.28 m), which concerned nonlinearity in the pumping multipliers. The start moves the levels only early (N2-unit baseline shift, arm minus S0: Jan 2023 -0.23 m for S1 and +0.77 m for S2; Dec 2026 about 1e-06 m; Dec 2032 0), not the policy differences. C01 gains, on the tile tW definition, 'In this model the head change does not depend on the 2022-12 start state (within 5 %, model-only declaration FS.start_invariance.v1): largest departure < 0.001 %.' (fs_pass, row E23), and the start note adds start_note_fs when it is shown. FS moved no status (C01 was S+D then; round 8 split it, below); the start itself is decided only by the prospective tests (E02, N2). Round 8 disclosure (X5.lever_class_share.v1, report-only part, model-only; measured between the q0c (Q0 family) and x5r1 calibrations, not on the page model): the irrigation-only cut30 head lever's size depends on the pumping energy-to-volume conversion: in Yunlin it differs x1.26-1.28 by horizon (about x1.27), while the all-class all30 lever is invariant: gated ratios x1.03-1.05 (1.034-1.052 in both counties, inside [0.9, 1.1]; by horizon 1.02-1.06, report-only). Changhua's x1.39 is why C13b was withdrawn. N2 tests total recorded anomalies, not classes; the page wording follows ruling R8.8 (round-8 results build). The cut30 +1.19 m at N2's unit is therefore conversion-dependent by about x1.27. Round 8 result: X5.n2_reading.v1 (registered sha bca3540e; scored once 2026-11-03, report results/dataprep/reports/X5.n2_reading.v1/report.json sha 80bba98e; seed 42643811; the shared scorer f8990d61 wrapped, not edited; the harness reproduced N2's page-model replay to 0.0 m; exact plumbing beta = 1 on all 7 replays) reads 'informative', not decisive: false pass 0.20 (max over rho; 0.00 at rho 0 and 0.202 with the canal confounder rho -0.87) < 0.25, but the wrong-size pass at k = 0.5 is 0.75 (max over rho; 0.13 at rho 0) and at k = 2 0.01, and the 90 % interval covers k = 1 0.84 of the time; power 0.95 (0.15 with the canal confounder; report-only forcing-error cell, lambda 0.8: 0.50). So N2 detects a response but cannot tell a full-size one from a half-size one. C01's D becomes 'D-measured, informative', with the rates printed beside any N2 verdict (evidence line evc_n2_rd); the N2 verdict word and thresholds never change.",
    "text_keys": [
     "i18n:d_head",
     "i18n:d_head_s",
@@ -341,7 +400,10 @@
     "i18n:start_note_fs",
     "i18n:tHead",
     "i18n:tW_d",
-    "tile:tW"
+    "tile:tW",
+    "i18n:evc_n2_rd",
+    "i18n:tW_r",
+    "i18n:hl_pol"
    ],
    "doc_anchors": {
     "README.md": {
@@ -399,7 +461,8 @@
     "registrations": [
      "N1.policy_response.v1",
      "I1.X5NH.v1",
-     "N3.piles_prospective.v1"
+     "N3.piles_prospective.v1",
+     "X5.gnss_seasonal_family.gates.v1"
     ],
     "tests": [
      "N1P.C_lev_yunlin",
@@ -408,11 +471,12 @@
     "reports": [
      "README.md",
      "results/dataprep/reports/I1_X5NH/report.json",
-     "results/dataprep/reports/N1_policy/SUMMARY.md"
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json"
     ],
     "manifests": []
    },
-   "notes": "Withdrawal rests on pre-origin evidence alone: steps B and C (2016-18, 2007-10) do not support the 1-3-year size, and the distal column does not sink while the 2016-21 next-year leveling shows the coast sinking about 2.5 cm/yr faster than modelled (design-time). Post-origin coastal findings (2023-25) are context only and played no part (U7). Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. No page text. Round 8 (F1): the 'links tested, cut size untested' upgrade path is closed. It needs a registered N3G conversion test, and N3.G0prime.v1 failed for every estimator at 12 and 24 months (fail class nest_error), so no N3G was registered; C03 stays W and that wording cannot be reached without a new declaration.",
+   "notes": "Withdrawal rests on pre-origin evidence alone: steps B and C (2016-18, 2007-10) do not support the 1-3-year size, and the distal column does not sink while the 2016-21 next-year leveling shows the coast sinking about 2.5 cm/yr faster than modelled (design-time). Post-origin coastal findings (2023-25) are context only and played no part (U7). Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. No page text. Round 8 (F1): the 'links tested, cut size untested' upgrade path is closed. It needs a registered N3G conversion test, and N3.G0prime.v1 failed for every estimator at 12 and 24 months (fail class nest_error), so no N3G was registered; C03 stays W and that wording cannot be reached without a new declaration. Round 8 (closure, no look): X5.gnss_seasonal_family.gates.v1 (registered sha 8661c0a3; G-sep passed, results/dataprep/reports/X5.gnss_seasonal_family.v1/gsep.json sha 3ef08c98) failed its synthetic gate G0 (results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json sha 7749bdc3, seed 81131129, 512 cells x 1000 replicates): the screen excludes a member x1.5 off in cut30 only 0.782 of the time pooled (>= 0.80 needed) and 0.252 in its worst cell (>= 0.60 needed), although it keeps the true member (worst cell 0.916 >= 0.90) and rarely excludes every member (at most 0.013 <= 0.10). By its declaration no GNSS amplitude is read and X5.gnss_seasonal_family.v1 is not registered: the GNSS seasonal route is closed honestly. No screened range is shown beside E24's full range, C27 gains no decided direction, and C03, C11 and C29 gain no note beyond this closure; ruling R8.5's label is moot. Round 8 (ruling R8.11): E24's model-form spread is shown on tile tA under Model internals only (L, 'model-form spread, not an interval'); no cm number returns to the answer and C03 stays W.",
    "text_keys": [
     "i18n:cmp_avoided",
     "i18n:d_subs",
@@ -424,7 +488,10 @@
     "tile:tA"
    ],
    "doc_anchors": {},
-   "ruling_also": "user ruling 2026-11-01 (fourth set) (a)"
+   "ruling_also": [
+    "user ruling 2026-11-01 (fourth set) (a)",
+    "user ruling 2026-11-03 (twelfth set) (R8.11)"
+   ]
   },
   {
    "id": "C04",
@@ -606,16 +673,18 @@
     "registrations": [
      "I1.X5NH.v1",
      "U1.no_band.v1",
-     "N3.piles_prospective.v1"
+     "N3.piles_prospective.v1",
+     "COLF.column_family_2028.v1"
     ],
     "tests": [],
     "reports": [
      "README.md",
-     "results/dataprep/reports/I1_X5NH/report.json"
+     "results/dataprep/reports/I1_X5NH/report.json",
+     "results/dataprep/reports/COLF/osse_result.json"
     ],
     "manifests": []
    },
-   "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used. Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals.",
+   "notes": "Pre-origin grounds only (as C03). The draft's per-zone wording was not used. Round 5: no subsidence band can be calibrated with held data (U1.no_band.v1, C14e); the quantity stays in Model internals. Round 8: COLF.column_family_2028.v1 (registered sha 6507be0c, rulings R8.4a/R8.4b; OSSE results/dataprep/reports/COLF/osse_result.json sha d66d0b87, seed 72280884, 2000 replicates, self-check passed; every member's predictions frozen by hash, results/dataprep/reports/COLF/freeze/freeze_summary.json sha f7b1756b, predictions.npz 91462e3a) finds 0 decidable pairs. On the 2 Yunlin deep piles every pair of the 9 deduplicated leveling-equivalent members has P(correct ranking) <= 0.37 (report-only arm on N3's months 2026-12..2028-11: 0.23-0.35; gating screen on 2028-12..2029-11: 0.23-0.37); on the ROC116/117 township bounds P = 0 for all 45 pairs of 10 members, a tie artefact of the bound rule (both members fall inside the bound in nearly every replicate), not a separation. Every pair is below the 0.50 narrowing threshold, so the registered narrowing applies: the 2028 pile and township units cannot separate these columns (COLF OSSE, nominal P(correct ranking) <= 0.50); no cut number changes, no column is selected, C03 stays W and E24 stays L. P is an upper bound on the real decidability (structural error outside the family is not simulated).",
    "text_keys": [
     "i18n:evc_pile_n3",
     "i18n:hl_base",
@@ -626,7 +695,10 @@
     "i18n:tAvoidB"
    ],
    "doc_anchors": {},
-   "ruling_also": "user ruling 2026-11-01 (fourth set) (a)"
+   "ruling_also": [
+    "user ruling 2026-11-01 (fourth set) (a)",
+    "user ruling 2026-11-03 (twelfth set) (R8.4a)"
+   ]
   },
   {
    "id": "C10",
@@ -675,16 +747,20 @@
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
-     "SD.cut_response_spread.v2"
+     "SD.cut_response_spread.v2",
+     "COLF.column_family_2028.v1",
+     "X5.gnss_seasonal_family.gates.v1"
     ],
     "tests": [],
     "reports": [
      "results/dataprep/reports/N1_gaps_2026-10-24/page_posthoc.json",
-     "results/dataprep/reports/SD.cut_response_spread.v2/report.json"
+     "results/dataprep/reports/SD.cut_response_spread.v2/report.json",
+     "results/dataprep/reports/COLF/osse_result.json",
+     "results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json"
     ],
     "manifests": []
    },
-   "notes": "Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. C11's leader wording by R_rank: Tier A 'ranking column-robust' (kept), Tier A+B 'ranking column-dependent' (lost). User ruling 2026-11-02 (R7.sd_leader_tier): Tier A+B decides, so the leader wording is lost.",
+   "notes": "Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. C11's leader wording by R_rank: Tier A 'ranking column-robust' (kept), Tier A+B 'ranking column-dependent' (lost). User ruling 2026-11-02 (R7.sd_leader_tier): Tier A+B decides, so the leader wording is lost. Round 8: COLF.column_family_2028.v1 (registered sha 6507be0c, rulings R8.4a/R8.4b; OSSE results/dataprep/reports/COLF/osse_result.json sha d66d0b87, seed 72280884, 2000 replicates, self-check passed; every member's predictions frozen by hash, results/dataprep/reports/COLF/freeze/freeze_summary.json sha f7b1756b, predictions.npz 91462e3a) finds 0 decidable pairs. On the 2 Yunlin deep piles every pair of the 9 deduplicated leveling-equivalent members has P(correct ranking) <= 0.37 (report-only arm on N3's months 2026-12..2028-11: 0.23-0.35; gating screen on 2028-12..2029-11: 0.23-0.37); on the ROC116/117 township bounds P = 0 for all 45 pairs of 10 members, a tie artefact of the bound rule (both members fall inside the bound in nearly every replicate), not a separation. Every pair is below the 0.50 narrowing threshold, so the registered narrowing applies: the 2028 pile and township units cannot separate these columns (COLF OSSE, nominal P(correct ranking) <= 0.50); no cut number changes, no column is selected, C03 stays W and E24 stays L. P is an upper bound on the real decidability (structural error outside the family is not simulated). Round 8 (closure, no look): X5.gnss_seasonal_family.gates.v1 (registered sha 8661c0a3; G-sep passed, results/dataprep/reports/X5.gnss_seasonal_family.v1/gsep.json sha 3ef08c98) failed its synthetic gate G0 (results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json sha 7749bdc3, seed 81131129, 512 cells x 1000 replicates): the screen excludes a member x1.5 off in cut30 only 0.782 of the time pooled (>= 0.80 needed) and 0.252 in its worst cell (>= 0.60 needed), although it keeps the true member (worst cell 0.916 >= 0.90) and rarely excludes every member (at most 0.013 <= 0.10). By its declaration no GNSS amplitude is read and X5.gnss_seasonal_family.v1 is not registered: the GNSS seasonal route is closed honestly. No screened range is shown beside E24's full range, C27 gains no decided direction, and C03, C11 and C29 gain no note beyond this closure; ruling R8.5's label is moot.",
    "text_keys": [
     "i18n:ta_h_only",
     "i18n:ta_note",
@@ -693,7 +769,8 @@
    ],
    "doc_anchors": {},
    "ruling_also": [
-    "user ruling 2026-11-02 (eleventh set) (R7.sd_leader_tier)"
+    "user ruling 2026-11-02 (eleventh set) (R7.sd_leader_tier)",
+    "user ruling 2026-11-03 (twelfth set) (R8.4a)"
    ]
   },
   {
@@ -703,7 +780,7 @@
    "status_before": "L",
    "status_current": "L",
    "changes": true,
-   "wording_en": "Ranking tab defaults to the head rise in N2's unit when each class is retired (and per 100 GWh/yr forgone); the fan-average cm ranking is the third option, labelled 'Model internals (size untested)', with the A2b near-tie words. rank_limit says the per-class head is a linear, model-only transfer and N2 tests total recorded anomalies, not classes.",
+   "wording_en": "Ranking tab defaults to the head rise in N2's unit when each class is retired (and per 100 GWh/yr forgone); the fan-average cm ranking is the third option, labelled 'Model internals (size untested)', with the A2b near-tie words. rank_limit says the per-class head is a linear, model-only transfer and N2 tests total recorded anomalies, not classes. Round 8 (ruling R8.8): rank_limit adds the conversion clause 'a class's head rise depends on the pumping energy-to-volume conversion (irrigation about x1.27 in Yunlin between two conversions, model-only)'.",
    "ruling": "user ruling 2026-10-29 (second set)",
    "cites": {
     "registrations": [
@@ -717,16 +794,20 @@
     ],
     "manifests": []
    },
-   "notes": "Round 8 disclosure (X5.lever_class_share.v1, report-only part, model-only; measured between the q0c (Q0 family) and x5r1 calibrations, not on the page model): the irrigation-only cut30 head lever's size depends on the pumping energy-to-volume conversion: in Yunlin it differs x1.26-1.28 by horizon (about x1.27), while the all-class all30 lever is invariant: gated ratios x1.03-1.05 (1.034-1.052 in both counties, inside [0.9, 1.1]; by horizon 1.02-1.06, report-only). Changhua's x1.39 is why C13b was withdrawn. N2 tests total recorded anomalies, not classes; the page wording waits for ruling R8.8. The per-class head ranking inherits that dependence.",
+   "notes": "Round 8 disclosure (X5.lever_class_share.v1, report-only part, model-only; measured between the q0c (Q0 family) and x5r1 calibrations, not on the page model): the irrigation-only cut30 head lever's size depends on the pumping energy-to-volume conversion: in Yunlin it differs x1.26-1.28 by horizon (about x1.27), while the all-class all30 lever is invariant: gated ratios x1.03-1.05 (1.034-1.052 in both counties, inside [0.9, 1.1]; by horizon 1.02-1.06, report-only). Changhua's x1.39 is why C13b was withdrawn. N2 tests total recorded anomalies, not classes; the page wording follows ruling R8.8 (round-8 results build). The per-class head ranking inherits that dependence.",
    "text_keys": [
     "i18n:rank_gwh_tie",
     "i18n:rank_gwh_tie_y",
     "i18n:rank_unit_cm",
     "i18n:rank_unit_gwh",
     "i18n:rkcm",
-    "i18n:rkgwh"
+    "i18n:rkgwh",
+    "i18n:rank_limit"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": [
+    "user ruling 2026-11-03 (twelfth set) (R8.8)"
+   ]
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (d)",
@@ -896,7 +977,7 @@
   },
   {
    "ruling": "user ruling 2026-10-29 (third set) (a)",
-   "notes": "U7: prospective.py records that the combined family was chosen because it covered 92 % of the 2023-26 observations; the fresh window is untouched. A pass is worded 'passed its registered gate', never 'calibrated'; a fail withdraws the interval wording (nothing is widened). The aggregate half-width summary is not on the page. FV.decidability.v2 reading 2 (report results/dataprep/reports/FV.decidability.v2_postfailure/report_forcing_year.json sha facf4a10): declared wording (wording.C14a.Yunlin.en) 'Yunlin: in the model's own replayed forcing years (pumping years only, rain at climatology; post-failure exploratory, FV.decidability.v2), the frozen 90 % head interval would cover 95% of the window's well-months if the model were exactly right (90 % interval over the 11 recorded years 95%-96%; single years 94%-97%); its width is not shown to omit forcing-year variation. Model-only and optimistic: the model's amplitude is damped (about 0.73).' Rain at climatology (the replay is FW.weather_replay.v1's pumping-only forwards); ICC of the year-common forcing departure report-only. U1.HB.power.v1 (registered sha 0edd6674; result results/dataprep/reports/U1.HB.power.v1/result.json sha 7dd2bcdb) sets E02c's coverage wording: a PASS reads 'no gross under-coverage detected' (pass_weak) and a FAIL 'failed its registered gate (coverage {x}); outside the registered range; may reflect one year's shock' (fail_shock) in both counties; never 'calibrated'. Round 8 disclosure (audit 2026-11-02; report_worlds.json sha 320ac928; ledger and docs only, the page wording waits for ruling R8.8): Changhua's pooled coverage P = 0.501 hides a split by truth family: Q0 0.004, R0 0.012, R1c 0.992, X5R1 0.996 (Yunlin 0.32-0.40 for every truth). E02's own checks (report-only) split the same way: Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992. The pooled 0.501 sits 0.38 Monte Carlo SE above the 0.5 threshold, so Changhua's 'not shown weak' is within Monte Carlo noise of 'weak by design'. In FV's worlds a correct model of the page's own family (Q0, R0: no Changhua pumping) almost never passes E02c's Changhua coverage gate and one with Changhua pumping (R1c, X5R1) almost always does, so a Changhua coverage PASS points to the pumping family (model-only, not evidence about the aquifer). FV's worlds (obs = ZR + D_T + the truth's pumping response + AR(1) noise independent between wells) carry no per-well relative drift of the kind DR.relative_drift.v1 measured and no county-common year shock, and U1.HB.power.v1 shows that correlated noise can fail a correct interval: at true coverage 0.90 the false-fail rate is already 0.52-0.53 with no year shock (ICC_month 0.3) and 0.83 in Yunlin and 0.82 in Changhua at ICC_year 0.2 together with ICC_month 0.3 (result sha 7dd2bcdb).",
+   "notes": "U7: prospective.py records that the combined family was chosen because it covered 92 % of the 2023-26 observations; the fresh window is untouched. A pass is worded 'passed its registered gate', never 'calibrated'; a fail withdraws the interval wording (nothing is widened). The aggregate half-width summary is not on the page. FV.decidability.v2 reading 2 (report results/dataprep/reports/FV.decidability.v2_postfailure/report_forcing_year.json sha facf4a10): declared wording (wording.C14a.Yunlin.en) 'Yunlin: in the model's own replayed forcing years (pumping years only, rain at climatology; post-failure exploratory, FV.decidability.v2), the frozen 90 % head interval would cover 95% of the window's well-months if the model were exactly right (90 % interval over the 11 recorded years 95%-96%; single years 94%-97%); its width is not shown to omit forcing-year variation. Model-only and optimistic: the model's amplitude is damped (about 0.73).' Rain at climatology (the replay is FW.weather_replay.v1's pumping-only forwards); ICC of the year-common forcing departure report-only. U1.HB.power.v1 (registered sha 0edd6674; result results/dataprep/reports/U1.HB.power.v1/result.json sha 7dd2bcdb) sets E02c's coverage wording: a PASS reads 'no gross under-coverage detected' (pass_weak) and a FAIL 'failed its registered gate (coverage {x}); outside the registered range; may reflect one year's shock' (fail_shock) in both counties; never 'calibrated'. Round 8 disclosure (audit 2026-11-02; report_worlds.json sha 320ac928; ledger and docs only, the page wording waits for ruling R8.8): Changhua's pooled coverage P = 0.501 hides a split by truth family: Q0 0.004, R0 0.012, R1c 0.992, X5R1 0.996 (Yunlin 0.32-0.40 for every truth). E02's own checks (report-only) split the same way: Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992. The pooled 0.501 sits 0.38 Monte Carlo SE above the 0.5 threshold, so Changhua's 'not shown weak' is within Monte Carlo noise of 'weak by design'. In FV's worlds a correct model of the page's own family (Q0, R0: no Changhua pumping) almost never passes E02c's Changhua coverage gate and one with Changhua pumping (R1c, X5R1) almost always does, so a Changhua coverage PASS points to the pumping family (model-only, not evidence about the aquifer). FV's worlds (obs = ZR + D_T + the truth's pumping response + AR(1) noise independent between wells) carry no per-well relative drift of the kind DR.relative_drift.v1 measured and no county-common year shock, and U1.HB.power.v1 shows that correlated noise can fail a correct interval: at true coverage 0.90 the false-fail rate is already 0.52-0.53 with no year shock (ICC_month 0.3) and 0.83 in Yunlin and 0.82 in Changhua at ICC_year 0.2 together with ICC_month 0.3 (result sha 7dd2bcdb). Round 8 result: CB.coverage_side.v1 (registered sha 3c341347; report results/dataprep/reports/CB.coverage_side.v1/report.json sha 25b5b1b6, seed 82228874, K 250; engineering E0 reproduced FV v2's per-truth rates, E1 passed) reads 'side_does_not_separate'. Registered ledger wording: 'CB.coverage_side.v1 (model-only; ICC_well not overlaid): once drift and year/month shocks are overlaid, the side of a Changhua E02c coverage fail does not separate the families (min P(over | Q0/R0, drift) 0.208 vs >= 0.8 needed; max P(over | R1c/X5R1) 0.068 vs <= 0.2 needed; bias-cancelled-by-shock up to 0.080). No side reading; the FV v2 per-truth disclosure stands; not on the page. With DR's report-only datum-centre lead (+5.5 years), min P(over | Q0/R0) is 0.000, below 0.8.' C14a Changhua only; no status change and no C20/C21 mapping.",
    "doc_anchors": {},
    "id": "C14a",
    "where": "page evidence line under the prospective test (text only)",
@@ -914,7 +995,8 @@
      "U1.no_band.v1",
      "E02c.prospective_2026-11.v1",
      "FV.decidability.v2_postfailure",
-     "U1.HB.power.v1"
+     "U1.HB.power.v1",
+     "CB.coverage_side.v1"
     ],
     "tests": [],
     "reports": [
@@ -922,7 +1004,8 @@
      "hydrophysics/twin/prospective.py",
      "results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json",
      "results/dataprep/reports/FV.decidability.v2_postfailure/report_forcing_year.json",
-     "results/dataprep/reports/U1.HB.power.v1/result.json"
+     "results/dataprep/reports/U1.HB.power.v1/result.json",
+     "results/dataprep/reports/CB.coverage_side.v1/report.json"
     ],
     "manifests": [
      "results/twin/prospective_2026-11/manifest.json"
@@ -982,7 +1065,7 @@
   },
   {
    "ruling": "user ruling 2026-11-01 (sixth set) (R7.heads_years23)",
-   "notes": "E02y registered 2026-11-01 (sha 4bf7d91f): windows B 2027-11..2028-10 (not before 2029-01-15) and C 2028-11..2029-10 (not before 2030-01-15); the year-2/3 heads windows need a product whose MANIFEST declares prospective_scorer_window (ruling R7.heads_years23). DR.relative_drift.v1 (sha f835af57; report results/dataprep/reports/DR.relative_drift.v1/report.json sha 32025941; one logged design-time look 2026-11-01T13:48Z): the page number is the noise-corrected excess sqrt(max(0, mean(d^2 - E))) = 6 tau (Yunlin 0.817 m, Changhua 0.848 m), a lower bound; the root mean square of the split-half drift includes sampling noise and is report-only, never on the page. FV.decidability.v2 lead curve (wording.C14b.en, ledger only): 'Lead curve (model-only, post-failure exploratory, FV.decidability.v2): the model's own forcing-year spread relative to sigma is 12 mo 0.16 (Yunlin) / 0.03 (Changhua), 24 mo 0.16 (Yunlin) / 0.03 (Changhua), 36 mo 0.16 (Yunlin) / 0.03 (Changhua), 47-58 mo 0.32 (Yunlin) / 0.04 (Changhua), 70 mo 0.29 (Yunlin) / 0.04 (Changhua), 82 mo 0.29 (Yunlin) / 0.04 (Changhua); outside the window the recipe stays untested.' It is not on the page: its closing clause ('outside the window the recipe stays untested') predates E02y's registered wording, which the page shows. U1.HB.power.v1 (registered sha 0edd6674) fixes the absolute interval's pass_weak / fail_shock wording that E02y reuses.",
+   "notes": "E02y registered 2026-11-01 (sha 4bf7d91f): windows B 2027-11..2028-10 (not before 2029-01-15) and C 2028-11..2029-10 (not before 2030-01-15); the year-2/3 heads windows need a product whose MANIFEST declares prospective_scorer_window (ruling R7.heads_years23). DR.relative_drift.v1 (sha f835af57; report results/dataprep/reports/DR.relative_drift.v1/report.json sha 32025941; one logged design-time look 2026-11-01T13:48Z): the page number is the noise-corrected excess sqrt(max(0, mean(d^2 - E))) = 6 tau (Yunlin 0.817 m, Changhua 0.848 m), a lower bound; the root mean square of the split-half drift includes sampling noise and is report-only, never on the page. FV.decidability.v2 lead curve (wording.C14b.en, ledger only): 'Lead curve (model-only, post-failure exploratory, FV.decidability.v2): the model's own forcing-year spread relative to sigma is 12 mo 0.16 (Yunlin) / 0.03 (Changhua), 24 mo 0.16 (Yunlin) / 0.03 (Changhua), 36 mo 0.16 (Yunlin) / 0.03 (Changhua), 47-58 mo 0.32 (Yunlin) / 0.04 (Changhua), 70 mo 0.29 (Yunlin) / 0.04 (Changhua), 82 mo 0.29 (Yunlin) / 0.04 (Changhua); outside the window the recipe stays untested.' It is not on the page: its closing clause ('outside the window the recipe stays untested') predates E02y's registered wording, which the page shows. U1.HB.power.v1 (registered sha 0edd6674) fixes the absolute interval's pass_weak / fail_shock wording that E02y reuses. Round 8: GOV.heads_window_product.v1 (registered 2026-11-03, sha 141c0128; a governance declaration, not evidence; its code is in PR #70) carries ruling R7.heads_years23's year-2/3 scorer window through the MANIFEST field parameters.prospective_scorer_window without editing common/uses.py, so E02y's windows (and E02z's, row E30) stay scorable in 2029.",
    "doc_anchors": {},
    "id": "C14b",
    "where": "page evidence line under the prospective test",
@@ -997,7 +1080,8 @@
      "E02y.years23_2027-11_2029-10.v1",
      "DR.relative_drift.v1",
      "FV.decidability.v2_postfailure",
-     "U1.HB.power.v1"
+     "U1.HB.power.v1",
+     "GOV.heads_window_product.v1"
     ],
     "tests": [
      "E02yP.rel_2027-11",
@@ -1339,7 +1423,7 @@
    "status_before": "X",
    "status_current": "N",
    "changes": true,
-   "wording_en": "README Limits: Yunlin supported on R0 (design-time); Changhua only on R1c, which failed its own rung (I1.R1c) and is not the page model; no Changhua head lever. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome. Round 7 (user ruling 2026-11-02, R7.changhua_page): the Changhua direction clause, 'S (design-time), direction only; size not supported': R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (I1.CHX.v1, slope 0.17 [0.02, 0.44]) and in 2010-11, years never used to fit any model (I1.CH_backcast.v1, slope 0.37 [0.15, 1.35] on 12 wells); on the page as rows E25/E26. C13a, E20, the F < 0.5 cap and N2C's labels are unchanged: the Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped.",
+   "wording_en": "README Limits: Yunlin supported on R0 (design-time); Changhua only on R1c, which failed its own rung (I1.R1c) and is not the page model; no Changhua head lever. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome. Round 7 (user ruling 2026-11-02, R7.changhua_page): the Changhua direction clause, 'S (design-time), direction only; size not supported': R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (I1.CHX.v1, slope 0.17 [0.02, 0.44]) and in 2010-11, years never used to fit any model (I1.CH_backcast.v1, slope 0.37 [0.15, 1.35] on 12 wells); on the page as rows E25/E26. C13a, E20, the F < 0.5 cap and N2C's labels are unchanged: the Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped. Round 8: mechanism note (CH-J, report-only, ruling R8.1b): 'CH-J (report-only): Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support' (co-located recharge not rejected). Size clause (N line, N2CS's OSSE G0 failed): 'size class not decidable prospectively (OSSE power 0.89)'; the failing condition is the false 'not overstated' rate, 0.47-0.63 under the loading-shaped canal confounder against <= 0.20 (power 0.77-0.89). E25 gains 'direction not separable from Yunlin spill-over' (two-contrast check, exploratory). No status change.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
@@ -1347,22 +1431,28 @@
      "N1.policy_response.v1",
      "N2C.changhua_response.prospective_2026-11.v1",
      "I1.CHX.v1",
-     "I1.CH_backcast.v1"
+     "I1.CH_backcast.v1",
+     "N2CS.osse_design.v1",
+     "I1.CHX.v1.twocontrast"
     ],
     "tests": [
      "N1P.C_heads_changhua",
      "I1CHX.direction_R1c_ext23",
-     "I1CHB.direction_R1c_2010_2011"
+     "I1CHB.direction_R1c_2010_2011",
+     "I1CHX.chj_externals"
     ],
     "reports": [
      "README.md",
      "results/dataprep/reports/N1_policy/SUMMARY.md",
      "results/dataprep/reports/I1.CHX.v1/report.json",
-     "results/dataprep/reports/I1.CH_backcast.v1/report.json"
+     "results/dataprep/reports/I1.CH_backcast.v1/report.json",
+     "results/dataprep/reports/I1.CHX.v1/chj_report.json",
+     "results/dataprep/reports/N2CS_osse/result.json",
+     "results/dataprep/reports/I1.CHX.v1/twocontrast_report.json"
     ],
     "manifests": []
    },
-   "notes": "Round 7: I1.CHX.v1 (direction_supported_size_not at 23 never-calibrated Changhua screens, row E25) and I1.CH_backcast.v1 (direction_supported in 2010-11, row E26) each map a direction clause to C20/C21, and the user approved that wording on 2026-11-02 (R7.changhua_page). Proposed clause (the E-rows' declared texts): 'R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)' and 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'; direction only, no size, no lever.",
+   "notes": "Round 7: I1.CHX.v1 (direction_supported_size_not at 23 never-calibrated Changhua screens, row E25) and I1.CH_backcast.v1 (direction_supported in 2010-11, row E26) each map a direction clause to C20/C21, and the user approved that wording on 2026-11-02 (R7.changhua_page). Proposed clause (the E-rows' declared texts): 'R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)' and 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'; direction only, no size, no lever. Round 8 result, CH-J (I1.CHX.v1's registered secondary, test I1CHX.chj_externals; report-only for good under ruling R8.1b; results/dataprep/reports/I1.CHX.v1/chj_report.json sha e5818b6a, written once at 2026-11-05T23:38Z by the new wrapper chj_report.py with the frozen chj_block unchanged; engineering record frozen 2026-11-03T03:06Z after the hook merged (PR #71, tolerance fix PR #72), before the 2026-11-22T14:14:55Z limit; the after-the-fact re-reads of the 23 Changhua screens and the Yunlin screens were logged first). Mechanism note, the report's r8_1b wording verbatim: 'CH-J (report-only): Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support'. Fractions (R8.1c, the larger is fed): deliveries 0.010 (at the bound) and percolation 0.018 in both seeds, so the fed fraction is off the bound and co-located canal/paddy recharge is NOT rejected; off-bound is never support and chj_pass is not claimable. No-harm (Yunlin k-fold, Yunlin county correlation, out-of-fold leveling, Changhua leveling) and forward (subsidence Dec 2022 to Dec 2025 in both counties, rising share) pass in both seeds. Report-only externals: amplitude ratio 0.78 (inside [0.67, 1.5]), Changhua/Yunlin ratio 0.90, county-mean correlation 0.754 against Q0's 0.643, direction 'not_informative', so the external block fails. Disclosure: the seed sets only the fold partition, so the two seeds' full-data fits coincide (their external numbers agree to about 1e-14): the external and forward blocks are one replicate, and only the no-harm block (the fold fits) differs by seed. No status change and no page change. Round 8: N2CS (approved by ruling R8.2) was not registered, because its OSSE gate failed for all three declared estimator forms (N2CS.osse_design.v1, registered sha 1f69c7b5; results/dataprep/reports/N2CS_osse/result.json sha fbb020a0, seed 61516280, 2000 replicates). Power was not the main failing condition: P('not overstated' | k = 1), at its minimum over the gate variants, is 0.77-0.89 across the forms (>= 0.80 needed; only the twoway_level form misses it, 0.77 under the county-uniform confounder). The failing condition is the false 'not overstated' rate: under the loading-shaped canal confounder a true first-year response one third as large still reads 'not overstated by x2' in 0.47-0.63 of the worlds (max over the shaped variants: twoway 0.555, twoway_level 0.474, twoway_fd 0.626), against <= 0.20 required. Registered N line on the C20/C21 size clause: 'size class not decidable prospectively (OSSE power 0.89)', stated with that failing condition: a one-third-size first-year Changhua response cannot be told from a full-size one under the shaped canal confounder. Bookkeeping, not evidence; R8.2's row E27 is not created; C13a, E20, the N2C clauses and the F < 0.5 cap are untouched, and no correction factor follows. Two-contrast (I1.CHX.v1.twocontrast, E25 notes): direction not separable from Yunlin spill-over (Changhua 0.148 [-0.038, 0.448]).",
    "text_keys": [
     "doc:README.md",
     "i18n:evc_chb",
@@ -1383,7 +1473,10 @@
    },
    "ruling_also": [
     "user ruling 2026-10-29 (third set) (d)",
-    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)"
+    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)",
+    "user ruling 2026-11-03 (twelfth set) (R8.1b)",
+    "user ruling 2026-11-03 (twelfth set) (R8.2)",
+    "user ruling 2026-11-03 (twelfth set) (R8.10)"
    ]
   },
   {
@@ -1393,7 +1486,7 @@
    "status_before": "X",
    "status_current": "N",
    "changes": true,
-   "wording_en": "MODEL_CARD: same narrowing as C20. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome. Round 7 (user ruling 2026-11-02, R7.changhua_page): the Changhua direction clause, 'S (design-time), direction only; size not supported': R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (I1.CHX.v1, slope 0.17 [0.02, 0.44]) and in 2010-11, years never used to fit any model (I1.CH_backcast.v1, slope 0.37 [0.15, 1.35] on 12 wells); on the page as rows E25/E26. C13a, E20, the F < 0.5 cap and N2C's labels are unchanged: the Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped.",
+   "wording_en": "MODEL_CARD: same narrowing as C20. Round 5: the Changhua head lever is withdrawn and labelled 'untested (N2C registered, scored not before 2028-01-15)'; class-specific and subsidence Changhua levers are withdrawn under every outcome. Round 7 (user ruling 2026-11-02, R7.changhua_page): the Changhua direction clause, 'S (design-time), direction only; size not supported': R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (I1.CHX.v1, slope 0.17 [0.02, 0.44]) and in 2010-11, years never used to fit any model (I1.CH_backcast.v1, slope 0.37 [0.15, 1.35] on 12 wells); on the page as rows E25/E26. C13a, E20, the F < 0.5 cap and N2C's labels are unchanged: the Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped. Round 8: mechanism note (CH-J, report-only, ruling R8.1b): 'CH-J (report-only): Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support' (co-located recharge not rejected). Size clause (N line, N2CS's OSSE G0 failed): 'size class not decidable prospectively (OSSE power 0.89)'; the failing condition is the false 'not overstated' rate, 0.47-0.63 under the loading-shaped canal confounder against <= 0.20 (power 0.77-0.89). E25 gains 'direction not separable from Yunlin spill-over' (two-contrast check, exploratory). No status change.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
@@ -1401,21 +1494,27 @@
      "N1.policy_response.v1",
      "N2C.changhua_response.prospective_2026-11.v1",
      "I1.CHX.v1",
-     "I1.CH_backcast.v1"
+     "I1.CH_backcast.v1",
+     "N2CS.osse_design.v1",
+     "I1.CHX.v1.twocontrast"
     ],
     "tests": [
      "N1P.C_heads_changhua",
      "I1CHX.direction_R1c_ext23",
-     "I1CHB.direction_R1c_2010_2011"
+     "I1CHB.direction_R1c_2010_2011",
+     "I1CHX.chj_externals"
     ],
     "reports": [
      "MODEL_CARD.md",
      "results/dataprep/reports/I1.CHX.v1/report.json",
-     "results/dataprep/reports/I1.CH_backcast.v1/report.json"
+     "results/dataprep/reports/I1.CH_backcast.v1/report.json",
+     "results/dataprep/reports/I1.CHX.v1/chj_report.json",
+     "results/dataprep/reports/N2CS_osse/result.json",
+     "results/dataprep/reports/I1.CHX.v1/twocontrast_report.json"
     ],
     "manifests": []
    },
-   "notes": "Round 7: I1.CHX.v1 (direction_supported_size_not at 23 never-calibrated Changhua screens, row E25) and I1.CH_backcast.v1 (direction_supported in 2010-11, row E26) each map a direction clause to C20/C21, and the user approved that wording on 2026-11-02 (R7.changhua_page). Proposed clause (the E-rows' declared texts): 'R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)' and 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'; direction only, no size, no lever.",
+   "notes": "Round 7: I1.CHX.v1 (direction_supported_size_not at 23 never-calibrated Changhua screens, row E25) and I1.CH_backcast.v1 (direction_supported in 2010-11, row E26) each map a direction clause to C20/C21, and the user approved that wording on 2026-11-02 (R7.changhua_page). Proposed clause (the E-rows' declared texts): 'R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)' and 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'; direction only, no size, no lever. Round 8 result, CH-J (I1.CHX.v1's registered secondary, test I1CHX.chj_externals; report-only for good under ruling R8.1b; results/dataprep/reports/I1.CHX.v1/chj_report.json sha e5818b6a, written once at 2026-11-05T23:38Z by the new wrapper chj_report.py with the frozen chj_block unchanged; engineering record frozen 2026-11-03T03:06Z after the hook merged (PR #71, tolerance fix PR #72), before the 2026-11-22T14:14:55Z limit; the after-the-fact re-reads of the 23 Changhua screens and the Yunlin screens were logged first). Mechanism note, the report's r8_1b wording verbatim: 'CH-J (report-only): Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support'. Fractions (R8.1c, the larger is fed): deliveries 0.010 (at the bound) and percolation 0.018 in both seeds, so the fed fraction is off the bound and co-located canal/paddy recharge is NOT rejected; off-bound is never support and chj_pass is not claimable. No-harm (Yunlin k-fold, Yunlin county correlation, out-of-fold leveling, Changhua leveling) and forward (subsidence Dec 2022 to Dec 2025 in both counties, rising share) pass in both seeds. Report-only externals: amplitude ratio 0.78 (inside [0.67, 1.5]), Changhua/Yunlin ratio 0.90, county-mean correlation 0.754 against Q0's 0.643, direction 'not_informative', so the external block fails. Disclosure: the seed sets only the fold partition, so the two seeds' full-data fits coincide (their external numbers agree to about 1e-14): the external and forward blocks are one replicate, and only the no-harm block (the fold fits) differs by seed. No status change and no page change. Round 8: N2CS (approved by ruling R8.2) was not registered, because its OSSE gate failed for all three declared estimator forms (N2CS.osse_design.v1, registered sha 1f69c7b5; results/dataprep/reports/N2CS_osse/result.json sha fbb020a0, seed 61516280, 2000 replicates). Power was not the main failing condition: P('not overstated' | k = 1), at its minimum over the gate variants, is 0.77-0.89 across the forms (>= 0.80 needed; only the twoway_level form misses it, 0.77 under the county-uniform confounder). The failing condition is the false 'not overstated' rate: under the loading-shaped canal confounder a true first-year response one third as large still reads 'not overstated by x2' in 0.47-0.63 of the worlds (max over the shaped variants: twoway 0.555, twoway_level 0.474, twoway_fd 0.626), against <= 0.20 required. Registered N line on the C20/C21 size clause: 'size class not decidable prospectively (OSSE power 0.89)', stated with that failing condition: a one-third-size first-year Changhua response cannot be told from a full-size one under the shaped canal confounder. Bookkeeping, not evidence; R8.2's row E27 is not created; C13a, E20, the N2C clauses and the F < 0.5 cap are untouched, and no correction factor follows. Two-contrast (I1.CHX.v1.twocontrast, E25 notes): direction not separable from Yunlin spill-over (Changhua 0.148 [-0.038, 0.448]).",
    "text_keys": [
     "doc:MODEL_CARD.md",
     "i18n:evc_chb",
@@ -1436,7 +1535,10 @@
    },
    "ruling_also": [
     "user ruling 2026-10-29 (third set) (d)",
-    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)"
+    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)",
+    "user ruling 2026-11-03 (twelfth set) (R8.1b)",
+    "user ruling 2026-11-03 (twelfth set) (R8.2)",
+    "user ruling 2026-11-03 (twelfth set) (R8.10)"
    ]
   },
   {
@@ -1640,7 +1742,7 @@
    "status_before": "N",
    "status_current": "N",
    "changes": true,
-   "wording_en": "Verdict line kept (1-3 yr size not supported). Fourth set (rank 9) decomposition, page line evc_subs_decomp: 'In this model the avoided subsidence is the head rise times the column's compaction per metre of head change (elastic). Head factor: decided in Yunlin by N2 (pending). Conversion factor: decided by N3 at the 2 Yunlin deep-pile cells only (pending); neither factor decides a cut's subsidence size.' The conversion clause names N3 only once the build finds it in the registry with a gating conversion role (12 or 24 months; viewer_app PAGE_ROLE_FLAGS); before N3 is registered, or if G0 fails at both horizons and N3 is not registered, it reads 'Conversion factor: untested (no registered test).'; if N3 is registered with the conversion test report-only (G0 failed, level-only on a user ruling, 2026-11-01 fifth set) it reads 'Conversion factor: not identifiable at the 2 Yunlin deep-pile cells by design (N3's synthetic check G0); reported only, not tested.' 'Coast: not identifiable from held leveling (I1.X5SC.gate0.v1). Changhua: no subsidence factor is tested (C13c).'",
+   "wording_en": "Verdict line kept (1-3 yr size not supported). Fourth set (rank 9) decomposition, page line evc_subs_decomp: 'In this model the avoided subsidence is the head rise times the column's compaction per metre of head change (elastic). Head factor: decided in Yunlin by N2 (pending). Conversion factor: decided by N3 at the 2 Yunlin deep-pile cells only (pending); neither factor decides a cut's subsidence size.' The conversion clause names N3 only once the build finds it in the registry with a gating conversion role (12 or 24 months; viewer_app PAGE_ROLE_FLAGS); before N3 is registered, or if G0 fails at both horizons and N3 is not registered, it reads 'Conversion factor: untested (no registered test).'; if N3 is registered with the conversion test report-only (G0 failed, level-only on a user ruling, 2026-11-01 fifth set) it reads 'Conversion factor: not identifiable at the 2 Yunlin deep-pile cells by design (N3's synthetic check G0); reported only, not tested.' 'Coast: not identifiable from held leveling (I1.X5SC.gate0.v1). Changhua: no subsidence factor is tested (C13c).' Round 8 (ruling R8.8, changing ruling 2026-10-29 (1)): the page line evc_pr_subs states the registered numbers: per county the verdict against no change and reference-year pumping (pr_s_lost_both / pr_s_lost_cl / pr_s_lost_zr / pr_s_beat) and the observed-on-modelled slope with its 90 % interval (Yunlin lost to both, 0.22 [0.17, 0.27]; Changhua on R1c beat reference-year pumping but lost to no change, 0.40 [0.30, 0.49]); step B states Yunlin's verdict 'inconclusive' with observed +0.66 against modelled +0.26 cm/yr per GWh/yr and the modelled-over-observed ratio interval [0.21, 2.17]. 'a constant sinking rate fits better' and 'pointed the other way' are dropped; no ratio of the kind 'x too large' is stated.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
@@ -1648,7 +1750,8 @@
      "N2.policy_response.prospective_2026-11.v1",
      "N3.piles_prospective.v1",
      "I1.X5SC.gate0.v1",
-     "N3.posthoc_pile_conversion.v1"
+     "N3.posthoc_pile_conversion.v1",
+     "X5.gnss_seasonal_family.gates.v1"
     ],
     "tests": [
      "N1P.B_dose_yunlin",
@@ -1662,11 +1765,12 @@
      "README.md",
      "results/twin/mechanism/mechanism.json",
      "results/twin/deep_pile_holdout/report.json",
-     "results/dataprep/reports/N3_posthoc/report.json"
+     "results/dataprep/reports/N3_posthoc/report.json",
+     "results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json"
     ],
     "manifests": []
    },
-   "notes": "Rank 12 result (N3.posthoc_pile_conversion.v1, run 2026-11-01, report results/dataprep/reports/N3_posthoc/report.json sha 1c6b1982): 'coefficient not identifiable from held piles' at the Yunlin piles and at 溪州 (N3 G0 failure; no pile row read, no look). Capped at N, no correction applied, label 'after-the-fact on a spent site; cannot promote'; worded in README Limits only, never on the page. Round 7: FW (ledger and README): v1 'no inelastic channel under replayed 2012-22 pumping anomalies only (rain at climatology) (model-only)'; v2 'no inelastic channel under replayed 2012-22 forcing years (weather and detrended pumping) (model-only) Rain is the vendor cache the model was calibrated on, which zero-fills gauge rf11 for all of 2021-22 and rf15 in 2015 H2 (zero-filled, not dry), so the replayed 2015, 2021 and 2022 carry that artefact.' SD row E24: R_inland as model-form dependence, not a test: Tier A 'inland Yunlin robust within x1.5', Tier A+B 'column-dependent x2.02 (0.540-1.092 cm)'. X5.gnss_seasonal_column.v1 (ruling R7.gnss_seasonal_S, moot) was not registered: its synthetic gate G0-OC failed (results/dataprep/reports/X5.gnss_seasonal_column.v1/g0oc.json, sha 35ebf516: P(consistent | r = 1) 0.11 against >= 0.8 at both observation scales; scale-1 reading report-only 0.92), so no S for subsidence follows. Round 8 (F1): the coastal (distal) column is near-elastic by construction (about 1.5 cm per metre of head, 57-day time constant; no slow coastal form is identifiable from held leveling, I1.X5SC.gate0.v1), so FW's 'mean-forcing caveat closed' holds only in this model: an all-elastic (0.0 % inelastic) result on the coast says little about the aquifer. Round 8 (registered numbers only; no ratio such as 'x too large' is stated): step C (masked 2016-18 refits, leveling): in Yunlin the model lost to both no change (CL) and reference-year pumping (ZR), observed-on-modelled slope 0.22 [0.17, 0.27]; in Changhua (R1c) it beat ZR but lost to CL, slope 0.40 [0.30, 0.49]; step B (2007-10 across places): Yunlin inconclusive, ratio interval [0.21, 2.17]; Changhua inconsistent (opposite sign).",
+   "notes": "Rank 12 result (N3.posthoc_pile_conversion.v1, run 2026-11-01, report results/dataprep/reports/N3_posthoc/report.json sha 1c6b1982): 'coefficient not identifiable from held piles' at the Yunlin piles and at 溪州 (N3 G0 failure; no pile row read, no look). Capped at N, no correction applied, label 'after-the-fact on a spent site; cannot promote'; worded in README Limits only, never on the page. Round 7: FW (ledger and README): v1 'no inelastic channel under replayed 2012-22 pumping anomalies only (rain at climatology) (model-only)'; v2 'no inelastic channel under replayed 2012-22 forcing years (weather and detrended pumping) (model-only) Rain is the vendor cache the model was calibrated on, which zero-fills gauge rf11 for all of 2021-22 and rf15 in 2015 H2 (zero-filled, not dry), so the replayed 2015, 2021 and 2022 carry that artefact.' SD row E24: R_inland as model-form dependence, not a test: Tier A 'inland Yunlin robust within x1.5', Tier A+B 'column-dependent x2.02 (0.540-1.092 cm)'. X5.gnss_seasonal_column.v1 (ruling R7.gnss_seasonal_S, moot) was not registered: its synthetic gate G0-OC failed (results/dataprep/reports/X5.gnss_seasonal_column.v1/g0oc.json, sha 35ebf516: P(consistent | r = 1) 0.11 against >= 0.8 at both observation scales; scale-1 reading report-only 0.92), so no S for subsidence follows. Round 8 (F1): the coastal (distal) column is near-elastic by construction (about 1.5 cm per metre of head, 57-day time constant; no slow coastal form is identifiable from held leveling, I1.X5SC.gate0.v1), so FW's 'mean-forcing caveat closed' holds only in this model: an all-elastic (0.0 % inelastic) result on the coast says little about the aquifer. Round 8 (registered numbers only; no ratio such as 'x too large' is stated): step C (masked 2016-18 refits, leveling): in Yunlin the model lost to both no change (CL) and reference-year pumping (ZR), observed-on-modelled slope 0.22 [0.17, 0.27]; in Changhua (R1c) it beat ZR but lost to CL, slope 0.40 [0.30, 0.49]; step B (2007-10 across places): Yunlin inconclusive, ratio interval [0.21, 2.17]; Changhua inconsistent (opposite sign). Round 8 (closure, no look): X5.gnss_seasonal_family.gates.v1 (registered sha 8661c0a3; G-sep passed, results/dataprep/reports/X5.gnss_seasonal_family.v1/gsep.json sha 3ef08c98) failed its synthetic gate G0 (results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json sha 7749bdc3, seed 81131129, 512 cells x 1000 replicates): the screen excludes a member x1.5 off in cut30 only 0.782 of the time pooled (>= 0.80 needed) and 0.252 in its worst cell (>= 0.60 needed), although it keeps the true member (worst cell 0.916 >= 0.90) and rarely excludes every member (at most 0.013 <= 0.10). By its declaration no GNSS amplitude is read and X5.gnss_seasonal_family.v1 is not registered: the GNSS seasonal route is closed honestly. No screened range is shown beside E24's full range, C27 gains no decided direction, and C03, C11 and C29 gain no note beyond this closure; ruling R8.5's label is moot.",
    "text_keys": [
     "doc:README.md",
     "i18n:decomp_conv_g0",
@@ -1677,7 +1781,11 @@
     "i18n:evc_pr_subs_ok",
     "i18n:evc_subs_decomp",
     "i18n:pol_caveat",
-    "i18n:pr_stepb"
+    "i18n:pr_stepb",
+    "i18n:pr_s_lost_both",
+    "i18n:pr_s_lost_cl",
+    "i18n:pr_s_lost_zr",
+    "i18n:pr_s_beat"
    ],
    "doc_anchors": {
     "README.md": {
@@ -1689,7 +1797,8 @@
    "ruling_also": [
     "user ruling 2026-11-01 (fourth set) (a)",
     "user ruling 2026-11-01 (fourth set) (e)",
-    "user ruling 2026-11-01 (fifth set) (N3.level_only)"
+    "user ruling 2026-11-01 (fifth set) (N3.level_only)",
+    "user ruling 2026-11-03 (twelfth set) (R8.8)"
    ],
    "coverage": {
     "intended": "the 1-3 yr avoided subsidence under a cut, fan-wide",
@@ -1739,18 +1848,20 @@
     "registrations": [
      "N1.policy_response.v1",
      "I1.X5NH.v1",
-     "N3SL.township_prospective_roc116-117.v1"
+     "N3SL.township_prospective_roc116-117.v1",
+     "X5.gnss_seasonal_family.gates.v1"
     ],
     "tests": [
      "N1P.C_lev_yunlin"
     ],
     "reports": [
      "results/dataprep/reports/I1_X5NH/report.json",
-     "results/dataprep/reports/N1_policy/SUMMARY.md"
+     "results/dataprep/reports/N1_policy/SUMMARY.md",
+     "results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json"
     ],
     "manifests": []
    },
-   "notes": "Distal-cell hatching was not added; the internals note flags the coast. Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. No page text.",
+   "notes": "Distal-cell hatching was not added; the internals note flags the coast. Round 7: model-form spread of the cut30 avoided subsidence across leveling-equivalent columns, row E24 (SD.cut_response_spread.v2, L, ledger and README only): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. No page text. Round 8 (closure, no look): X5.gnss_seasonal_family.gates.v1 (registered sha 8661c0a3; G-sep passed, results/dataprep/reports/X5.gnss_seasonal_family.v1/gsep.json sha 3ef08c98) failed its synthetic gate G0 (results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json sha 7749bdc3, seed 81131129, 512 cells x 1000 replicates): the screen excludes a member x1.5 off in cut30 only 0.782 of the time pooled (>= 0.80 needed) and 0.252 in its worst cell (>= 0.60 needed), although it keeps the true member (worst cell 0.916 >= 0.90) and rarely excludes every member (at most 0.013 <= 0.10). By its declaration no GNSS amplitude is read and X5.gnss_seasonal_family.v1 is not registered: the GNSS seasonal route is closed honestly. No screened range is shown beside E24's full range, C27 gains no decided direction, and C03, C11 and C29 gain no note beyond this closure; ruling R8.5's label is moot.",
    "text_keys": [
     "i18n:aria_map",
     "i18n:cmp_mini",
@@ -1784,7 +1895,9 @@
      "N3SL.township_prospective_roc116-117.v1",
      "FM.origin_memory.v1",
      "FV.decidability.v2_postfailure",
-     "FH.forcing_sensitivity.v1"
+     "FH.forcing_sensitivity.v1",
+     "E02z.level_years23.v1",
+     "GOV.heads_window_product.v1"
     ],
     "tests": [],
     "reports": [
@@ -1793,11 +1906,12 @@
      "results/dataprep/reports/FV.decidability.v1/report.json",
      "results/dataprep/reports/FM.origin_memory.v1/report.json",
      "results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json",
-     "results/dataprep/reports/FH.forcing_sensitivity.v1/report.json"
+     "results/dataprep/reports/FH.forcing_sensitivity.v1/report.json",
+     "results/dataprep/reports/E02z.level_years23.v1/decidability/report.json"
     ],
     "manifests": []
    },
-   "notes": "The FV line (evc_pro_fv before the report, evc_pro_fv_ne once FV's report exists; FV scored not evaluable 2026-11-01, E02 notes) is shown only in builds with --prospective, beside the E02/E02c lines it interprets (E21 notes). Round 7 context (FH.forcing_sensitivity.v1, registered sha e8ce627a; report results/dataprep/reports/FH.forcing_sensitivity.v1/report.json sha 03628efa; case 'within_first_year', L*_force = 1 month): 'In this model, under the 2020-22 forcing history (which includes the 2021 drought), from about 1 months after a start the head level depends more on the weather and pumping that follow than on anything known at the start (model-only declaration FH.forcing_sensitivity.v1)' Ledger note only, no page text (FH within_first_year mapping: C30, E01 and E07 notes). Round 8 disclosure (RC5; published after-the-fact numbers used as disclosure only, so no reading, threshold or selection changes, U7): FV v2's worlds are far less climatological than the published record. Their median climatology RMSE is 2.21-2.25 m across the four truths (ZR 1.87-1.98 m), while over 2023-26 the frozen run scored 2.048 m against climatology's 1.667 m at the 158 wells (evidence sections 1 and 7). On that record an E02c level fail in 2028 is the expected outcome, and FV v2's level P = 0.96 is not the chance of a pass.",
+   "notes": "The FV line (evc_pro_fv before the report, evc_pro_fv_ne once FV's report exists; FV scored not evaluable 2026-11-01, E02 notes) is shown only in builds with --prospective, beside the E02/E02c lines it interprets (E21 notes). Round 7 context (FH.forcing_sensitivity.v1, registered sha e8ce627a; report results/dataprep/reports/FH.forcing_sensitivity.v1/report.json sha 03628efa; case 'within_first_year', L*_force = 1 month): 'In this model, under the 2020-22 forcing history (which includes the 2021 drought), from about 1 months after a start the head level depends more on the weather and pumping that follow than on anything known at the start (model-only declaration FH.forcing_sensitivity.v1)' Ledger note only, no page text (FH within_first_year mapping: C30, E01 and E07 notes). Round 8 disclosure (RC5; published after-the-fact numbers used as disclosure only, so no reading, threshold or selection changes, U7): FV v2's worlds are far less climatological than the published record. Their median climatology RMSE is 2.21-2.25 m across the four truths (ZR 1.87-1.98 m), while over 2023-26 the frozen run scored 2.048 m against climatology's 1.667 m at the 158 wells (evidence sections 1 and 7). On that record an E02c level fail in 2028 is the expected outcome, and FV v2's level P = 0.96 is not the chance of a pass. Round 8: E02z.level_years23.v1 (row E30; registered sha 612d36fc) gives C30's heads part a registered decider beyond 2027-10: E02c's strict level rule on years 2 and 3 (2027-11..2028-10, 2028-11..2029-10), per county, with measured decidability ('not shown weak': Yunlin about 1.0, Changhua about 0.69). Its expected outcome is the pre-worded narrowing. Its sub-label goes on C30-scen when the C30 split of ruling R8.7 is wired (a separate change); until then it is a ledger and README line.",
    "text_keys": [
     "card:kv_proj",
     "i18n:aria_map",
@@ -1835,7 +1949,8 @@
     "user ruling 2026-11-01 (fourth set) (d)",
     "user ruling 2026-11-01 (fourth set) (f)",
     "user ruling 2026-11-01 (seventh set) (R7.fm_page_line)",
-    "user ruling 2026-11-01 (sixth set) (R7.fv_v2_page)"
+    "user ruling 2026-11-01 (sixth set) (R7.fv_v2_page)",
+    "user ruling 2026-11-03 (twelfth set) (R8.14)"
    ]
   },
   {
@@ -1946,20 +2061,22 @@
      "N2.policy_response.prospective_2026-11.v1",
      "FV.decidability.v1",
      "FM.origin_memory.v1",
-     "FV.decidability.v2_postfailure"
+     "FV.decidability.v2_postfailure",
+     "FE.encompass_2026-12.v1"
     ],
     "tests": [],
     "reports": [
      "results/twin/prospective_2026-11/manifest.json",
      "results/dataprep/reports/FV.decidability.v1/report.json",
      "results/dataprep/reports/FM.origin_memory.v1/report.json",
-     "results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json"
+     "results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json",
+     "results/dataprep/reports/FE.encompass_2026-12.v1/decidability.json"
     ],
     "manifests": [
      "results/twin/prospective_2026-11/manifest.json"
     ]
    },
-   "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm. Rank 11 result (FV.decidability.v1, scored once 2026-11-01T05:54Z, report results/dataprep/reports/FV.decidability.v1/report.json sha 35a5b72f): status not_evaluable, why 'superposition failed'. Gate S: the largest |basis - full| over the 5 check forwards (158 wells, window months) is 0.2845 m (check 4: truth R0, draw 1) against the 0.02 m tolerance; the engineering gate E passed (X5R1 hindcast reproduced within 0.0 m; evaluate self-check identical on 2 worlds). No P and no level or coverage reading exists (readings.level and readings.coverage are null). Declared page_mapping.not_evaluable: 'no interpretation line; E02/E02c read as registered'. The page shows the declared not-evaluable sentence (readings.wording.not_evaluable, EN/ZH; page key evc_pro_fv_ne, {why} = fv_why_sup with the two superposition numbers) in place of evc_pro_fv whenever the report exists (viewer_app PAGE_RESULTS reads only status, why and the superposition numbers); evc_pro_fv, the rule fixed beforehand, stays only for a build without the report. 'A fail is informative' is never written. Round 7. FM.origin_memory.v1 (registered sha e2d261fb; scored once, report results/dataprep/reports/FM.origin_memory.v1/report.json sha d93c0e6d): L* = 11 months (2023-11; S1 9, S2 11), window_e02_beyond_memory true. FV.decidability.v2_postfailure (registered sha f7e35a17; reading 1 report results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json sha 320ac928): level P = 0.964 (per truth 0.90-0.99: Q0, R0, R1c, X5R1; Monte Carlo SE 0.0058); coverage P Yunlin 0.351, Changhua 0.501; null-world false level pass 0.0 (K 500); E02's own checks report-only P 0.736. Declared wording (readings.wording.level.en): 'Synthetic decidability study, post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed): with every synthetic world run as a full forward, a model of the right kind passes E02c's level rule with probability 0.96 (optimistic: rain at climatology, noise independent between wells; not a strict bound); the study does not show the level test weak and adds no other reading.' FH.forcing_sensitivity.v1 context (C30 notes). Round 8 disclosure (audit 2026-11-02; report_worlds.json sha 320ac928; ledger and docs only, the page wording waits for ruling R8.8): Changhua's pooled coverage P = 0.501 hides a split by truth family: Q0 0.004, R0 0.012, R1c 0.992, X5R1 0.996 (Yunlin 0.32-0.40 for every truth). E02's own checks (report-only) split the same way: Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992. The pooled 0.501 sits 0.38 Monte Carlo SE above the 0.5 threshold, so Changhua's 'not shown weak' is within Monte Carlo noise of 'weak by design'. In FV's worlds a correct model of the page's own family (Q0, R0: no Changhua pumping) almost never passes E02c's Changhua coverage gate and one with Changhua pumping (R1c, X5R1) almost always does, so a Changhua coverage PASS points to the pumping family (model-only, not evidence about the aquifer). FV's worlds (obs = ZR + D_T + the truth's pumping response + AR(1) noise independent between wells) carry no per-well relative drift of the kind DR.relative_drift.v1 measured and no county-common year shock, and U1.HB.power.v1 shows that correlated noise can fail a correct interval: at true coverage 0.90 the false-fail rate is already 0.52-0.53 with no year shock (ICC_month 0.3) and 0.83 in Yunlin and 0.82 in Changhua at ICC_year 0.2 together with ICC_month 0.3 (result sha 7dd2bcdb). Round 8 disclosure (RC5; published after-the-fact numbers used as disclosure only, so no reading, threshold or selection changes, U7): FV v2's worlds are far less climatological than the published record. Their median climatology RMSE is 2.21-2.25 m across the four truths (ZR 1.87-1.98 m), while over 2023-26 the frozen run scored 2.048 m against climatology's 1.667 m at the 158 wells (evidence sections 1 and 7). On that record an E02c level fail in 2028 is the expected outcome, and FV v2's level P = 0.96 is not the chance of a pass.",
+   "notes": "The registration is the manifest (registered_on 2026-10-11, hashes of protocol and predictions). N2 is cited only as the registry entry that binds those predictions as its ZR arm. Rank 11 result (FV.decidability.v1, scored once 2026-11-01T05:54Z, report results/dataprep/reports/FV.decidability.v1/report.json sha 35a5b72f): status not_evaluable, why 'superposition failed'. Gate S: the largest |basis - full| over the 5 check forwards (158 wells, window months) is 0.2845 m (check 4: truth R0, draw 1) against the 0.02 m tolerance; the engineering gate E passed (X5R1 hindcast reproduced within 0.0 m; evaluate self-check identical on 2 worlds). No P and no level or coverage reading exists (readings.level and readings.coverage are null). Declared page_mapping.not_evaluable: 'no interpretation line; E02/E02c read as registered'. The page shows the declared not-evaluable sentence (readings.wording.not_evaluable, EN/ZH; page key evc_pro_fv_ne, {why} = fv_why_sup with the two superposition numbers) in place of evc_pro_fv whenever the report exists (viewer_app PAGE_RESULTS reads only status, why and the superposition numbers); evc_pro_fv, the rule fixed beforehand, stays only for a build without the report. 'A fail is informative' is never written. Round 7. FM.origin_memory.v1 (registered sha e2d261fb; scored once, report results/dataprep/reports/FM.origin_memory.v1/report.json sha d93c0e6d): L* = 11 months (2023-11; S1 9, S2 11), window_e02_beyond_memory true. FV.decidability.v2_postfailure (registered sha f7e35a17; reading 1 report results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json sha 320ac928): level P = 0.964 (per truth 0.90-0.99: Q0, R0, R1c, X5R1; Monte Carlo SE 0.0058); coverage P Yunlin 0.351, Changhua 0.501; null-world false level pass 0.0 (K 500); E02's own checks report-only P 0.736. Declared wording (readings.wording.level.en): 'Synthetic decidability study, post-failure exploratory follow-up (FV.decidability.v2; v1 was not evaluable because its superposition shortcut failed): with every synthetic world run as a full forward, a model of the right kind passes E02c's level rule with probability 0.96 (optimistic: rain at climatology, noise independent between wells; not a strict bound); the study does not show the level test weak and adds no other reading.' FH.forcing_sensitivity.v1 context (C30 notes). Round 8 disclosure (audit 2026-11-02; report_worlds.json sha 320ac928; ledger and docs only, the page wording waits for ruling R8.8): Changhua's pooled coverage P = 0.501 hides a split by truth family: Q0 0.004, R0 0.012, R1c 0.992, X5R1 0.996 (Yunlin 0.32-0.40 for every truth). E02's own checks (report-only) split the same way: Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992. The pooled 0.501 sits 0.38 Monte Carlo SE above the 0.5 threshold, so Changhua's 'not shown weak' is within Monte Carlo noise of 'weak by design'. In FV's worlds a correct model of the page's own family (Q0, R0: no Changhua pumping) almost never passes E02c's Changhua coverage gate and one with Changhua pumping (R1c, X5R1) almost always does, so a Changhua coverage PASS points to the pumping family (model-only, not evidence about the aquifer). FV's worlds (obs = ZR + D_T + the truth's pumping response + AR(1) noise independent between wells) carry no per-well relative drift of the kind DR.relative_drift.v1 measured and no county-common year shock, and U1.HB.power.v1 shows that correlated noise can fail a correct interval: at true coverage 0.90 the false-fail rate is already 0.52-0.53 with no year shock (ICC_month 0.3) and 0.83 in Yunlin and 0.82 in Changhua at ICC_year 0.2 together with ICC_month 0.3 (result sha 7dd2bcdb). Round 8 disclosure (RC5; published after-the-fact numbers used as disclosure only, so no reading, threshold or selection changes, U7): FV v2's worlds are far less climatological than the published record. Their median climatology RMSE is 2.21-2.25 m across the four truths (ZR 1.87-1.98 m), while over 2023-26 the frozen run scored 2.048 m against climatology's 1.667 m at the 158 wells (evidence sections 1 and 7). On that record an E02c level fail in 2028 is the expected outcome, and FV v2's level P = 0.96 is not the chance of a pass. Round 8: FE.encompass_2026-12.v1 (registered sha dae23caa; whether the frozen physics forecast adds to the statistical layer on the 147 wells E02 and E04 share, 2026-12..2027-10) is report-only. Its decidability study (results/dataprep/reports/FE.encompass_2026-12.v1/decidability.json sha 61a0443f, seed 52629095) failed G0 condition (d): in AR worlds with no physics information (lambda_P = 0) the rule reads 'stat layer encompasses' only 0.51 of the time (cells 0.17-0.85) against >= 0.80 required, while the physics arm's power at lambda 1 is 0.84 (cells 0.60-0.97) and the other conditions pass. So its 2028 reading will carry the registered prefix 'Report-only (decidability ...)' in the ledger notes only: no status change, no page line and no D row (FE's proposed E28 is not created); the pre-written 'encompassing' narrowing cannot be reached as a decided result.",
    "text_keys": [
     "i18n:evc_fv2_lvl_nsw",
     "i18n:evc_fv2_lvl_wbd",
@@ -2004,33 +2121,43 @@
   },
   {
    "id": "E04",
-   "where": "page evidence line",
+   "where": "page evidence line (evc_hyb_reg; FV.stat.v2's two lines beside it under ruling R8.8)",
    "claim": "Statistical layer registered prospectively (2026-10-11)",
    "status_before": "D",
    "status_current": "D",
    "changes": true,
-   "wording_en": "'Statistical layer registered prospectively by manifest hash on {reg}, before the current registry ...'",
+   "wording_en": "'Statistical layer registered prospectively by manifest hash on {reg}, before the current registry ...' Round 8 (ruling R8.8): once FV.stat.v2 is registered and scored (viewer_app registrations and results 'fvs2'), two lines follow evc_hyb_reg: evc_hyb_fvs, its declared not_shown_weak wording with P and the rho = 0 null reading P0 ('... passes with probability 0.93 ... In a world with no persistence (lag-1 0) the same rule passes with probability 0.48'), and evc_hyb_fvs_pass, its declared clause on what a 2028 E04 pass can and cannot show ('... a 2028 fail is the more informative outcome'). E04 stays D, now with measured decidability; no S follows, and P / P0 is never read as support.",
    "ruling": "user ruling 2026-10-29 (1)",
    "cites": {
     "registrations": [
      "I1.hybrid_tf.prospective_2026-11.v1",
      "FV.stat.v1",
-     "X1.hybrid_tf_tpc.prospective_2026-11.v1"
+     "X1.hybrid_tf_tpc.prospective_2026-11.v1",
+     "FV.stat.v2",
+     "FE.encompass_2026-12.v1"
     ],
     "tests": [],
     "reports": [
      "results/twin/prospective_2026-11_hybrid/manifest.json",
-     "results/dataprep/reports/FV.stat.v1/engineering_failure.json"
+     "results/dataprep/reports/FV.stat.v1/engineering_failure.json",
+     "results/dataprep/reports/FV.stat.v2/report.json",
+     "results/dataprep/reports/FV.stat.v2/erratum_county_layout.json",
+     "results/dataprep/reports/FE.encompass_2026-12.v1/decidability.json"
     ],
     "manifests": [
      "results/twin/prospective_2026-11_hybrid/manifest.json"
     ]
    },
-   "notes": "The registration is the hybrid manifest (2026-10-11). I1.hybrid_tf (2026-10-20, an ARX model) uses this AR(1) layer only as a comparator. Round 7: FV.stat.v1 (registered sha 95d201dc, a synthetic decidability study of this registered test) is not evaluable (engineering): its frozen self-check writes synthetic evaluation rows with model_sha256 'synthetic', which twin.validation.evaluate rejects against the real E04 protocol, so it stopped before any statistic (results/dataprep/reports/FV.stat.v1/engineering_failure.json, sha ac83bd46). E04's decidability reading is not closed: it is pending under FV.stat.v2 (an engineering v2 in new files, prereg_fv2.py and stat_fv.py unedited, registered after its code is committed); no status change. Page effect none (FV.stat had no page line; I1 T1/T2 report-only). Its K = 8 preview on the declared seed before registration is logged (FV2:stat_preview_k8_declared_seed). X1.hybrid_tf_tpc.prospective_2026-11.v1 (registered sha 4a9501d5; tests X1.hybrid_tf_tpc.T3a_onestep_2026-11 and X1.hybrid_tf_tpc.T3b_vs_I1T1_2026-11) is the registered prospective test of the statistical layer driven by recorded TPC pumping; scored in the 2028-01-15 session, it gives E04 no page text.",
+   "notes": "The registration is the hybrid manifest (2026-10-11). I1.hybrid_tf (2026-10-20, an ARX model) uses this AR(1) layer only as a comparator. Round 7: FV.stat.v1 (registered sha 95d201dc, a synthetic decidability study of this registered test) is not evaluable (engineering): its frozen self-check writes synthetic evaluation rows with model_sha256 'synthetic', which twin.validation.evaluate rejects against the real E04 protocol, so it stopped before any statistic (results/dataprep/reports/FV.stat.v1/engineering_failure.json, sha ac83bd46). E04's decidability reading is not closed: it is pending under FV.stat.v2 (an engineering v2 in new files, prereg_fv2.py and stat_fv.py unedited, registered after its code is committed); no status change. Page effect none (FV.stat had no page line; I1 T1/T2 report-only). Its K = 8 preview on the declared seed before registration is logged (FV2:stat_preview_k8_declared_seed). X1.hybrid_tf_tpc.prospective_2026-11.v1 (registered sha 4a9501d5; tests X1.hybrid_tf_tpc.T3a_onestep_2026-11 and X1.hybrid_tf_tpc.T3b_vs_I1T1_2026-11) is the registered prospective test of the statistical layer driven by recorded TPC pumping; scored in the 2028-01-15 session, it gives E04 no page text. Round 8 result: FV.stat.v2 (registered sha a15e468d; scored once 2026-11-03, report results/dataprep/reports/FV.stat.v2/report.json sha 6145a225; seed 37355759, 9 AR cells x K 500; self-check fixed and the mismatched-sha control refused) reads 'not_shown_weak': P(E04 pass | AR truth) 0.930 (cells 0.796-0.996; 117 Monte Carlo SE above 0.5). The report-only rho = 0 null reading gives P0 0.475 (cells 0.44-0.50), a pass likelihood ratio of about 1.96: a 2028 E04 pass is weak evidence of persistence, and a fail (probability about 0.07 in the AR worlds) is the more informative outcome. E04 moves from 'D, decidability unknown' to 'D, decidability measured'; the status code stays D. Erratum (results/dataprep/reports/FV.stat.v2/erratum_county_layout.json sha ce2c0101, written 2026-11-03 after the adversarial review of FE; the scored report is unchanged): the report's county layout 78 Yunlin / 69 Changhua is inherited from FV.stat.v1's constant, while E04's 147 wells are 81 Yunlin / 66 Changhua, and the layout puts all 14 early-origin wells in Changhua. County only chooses which wells share a county's common AR series (the pass rule never uses county); in the 6 cells with a common share three wells draw the other county's series (clustered variance term +0.66 %); the expected change in P is far below its Monte Carlo SE and the reading cannot change; not rerun (a scored study runs once). Round 8: FE.encompass_2026-12.v1 (registered sha dae23caa; whether the frozen physics forecast adds to the statistical layer on the 147 wells E02 and E04 share, 2026-12..2027-10) is report-only. Its decidability study (results/dataprep/reports/FE.encompass_2026-12.v1/decidability.json sha 61a0443f, seed 52629095) failed G0 condition (d): in AR worlds with no physics information (lambda_P = 0) the rule reads 'stat layer encompasses' only 0.51 of the time (cells 0.17-0.85) against >= 0.80 required, while the physics arm's power at lambda 1 is 0.84 (cells 0.60-0.97) and the other conditions pass. So its 2028 reading will carry the registered prefix 'Report-only (decidability ...)' in the ledger notes only: no status change, no page line and no D row (FE's proposed E28 is not created); the pre-written 'encompassing' narrowing cannot be reached as a decided result.",
    "text_keys": [
-    "i18n:evc_hyb_reg"
+    "i18n:evc_hyb_reg",
+    "i18n:evc_hyb_fvs",
+    "i18n:evc_hyb_fvs_pass"
    ],
-   "doc_anchors": {}
+   "doc_anchors": {},
+   "ruling_also": [
+    "user ruling 2026-11-03 (twelfth set) (R8.8)"
+   ]
   },
   {
    "id": "E05",
@@ -2765,28 +2892,34 @@
   },
   {
    "id": "E24",
-   "where": "ledger and README Limits only (no page text; the tA tile display was not ruled)",
+   "where": "page tile tA definition under Model internals (def_tA_e24; ruling R8.11), ledger and README Limits",
    "claim": "Model-form spread of the Yunlin cut30 avoided subsidence by 2028-12 across leveling-equivalent columns (SD.cut_response_spread.v2), labelled model-form spread, not an interval",
    "status_before": "L",
    "status_current": "L",
    "changes": true,
-   "wording_en": "New L row (round 7; SD.cut_response_spread.v2 evidence_and_ledger_mapping.scope; id assigned at this ledger build). Tier A+B (page_line_L): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. Tier A (page_line_L_A): 'across 3 leveling-equivalent columns on the page's own heads (Tier A) the Yunlin cut30 avoided subsidence by 2028-12 is 1.40-1.42 cm; coast (distal zone) 60-60 % of it; inland Yunlin robust within x1.5 (model-form spread, not an interval)'. Ledger and README Limits only: showing the spread on the tA tile needs a user ruling, which none of the round-7 sets gives. No status moves (C03 and C09 stay W); no correction factor follows (ruling 2026-10-29 (4)); the response size stays untested.",
-   "ruling": null,
+   "wording_en": "New L row (round 7; SD.cut_response_spread.v2 evidence_and_ledger_mapping.scope; id assigned at this ledger build). Tier A+B (page_line_L): 'across 10 leveling-equivalent columns adding the Q0 family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. Tier A (page_line_L_A): 'across 3 leveling-equivalent columns on the page's own heads (Tier A) the Yunlin cut30 avoided subsidence by 2028-12 is 1.40-1.42 cm; coast (distal zone) 60-60 % of it; inland Yunlin robust within x1.5 (model-form spread, not an interval)'. Round 7: ledger and README Limits only (the tA display was not ruled). No status moves (C03 and C09 stay W); no correction factor follows (ruling 2026-10-29 (4)); the response size stays untested. Round 8 (ruling R8.11): shown on tile tA's definition under Model internals as def_tA_e24, labelled L and 'model-form spread, not an interval', worded from SD v2's report (the Tier A+B column count, the Yunlin cut30 range by 2028-12 and the inland factor) once SD v2 is in the registry; no cm number in the answer (headline and answer tiles); C03 stays W.",
+   "ruling": "user ruling 2026-11-03 (twelfth set) (R8.11)",
    "cites": {
     "registrations": [
      "SD.cut_response_spread.v2",
-     "SD.cut_response_spread.v1"
+     "SD.cut_response_spread.v1",
+     "COLF.column_family_2028.v1",
+     "X5.gnss_seasonal_family.gates.v1"
     ],
     "tests": [],
     "reports": [
      "results/dataprep/reports/SD.cut_response_spread.v2/report.json",
-     "results/dataprep/reports/SD.cut_response_spread.v1/engineering_failure.json"
+     "results/dataprep/reports/SD.cut_response_spread.v1/engineering_failure.json",
+     "results/dataprep/reports/COLF/osse_result.json",
+     "results/dataprep/reports/COLF/freeze/freeze_summary.json",
+     "results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json"
     ],
     "manifests": []
    },
-   "notes": "SD.cut_response_spread.v2 (registered sha aecb5a81; report results/dataprep/reports/SD.cut_response_spread.v2/report.json sha 5cfc9ea7; reuses v1's 8 sealed forwards by sha, disclosed). E0 reproduced the published fan cut30 0.942 cm. Verified-only lines: A 'across 2 leveling-equivalent columns A verified only the Yunlin cut30 avoided subsidence by 2028-12 is 1.40-1.40 cm; coast (distal zone) 60-60 % of it; inland Yunlin robust within x1.5 (model-form spread, not an interval)'; A+B 'across 8 leveling-equivalent columns A+B verified only the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. Rank reading 2032: Tier A 'ranking column-robust' (C11 leader wording kept), Tier A+B 'ranking column-dependent' (C11 leader wording lost). Changhua tier (ccz, q0c_csk1; C13c wording only, C13c stays W). v1 (sha 0d05eb53) closed as an engineering failure at the layout step (rheology label mismatch; results/dataprep/reports/SD.cut_response_spread.v1/engineering_failure.json sha 611498d4); no cut30 quantity was formed under v1.",
+   "notes": "SD.cut_response_spread.v2 (registered sha aecb5a81; report results/dataprep/reports/SD.cut_response_spread.v2/report.json sha 5cfc9ea7; reuses v1's 8 sealed forwards by sha, disclosed). E0 reproduced the published fan cut30 0.942 cm. Verified-only lines: A 'across 2 leveling-equivalent columns A verified only the Yunlin cut30 avoided subsidence by 2028-12 is 1.40-1.40 cm; coast (distal zone) 60-60 % of it; inland Yunlin robust within x1.5 (model-form spread, not an interval)'; A+B 'across 8 leveling-equivalent columns A+B verified only the Yunlin cut30 avoided subsidence by 2028-12 is 0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm) (model-form spread, not an interval)'. Rank reading 2032: Tier A 'ranking column-robust' (C11 leader wording kept), Tier A+B 'ranking column-dependent' (C11 leader wording lost). Changhua tier (ccz, q0c_csk1; C13c wording only, C13c stays W). v1 (sha 0d05eb53) closed as an engineering failure at the layout step (rheology label mismatch; results/dataprep/reports/SD.cut_response_spread.v1/engineering_failure.json sha 611498d4); no cut30 quantity was formed under v1. Round 8: COLF.column_family_2028.v1 (registered sha 6507be0c, rulings R8.4a/R8.4b; OSSE results/dataprep/reports/COLF/osse_result.json sha d66d0b87, seed 72280884, 2000 replicates, self-check passed; every member's predictions frozen by hash, results/dataprep/reports/COLF/freeze/freeze_summary.json sha f7b1756b, predictions.npz 91462e3a) finds 0 decidable pairs. On the 2 Yunlin deep piles every pair of the 9 deduplicated leveling-equivalent members has P(correct ranking) <= 0.37 (report-only arm on N3's months 2026-12..2028-11: 0.23-0.35; gating screen on 2028-12..2029-11: 0.23-0.37); on the ROC116/117 township bounds P = 0 for all 45 pairs of 10 members, a tie artefact of the bound rule (both members fall inside the bound in nearly every replicate), not a separation. Every pair is below the 0.50 narrowing threshold, so the registered narrowing applies: the 2028 pile and township units cannot separate these columns (COLF OSSE, nominal P(correct ranking) <= 0.50); no cut number changes, no column is selected, C03 stays W and E24 stays L. P is an upper bound on the real decidability (structural error outside the family is not simulated). Round 8 (closure, no look): X5.gnss_seasonal_family.gates.v1 (registered sha 8661c0a3; G-sep passed, results/dataprep/reports/X5.gnss_seasonal_family.v1/gsep.json sha 3ef08c98) failed its synthetic gate G0 (results/dataprep/reports/X5.gnss_seasonal_family.v1/g0.json sha 7749bdc3, seed 81131129, 512 cells x 1000 replicates): the screen excludes a member x1.5 off in cut30 only 0.782 of the time pooled (>= 0.80 needed) and 0.252 in its worst cell (>= 0.60 needed), although it keeps the true member (worst cell 0.916 >= 0.90) and rarely excludes every member (at most 0.013 <= 0.10). By its declaration no GNSS amplitude is read and X5.gnss_seasonal_family.v1 is not registered: the GNSS seasonal route is closed honestly. No screened range is shown beside E24's full range, C27 gains no decided direction, and C03, C11 and C29 gain no note beyond this closure; ruling R8.5's label is moot.",
    "text_keys": [
-    "doc:README.md"
+    "doc:README.md",
+    "i18n:def_tA_e24"
    ],
    "doc_anchors": {
     "README.md": {
@@ -2804,26 +2937,30 @@
    "status_before": "S",
    "status_current": "S",
    "changes": true,
-   "wording_en": "New row (round 7; I1.CHX.v1 evidence_and_ledger_mapping.direction.E_row): \"R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)\". Scored once: 'R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (design-time spatial holdout; verdict direction_supported_size_not; slope 0.17 [0.02, 0.44], twoway fixed effects)'. S (design-time, window flagged), direction only; it says nothing about the size or the sustained lever. Shown on the page (evidence line), in README Limits and in the model card as 'S (design-time), direction only; size not supported' with the slope (user ruling 2026-11-02, R7.changhua_page, which gives the approval the registration's page_ruling required). Unchanged whatever the outcome: C13a (W), E20 (D), the F < 0.5 cap, N2C's before_scoring and never clauses; no Changhua lever is displayed before N2C.",
+   "wording_en": "New row (round 7; I1.CHX.v1 evidence_and_ledger_mapping.direction.E_row): \"R1c's Changhua pumping response has the right direction at 23 never-calibrated screens (design-time)\". Scored once: 'R1c's Changhua pumping response has the right direction at 23 never-calibrated Changhua screens (design-time spatial holdout; verdict direction_supported_size_not; slope 0.17 [0.02, 0.44], twoway fixed effects)'. S (design-time, window flagged), direction only; it says nothing about the size or the sustained lever. Shown on the page (evidence line), in README Limits and in the model card as 'S (design-time), direction only; size not supported' with the slope (user ruling 2026-11-02, R7.changhua_page, which gives the approval the registration's page_ruling required). Unchanged whatever the outcome: C13a (W), E20 (D), the F < 0.5 cap, N2C's before_scoring and never clauses; no Changhua lever is displayed before N2C. Round 8 (rulings R8.8, amending R7.changhua_page, and R8.10): the page line carries the placebo caveat ('imprecise and not evidence of specificity; its report-only forms co-move with the Yunlin contrast') and, once the two-contrast follow-up is registered and scored, its clause chx_2c_ns: 'direction not separable from Yunlin spill-over', with the joint Changhua slope. Status unchanged in every branch (S, design-time, direction only); the follow-up cannot promote.",
    "ruling": "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)",
    "cites": {
     "registrations": [
-     "I1.CHX.v1"
+     "I1.CHX.v1",
+     "I1.CHX.v1.twocontrast"
     ],
     "tests": [
      "I1CHX.direction_R1c_ext23"
     ],
     "reports": [
-     "results/dataprep/reports/I1.CHX.v1/report.json"
+     "results/dataprep/reports/I1.CHX.v1/report.json",
+     "results/dataprep/reports/I1.CHX.v1/twocontrast_report.json",
+     "results/dataprep/reports/I1.CHX.v1/chj_report.json"
     ],
     "manifests": []
    },
-   "notes": "I1.CHX.v1 (registered sha 794f6a7e; report sha 9dc5938f): G0 decidable (power 0.966, false pass 0.094); beta 0.167, 90 % interval 0.024-0.437, 23 screens, 12 blocks; RMSE(PR) 0.770 vs RMSE(ZR) 0.744 m (PR not below ZR: size not supported). Report-only placebo (the same estimator on the Yunlin contrast at the same 23 screens): imprecise; not evidence of specificity; report-only detrended/demeaned forms co-move with the Yunlin contrast (verdict word 'not_supported' on precision only: twoway 1.01 [-0.16, 2.15], about 6 times the primary's slope; detrended 2.61 [1.41, 3.93]; demeaned 1.24 [0.44, 3.32]), so the direction pass does not separate Changhua pumping from Yunlin spillover or a regional pattern that tracks R1c's response. Primary's report-only forms: detrended and demeaned slopes 0.75 and 0.71. CH-J (secondary) not run: 'CH-J engineering not delivered: the declared fallback applies (primary scored alone; CH-J external gates report-only when run later, never gating)'. A confounder whose spatial loading tracks R1c's response is not excluded (interpretation). I1CHX.chj_externals: not run; report-only for good under the fallback (the registered secondary of I1.CHX.v1; its external gates can never gate because the primary is scored). Declared product use: the 23 screens' heads were read from heads/L1_clean v3 under the use design_time_evidence (score_chx.py), not scoring_target; the design-time label rests on the registration and the page wording on ruling R7.changhua_page. Round 8 disclosure: FV.ext's design-time read of these 23 screens' pre-origin residual sd (look FV:ext_preorigin_derived_N3Fwells x I1CHX:ext_changhua_23) is a post-registration look logged at 2026-11-01T14:19:55Z, about 8 minutes before CHX was scored (report created 14:27:29Z); it could not change the frozen estimator. E25 and E26 are not independent (4 shared wells; the same regional-rain confounder).",
+   "notes": "I1.CHX.v1 (registered sha 794f6a7e; report sha 9dc5938f): G0 decidable (power 0.966, false pass 0.094); beta 0.167, 90 % interval 0.024-0.437, 23 screens, 12 blocks; RMSE(PR) 0.770 vs RMSE(ZR) 0.744 m (PR not below ZR: size not supported). Report-only placebo (the same estimator on the Yunlin contrast at the same 23 screens): imprecise; not evidence of specificity; report-only detrended/demeaned forms co-move with the Yunlin contrast (verdict word 'not_supported' on precision only: twoway 1.01 [-0.16, 2.15], about 6 times the primary's slope; detrended 2.61 [1.41, 3.93]; demeaned 1.24 [0.44, 3.32]), so the direction pass does not separate Changhua pumping from Yunlin spillover or a regional pattern that tracks R1c's response. Primary's report-only forms: detrended and demeaned slopes 0.75 and 0.71. CH-J (secondary) was not run when the primary was scored (the declared fallback: CH-J's external gates report-only, never gating); it ran in round 8 (below). A confounder whose spatial loading tracks R1c's response is not excluded (interpretation). I1CHX.chj_externals: report-only for good under the fallback (its external gates can never gate because the primary is scored); run 2026-11-05 (CH-J, C20/C21 notes). Declared product use: the 23 screens' heads were read from heads/L1_clean v3 under the use design_time_evidence (score_chx.py), not scoring_target; the design-time label rests on the registration and the page wording on ruling R7.changhua_page. Round 8 disclosure: FV.ext's design-time read of these 23 screens' pre-origin residual sd (look FV:ext_preorigin_derived_N3Fwells x I1CHX:ext_changhua_23) is a post-registration look logged at 2026-11-01T14:19:55Z, about 8 minutes before CHX was scored (report created 14:27:29Z); it could not change the frozen estimator. E25 and E26 are not independent (4 shared wells; the same regional-rain confounder). Round 8 result: I1.CHX.v1.twocontrast (registered sha da76b707; CHX's single exploratory follow-up, ruling R8.10; report results/dataprep/reports/I1.CHX.v1/twocontrast_report.json sha 8208424d, scored once 2026-11-03; after-the-fact look logged before the heads were read): the reproduction pre-gate passed (CHX's slope, interval and placebo reproduced to about 1e-14); the model-only contrast correlation is 0.09 (< 0.9, separable); the joint twoway regression on R1c's Changhua contrast and the Yunlin placebo contrast at the 23 screens (1205 rows, 12 blocks, B 2000) gives Changhua 0.148 [-0.038, 0.448] (90 % interval, reaching 0) and Yunlin 0.85 [-0.50, 2.24] (report-only). Reading 'not_separable': E25 gains 'direction not separable from Yunlin spill-over' (a narrowing); its status, C20/C21, E26, CH-J and N2C are unchanged. Round 8 result, CH-J (I1.CHX.v1's registered secondary, test I1CHX.chj_externals; report-only for good under ruling R8.1b; results/dataprep/reports/I1.CHX.v1/chj_report.json sha e5818b6a, written once at 2026-11-05T23:38Z by the new wrapper chj_report.py with the frozen chj_block unchanged; engineering record frozen 2026-11-03T03:06Z after the hook merged (PR #71, tolerance fix PR #72), before the 2026-11-22T14:14:55Z limit; the after-the-fact re-reads of the 23 Changhua screens and the Yunlin screens were logged first). Mechanism note, the report's r8_1b wording verbatim: 'CH-J (report-only): Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support'. Fractions (R8.1c, the larger is fed): deliveries 0.010 (at the bound) and percolation 0.018 in both seeds, so the fed fraction is off the bound and co-located canal/paddy recharge is NOT rejected; off-bound is never support and chj_pass is not claimable. No-harm (Yunlin k-fold, Yunlin county correlation, out-of-fold leveling, Changhua leveling) and forward (subsidence Dec 2022 to Dec 2025 in both counties, rising share) pass in both seeds. Report-only externals: amplitude ratio 0.78 (inside [0.67, 1.5]), Changhua/Yunlin ratio 0.90, county-mean correlation 0.754 against Q0's 0.643, direction 'not_informative', so the external block fails. Disclosure: the seed sets only the fold partition, so the two seeds' full-data fits coincide (their external numbers agree to about 1e-14): the external and forward blocks are one replicate, and only the no-harm block (the fold fits) differs by seed. No status change and no page change.",
    "text_keys": [
     "doc:MODEL_CARD.md",
     "doc:README.md",
     "i18n:evc_chx",
-    "doc:docs/TWIN_EVIDENCE_2026-10.md"
+    "doc:docs/TWIN_EVIDENCE_2026-10.md",
+    "i18n:chx_2c_ns"
    ],
    "doc_anchors": {
     "README.md": {
@@ -2836,7 +2973,12 @@
       "`I1.CHX.v1`"
      ]
     }
-   }
+   },
+   "ruling_also": [
+    "user ruling 2026-11-03 (twelfth set) (R8.8)",
+    "user ruling 2026-11-03 (twelfth set) (R8.10)",
+    "user ruling 2026-11-03 (twelfth set) (R8.1b)"
+   ]
   },
   {
    "id": "E26",
@@ -2845,7 +2987,7 @@
    "status_before": "S",
    "status_current": "S",
    "changes": true,
-   "wording_en": "New row (round 7; I1.CH_backcast.v1 evidence_and_ledger_mapping.direction_supported): 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'. Scored once: 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time; slope 0.37 [0.15, 1.35], well x calendar-month and month-of-sample effects)'. S (design-time), direction only. Shown on the page (evidence line), in README Limits and in the model card as 'S (design-time), direction only; size not supported' with the slope (user ruling 2026-11-02, R7.changhua_page, which gives the approval the registration's page_ruling required). Unchanged whatever the outcome: C13a (W), E20 (D), the F < 0.5 cap, N2C's before_scoring and never clauses; no Changhua lever is displayed before N2C.",
+   "wording_en": "New row (round 7; I1.CH_backcast.v1 evidence_and_ledger_mapping.direction_supported): 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time)'. Scored once: 'direction of R1c's Changhua pumping response supported in years never used to fit any model (2010-11, design-time; slope 0.37 [0.15, 1.35], well x calendar-month and month-of-sample effects)'. S (design-time), direction only. Shown on the page (evidence line), in README Limits and in the model card as 'S (design-time), direction only; size not supported' with the slope (user ruling 2026-11-02, R7.changhua_page, which gives the approval the registration's page_ruling required). Unchanged whatever the outcome: C13a (W), E20 (D), the F < 0.5 cap, N2C's before_scoring and never clauses; no Changhua lever is displayed before N2C. Round 8 (ruling R8.8, amending R7.changhua_page): the page line adds 'It is not independent of the screen test (4 shared wells, the same regional-rain confounder)' and, from the report's report-only synthetic power, chb_syn: 'A weak test: in its synthetic check it passes with probability 0.35 if the model is right and 0.13 with no response, and a dry year biases the slope toward a pass'. Status unchanged (S, design-time, direction only).",
    "ruling": "user ruling 2026-11-01 (sixth set) (R7.l1_pre2012)",
    "cites": {
     "registrations": [
@@ -2864,7 +3006,8 @@
     "doc:MODEL_CARD.md",
     "doc:README.md",
     "i18n:evc_chb",
-    "doc:docs/TWIN_EVIDENCE_2026-10.md"
+    "doc:docs/TWIN_EVIDENCE_2026-10.md",
+    "i18n:chb_syn"
    ],
    "doc_anchors": {
     "README.md": {
@@ -2879,7 +3022,8 @@
     }
    },
    "ruling_also": [
-    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)"
+    "user ruling 2026-11-02 (eleventh set) (R7.changhua_page)",
+    "user ruling 2026-11-03 (twelfth set) (R8.8)"
    ]
   },
   {
@@ -2902,6 +3046,108 @@
     "payload:unreferenced"
    ],
    "doc_anchors": {}
+  },
+  {
+   "id": "C14f-r",
+   "where": "ledger and README Limits only (no page text)",
+   "claim": "Departure-transfer relative 90 % band (per-well spread around the zone-median departure of E02's wells) at N3F's 66 never-calibrated external wells, per county, 2026-12..2027-10 (E02x)",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "New row (round 8, rank 5): 'not decidable by design (U1.ext_transfer_power.v1): E02x was not registered'. The synthetic P-gate of E02x's exact scorer at the external wells failed in Yunlin (power at a 0.75 coverage truth 0.767 in the primary window and 0.764 in the fallback, against >= 0.80; the false-fail half, 0.116 / 0.117 <= 0.12, passes), and Changhua was report-only by arithmetic (power 0.002 / 0.001; false-fail 0.24 / 0.23). So E02x.ext_transfer_2026-12.v1 is not registered (no re-run, no new grid); C14f-r is N and never on the page (ruling R8.3's page line applied only to a 2028 pass). C14f (N3F's interval at the same wells, D) is unchanged.",
+   "ruling": "user ruling 2026-11-03 (twelfth set) (R8.3)",
+   "cites": {
+    "registrations": [
+     "U1.ext_transfer_power.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/U1.ext_transfer_power.v1/result.json"
+    ],
+    "manifests": []
+   },
+   "notes": "U1.ext_transfer_power.v1 (registered sha 1bfbf010; result results/dataprep/reports/U1.ext_transfer_power.v1/result.json sha daace1bf, seed 28866567, 2000 replicates, self-checks passed): registration.primary and .fallback 'registrable': false, roles for Yunlin, Changhua and Nantou 'not_registered'. Per county and window: Yunlin p_gate_pass false (power_min_at_0.75 0.7665 primary, 0.7635 fallback; false_fail_max 0.1155 / 0.1165); Changhua false (0.002 / 0.001; 0.238 / 0.232). Nantou was report-only by ruling R8.3 (no pooling). Nothing is scored at the external wells beyond N3F (C14f).",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "`U1.ext_transfer_power.v1`"
+     ]
+    }
+   }
+  },
+  {
+   "id": "E29",
+   "where": "ledger only (no page line in any branch); README Limits names the closure",
+   "claim": "A prospective Bayes-factor test between the recipe families {R0, Q0} and {R1c, X5R1} on 2026-12..2027-10 at E02's wells, per county (FB)",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "New row (round 8, rank 16; FB.family_power.v1 decision_to_registration.none, which fixed this id): 'family BF not decidable by design (FB.family_power.v1)'. No county's family pair passes the power gate (P(correct strong) >= 0.8 and P(wrong strong) <= 0.05 at BF >= 20, worst truth x worst gating row): Changhua 0.21 (worst row month_missing; base 0.24, forcing 0.24), Yunlin 0. No BF test is registered; C20/C21 and every page line are unchanged (FB never moves C20/C21; N2C alone decides the Changhua response class).",
+   "ruling": null,
+   "cites": {
+    "registrations": [
+     "FB.family_power.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/FB.family_power.v1/result.json"
+    ],
+    "manifests": []
+   },
+   "notes": "FB.family_power.v1 (registered sha bc8a935a; result results/dataprep/reports/FB.family_power.v1/result.json sha bdc0589e, seed 61725923, 2000 replicates; registration.registrable []): Changhua p_correct_strong_min 0.2075 (p_wrong_strong_max 0.0175), Yunlin 0.0 (0.002). The wrong-side half of the gate sits at the universal 1/B bound (disclosed in the result). E27 (reserved by ruling R8.2 for N2CS, which was not registered: its OSSE failed) and E28 (proposed by FE for a gating FE; FE is report-only) are not created.",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "`FB.family_power.v1`"
+     ]
+    }
+   }
+  },
+  {
+   "id": "E30",
+   "where": "ledger and README Limits (no page text before the C30 split of ruling R8.7)",
+   "claim": "Strict level rule in years 2 and 3 (2027-11..2028-10 and 2028-11..2029-10): the frozen forecast's average-weather level against pre-origin climatology and climatology-plus-trend, per county, at E02's 158 wells (E02z)",
+   "status_before": "D",
+   "status_current": "D",
+   "changes": true,
+   "wording_en": "New row (round 8, rank 17; E02z page_mapping.before_scoring.ledger 'E02z row, status D'; ruling R8.14 confirms it is covered by R7.heads_years23 through GOV.heads_window_product.v1): 'strict level rule years 2-3 (E02z), per county; scored not before 2029-01-15 (2027-11..2028-10) and 2030-01-15 (2028-11..2029-10)'. Registered decidability suffix (first attempt, per county and window): Yunlin 'synthetic decidability (E02z, first attempt): a right-ish model passes this rule with probability 1.00 (optimistic: average-weather truths, wells independent, no gaps; not a strict bound)' in both windows; Changhua the same with probability 0.69 (2027-11) and 0.68 (2028-11). Expected outcome (pre-worded from the published 2023-26 record, RC5): 'level_not_supported' in both counties, a narrowing: '{county}: the frozen model's average-weather level scenario was not better than both simple pre-origin baselines on {first}..{last} (E02z, prospective); expected from the published 2023-26 record (pooled: frozen run 2.048 m against climatology 1.667 m), so the physics head level after 2023-11 stays an average-weather scenario, not a forecast'. A pass makes C30's heads part S-limited for that county and window only ('an average-weather scenario, not a forecast'). E02z never moves E04, the year-1 verdicts or E02y.",
+   "ruling": "user ruling 2026-11-03 (twelfth set) (R8.14)",
+   "ruling_also": [
+    "user ruling 2026-11-01 (sixth set) (R7.heads_years23)"
+   ],
+   "cites": {
+    "registrations": [
+     "E02z.level_years23.v1",
+     "GOV.heads_window_product.v1",
+     "E02y.years23_2027-11_2029-10.v1"
+    ],
+    "tests": [
+     "E02zP.level_2027-11",
+     "E02zP.level_2028-11"
+    ],
+    "reports": [
+     "results/dataprep/reports/E02z.level_years23.v1/decidability/report.json",
+     "results/dataprep/reports/E02z/baselines/summary.json"
+    ],
+    "manifests": []
+   },
+   "notes": "E02z.level_years23.v1 registered 2026-11-03 (sha 612d36fc; fresh units E02z:heads_2027-11_2028-10_wells158 and E02z:heads_2028-11_2029-10_wells158; CL/CLT from pre-origin months only, results/dataprep/reports/E02z/baselines/summary.json sha dfe9102f, rebuilt bit-identically). Decidability (results/dataprep/reports/E02z.level_years23.v1/decidability/report.json sha 0e5e83d3; seed 59258134; K 250 per truth and 500 null worlds; the truth forwards reproduce the hindcast to 0.0 m): 'not_shown_weak' in every county and window. Yunlin P 0.999 (2027-11) and 1.000 (2028-11), every truth 0.996-1.000; Changhua P 0.688 and 0.683, by truth (report-only) Q0 0.968 / 0.976, R0 0.984 / 0.972, R1c 0.708 / 0.724, X5R1 0.092 / 0.060: in Changhua a right model of the X5R1 family would rarely pass. Null false pass 0 in every cell (gate N passed). Declared limits: no pumping-anomaly arm or recorded weather, wells independent, every well observed (optimism); FV v2's worlds are less climatological than the 2023-26 record (P may be optimistic). The two windows share the 2022-12 origin and the wells, so they are not independent forecasts. Governance: GOV.heads_window_product.v1 (sha 141c0128).",
+   "text_keys": [
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "`E02z.level_years23.v1`"
+     ]
+    }
+   }
   }
  ],
  "display_map": {
@@ -4127,6 +4373,27 @@
     "E26",
     "C20",
     "C21"
+   ],
+   "chb_syn": [
+    "E26"
+   ],
+   "chx_2c_ns": [
+    "E25"
+   ],
+   "def_tA_e24": [
+    "E24"
+   ],
+   "evc_hyb_fvs": [
+    "E04"
+   ],
+   "evc_hyb_fvs_pass": [
+    "E04"
+   ],
+   "evc_n2_rd": [
+    "C01"
+   ],
+   "rank_limit": [
+    "C12"
    ]
   },
   "card_rows": {
@@ -4292,7 +4559,8 @@
     "E23",
     "C14f",
     "E25",
-    "E26"
+    "E26",
+    "C01"
    ],
    "fastClause": [
     "C10"
@@ -4528,7 +4796,8 @@
     "C10",
     "E13",
     "E14",
-    "E15"
+    "E15",
+    "E24"
    ],
    "timingCaveat": [
     "C10"
@@ -4577,6 +4846,18 @@
    "chDirLines": [
     "E25",
     "E26"
+   ],
+   "chxSepClause": [
+    "E25"
+   ],
+   "e24Line": [
+    "E24"
+   ],
+   "fvsLines": [
+    "E04"
+   ],
+   "n2rdLine": [
+    "C01"
    ]
   },
   "arrays": {
@@ -5532,7 +5813,7 @@
     "C27"
    ],
    "modelcard.policy_response.step_b.changhua.ratio_ci[]": [
-    "Z04"
+    "C27"
    ],
    "modelcard.policy_response.step_b.yunlin.beta_model_cm_per_gwh": [
     "C27"
@@ -5541,7 +5822,7 @@
     "C27"
    ],
    "modelcard.policy_response.step_b.yunlin.ratio_ci[]": [
-    "Z04"
+    "C27"
    ],
    "modelcard.policy_response.subsidence.changhua.rms_cl_cm": [
     "C27"
@@ -6616,6 +6897,72 @@
    ],
    "release.sources.result_chb.bytes": [
     "E18"
+   ],
+   "modelcard.results.fvs2.p": [
+    "E04"
+   ],
+   "modelcard.results.fvs2.p0": [
+    "E04"
+   ],
+   "modelcard.results.n2rd.false_pass": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.ws05": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.ws2": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.cov": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.power": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.power_canal": [
+    "C01"
+   ],
+   "modelcard.results.n2rd.power_forcing": [
+    "C01"
+   ],
+   "modelcard.results.chx2c.beta": [
+    "E25"
+   ],
+   "modelcard.results.chx2c.lo": [
+    "E25"
+   ],
+   "modelcard.results.chx2c.hi": [
+    "E25"
+   ],
+   "modelcard.results.chb.p_k0": [
+    "E26"
+   ],
+   "modelcard.results.chb.p_k1": [
+    "E26"
+   ],
+   "modelcard.results.sd2.n_columns": [
+    "E24"
+   ],
+   "modelcard.results.sd2.lo_cm": [
+    "E24"
+   ],
+   "modelcard.results.sd2.hi_cm": [
+    "E24"
+   ],
+   "modelcard.results.sd2.inland_ratio": [
+    "E24"
+   ],
+   "release.sources.result_fvs2.bytes": [
+    "E18"
+   ],
+   "release.sources.result_n2rd.bytes": [
+    "E18"
+   ],
+   "release.sources.result_chx2c.bytes": [
+    "E18"
+   ],
+   "release.sources.result_sd2.bytes": [
+    "E18"
    ]
   }
  },
@@ -6662,6 +7009,18 @@
   "SD.cut_response_spread.v2": "aecb5a81d066ff4b141b619435bb1d3822ebb1370e4cf7bf96b11729a8d76628",
   "U1.HB.power.v1": "0edd66748249ce13bfe90c5845f7c97694ca26e887248ca805d20bf6d4f46d5d",
   "X1.hybrid_tf_tpc.prospective_2026-11.v1": "4a9501d5737e1410684c4d2cba676441fcab1c7cc9ea4c0d5ee2bc4901fbe9bb",
-  "N3.posthoc_pile_conversion.v1": "7b13028f0178b725f9e609cd39808cb4f1f971381fac24b020fc6ac1d0aed049"
+  "N3.posthoc_pile_conversion.v1": "7b13028f0178b725f9e609cd39808cb4f1f971381fac24b020fc6ac1d0aed049",
+  "FV.stat.v2": "a15e468d1292bb9d170fa981d96ee52bfadc80051c867496dbdb94ff2c8de7e6",
+  "X5.n2_reading.v1": "bca3540ef84aa1d6c4f5867f8f5b3f4b91b3185a572ad36889a359ca10aa1261",
+  "I1.CHX.v1.twocontrast": "da76b707ca44a9f6e5dcc1251675b0d885cd57ca3b8dcd441d5368df1cf4812c",
+  "N2CS.osse_design.v1": "1f69c7b598c01e4107141ce2bc53ad984ed7e13c7cac88d895925898c1bcb48d",
+  "U1.ext_transfer_power.v1": "1bfbf0100965dcaef24f5242b051072373280aecdd057e650c43ad59c9f7495b",
+  "FE.encompass_2026-12.v1": "dae23caa663aa8ef3128f2a8e61295fe9e822d5e99ac9c8e81908a608122b451",
+  "COLF.column_family_2028.v1": "6507be0cc9c3f4b3a364a1d0fee74091624a5686a1a34c8038d7908765ea1913",
+  "CB.coverage_side.v1": "3c341347e1c77f127e7c1f1a8f020fc9cbfe7dedaf5bad1adf733002bb67dabc",
+  "E02z.level_years23.v1": "612d36fcbe3e39118bf42a6577619897eb10afb2ea287ec14b844ed250d1822b",
+  "X5.gnss_seasonal_family.gates.v1": "8661c0a3a68485d63568d0344f8c31b2932747343c363ad4dca125c22cae1d6e",
+  "FB.family_power.v1": "bc8a935a70ebdda1955c33f359a463a2a92dd08f6a55459e31d3130fc7bc61a8",
+  "GOV.heads_window_product.v1": "141c012899a67c69eecfd630a6e9a92de3c057f5cfa2d67412adf42608167855"
  }
 }

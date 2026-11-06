@@ -1665,3 +1665,153 @@ disclosures that section 20 now states: E25's placebo and E26's weak synthetic p
 the two are not independent; FV v2's Changhua split by truth family; and the x1.27 conversion
 dependence of the headline cut30 lever (C01, C12). A disclosure downgrade is always reported
 with any gain, and with the end-goal figure whenever that figure is shown.
+
+## 22. Round-8 results (2026-11-03..06)
+
+User rulings of 2026-11-03, twelfth set (`results/dataprep/rulings/user_rulings_2026-11-03.json`,
+sha ec610b69), decided the round: the CH-J hook and its reading (R8.1a-f: an off-bound
+Changhua surface-water fraction is a report-only line, never support), N2CS's approval for the
+11-month window only (R8.2), E02x's Nantou wells report-only (R8.3), the column-family freeze
+roles (R8.4a/b), the GNSS seasonal label (R8.5), which disclosures reach the page (R8.8: the
+E25/E26 caveats, C27 in registered numbers, the x1.27 clause on C01/C12, the C01 split and the
+N2 and FV.stat.v2 operating-characteristic lines; not the FV v2 per-truth split), CHX's single
+exploratory slot spent on the two-contrast narrowing (R8.10), E24's model-form spread on tile tA
+under Model internals (R8.11), the progress headline (R8.12a/b) and E02z's governance (R8.14).
+The ledger records each as `user ruling 2026-11-03 (twelfth set) (<id>)`. Rulings R8.7 (forecast
+of record and the C30 split), R8.9 (all30 as the headline lever) and R8.13 (the decomposed page
+band) are wired separately and are not part of this section.
+
+Each test below was scored once; the registry sha256 prefix is from
+`results/dataprep/preregistration/INDEX.jsonl`, the report's from the file itself.
+
+- **`FV.stat.v2`** (a15e468d), the engineering v2 of FV.stat.v1 in new files, fresh seed, rho = 0
+  null reading report-only. Report `results/dataprep/reports/FV.stat.v2/report.json` (sha
+  6145a225): "not_shown_weak", P(E04 pass | AR truth) 0.930 (cells 0.796-0.996), 117 Monte
+  Carlo SE above 0.5; null P0 0.475, a pass likelihood ratio of about 1.96. A 2028 E04 pass is
+  weak evidence of persistence and a fail (about 0.07 in the AR worlds) is the more informative
+  outcome. Erratum (`erratum_county_layout.json`, sha ce2c0101; the scored report is untouched):
+  the report's county layout 78/69 is inherited from v1's constant, while E04's 147 wells are 81
+  Yunlin and 66 Changhua; county only chooses which wells share a county's common series, the
+  pass rule never uses it, the clustered variance moves +0.66 %, and the reading cannot change;
+  not rerun. Ledger: E04 moves from D (decidability unknown) to D (decidability measured). Page
+  (R8.8): two lines beside the statistical layer's registration line, the declared wording and
+  the declared "what a 2028 pass can show" clause.
+- **`X5.n2_reading.v1`** (bca3540e), model-only, synthetic worlds, the shared N2/N2C scorer
+  wrapped (f8990d61). Report (sha 80bba98e): "informative", not decisive. False pass 0.20 (max
+  over rho), wrong-size pass at k = 0.5 0.75 and at k = 2 0.01, 90 % interval coverage of k = 1
+  0.84, power 0.95 (0.15 with the canal confounder; 0.50 in the report-only forcing-error cell).
+  N2 can detect a response but cannot tell a full-size one from a half-size one. Ledger: C01's D
+  is decidability-measured, and C01 is split (R8.8): direction S (design-time), within-window
+  response D, size N (status S+D -> S+D+N). Page: the tile range line, definition and headline
+  label the three parts, the x1.27 conversion clause is on the headline, the tile definition and
+  the ranking note (C12), and an evidence line prints N2's operating characteristics.
+- **`E02z.level_years23.v1`** (612d36fc), tests E02zP.level_2027-11 and E02zP.level_2028-11:
+  registered (ruling R8.14; governance `GOV.heads_window_product.v1`, 141c0128, whose code came
+  with section 21's step 0). Decidability report
+  (`results/dataprep/reports/E02z.level_years23.v1/decidability/report.json`, sha 0e5e83d3):
+  "not_shown_weak" in every county and window: Yunlin P 0.999 and 1.000, Changhua 0.688 and
+  0.683 (by truth Q0 0.97-0.98, R0 0.97-0.98, R1c 0.71-0.72, X5R1 0.06-0.09); null false pass 0.
+  New row E30 (D): C30's heads part gets a registered decider beyond 2027-10, scored not before
+  2029-01-15 and 2030-01-15. Its expected outcome, from the published 2023-26 record, is the
+  pre-worded narrowing (the physics head level stays an average-weather scenario). No page text
+  until the C30 split (R8.7) is wired.
+- **`I1.CHX.v1.twocontrast`** (da76b707), I1.CHX.v1's single exploratory follow-up (R8.10),
+  narrowing only. Report (`results/dataprep/reports/I1.CHX.v1/twocontrast_report.json`, sha
+  8208424d): reproduction pre-gate passed; model-only contrast correlation 0.09; joint twoway
+  regression at the 23 screens: Changhua 0.148 [-0.038, 0.448], Yunlin 0.85 [-0.50, 2.24]
+  (report-only). Reading "not_separable": E25 gains "direction not separable from Yunlin
+  spill-over", a narrowing; its status is unchanged. Page (R8.8): the E25 line carries the
+  placebo caveat and this clause.
+- **CH-J** (`I1.CHX.v1`, 794f6a7e, test I1CHX.chj_externals; report-only for good, R8.1b).
+  Report `results/dataprep/reports/I1.CHX.v1/chj_report.json` (sha e5818b6a, written once at
+  2026-11-05T23:38Z by a new wrapper around the frozen chj_block; engineering record frozen
+  2026-11-03T03:06Z, inside the 21-day limit). Mechanism note, verbatim: "CH-J (report-only):
+  Changhua sw fraction off its 0.01 bound; median Changhua seasonal amplitude ratio 0.78, 0.78
+  (seeds 2027, 2029); not support". Deliveries sit at the 0.01 bound but percolation is 0.018,
+  so the fed fraction (the larger, R8.1c) is off the bound and co-located canal or paddy
+  recharge is not rejected. No-harm and forward checks pass in both seeds; the report-only
+  externals give amplitude ratio 0.78 (in band), Changhua/Yunlin 0.90 and county correlation
+  0.754 against Q0's 0.643, with direction "not_informative", so the external block fails. The
+  seed sets only the fold partition, so the two seeds' full-data fits coincide (external numbers
+  equal to about 1e-14): the external and forward blocks are one replicate, and only no-harm
+  differs by seed. Ledger: C20/C21 mechanism note (report-only line); README Limits; no page
+  change.
+- **`COLF.column_family_2028.v1`** (6507be0c), the column-family decidability OSSE and freeze
+  (R8.4a/b). OSSE `results/dataprep/reports/COLF/osse_result.json` (sha d66d0b87), freeze
+  `freeze/freeze_summary.json` (sha f7b1756b): 0 decidable pairs. On the deep piles every pair
+  has P(correct ranking) at most 0.37 (report-only arm 0.23-0.35, gating screen 0.23-0.37); on
+  the township bounds P is 0 for all 45 pairs, a tie artefact of the bound rule (both members
+  inside the bound in nearly every replicate), disclosed, not a separation. Ledger: narrowing
+  lines on E24, C09 and C11 ("the 2028 pile and township units cannot separate these
+  columns"); no cut number changes and no column is selected.
+- **`FE.encompass_2026-12.v1`** (dae23caa), registered; its decidability study
+  (`results/dataprep/reports/FE.encompass_2026-12.v1/decidability.json`, sha 61a0443f) failed G0
+  condition (d): with no physics information the rule reads "the layer encompasses it" only
+  0.51 of the time against 0.80 required, while the physics arm's power at lambda 1 is 0.84. FE
+  is therefore report-only: its 2028 reading carries the registered report-only prefix in the
+  ledger notes of E02 and E04 only, with no status change, no page line and no D row.
+- **`U1.ext_transfer_power.v1`** (1bfbf010). Result (sha daace1bf): fail. Yunlin power at a
+  0.75 coverage truth 0.767 (primary window) and 0.764 (fallback) against 0.80, with the
+  false-fail half (0.116 / 0.117 <= 0.12) passing; Changhua report-only by arithmetic. E02x was
+  not registered. New row C14f-r (N): "not decidable by design (U1.ext_transfer_power.v1)".
+- **`CB.coverage_side.v1`** (3c341347). Report (sha 25b5b1b6): "side_does_not_separate":
+  min P(over | Q0/R0, drift) 0.208 against 0.8 needed (max P(over | R1c/X5R1) 0.068 passes its
+  half). No side reading; section 20's FV v2 per-truth disclosure stands (C14a notes, README,
+  model card; no page line).
+- **`FB.family_power.v1`** (bc8a935a). Result (sha bdc0589e): no candidate passes (Changhua
+  P(correct strong) 0.21, Yunlin 0, against 0.8). No BF test is registered. New row E29 (N,
+  ledger only): "family BF not decidable by design (FB.family_power.v1)"; C20/C21 unchanged.
+- **`X5.gnss_seasonal_family.gates.v1`** (8661c0a3). G-sep passed (`gsep.json`, sha 3ef08c98); G0
+  failed (`g0.json`, sha 7749bdc3): a far member is excluded 0.782 of the time pooled against
+  0.80 and 0.252 in the worst cell against 0.60 (the true member is kept, worst cell 0.916; all
+  members excluded at most 0.013). No GNSS amplitude was read and X5.gnss_seasonal_family.v1 was
+  not registered: an honest closure. Ledger notes on E24, C27, C03, C11 and C29; ruling R8.5's
+  label is moot.
+- **`N2CS.osse_design.v1`** (1f69c7b5). Result (`results/dataprep/reports/N2CS_osse/result.json`,
+  sha fbb020a0): OSSE G0 failed for all three forms. Power is adequate (P(not overstated | k =
+  1) 0.77-0.89 at its minimum over the gate variants), but under the loading-shaped canal
+  confounder a true response one third as large reads "not overstated" in 0.47-0.63 of the
+  worlds, against at most 0.20 required. N2CS was not registered. N line on the C20/C21 size
+  clause: "size class not decidable prospectively (OSSE power 0.89)", stated with that failing
+  condition; R8.2's row E27 is not created; C13a, E20, the N2C clauses and the F < 0.5 cap are
+  unchanged.
+- **`GOV.heads_window_product.v1`** (141c0128), a governance declaration, is cited on C14b and
+  E30.
+
+Ids. FB's registration fixed its row as E29; E27 (reserved by R8.2 for N2CS) and E28 (proposed
+by FE for a gating FE) are not created, so E02z's row is E30.
+
+Page and ledger. `viewer_app.PAGE_REGISTRATIONS` adds fvs2, n2rd, chx2c and sd2;
+`viewer_app.PAGE_RESULTS` reads, only where each report exists: FV.stat.v2's reading, P and
+null P0; N2's reading tier and its seven rates; the two-contrast reading and the Changhua
+coefficient with its interval; SD v2's label, Tier A+B column count, the Yunlin cut30 range by
+2028-12 and the inland factor; and, for E26, the backcast's report-only synthetic rates. A
+reading the page has no wording for refuses the build. Page lines (EN and ZH) follow rulings
+R8.8 and R8.11 only; the FV v2 per-truth split stays off the page. The ledger adds rows C14f-r,
+E29 and E30, moves C01 to S+D+N and fills the notes above. The candidate page is built with the
+command recorded in `results/twin/twin_app_20261102b.build.log`, with `--out` changed to
+`results/twin/twin_app_20261106a.html` (log beside it); the ledger names that file, which is
+not promoted: `results/twin/twin_app.html` stays the round-7 build until the lead promotes it.
+
+Progress under section 21's rule (an estimate, not a re-audit). Method: the per-action point
+effects of the round-8 plan are applied to the audited part scores of 2026-11-02 for the
+outcomes actually obtained; no row was re-graded one by one. The gains (E04 and C01 now
+D with measured decidability, E02z registered with measured decidability) are shown together
+with the downgrade the round produced (E25 narrowed by the two-contrast check, about -1 on
+Changhua) and with the step-0 disclosure downgrades of section 21. The closures (E02x, FB, N2CS,
+GNSS, COLF, FE report-only, CB) add nothing under the official rule.
+
+| part | audited 2026-11-02 | after round 8 (estimate) | what moved it |
+|---|---|---|---|
+| head response, Yunlin | 60 | 61 | C01 D measured (N2 informative), net of the C01 split and the x1.27 disclosure |
+| forecast start and validation | 56 | 57.7 | E04 D measured (FV.stat.v2); E02z registered with measured decidability |
+| uncertainty bands | 43 | 42.5 | step-0 disclosures; E02x not registered, CB and FB give no gain |
+| subsidence and cut response | 31 | 31 | COLF 0 decidable pairs and the GNSS closure give no gain |
+| Changhua | 36.5 | 35 | E25 narrowing (not separable from Yunlin spill-over); CH-J report-only, N2CS N line |
+| **science trust** (mean of the 5) | **45.3** | **45.4** | |
+| **claim honesty** | 95 | 98 | step-0 and round-8 disclosures (an estimate) |
+| **6-part mean** (headline) | **53.6** | **54.2** | |
+
+End-goal convention (R8.12b, bookkeeping only, never alone): about 61-62 % on the 6-part basis
+at the audit; the round-8 closures (C14f-r, E29, the N2CS N line, the GNSS and COLF closures)
+are not yet re-counted under it.

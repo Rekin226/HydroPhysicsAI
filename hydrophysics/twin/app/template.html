@@ -728,8 +728,18 @@ en: {
   evc_fv2_ch_rep: "Changhua: rain-year range only; the page model carries no Changhua pumping.",
   fv2_forcing_clim: "pumping years only, rain at climatology", fv2_forcing_rep: "rain and detrended pumping replayed from 2012-22",
   evc_fvext_nsw: "Synthetic decidability study (FV.ext.v1, model-only): a model of the right kind passes the external-well level rule with probability {p} (optimistic: rain at climatology, noise independent between wells, every month observed; not a strict bound); the study does not show this test weak and adds no other reading.",
-  evc_chx: "Changhua direction test (I1.CHX.v1; S (design-time), direction only; size not supported): R1c's Changhua pumping response has the right direction at {n} never-calibrated Changhua screens, slope {s} [{lo}, {hi}] (90 % interval, two-way fixed effects, 2013–22); its error does not beat the zero response. The Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5).",
-  evc_chb: "Changhua backcast (I1.CH_backcast.v1; S (design-time), direction only; size not supported): direction of R1c's Changhua pumping response supported in years never used to fit any model (2010–11), slope {s} [{lo}, {hi}] (90 % interval) at {n} wells.",
+  evc_chx: "Changhua direction test (I1.CHX.v1; S (design-time), direction only; size not supported): R1c's Changhua pumping response has the right direction at {n} never-calibrated Changhua screens, slope {s} [{lo}, {hi}] (90 % interval, two-way fixed effects, 2013–22); its error does not beat the zero response. The Changhua head lever stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5). Its placebo (the same estimator on the Yunlin contrast at these screens, report-only) is imprecise and not evidence of specificity; its report-only forms co-move with the Yunlin contrast.",
+  evc_chb: "Changhua backcast (I1.CH_backcast.v1; S (design-time), direction only; size not supported): direction of R1c's Changhua pumping response supported in years never used to fit any model (2010–11), slope {s} [{lo}, {hi}] (90 % interval) at {n} wells. It is not independent of the screen test (4 shared wells, the same regional-rain confounder).",
+  chx_2c_ns: " After-the-fact two-contrast check (I1.CHX.v1.twocontrast, exploratory, narrowing only): with the Yunlin contrast in the same regression the Changhua slope is {s} [{lo}, {hi}] (90 % interval, reaching 0), so the direction is not separable from Yunlin spill-over.",
+  chb_syn: " A weak test: in its synthetic check it passes with probability {k1} if the model is right and {k0} with no response, and a dry year biases the slope toward a pass.",
+  evc_hyb_fvs: "Synthetic decidability study (FV.stat.v2, model-free; engineering v2 of FV.stat.v1 on a fresh seed): if anomalies truly persist as the statistical layer assumes (lag-1 0.80-0.93), its registered test (E04) passes with probability {p} (optimistic: no gaps, drift or datum steps; not a strict bound; v1's identical design was previewed at K = 8 on another seed before registration); the study does not show the test weak. In a world with no persistence (lag-1 0) the same rule passes with probability {p0}.",
+  evc_hyb_fvs_pass: "What a 2028 E04 pass can show: over 2026-11..2027-10 the layer was no worse than climatology on equal-station RMSE (ratio <= 1.0, no margin; ties pass), with pooled 90 % interval coverage in [0.85, 0.95]. What it cannot show: a pass alone does not establish persistence; a no-persistence world passes with probability {p0} (against {p} with persistence, both synthetic and optimistic); nor anything about the physics model, or skill in other years. The outcomes are not symmetric: in the AR worlds a fail has probability about {q} (1 - P), so a 2028 fail is the more informative outcome.",
+  evc_n2_rd: "Synthetic operating characteristics of N2's rule (model-only): N2's rule is informative but not decisive for Yunlin (X5.n2_reading.v1): false pass {fp} < 0.25, but wrong-size pass at k = 0.5 / 2 {ws05} / {ws2} or 90 % interval coverage at k = 1 {cov} misses its threshold (0.25 / 0.80); an N2 verdict is printed with these rates; power {pw} ({pwc} with the canal confounder); no forcing error between X1 and the true pumping is modelled in the gating cells (report-only forcing-error cell, lambda 0.8: power {pwf}). So N2 can detect a response, but cannot tell a full-size response from a half-size one.",
+  def_tA_e24: "Model internals (L): across {n} leveling-equivalent columns (Tier A+B, SD.cut_response_spread.v2) the Yunlin avoided subsidence by Dec 2028 under the irrigation ×0.7 lever is {lo}–{hi} cm, column-dependent ×{x} inland (model-form spread, not an interval); its size stays untested and no column is selected.",
+  pr_s_lost_both: "the model lost to both no change and reference-year pumping",
+  pr_s_lost_cl: "the model beat reference-year pumping but lost to no change",
+  pr_s_lost_zr: "the model beat no change but lost to reference-year pumping",
+  pr_s_beat: "the model beat both no change and reference-year pumping",
   evc_fvext_wbd: "Synthetic decidability study (FV.ext.v1, model-only): a model of the right kind passes the external-well level rule with probability {p} (optimistic: rain at climatology, noise independent between wells, every month observed; not a strict bound), so this test is weak by design; a fail would not refute the forecast at the never-calibrated wells.",
   evc_subs_decomp: "In this model the avoided subsidence is the head rise times the column's compaction per metre of head change (elastic). Head factor: decided in Yunlin by N2 (pending). {conv} Coast: not identifiable from held leveling. Changhua: no subsidence factor is tested.",
   decomp_conv_n3: "Conversion factor: decided by N3 at the 2 Yunlin deep-pile cells only (pending); neither factor decides a cut's subsidence size.",
@@ -760,11 +770,10 @@ en: {
   prm_r1c: "the census model (R1c flow with Changhua pumping, three-zone column)",
   prm_none: "the model named in the N1 summary",
   cty_yunlin: "Yunlin", cty_changhua: "Changhua",
-  evc_pr_subs: "Policy response, subsidence: the size of the 1–3-year response is not supported. On the {span} leveling{dt} the observed year-to-year swing does not follow the modelled one (observed ÷ modelled {sy} in Yunlin on {my}, {sc} in Changhua on {mc}{cl}){sb}. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1–3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.",
+  evc_pr_subs: "Policy response, subsidence: the size of the 1–3-year response is not supported. On the {span} leveling{dt}, in Yunlin, scored on {my}, {ry}, observed-on-modelled slope {sy} [{syl}, {syu}]; in Changhua, scored on {mc}, {rc}, slope {sc} [{scl}, {scu}] (90 % intervals){sb}. In this model the avoided subsidence is an elastic response that arrives within about a year; its 1–3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested.",
   evc_pr_subs_ok: "Policy response, subsidence ({span} leveling{dt}): the 1–3-year response beats both simple baselines in {list}.",
-  pr_cl_better: "; a constant sinking rate fits better",
-  pr_stepb: ", while the 2007–10 comparison across places pointed {way} in Yunlin ({dir} than modelled, {v})",
-  pr_way_other: "the other way", pr_way_same: "the same way", pr_more: "more sinking", pr_less: "less sinking",
+  pr_stepb: ", while across places in 2007–10 Yunlin was {v}: observed {o} against modelled {m} cm/yr per GWh/yr ({dir} than modelled), modelled ÷ observed ratio interval [{lo}, {hi}]",
+  pr_more: "more sinking", pr_less: "less sinking",
   vd_inconclusive: "inconclusive", vd_inconsistent: "inconsistent", vd_consistent: "consistent",
   evc_pr_ch_head: "Changhua head response: design-time support only for the R1c recipe refitted with {span} masked (ccz_m1618, step C{dt}; {res}{sl}), not for R1c itself; R1c failed its own Changhua gates and is not the page model. Changhua head lever: untested (N2C registered, scored not before 2028-01-15).{note}",
   pr_ch_slope: "; observed ÷ modelled slope {s}, 90 % interval {lo}–{hi}", pr_ch_untested: " Changhua head lever: untested (N2C registered, scored not before 2028-01-15).",
@@ -784,7 +793,7 @@ en: {
   hl_opt: "<b>{p}</b> from {s}",
   hl_none: "This model has no full run of <b>{pol}</b> from {yr}. {boff} Try {opts}.", no_basis: "No response basis is loaded.",
   hl_early: "<b>{pol}</b> starts in Jan {yr}, so by Dec {year} it has not acted yet. Move the year to {yr} or later.",
-  hl_pol: "In this model, <b>{pol}</b> from {yr} raises the groundwater head by <b>{h} m</b> {where} by Dec {year}. The direction of the head response to a pumping change is supported by a registered masked-refit test of the R0 recipe in Yunlin (2016–18, design-time), carried to this model by a post-hoc, model-only comparison; the 2015 drought spring agrees, but that event mixes canal water and rain with pumping. The modelled size is likely too small (Evidence). Whether this model's within-window response to recorded Yunlin pumping anomalies is right is decided by N2, scored no earlier than 15 Jan 2028; the head level is report-only. Subsidence is under <b>Model internals</b>: its size is untested.",
+  hl_pol: "In this model, <b>{pol}</b> from {yr} raises the groundwater head by <b>{h} m</b> {where} by Dec {year}. The direction of the head response to a pumping change is supported by a registered masked-refit test of the R0 recipe in Yunlin (2016–18, design-time), carried to this model by a post-hoc, model-only comparison; the 2015 drought spring agrees, but that event mixes canal water and rain with pumping. The modelled size is likely too small (Evidence), and an irrigation-only lever's size depends on the pumping conversion (about ×1.27 in Yunlin, model-only). Whether this model's within-window response to recorded Yunlin pumping anomalies is right is decided by N2, scored no earlier than 15 Jan 2028; the head level is report-only. Subsidence is under <b>Model internals</b>: its size is untested.",
   hl_hot: " (post hoc, model-only, not a test: {lead} leads in only {p} of this model's {n} runs, {pc} of the R0 sibling's and {pa} of {na} perturbation draws; the leader is one of {grp} in {pg} of this model's runs, so read them as a group, not an order)",
   hl_yun: " (<b>{v} cm</b> over the {n} cells of the named Yunlin townships, where the levers act; the model carries no Changhua pumping)",
   hw_yun: "in layer 2, on average over the {n} cells of the named Yunlin townships (Changhua cells left out: the model carries no Changhua pumping, so their change is spillover)", hw_fan: "in layer 2, on average over the fan", hw_n2: "on average at N2's {n} Yunlin monitoring wells, each in its own screened layer (N2's scoring unit)",
@@ -795,7 +804,7 @@ en: {
   mi_fw_v2: " Replaying the 2012–22 forcing years in order (weather and detrended pumping) instead of mean forcing leaves the avoided subsidence {how} in this model (FW.weather_replay.v2){dry}. The replayed rain is the vendor cache, which zero-fills gauge rf11 for all of 2021–22 and rf15 in 2015 H2 (zero-filled, not dry). Model-only declaration: the model's form, not a test.",
   fw_all: "all elastic", fw_most: "mostly elastic (below the declared 10 % rule)",
   fw_dry_none: ": no replayed dry year opens an inelastic (permanent) channel that a cut could avoid",
-  tW_r: "direction supported (design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15; level report-only",
+  tW_r: "direction supported (S, design-time, R0 recipe); within-window anomaly response decided by N2 not before 2028-01-15 (D); size model-only (N; depends on the pumping conversion); level report-only",
   at_h: " (counted at {H})",
   prov_full: "Full model, {n} parameter sets × {k} initial fields", prov_fast: "Fast estimate: single-lever runs rescaled to the full model",
   prov_nl: " (non-linearity {p}%)", prov_assumed: "; {c} use the mean factor (assumed)", prov_title: "Rescaling factors (subsidence / head): ",
@@ -848,7 +857,7 @@ en: {
   another_model: "another model", tF_runs: "{all} runs: each set from {per} initial fields{ic}{lb}.", tF_ic: ", {ic} cm apart", tF_lb: "; a lower bound for the mix",
   def_tH: "Differential settlement |Δs|/L along the THSR centreline over 1 km, after smoothing to 2 km (the 1 km grid resolves nothing shorter), written 1/N: a larger N is gentler and better. Computed on the ensemble-mean field. A policy that slows sinking on one side of a point but not the other steepens the edge between them, so it can make this worse even while it helps overall. The threshold is an illustrative screening value, not the operator's criterion.",
   def_tH_excl: " {km} km of track read cells on both sides of a zone line; the gradient there is the model's parameter boundary, so it is left out (with those points the baseline maximum would be {raw}).",
-  def_tW: "Groundwater head, policy minus baseline, Dec {year}, in this model, {where}. Direction: supported by the registered masked-refit test of 2016–18 in Yunlin (step C), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to this model by a post-hoc, model-only comparison; the 2015 drought spring (G1) agrees, but that event mixes canal water and rain with pumping. Size: the modelled response is likely too small (Evidence); those slopes are reported, not gated, and no calibrated correction factor follows. N2.policy_response.prospective_2026-11.v1 decides whether this model's response to recorded Yunlin pumping anomalies is right: it fits the slope of observed on modelled within-window anomalies (per-well demeaned), and the response is supported only if the slope's 90 % interval excludes 0, the slope lies within 1/1.5–1.5, and the forecast with recorded pumping beats the zero-response forecast (RMSE). Scored no earlier than 15 Jan 2028. A 'not supported' result cannot separate the model from its pumping forcing (X1). The head level is report-only. N2 scores 84 Yunlin wells, each in its own screened layer{u}; carrying its verdict to a class lever is a linear, model-only transfer. Projected.",
+  def_tW: "Groundwater head, policy minus baseline, Dec {year}, in this model, {where}. Direction (S, design-time): supported by the registered masked-refit test of 2016–18 in Yunlin (step C), scored on the R0 recipe (stage3_datum_gate_cwa) on a design-time window and carried to this model by a post-hoc, model-only comparison; the 2015 drought spring (G1) agrees, but that event mixes canal water and rain with pumping. Size (N, model-only): the modelled response is likely too small (Evidence); those slopes are reported, not gated, and no calibrated correction factor follows. An irrigation-only lever's size also depends on the pumping energy-to-volume conversion: about ×1.27 in Yunlin between two conversions, against ×1.03–1.05 for a cut of all pumping (X5.lever_class_share.v1, model-only). Within-window anomaly response (D): N2.policy_response.prospective_2026-11.v1 decides whether this model's response to recorded Yunlin pumping anomalies is right: it fits the slope of observed on modelled within-window anomalies (per-well demeaned), and the response is supported only if the slope's 90 % interval excludes 0, the slope lies within 1/1.5–1.5, and the forecast with recorded pumping beats the zero-response forecast (RMSE). Scored no earlier than 15 Jan 2028. A 'not supported' result cannot separate the model from its pumping forcing (X1). The head level is report-only. N2 scores 84 Yunlin wells, each in its own screened layer{u}; carrying its verdict to a class lever is a linear, model-only transfer. Projected.",
   def_tC: "Σ (1 − f) × class energy per year. The projection repeats the record's month-of-year mean, so every year of the policy gives up the same amount, counted from the start year. No published kWh-to-m³ factor per class is loaded, so no volume is shown.",
   see_limits: "Known limits of this model",
   // map and legend
@@ -915,7 +924,7 @@ en: {
   ttowns: "Townships", thsr: "Rail", tsec: "Section", tcmp: "Compare", ttrust: "Where the model is trusted", tranking: "Ranking",
   rkhead: "head rise by {H}", rkcm: "Model internals: cm avoided by {H}", rkgwh: "head per 100 GWh/yr forgone", rank_group: "Ranking metric", rank_aria: "lever ranking",
   rank_unit_head: "retiring each class outright: head rise by {y}, m, mean at N2's {n} Yunlin wells (each in its own screened layer)", rank_unit_head_l2: "retiring each class outright: fan-average layer-2 head rise by {y}, m", rank_unit_cm: "Model internals (size untested): retiring each class outright, fan-average cm avoided by {y}", rank_unit_gwh: "head rise, m, per 100 GWh/yr of pumping energy forgone (same wells as the head ranking)", from_y: "from {y}",
-  no_basis_short: "Response basis not loaded", rank_limit: "Ranking follows model assumptions: each class's head response is a linear, model-only transfer (N2 tests the response to recorded total pumping anomalies, not class by class), class pumping volumes are unvalidated, and the subsidence ranking also rests on unvalidated depth-resolved compaction.",
+  no_basis_short: "Response basis not loaded", rank_limit: "Ranking follows model assumptions: each class's head response is a linear, model-only transfer (N2 tests the response to recorded total pumping anomalies, not class by class), class pumping volumes are unvalidated, a class's head rise depends on the pumping energy-to-volume conversion (irrigation about ×1.27 in Yunlin between two conversions, model-only), and the subsidence ranking also rests on unvalidated depth-resolved compaction.",
   rank_spread: "The model spreads each area's pumping over {s}; the data do not pin that radius down, and why is not known.", rank_boff: "Fast estimate off: only policies with a full-model run have numbers.", rank_cav2: "More",
   sortby: "Sort by", sbenefit: "Benefit of the policy", sbase: "Baseline sinking to {H}", sname: "Name",
   tw_base_val: "{v} cm baseline {a}–{b} (model internals, size untested)", tw_avoided_val: "{v} cm avoided (model internals, size untested)", tw_sets: "{a}/{n} sets: a benefit", tw_skill: "benchmarks n={n}{bias}{r2}", tw_bias: ", bias {v} cm", tw_r2: ", R² {v}",
@@ -1109,8 +1118,18 @@ zh: {
   evc_fv2_ch_rep: "彰化：僅含降雨年際範圍；頁面模型不含彰化抽水。",
   fv2_forcing_clim: "僅抽水年際變化，降雨取氣候值", fv2_forcing_rep: "重播 2012-22 的降雨與去趨勢抽水",
   evc_fvext_nsw: "合成可判定性研究（FV.ext.v1，純模型）：正確類型的模型通過外部井水位規則的機率為 {p}（偏樂觀：降雨取氣候值、各井雜訊彼此獨立、每月皆有觀測；並非嚴格界限）；本研究未顯示該檢驗為弱檢驗，也不提供其他解讀。",
-  evc_chx: "彰化方向檢驗（I1.CHX.v1；S（設計期），僅方向；大小未獲支持）：R1c 的彰化抽水反應在 {n} 個從未用於校準的彰化井篩上方向正確，斜率 {s} [{lo}, {hi}]（90 % 區間，雙向固定效果，2013–22）；其誤差未優於零反應。彰化水位槓桿仍未經檢驗（N2C 已登錄，最早 2028-01-15 評分），且受上限約束（F < 0.5）。",
-  evc_chb: "彰化回推檢驗（I1.CH_backcast.v1；S（設計期），僅方向；大小未獲支持）：在從未用於擬合任何模型的年份（2010–11），R1c 的彰化抽水反應方向獲得支持，斜率 {s} [{lo}, {hi}]（90 % 區間），{n} 口井。",
+  evc_chx: "彰化方向檢驗（I1.CHX.v1；S（設計期），僅方向；大小未獲支持）：R1c 的彰化抽水反應在 {n} 個從未用於校準的彰化井篩上方向正確，斜率 {s} [{lo}, {hi}]（90 % 區間，雙向固定效果，2013–22）；其誤差未優於零反應。彰化水位槓桿仍未經檢驗（N2C 已登錄，最早 2028-01-15 評分），且受上限約束（F < 0.5）。其安慰劑檢驗（在同一批井篩上對雲林對比套用同一估計式，僅供報告）並不精確，不構成專一性的證據；其僅供報告的其他形式與雲林對比同步變動。",
+  evc_chb: "彰化回推檢驗（I1.CH_backcast.v1；S（設計期），僅方向；大小未獲支持）：在從未用於擬合任何模型的年份（2010–11），R1c 的彰化抽水反應方向獲得支持，斜率 {s} [{lo}, {hi}]（90 % 區間），{n} 口井。此檢驗與井篩檢驗並不獨立（4 口共同井，同一區域降雨干擾因子）。",
+  chx_2c_ns: "事後的雙對比檢查（I1.CHX.v1.twocontrast，探索性，只能收窄）：在同一迴歸中納入雲林對比後，彰化斜率為 {s} [{lo}, {hi}]（90 % 區間，涵蓋 0），因此方向無法與雲林外溢區分。",
+  chb_syn: "這是弱檢驗：在其合成檢查中，模型正確時通過機率為 {k1}，沒有反應時為 {k0}；乾旱年份會使斜率偏向通過。",
+  evc_hyb_fvs: "合成可判定性研究（FV.stat.v2，不依賴模型；FV.stat.v1 的工程修正版，使用新種子）：若異常確如統計層所假設般延續（一階自相關 0.80-0.93），其登錄檢驗（E04）的通過機率為 {p}（偏樂觀：無缺測、漂移或基準跳動；並非嚴格界限；v1 的同一設計曾於登錄前以另一種子、K = 8 預覽）；本研究未顯示該檢驗為弱檢驗。在異常不延續的世界（一階自相關 0）中，同一規則的通過機率為 {p0}。",
+  evc_hyb_fvs_pass: "2028 年 E04 通過所能顯示的：在 2026-11 至 2027-10 期間，統計層以等站權重 RMSE 計不劣於氣候值（比值 <= 1.0，無餘裕；相等亦算通過），且合併 90 % 區間涵蓋率落在 [0.85, 0.95] 內。所不能顯示的：僅憑通過不能確立異常延續；異常不延續的世界通過的機率為 {p0}（延續時為 {p}，兩者皆為合成且偏樂觀的數值）；亦不能顯示任何關於物理模型的結論或其他年份的預報能力。兩種結果並不對稱：在 AR 世界中未通過的機率約為 {q}（1 - P），因此 2028 年未通過是資訊量較高的結果。",
+  evc_n2_rd: "N2 規則的合成操作特性（僅模型）：N2 的規則在雲林具資訊性但不具決定性（X5.n2_reading.v1）：誤判通過率 {fp} < 0.25，但大小錯誤時的通過率（k = 0.5 / 2）{ws05} / {ws2}，或 k = 1 時 90 % 區間的涵蓋率 {cov}，未達其門檻（0.25 / 0.80）；N2 的判定將與這些比率一併列出；檢定力 {pw}（含渠道干擾因子時 {pwc}）；門檻情境未模擬 X1 與真實抽水之間的強迫誤差（僅供報告的強迫誤差情境，lambda 0.8：檢定力 {pwf}）。也就是說，N2 能偵測到反應，但無法區分完整大小與一半大小的反應。",
+  def_tA_e24: "模型內部數值（L）：在 {n} 個與水準測量同等吻合的壓密柱（Tier A+B，SD.cut_response_spread.v2）中，灌溉 ×0.7 槓桿下雲林到 2028 年 12 月減少的下陷量為 {lo}–{hi} 公分，內陸依壓密柱而異達 ×{x}（模型形式的差距，不是區間）；其大小仍未經檢驗，也不據此選定任何壓密柱。",
+  pr_s_lost_both: "模型輸給不變與參考年抽水兩種基準",
+  pr_s_lost_cl: "模型優於參考年抽水，但輸給不變基準",
+  pr_s_lost_zr: "模型優於不變基準，但輸給參考年抽水",
+  pr_s_beat: "模型優於不變與參考年抽水兩種基準",
   evc_fvext_wbd: "合成可判定性研究（FV.ext.v1，純模型）：正確類型的模型通過外部井水位規則的機率為 {p}（偏樂觀：降雨取氣候值、各井雜訊彼此獨立、每月皆有觀測；並非嚴格界限），因此該檢驗在設計上即屬弱檢驗；未通過也不足以否定在未參與率定之井的預測。",
   evc_subs_decomp: "在本模型中，避免的下陷量＝水頭上升 × 壓密柱每公尺水頭變化的壓密量（彈性）。水頭因子：雲林由 N2 判定（待定）。{conv}沿海：現有水準測量無法辨識。彰化：沒有任何下陷因子經過檢驗。",
   decomp_conv_n3: "轉換因子：僅在雲林 2 個深層樁網格由 N3 判定（待定）；兩個因子都不判定減抽的下陷大小。",
@@ -1143,11 +1162,10 @@ zh: {
   prm_r1c: "普查模型（含彰化抽水的 R1c 地下水流，三分區壓密柱）",
   prm_none: "N1 摘要所列的模型",
   cty_yunlin: "雲林", cty_changhua: "彰化",
-  evc_pr_subs: "政策反應—地層下陷：1–3 年內反應的大小未獲證據支持。在{span}的水準測量上{dt}，觀測到的逐年變動與模型不一致（觀測 ÷ 模型：雲林 {sy}，評分模型為{my}；彰化 {sc}，評分模型為{mc}{cl}）{sb}。在本模型中，避免的下陷量是約一年內出現的彈性反應；其 1–3 年內的大小未獲已登錄檢驗支持，而減少抽水是否改變長期下陷則尚未檢驗。",
+  evc_pr_subs: "政策反應—地層下陷：1–3 年內反應的大小未獲證據支持。在{span}的水準測量上{dt}，雲林以{my}評分，{ry}，觀測對模型斜率 {sy} [{syl}, {syu}]；彰化以{mc}評分，{rc}，斜率 {sc} [{scl}, {scu}]（90 % 區間）{sb}。在本模型中，避免的下陷量是約一年內出現的彈性反應；其 1–3 年內的大小未獲已登錄檢驗支持，而減少抽水是否改變長期下陷則尚未檢驗。",
   evc_pr_subs_ok: "政策反應—地層下陷（{span}水準測量{dt}）：1–3 年內的反應在{list}優於兩種簡單基準。",
-  pr_cl_better: "；固定下陷速率的表現更好",
-  pr_stepb: "，而 2007–10 年跨地點的比較在雲林則指向{way}（{dir}，{v}）",
-  pr_way_other: "相反方向", pr_way_same: "相同方向", pr_more: "下陷多於模型", pr_less: "下陷少於模型",
+  pr_stepb: "，而 2007–10 年跨地點比較中雲林{v}：觀測 {o}、模型 {m} 公分/年（每 GWh/年）（{dir}），模型 ÷ 觀測比值區間 [{lo}, {hi}]",
+  pr_more: "下陷多於模型", pr_less: "下陷少於模型",
   vd_inconclusive: "結果未定", vd_inconsistent: "結果不一致", vd_consistent: "結果一致",
   evc_pr_ch_head: "彰化水位反應：僅在設計期支持遮蔽{span}後重新校準的 R1c 配方（ccz_m1618，步驟 C{dt}；{res}{sl}），並非 R1c 本身；R1c 未通過其自身的彰化關卡，也不是本頁模型。彰化水位槓桿：未經檢驗（N2C 已登錄，最早 2028-01-15 評分）。{note}",
   pr_ch_slope: "；觀測 ÷ 模型斜率 {s}，90 % 區間 {lo}–{hi}", pr_ch_untested: "彰化水位槓桿：未經檢驗（N2C 已登錄，最早 2028-01-15 評分）。",
@@ -1164,7 +1182,7 @@ zh: {
   hl_runs: "（各次模擬 {a}–{b}）", hl_rheo_ft: "{tau}的黏土潛變上限同樣擬合水準測量，會使之成為 {v} 公分。", hl_rheo: "{tau}的黏土潛變上限同樣擬合水準測量，會再多約 {v} 公分。",
   hl_opt: "<b>{p}</b>（自{s}年）", hl_none: "本模型沒有「{pol}」（自{yr}年起）的完整模擬。{boff}可選：{opts}。", no_basis: "未載入反應基底。",
   hl_early: "<b>{pol}</b>自{yr}年1月開始，到{year}年12月尚未起作用。請把年份移到{yr}年或更後。",
-  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年12月使地下水位{where}上升 <b>{h} 公尺</b>。抽水改變造成的水頭反應方向，獲 R0 配方在雲林的已登錄遮蔽重新校準檢驗支持（2016–18年，設計期），並以事後、僅模型的比較延伸至本模型；2015年乾旱春季與此一致，但該事件混合了渠道供水與降雨的影響。模型的反應大小可能偏小（見證據）。本模型對雲林實際抽水距平的視窗內反應是否正確，由 N2 判定，最早於2028年1月15日評分；水位高低僅供報告。地層下陷列於「<b>模型內部數值</b>」：其大小未經檢驗。",
+  hl_pol: "在本模型中，<b>{pol}</b>（自{yr}年起）到{year}年12月使地下水位{where}上升 <b>{h} 公尺</b>。抽水改變造成的水頭反應方向，獲 R0 配方在雲林的已登錄遮蔽重新校準檢驗支持（2016–18年，設計期），並以事後、僅模型的比較延伸至本模型；2015年乾旱春季與此一致，但該事件混合了渠道供水與降雨的影響。模型的反應大小可能偏小（見證據），且僅灌溉槓桿的大小取決於抽水換算（雲林約 ×1.27，僅模型）。本模型對雲林實際抽水距平的視窗內反應是否正確，由 N2 判定，最早於2028年1月15日評分；水位高低僅供報告。地層下陷列於「<b>模型內部數值</b>」：其大小未經檢驗。",
   hl_hot: "（事後、僅模型分析，非檢驗：{lead}只在本模型 {n} 次模擬中的 {p} 居首，在 R0 對照模型的模擬中為 {pc}，在 {na} 次擾動抽樣中為 {pa}；本模型 {pg} 的模擬中居首者為{grp}之一，請視為一組，而非排序）",
   at_h: "（以{H}年計）",
   prov_full: "完整模型，{n}組參數 × {k}個初始場", prov_fast: "快速估算：單一槓桿模擬，已依完整模型校正", prov_nl: "（非線性誤差 {p}%）", prov_assumed: "；{c}用平均校正係數（假設）",
@@ -1183,7 +1201,7 @@ zh: {
   mi_fw_v2: "依序重播 2012–22 年的驅動年份（天氣與去趨勢抽水）而非平均驅動時，本模型避免的地層下陷仍{how}（FW.weather_replay.v2）{dry}。重播的降雨為廠商快取資料，其中雨量站 rf11 在 2021–22 年全年、rf15 在 2015 年下半年以零值填補（為填補值，並非乾旱）。僅模型的宣告：屬模型形式，並非檢驗。",
   fw_all: "全為彈性", fw_most: "大致為彈性（低於宣告的 10 % 規則）",
   fw_dry_none: "：重播的乾旱年沒有開啟可由減抽避免的非彈性（永久）通道",
-  tW_r: "方向獲支持（設計期、R0 配方）；視窗內距平反應由 N2 判定，最早2028-01-15；水位高低僅供報告",
+  tW_r: "方向獲支持（S，設計期、R0 配方）；視窗內距平反應由 N2 判定，最早2028-01-15（D）；大小僅模型（N；取決於抽水換算）；水位高低僅供報告",
   agree_all: "{n}組參數中有{a}組認為是效益", agree_some: "{n}組參數中{lb}有{a}組認為是效益", at_least: "至少",
   agree_none: "模擬一致性未量測：{c}{late}完整模型模擬", agree_none_start: "沒有自{s}年起的", agree_none_plain: "沒有",
   alt_prev_km: "前一版模型（抽水分散約{km}公里）", alt_prev_wide: "前一版模型（抽水分散較廣）",
@@ -1226,7 +1244,7 @@ zh: {
   another_model: "另一個模型", tF_runs: "{all}次模擬：每組{per}個初始場{ic}{lb}。", tF_ic: "，相差 {ic} 公分", tF_lb: "；組合的下限",
   def_tH: "沿高鐵中心線的差異沉陷 |Δs|/L（1 公里窗，先平滑至2公里），以 1/N 表示：N 越大越平緩、越好。由系集平均場計算。只在一側減緩下陷的政策，會讓減緩區邊緣的差異變大，因此可能讓此值變差。門檻為示意篩選值，非營運單位標準。",
   def_tH_excl: " 有 {km} 公里的軌道讀到扇區分界兩側的網格；那裡的梯度是模型參數的邊界，不列入（含這些點時基準最大值為 {raw}）。",
-  def_tW: "本模型中{year}年12月的地下水位：政策減基準，{where}。方向：獲 2016–18 年雲林的已登錄遮蔽重新校準檢驗（步驟 C）支持，以 R0 配方（stage3_datum_gate_cwa）在設計期視窗評分，並以事後、僅模型的比較延伸至本模型；2015年乾旱春季（G1）與此一致，但該事件混合了渠道供水與降雨的影響。大小：模型的反應可能偏小（見證據）；這些斜率僅供報告、不作為門檻，也不據此推出校正係數。N2.policy_response.prospective_2026-11.v1 判定本模型對雲林實際抽水距平的反應是否正確：以觀測對模型的視窗內距平斜率（各井去平均）評分，須斜率的 90 % 區間不含 0、斜率落在 1/1.5–1.5 之間，且以實際抽水的預報 RMSE 優於零反應預報，才判為反應獲支持。最早於2028年1月15日評分。「未獲支持」的結果無法區分模型與其抽水強迫（X1）。水位高低僅供報告。N2 評分84口雲林井，各井於其篩管層{u}；把判定延伸到用水類別槓桿是線性、僅模型的推論。推估值。",
+  def_tW: "本模型中{year}年12月的地下水位：政策減基準，{where}。方向（S，設計期）：獲 2016–18 年雲林的已登錄遮蔽重新校準檢驗（步驟 C）支持，以 R0 配方（stage3_datum_gate_cwa）在設計期視窗評分，並以事後、僅模型的比較延伸至本模型；2015年乾旱春季（G1）與此一致，但該事件混合了渠道供水與降雨的影響。大小（N，僅模型）：模型的反應可能偏小（見證據）；這些斜率僅供報告、不作為門檻，也不據此推出校正係數。僅灌溉的槓桿，其大小還取決於抽水用電換算為水量的方式：在雲林兩種換算之間相差約 ×1.27，而全面減抽僅相差 ×1.03–1.05（X5.lever_class_share.v1，僅模型）。視窗內距平反應（D）：N2.policy_response.prospective_2026-11.v1 判定本模型對雲林實際抽水距平的反應是否正確：以觀測對模型的視窗內距平斜率（各井去平均）評分，須斜率的 90 % 區間不含 0、斜率落在 1/1.5–1.5 之間，且以實際抽水的預報 RMSE 優於零反應預報，才判為反應獲支持。最早於2028年1月15日評分。「未獲支持」的結果無法區分模型與其抽水強迫（X1）。水位高低僅供報告。N2 評分84口雲林井，各井於其篩管層{u}；把判定延伸到用水類別槓桿是線性、僅模型的推論。推估值。",
   def_tC: "Σ(1−f)×各類別年用電；推估期重複紀錄期各月平均，所以每年相同，自政策開始年起計。沒有已發表的kWh-m³換算係數，因此只列GWh。",
   see_limits: "本模型的已知限制",
   map: "地圖", vdiff: "差異", vside: "並排", vswipe: "滑動比較", layer: "地圖圖層", mappng: "下載地圖 PNG", view_group: "比較檢視",
@@ -1285,7 +1303,7 @@ zh: {
   ttowns: "鄉鎮", thsr: "高鐵", tsec: "剖面", tcmp: "比較", ttrust: "模型可信之處", tranking: "排序",
   rkhead: "{H}年水位上升", rkcm: "模型內部數值：{H}年前減少下陷（公分）", rkgwh: "每減少100 GWh/年的水位上升", rank_group: "排序指標", rank_aria: "槓桿排序",
   rank_unit_head: "完全停止各類別抽水，{y}年水位上升（公尺），N2 的 {n} 口雲林觀測井平均（各井於其篩管層）", rank_unit_head_l2: "完全停止各類別抽水，{y}年全扇平均第二含水層水位上升（公尺）", rank_unit_cm: "模型內部數值（大小未經檢驗）：完全停止各類別抽水，{y}年全扇平均減少下陷（公分）", rank_unit_gwh: "每減少 100 GWh/年 抽水用電的水位上升（公尺；與水位排序同一批井）", from_y: "自{y}年",
-  no_basis_short: "未載入反應基底", rank_limit: "此排序僅依模型假設：各類別的水位反應是線性、僅模型的推論（N2 檢驗的是對實際總抽水距平的反應，而非逐一類別），各類別抽水量未經驗證，下陷排序另依賴未經驗證的垂向壓密。",
+  no_basis_short: "未載入反應基底", rank_limit: "此排序僅依模型假設：各類別的水位反應是線性、僅模型的推論（N2 檢驗的是對實際總抽水距平的反應，而非逐一類別），各類別抽水量未經驗證，各類別的水位上升取決於抽水用電換算為水量的方式（灌溉類在雲林兩種換算之間相差約 ×1.27，僅模型），下陷排序另依賴未經驗證的垂向壓密。",
   rank_spread: "模型把每個地區的抽水分散到{s}的範圍，資料並未確定這個半徑，原因也未明。", rank_boff: "快速估算已關閉：只有完整模擬過的政策有數值。", rank_cav2: "更多",
   sortby: "排序", sbenefit: "政策效益", sbase: "基準情境至{H}下陷", sname: "名稱",
   tw_base_val: "{v} 公分 基準 {a}–{b}（模型內部數值，大小未經檢驗）", tw_avoided_val: "{v} 公分 減少（模型內部數值，大小未經檢驗）", tw_sets: "{a}/{n} 組參數認為是效益", tw_skill: "水準點 n={n}{bias}{r2}", tw_bias: "，偏差 {v} 公分", tw_r2: "，R² {v}",
@@ -1830,6 +1848,7 @@ function tileDefHtml(id) {
     p(tr("def_tA_fast"));
     if (!isB && kp.fast != null && kp.fast >= .4) p(tr("def_tA_fast_n", {p: pctf(100 * kp.fast), yr}));
     const rl = reboundLine(kp); if (rl) p(rl);
+    const e24 = e24Line(); if (e24) p(e24);   // E24 (R8.11): model-form spread, not an interval; tA is a Model internals tile
   } else if (id === "tR") {
     p(tr("def_tR", {rate: f1(D.scales.rate[1])}));
     p(MF() ? tr("def_tR_runs", {n: MF().n_sets}) : tr("def_tR_noruns"));
@@ -2758,11 +2777,13 @@ function evidenceItems() {              // what is known about how far to trust 
   if (rg.no_band) out.push(["", tr("evc_band_none")]);
   if (mc.hybrid) { const h = mc.hybrid, ys = Object.keys(h.per_year || {}), y1 = ys.length ? ys[0] : "";
     out.push([h.ratio_stat < 1 ? "ok" : "warn", tr("evc_hyb", {s: f2(h.rmse_stat), c: f2(h.rmse_clim), r: f2(h.rmse_model), span: ncSpan(h), y1, s1: y1 ? f2(h.per_year[y1].stat) : "", c1: y1 ? f2(h.per_year[y1].clim) : "", p: f2(h.ratio_phys)})]);
-    const g = h.registration; if (g && g.test_start && g.test_end) out.push(["", tr("evc_hyb_reg", {reg: g.registered_on, a: monthYear(String(g.test_start).slice(0, 7)), b: monthYear(String(g.test_end).slice(0, 7)), n: g.stations})]); }
+    const g = h.registration; if (g && g.test_start && g.test_end) out.push(["", tr("evc_hyb_reg", {reg: g.registered_on, a: monthYear(String(g.test_start).slice(0, 7)), b: monthYear(String(g.test_end).slice(0, 7)), n: g.stations})]);
+    out.push(...fvsLines()); }
   const rl = ringLine(); if (rl) out.push(["", rl]);
   const pl = pileLine(); if (pl) out.push(["", pl]);
   if (mc.policy_response) out.push(...policyResponseLines(mc.policy_response));
-  out.push(...chDirLines());            // E25/E26: Changhua direction only, once registered and scored
+  const nl = n2rdLine(); if (nl) out.push(["warn", nl]);   // C01's D part (R8.8), beside N2C's reading in the policy-response lines
+  out.push(...chDirLines());           // E25/E26: Changhua direction only, once registered and scored
   // claims C27/C31: the subsidence decomposition. N3 is named only once it is registered, and as
   // the conversion decider only when G0 made its conversion test gating (12 or 24 months)
   const n3c = rg.n3_conv12 || rg.n3_conv24;
@@ -2782,9 +2803,33 @@ function fvLine() {                    // FV (E02, E21, C30): v1's reading fixed
 }
 function chDirLines() {                 // I1.CHX.v1 / I1.CH_backcast.v1 (E25, E26; ruling R7.changhua_page): S (design-time), direction only; size not supported
   const mc = D.modelcard, rg = mc.registrations || {}, res = mc.results || {}, out = [];
-  const one = (k, key) => { const r = res[k]; if (rg[k] && r) out.push(["", tr(key, {s: f2(r.beta), lo: f2(r.lo), hi: f2(r.hi), n: r.n_wells})]); };
+  // round 8 (ruling R8.8, amends R7.changhua_page): E25's two-contrast clause (R8.10) and E26's
+  // synthetic rates follow each line, only from their reports
+  const more = {chx: () => chxSepClause(), chb: r => r.p_k1 != null && r.p_k0 != null ? tr("chb_syn", {k1: f2(r.p_k1), k0: f2(r.p_k0)}) : ""};
+  const one = (k, key) => { const r = res[k]; if (rg[k] && r) out.push(["", tr(key, {s: f2(r.beta), lo: f2(r.lo), hi: f2(r.hi), n: r.n_wells}) + more[k](r)]); };
   one("chx", "evc_chx"); one("chb", "evc_chb");
   return out;
+}
+function chxSepClause() {               // I1.CHX.v1.twocontrast (E25; R8.10): narrowing only, once registered and scored
+  const mc = D.modelcard, r = (mc.results || {}).chx2c;
+  if (!(mc.registrations || {}).chx2c || !r || r.reading !== "not_separable") return "";
+  return tr("chx_2c_ns", {s: f2(r.beta), lo: f2(r.lo), hi: f2(r.hi)});
+}
+function n2rdLine() {                   // X5.n2_reading.v1 (C01's D part; R8.8): N2's synthetic operating characteristics
+  const mc = D.modelcard, r = (mc.results || {}).n2rd;
+  if (!(mc.registrations || {}).n2rd || !r || r.wording !== "informative") return "";
+  return tr("evc_n2_rd", {fp: f2(r.false_pass), ws05: f2(r.ws05), ws2: f2(r.ws2), cov: f2(r.cov), pw: f2(r.power), pwc: f2(r.power_canal), pwf: f2(r.power_forcing)});
+}
+function fvsLines() {                   // FV.stat.v2 (E04; R8.8): the statistical layer's test, not shown weak, with the null-reading caveat and the pass clause
+  const mc = D.modelcard, r = (mc.results || {}).fvs2;
+  if (!(mc.registrations || {}).fvs2 || !r || r.status !== "scored" || r.reading !== "not_shown_weak") return [];
+  const v = {p: f2(r.p), p0: f2(r.p0), q: f2(1 - r.p)};
+  return [["", tr("evc_hyb_fvs", v)], ["", tr("evc_hyb_fvs_pass", v)]];
+}
+function e24Line() {                    // SD.cut_response_spread.v2 (E24; R8.11): tile tA under Model internals only, never an answer number
+  const mc = D.modelcard, r = (mc.results || {}).sd2;
+  if (!(mc.registrations || {}).sd2 || !r) return "";
+  return tr("def_tA_e24", {n: r.n_columns, lo: f2(r.lo_cm), hi: f2(r.hi_cm), x: f2(r.inland_ratio)});
 }
 function fv2Lines() {                   // FV.decidability.v2 (post-failure, exploratory): E02c's coverage gate per county (C14a, E21) and the forcing-year reading (C14a)
   const mc = D.modelcard, res = mc.results || {}, out = [], cty = c => tr("cty_" + c.toLowerCase());
@@ -2870,14 +2915,21 @@ function policyResponseLines(r) {      // the registered N1 verdicts: heads, sub
     const ok = ["yunlin", "changhua"].filter(k => pass(s[k]));
     if (ok.length === 2) out.push(["ok", tr("evc_pr_subs_ok", {span, dt: dtp, list: ok.map(k => tr("cty_" + k)).join(tr("list_and"))})]);
     else {
-      const cl = ["yunlin", "changhua"].every(k => s[k].verdict_cl === "baseline_better") ? tr("pr_cl_better") : "";
+      // claim C27 in its registered numbers (ruling R8.8): each county's verdict against no
+      // change (CL) and reference-year pumping (ZR), the slope with its 90 % interval, and step
+      // B's dose-response with its ratio interval; no ratio of the kind "x too large" is stated
+      const sres = k => tr(s[k].verdict_cl === "model_better" ? (s[k].verdict_zr === "model_better" ? "pr_s_beat" : "pr_s_lost_zr")
+        : s[k].verdict_zr === "model_better" ? "pr_s_lost_cl" : "pr_s_lost_both");
+      const ci = (row, i) => row.slope_ci && row.slope_ci.length === 2 ? f2(row.slope_ci[i]) : "–";
       const b = r.step_b && r.step_b.yunlin, sy = s.yunlin.slope_obs_on_model;
       let sb = "";
-      if (b && b.beta_obs_cm_per_gwh != null && b.beta_model_cm_per_gwh != null) {
-        const more = b.beta_obs_cm_per_gwh > b.beta_model_cm_per_gwh, moreC = sy > 1;
-        sb = tr("pr_stepb", {way: tr(more !== moreC ? "pr_way_other" : "pr_way_same"), dir: tr(more ? "pr_more" : "pr_less"), v: T.en["vd_" + b.verdict] !== undefined ? tr("vd_" + b.verdict) : String(b.verdict)});
+      if (b && b.beta_obs_cm_per_gwh != null && b.beta_model_cm_per_gwh != null && b.ratio_ci && b.ratio_ci.length === 2) {
+        const more = b.beta_obs_cm_per_gwh > b.beta_model_cm_per_gwh;
+        sb = tr("pr_stepb", {dir: tr(more ? "pr_more" : "pr_less"), v: T.en["vd_" + b.verdict] !== undefined ? tr("vd_" + b.verdict) : String(b.verdict),
+          o: sg(b.beta_obs_cm_per_gwh), m: sg(b.beta_model_cm_per_gwh), lo: f2(b.ratio_ci[0]), hi: f2(b.ratio_ci[1])});
       }
-      out.push(["warn", tr("evc_pr_subs", {span, dt: dtp, sy: f2(sy), sc: f2(s.changhua.slope_obs_on_model), my: prModel(s.yunlin), mc: prModel(s.changhua), cl, sb})]);
+      out.push(["warn", tr("evc_pr_subs", {span, dt: dtp, sy: f2(sy), syl: ci(s.yunlin, 0), syu: ci(s.yunlin, 1), sc: f2(s.changhua.slope_obs_on_model),
+        scl: ci(s.changhua, 0), scu: ci(s.changhua, 1), my: prModel(s.yunlin), mc: prModel(s.changhua), ry: sres("yunlin"), rc: sres("changhua"), sb})]);
     }
   }
   if (c && c.status === "not_supported")  // claim C13c: withdrawn under every outcome

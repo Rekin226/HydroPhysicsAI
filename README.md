@@ -373,7 +373,24 @@ in `docs/GPU_SERVER.md`.
   2.048 m against climatology's 1.667 m), so a 2028 level fail is the expected outcome and the
   level P 0.96 is not the chance of a pass. The decidability study of
   the statistical layer's test (`FV.stat.v1`) was not evaluable (an engineering fault in its
-  frozen self-check).
+  frozen self-check); its engineering v2 (`FV.stat.v2`, fresh seed, model-free) does not show
+  that test weak: if anomalies persist as the layer assumes, it passes with probability 0.93,
+  but a world with no persistence passes the same rule with probability 0.48, so a 2028 pass is
+  weak evidence and a fail is the more informative outcome (an erratum records that its county
+  layout was 78/69 wells instead of E04's 81/66; the effect is far below its Monte Carlo error,
+  and it was not rerun). Whether the physics forecast adds to the statistical layer
+  (`FE.encompass_2026-12.v1`) is registered report-only: its synthetic gate failed (with no
+  physics information the rule reads "the layer encompasses it" only 0.51 of the time against
+  0.80 required; physics-arm power 0.84). The strict level rule is registered for years 2 and 3
+  of the same forecast (`E02z.level_years23.v1`, 2027-11..2028-10 and 2028-11..2029-10, per
+  county, scored from 2029-01-15; synthetic decidability not shown weak: about 1.0 in Yunlin and
+  0.69 in Changhua), and its expected outcome, from the published 2023-26 record, is the
+  pre-worded narrowing that the physics level stays an average-weather scenario. The
+  departure-transfer band at N3F's never-calibrated wells is not decidable by design
+  (`U1.ext_transfer_power.v1`: Yunlin power 0.767 against 0.80; Changhua report-only), so E02x
+  was not registered. The side of a Changhua coverage fail does not separate the pumping
+  families once drift and year shocks are added (`CB.coverage_side.v1`, model-only: P(over |
+  page family) 0.208 against 0.8 needed), so the per-truth disclosure above stands.
 - At wells it never saw, the model is worse than interpolation on head changes (+0.34 vs
   +0.61) and on absolute level (+0.64 vs +0.70), worst on the upper fan, whose deep layers
   have one well between them. It passes the held-out-years test only after each well's
@@ -447,7 +464,20 @@ in `docs/GPU_SERVER.md`.
   Yunlin contrast, so the direction pass does not separate Changhua pumping from Yunlin
   spillover. 4 of the backcast's wells are among the 23 screens, and both checks share the
   regional-rain confounder. Both read their heads as design-time evidence, not as a scoring
-  target. The Changhua
+  target. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
+  exploratory, narrowing only) puts the Yunlin contrast in the same regression: the Changhua
+  slope becomes 0.15 [-0.04, 0.45], so the direction is not separable from Yunlin spill-over.
+  The mechanism check CH-J (the secondary of `I1.CHX.v1`, report-only for good) did not reject
+  co-located canal or paddy recharge: CH-J (report-only): Changhua sw fraction off its 0.01
+  bound; median Changhua seasonal amplitude ratio 0.78, 0.78 (seeds 2027, 2029); not support.
+  Its no-harm and forward checks pass in both seeds; the two seeds share one full-data fit (the
+  seed sets only the fold partition), so its external and forward numbers are one replicate.
+  The size class of Changhua's first-year response is not decidable prospectively: N2CS was not
+  registered because its synthetic gate failed (`N2CS.osse_design.v1`): under a canal confounder
+  shaped like the pumping, a response one third as large reads "not overstated" in 0.47-0.63 of
+  the synthetic worlds against at most 0.20 allowed (power 0.77-0.89). A Bayes-factor test
+  between the pumping families is not decidable by design either (`FB.family_power.v1`:
+  Changhua 0.21, Yunlin 0, against 0.8). The Changhua
   head lever stays untested (N2C registered, scored not before 2028-01-15) and capped (F < 0.5).
 - Changhua census forcing bookkeeping (census audit, forcing only): every Changhua route uses
   `model_census` v1 as delivered (R1c's forcing, bimonthly meters split evenly), with its
@@ -466,6 +496,12 @@ in `docs/GPU_SERVER.md`.
   conversions it differs about x1.27 in Yunlin (x1.26-1.28 by horizon), while a cut of all
   pumping (all30) is invariant: gated ratios x1.03-1.05 (by horizon 1.02-1.06, report-only;
   `X5.lever_class_share.v1`, model-only). N2 tests the response to total recorded pumping anomalies, not to a class.
+  The head claim is split three ways: direction S (design-time), within-window anomaly response D
+  (N2), size N (model-only). N2's rule is informative but not decisive by design
+  (`X5.n2_reading.v1`, synthetic): a world with no response passes it 0.20 of the time, but one
+  with half the response passes 0.75 of the time, and its 90 % interval covers the true size
+  0.84 of the time; power 0.95 (0.15 with the canal confounder; 0.50 with forcing error). So N2
+  can detect a response but cannot tell a full-size response from a half-size one.
 - Every cited fit uses the historical head-target defaults: sample-weighted monthly means
   (February 2019 shifts by up to 1.7 m at 13 Yunlin wells), coverage counted against hours,
   and back-filled gaps. The fixes exist only as opt-in flags; nothing was rescored (model
@@ -495,8 +531,16 @@ in `docs/GPU_SERVER.md`.
   family and R0 on their own heads (Tier A+B) the Yunlin cut30 avoided subsidence by 2028-12 is
   0.47-1.42 cm; coast (distal zone) 40-75 % of it; column-dependent x2.02 (0.540-1.092 cm)
   (model-form spread, not an interval). Across the 3 columns on the page's own heads (Tier A)
-  it is 1.40-1.42 cm, 60 % of it on the coast, inland Yunlin robust within x1.5. It is not shown
-  on the page, and no correction follows.
+  it is 1.40-1.42 cm, 60 % of it on the coast, inland Yunlin robust within x1.5. The page shows
+  the Tier A+B spread only in the avoided-subsidence tile's definition under Model internals,
+  labelled as a model-form spread, not an interval (user ruling 2026-11-03); no number of it
+  reaches the answer, and no correction follows. The 2028 deep-pile and township units cannot
+  separate these columns (`COLF.column_family_2028.v1`: 0 of 36 pile pairs decidable, P(correct
+  ranking) at most 0.37; the township arm gives 0 for all 45 pairs, a tie artefact of its bound
+  rule), so no column is selected. The GNSS seasonal family screen was closed before any look
+  (`X5.gnss_seasonal_family.gates.v1`: its synthetic gate excludes a far member only 0.78 of the
+  time pooled against 0.80, and 0.25 in its worst cell against 0.60), so no GNSS amplitude is
+  read and subsidence gains no decided direction from it.
 - The pumping-stress spread radius is not identified (0.5-10 km across folds); the
   ensemble carries that spread. Policy sensitivities are consequences of a tested model,
   not validated forecasts.
