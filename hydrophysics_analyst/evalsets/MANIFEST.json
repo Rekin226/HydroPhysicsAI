@@ -60,6 +60,30 @@
    },
    "note": "withdrawn before use (authored by the port's builder; review found paraphrase leakage); never run. An independent author writes held-out v3.",
    "withdrawn_on": "2026-11-07"
+  },
+  "eval_questions_heldout_v3.jsonl": {
+   "role": "heldout",
+   "status": "frozen",
+   "sha256": "aed3831578082e65eaad0acd9e8050c191c96d7d5722249c9dcf9613eb04ef77",
+   "n": 60,
+   "frozen_on": "2026-11-07",
+   "page": "results/twin/twin_app_20261107a.html",
+   "page_sha256": "be1e0e26a071d1694a0846874b28e26e45f2b1afbff83be3479612fbd48a018b",
+   "template_sha256": "3fa776ed31c40274a15103fac05fbf984f4e72cf0a39f46f0225ff4293cf57aa",
+   "ledger_sha256": "f0c68e7dd683a54ee33178f4becf23c0f6562472b61dd1906903aeb0b46c71af",
+   "arms": [
+    "rules",
+    "opus-low",
+    "opus-low-all"
+   ],
+   "repeats": 3,
+   "written": "by an independent author who did not read the analyst code (hydrophysics_analyst/*.py) and did not run the analyst, its router or any LLM; expectations from the rendered final page, the template's strings, the ledger's display_map, rules_v1.json, OPS.md's schema section and the earlier sets; disclosed: one traceback line of eval.py seen, and the schema checker's messages (it flagged mi_note as withheld on three township items, which were then changed)",
+   "design": {
+    "proportions": "60 questions: 31 preset / 25 refusal / 4 clarify; 30 en / 30 zh; 6 follow-ups; 2 prompt injections; 3 mixed-language; 9 all30 headline items",
+    "overlap": "max word 3-gram Jaccard 0.207 and character 3-gram 0.241 against the dev set, held-out v1 and v2; 0.125 within the set; 7 drafts over 0.25 were rewritten",
+    "single_reason": "every refusal and clarify item has exactly one correct reason (v3_038 and v3_047 rewritten for that)"
+   },
+   "note": "held-out v3: runs once with the pinned page, ledger, arms and repeats"
   }
  }
 }
