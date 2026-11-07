@@ -1634,7 +1634,8 @@ appear together; none is shown alone, and none is averaged into another silently
   five rows of the table below), **45.3 %** audited.
 - **Claim honesty**, always beside the headline: how well the page, the ledger and the docs
   agree with the record, **95 %** audited, and about 98 once the step-0 disclosures of
-  2026-11-03 are in (an estimate, not a re-audit).
+  2026-11-03 are in (an estimate, not a re-audit); re-audited on 2026-11-07 at 98.3 (user
+  ruling R9.3, section 27).
 - **Intended-output variant**, beside science trust: W and L rows graded 0 instead of 0.15 and
   0.25, so only what the page is meant to answer counts. On the audited statuses it is
   **35.7 %**.
@@ -1679,8 +1680,8 @@ in full and the figures. The
 audited table above stays as the historical audit of 2026-11-02 and section 22's figures stay
 labelled estimates; both are shown beside the computed figure, and the part-level differences
 from the audit are disclosed in section 26. Claim honesty remains an audit or estimate input
-(95 audited, about 98 estimated after step 0): the ledger cannot measure it, so it is not
-computed.
+(95 audited, about 98 estimated after step 0; now 98.3 (audited 2026-11-07, R9.3), section
+27): the ledger cannot measure it, so it is not computed.
 
 ## 22. Round-8 results (2026-11-03..06)
 
@@ -1709,7 +1710,9 @@ Each test below was scored once; the registry sha256 prefix is from
   the report's county layout 78/69 is inherited from v1's constant, while E04's 147 wells are 81
   Yunlin and 66 Changhua; county only chooses which wells share a county's common series, the
   pass rule never uses it, the clustered variance moves +0.66 %, and the reading cannot change;
-  not rerun. Ledger: E04 moves from D (decidability unknown) to D (decidability measured). Page
+  not rerun. Ledger: E04 moves from D (decidability unknown) to D (decidability measured), a label
+  user ruling R8.17b (2026-11-07) later superseded: E04 is D with decidability unknown
+  (section 26). Page
   (R8.8): two lines beside the statistical layer's registration line, the declared wording and
   the declared "what a 2028 pass can show" clause.
 - **`X5.n2_reading.v1`** (bca3540e), model-only, synthetic worlds, the shared N2/N2C scorer
@@ -1722,10 +1725,13 @@ Each test below was scored once; the registry sha256 prefix is from
   passes less often than no response, and the interval almost never covers the true size); a
   response is detectable only without that confounder. Ledger: C01 is split (R8.8, following
   C14a -> C14a-r) into C01 (direction, S, design-time), the new row C01-w (N2's within-window
-  response, D, decidability measured: "informative") and the new row C01-sz (size, N: "size
+  response, D, decidability measured: "informative"; user ruling R8.16c later graded it D
+  with decidability unknown, section 26) and the new row C01-sz (size, N: "size
   likely too small; not gated"). Page: the tile range line, definition and headline label the
   three parts, the x1.27 conversion clause is on the headline, the tile definition and the
-  ranking note (C12), and an evidence line prints the registered sentence.
+  ranking note (C12) (R8.8 wording, superseded on the headline by R8.9: since then the
+  headline carries all30's x1.03-1.05 clause and x1.27 stays on the irrigation x0.7 lever's
+  class clause and in tW_r, rank_limit and def_tW; section 24), and an evidence line prints the registered sentence.
 - **`E02z.level_years23.v1`** (612d36fc), tests E02zP.level_2027-11 and E02zP.level_2028-11:
   registered (ruling R8.14; governance `GOV.heads_window_product.v1`, 141c0128, whose code came
   with section 21's step 0). Decidability report
@@ -1812,8 +1818,9 @@ Each test below was scored once; the registry sha256 prefix is from
   not registered: an honest closure. Ledger notes on E24, C27, C03, C11 and C29; ruling R8.5's
   label is moot.
 - **`N2CS.osse_design.v1`** (1f69c7b5). Result (`results/dataprep/reports/N2CS_osse/result.json`,
-  sha fbb020a0): OSSE G0 failed for all three forms. Power is adequate (P(not overstated | k =
-  1) 0.77-0.89 at its minimum over the gate variants), but under the loading-shaped canal
+  sha fbb020a0): OSSE G0 failed for all three forms. Power (P(not overstated | k = 1) at its
+  minimum over the gate variants) is 0.77-0.89 across the forms, against >= 0.80 needed:
+  only the twoway_level form misses it (0.77 under the county-uniform confounder), but under the loading-shaped canal
   confounder a true response one third as large reads "not overstated" in 0.47-0.63 of the
   worlds, against at most 0.20 required. N2CS was not registered. N line on the C20/C21 size
   clause: "size class not decidable prospectively (OSSE power 0.89)", stated with that failing
@@ -1845,7 +1852,8 @@ sha256 204985fd; it replaces the round-7 build 20261102b, sha256 956ec5d1).
 Progress: an estimate from the round-8 plan's per-action point effects for the outcomes
 obtained; a row-by-row section-21 recount of the ledger is still to be done. It is not a
 recomputation from the ledger. The gains (E04 D with measured decidability; C01-w; E02z
-registered with measured decidability) are shown together with the downgrade the round produced
+registered with measured decidability; later rulings R8.16c and R8.17b grade C01-w and E04
+D with decidability unknown, so of the three only E02z's stands, section 26) are shown together with the downgrade the round produced
 (E25 narrowed by the two-contrast check: Changhua -1 against the after-step-0 figure) and with
 the step-0 disclosure downgrades of section 21. The closures (E02x, FB, N2CS, the GNSS screen,
 COLF, FE report-only, CB) add nothing under the official rule.
@@ -1853,7 +1861,7 @@ COLF, FE report-only, CB) add nothing under the official rule.
 | part | audited 2026-11-02 | after step-0 fixes | now (estimate) | what moved it |
 |---|---|---|---|---|
 | head response, Yunlin | 60 | 60 | 60-61 | 61 only if N2's 'informative' counts as D-measured ("the test can decide" in section 21); under the canal confounder it cannot decide, so 60 stands as the lower end |
-| forecast start and validation | 56 | 56 | 57.7 | E04 D measured (FV.stat.v2); E02z registered with measured decidability |
+| forecast start and validation | 56 | 56 | 57.7 | E04 D measured (FV.stat.v2; that reading is superseded by R8.17b, E04 D with decidability unknown; the 57.7 is kept as labelled, section 26); E02z registered with measured decidability |
 | uncertainty bands | 43 | 42.5 | 42.5 | E02x not registered; CB and FB give no gain |
 | subsidence and cut response | 31 | 31 | 31 | COLF 0 decidable pairs and the GNSS closure give no gain |
 | Changhua | 36.5 | 36 | 35 | E25 narrowing (not separable from Yunlin spill-over), -1 against after-step-0; CH-J report-only, N2CS N line |
@@ -1883,8 +1891,11 @@ scored, and no number on the page is new.
   and its note says that after that month the head line is this model's average-weather
   scenario and that the first-year forecast of record is the statistical layer (`ts_fm_note`).
   Subsidence, rate and avoided-subsidence legends keep the earlier wording. The page's own words
-  no longer call the physics level a forecast ("frozen run" in the E02c and external-well lines
-  and in the elastic-split note); registered names such as E02c's "the frozen 2022-12 level
+  no longer call the physics level a forecast in the E02c and external-well lines and in the
+  elastic-split note ("frozen run"); the E01 new-data lines (`evc_nc_fail`, `evc_nc_pass`,
+  `tt_new`, E01's ledger name "frozen forecast") and the PB shared range (`pb_shared_what`,
+  "the frozen forecast (0)") still say "frozen forecast", an exception not changed here;
+  registered names such as E02c's "the frozen 2022-12 level
   forecast" are quoted as registered, a declared exception. The month and the 11 months come from `FM.origin_memory.v1`'s report (L* = 11 months,
   2023-11; registered sha e2d261fb, report sha d93c0e6d) through the page payload, never typed
   in; a build without that report keeps the earlier legend and draws no marker.
@@ -2073,13 +2084,15 @@ sha ec610b69): "Yes: per-well zone ribbon 'decided by a registered test, E02d, 2
 wells per zone, no station ids) plus the shared range 'cannot be tested before 2030 by
 design'." It replaces the drawn aggregate run spread of the head series (the fan-average
 layer-2 head's p10-p90 / p25-p75 band over the runs, ledger C14c). This section records the
-code (round-8 rank 16, part PB, `dataprep_staging/pb_band/`); no band, range or LOFO number
-has been built (see the disclosure below) and nothing on the page, the ledger or the claims
-changes.
+code (round-8 rank 16, part PB, `dataprep_staging/pb_band/`); when it was written no band,
+range or LOFO number had been built (see the disclosure below) and nothing on the page, the
+ledger or the claims changed. Since then PB was registered (sha 8cd8c44c), built
+(`results/twin/pb_band/pb_band.json`, sha c23de702) and wired: the promoted page
+`twin_app_20261107a.html` was built with `--pb-band` (section 24).
 
-- **Declaration first.** `PB.decomposed_band.v1` (kind declaration) is drafted by
-  `prereg_pb.py` and validated with `prereg3.validate_prereg`; it is not written. The lead
-  registers it after the code is merged; `build_pb.py` refuses to build until then, and also
+- **Declaration first.** `PB.decomposed_band.v1` (kind declaration) was drafted by
+  `prereg_pb.py` and validated with `prereg3.validate_prereg`; it was written after the code
+  was merged (registered 2026-11-06, sha 8cd8c44c, `results/dataprep/preregistration/`); `build_pb.py` refuses to build until then, and also
   when its frozen code, the registered design, an upstream registration (E02d, E02y, FV v2, DR)
   or any bound input's sha256 differs, or when the output already exists (written once).
 - **Inputs, by hash.** E02d's frozen artefact `results/twin/e02d_relative/sigma_idio_{A,B,C}.csv`
@@ -2132,8 +2145,8 @@ changes.
   relative recipe is computed in any month (its 2023-26 coverage is sealed by E02d; its window
   coverage is E02d's and E02y's to score), no coverage of any kind on a month before 2026-12,
   and no observation product among the inputs.
-- **Page.** The wiring waits for the round-8 #14 page change and is prepared separately: a
-  two-part band panel on one common vertical scale replaces only the head series' drawn run
+- **Page.** The wiring, prepared separately after the round-8 #14 page change, is on the
+  promoted page (`twin_app_20261107a.html`, built with `--pb-band`): a two-part band panel on one common vertical scale replaces only the head series' drawn run
   band (its note `bn_head`). Beside the shared range the page shows only the forcing-year clause
   of FV v2's registered C14c wording, verbatim (`FV.decidability.v2_postfailure`, sha f7e35a17,
   `readings.reading_2.wording.c14c`; ruling R7.fv_v2_page), without its run-spread sentence; the
@@ -2240,7 +2253,8 @@ The rule:
 - **Claim honesty** is not computed: it is how well the page, the ledger and the docs agree
   with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
   offered. The 6-part rows use the audit's 95 at the audit state and section 21's estimate of
-  98 today, labelled so.
+  98 at 08a6aa7, labelled so; the current input is 98.3 (audited 2026-11-07, R9.3; section
+  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1).
 - **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
   mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
   for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
@@ -2262,7 +2276,7 @@ main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, n
 | subsidence and cut response | 31 | 35.8 | 35.6 | 36.3 | 36.0 | 31 |
 | Changhua | 36.5 | 45.6 | 45.6 | 49.4 | 49.4 | 35 |
 | **science trust** (mean of 5) | **45.3** | **45.1** | **45.2** | 48.4 | 49.2 | 45.2-45.4 |
-| claim honesty (not computed) | 95 | 95 (audit) | 98 (estimate) | 95 | 98 | 98 |
+| claim honesty (not computed) | 95 | 95 (audit) | 98 (estimate; now 98.3, audited 2026-11-07, R9.3) | 95 | 98 | 98 |
 | **6-part mean** (headline) | **53.6** | **53.4** | **54.0** | 56.1 | 57.3 | 54.0-54.2 |
 | intended-output variant (science basis) | 35.7 | 37.8 | 38.1 | 41.4 | 42.8 | not recomputed |
 | end-goal convention, science / 6-part (bookkeeping only) | about 61-62 (6-part) | 56.6 / 63.0 | 57.2 / 64.0 | 59.9 / 65.8 | 61.2 / 67.3 | not recomputed |
@@ -2326,8 +2340,8 @@ User rulings of 2026-11-07, sixteenth set (R9.1-R9.4,
 `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4) and seventeenth set
 (R9.4b, `results/dataprep/rulings/user_rulings_2026-11-07d.json`, sha256 bfeed6d6). The ledger
 records each as `user ruling 2026-11-07 (sixteenth set) (<id>)` or `(seventeenth set) (R9.4b)`.
-No status changes; the progress figures are unchanged (6-part 54.0 with claim honesty 98 as an
-estimate, science trust 45.2, forecast part 52.5).
+No status changes; the progress figures are unchanged (6-part 54.0 with claim honesty 98.3
+(audited 2026-11-07, R9.3), science trust 45.2, forecast part 52.5).
 
 - **The 2010-11 window is closed (R9.1).** The 2010-11 window is closed as not cleanly testable
   (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in
@@ -2351,3 +2365,27 @@ estimate, science trust 45.2, forecast part 52.5).
 - **C30 hygiene.** The notes of E02 and E21 now name C30's pieces (C30-scen, C30-fc) where they
   said "C30"; the R8.7 alias sentence is kept for the quoted wording of earlier rounds. No grade
   change.
+- **Claim-honesty audit (R9.3).** User ruling R9.3 (sixteenth set) fixed the rule: honesty =
+  100 x (1 - sum(w s) / (3 sum(w))), s the worst finding on a statement (contradiction 3,
+  overclaim 2, stale or missing disclosure 1, none 0) and w its display weight. The inventory
+  (`hydrophysics/twin/honesty.py`; `results/dataprep/reports/HONESTY.round9/inventory.json`,
+  sha256 a4907c37) was built mechanically from the pinned page `twin_app_20261107a.html` (EN and
+  ZH graded as one pair per rendered key), README, MODEL_CARD, evidence sections 21-27 and the
+  ledger's own wording and notes, and hashed before grading: 1,649 statements, weight 1,052.5.
+  Three blind primary graders each took one source group (page, docs, ledger) and a second
+  grader graded a stratified 10 % sample (135 positive-weight statements, 10 % per source, at
+  least 5). The
+  audited figure is **98.3** (page 98.7, README 97.8, MODEL_CARD 98.7, evidence 99.0, ledger
+  92.7; 66 findings on 65 statements). Agreement on the sample: exact 0.948; weighted kappa 0.33
+  (linear) and 0.18 (quadratic), low because findings are rare (on the sample the primary
+  graders give 98.7 and the second grader 97.2), so read the figure as about +-0.5. The graders'
+  view masked every 90-99 audit or estimate figure in statements about claim honesty or the
+  6-part figure; one statement leaked (evidence:4c54c5fc62, section 26's "estimate of 98 today",
+  seen by the docs grader), graded only as a statement and not in the second sample. Method
+  change from the 2026-11-02 audit (95): the inventory is now mechanical and includes the
+  ledger's wording and notes, so the two figures are not a like-for-like trend. A fix PR (branch
+  `twin/round9-honesty-fixes`) corrects each primary finding at its location after checking it
+  against the cited record, plus the four findings only the second grader made that check out
+  (a fifth, on section 26's audit-state row, was checked and is correct as written). Under R9.3 the audited figure
+  stands after that PR: 98.3 is the claim-honesty input, and the fixes are not re-audited and
+  raise no estimate.

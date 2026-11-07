@@ -1,6 +1,6 @@
 """JS-vs-Python parity: the analyst's numbers and sentences must equal the page's.
 
-    python -m hydrophysics_analyst parity --page results/twin/twin_app_20261107a.html \\
+    python -m hydrophysics_analyst parity --page results/twin/twin_app_20261107b.html \\
         --out results/analyst/parity/
 
 Opens the page in headless Chromium (Playwright; ``TWIN_CHROMIUM`` names a binary if
