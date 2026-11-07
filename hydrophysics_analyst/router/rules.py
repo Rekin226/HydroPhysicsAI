@@ -73,8 +73,12 @@ STARTCMP = [r"\bwait\w*", r"\bdelay\w*", r"\blater\b", r"\bor\s+(?:in\s+)?20\d\d
 SOLVED = [r"full[-\s]model", "完整模型", r"two\s+(?:full\s+)?runs", r"compare\s+(?:the\s+)?(?:two|both)\s+(?:policies|scenarios|runs)",
           r"solved", "完整模擬", "兩個方案", "兩個情境", "比較兩"]
 CHEAP = [r"cheapest", r"least\s+energy", r"lowest\s+energy", r"minimum\s+(?:cut|energy)", "最省電", "最少用電", "最低用電"]
+# "as of <year>" is a reporting date, not a start (round 10, A5: it read "As of 2028" as a start
+# off the page and clarified out_of_grid)
 FROM = (r"(?:from|starting(?:\s+in)?|start(?:s|ed|ing)?\s+(?:in\s+)?|beg(?:an|un|inning|ins?)\s+(?:in\s+)?|"
-        r"as\s+of|launched\s+in|implemented\s+in)\s*")
+        r"launched\s+in|implemented\s+in)\s*")
+# "from 2023 to 2028", 從2023年到2028年: a span of reporting years, its first year is no start
+YEAR_SPAN = r"\s*(?:年)?\s*(?:to|until|till|through|thru|and|-|–|—|~|～|到|至)\s*(?:20\d\d)"
 HOWSURE = [r"how\s+(?:sure|confident|reliable|trustworthy|certain)", r"can\s+(?:we|i)\s+trust", r"\bvalidat\w*",
            r"how\s+(?:well\s+)?tested", r"when\s+(?:is|will)\s+(?:it|this)\s+(?:be\s+)?(?:tested|scored)", r"\buncertain\w*",
            "可信", "可靠", "多準", "信心", "驗證", "檢驗", "不確定"]
@@ -121,7 +125,10 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
     # policy, with no head word (C13a) and no lever that is Changhua's; a Changhua township or a
     # geographic reference is always refused
     pooled_ok = ch and G.pooled_row_ok(s)
-    if ch and not pooled_ok:
+    # round 10 (R10.2a): a Yunlin lever's spillover into Changhua asked without the word row,
+    # a Yunlin question that names Changhua (or its geography) only to leave it out (A1), and one
+    # how-sure question about Changhua's direction test (A3), pass on
+    if ch and not (pooled_ok or G.spillover_ok(s) or G.yunlin_only_ok(s) or G.changhua_how_sure_ok(s)):
         return "changhua_lever"
     if _has(MONEY, s):
         return "volumes_money"
@@ -135,7 +142,10 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
         return "area"
     # a named Yunlin township (its internals row, C11) and the pooled row are exempt, unless an
     # area-scope word (fan, county-wide, whole, total, 全縣, 整個, 沖積扇 ...) asks the size wider
-    if G.subsidence_size(s) and (G.area_scope(s) or not (_yunlin_town(b, s) or pooled_ok)):
+    # round 10 (A4): one township referred to but not named, under a policy, is clarified by the
+    # rules (ambiguous_town), not refused; an area-scope word still overrides it
+    if G.subsidence_size(s) and (G.area_scope(s) or not (_yunlin_town(b, s) or pooled_ok
+                                                          or G.unnamed_township(s, b))):
         return "subsidence_size"
     if "fan" in via and G.has_lever(s):                # a lever over the whole fan includes Changhua
         return "changhua_lever"
@@ -218,8 +228,10 @@ def parse_years(b: PageBundle, s: str) -> tuple[int | None, int | None]:
         y = int(m.group(1))
         pre = s[max(0, m.start() - 22):m.start()].lower()
         post = s[m.end():m.end() + 6]
-        if (re.search(FROM + r"$", pre, re.I) or re.match(r"\s*(?:年)?\s*(?:開始|起(?!來)|實施|啟動|上路)", post)
-                or re.search(r"(?:自|從)\s*$", pre)):
+        span = re.match(YEAR_SPAN, s[m.end():], re.I) and re.search(r"(?:from|between|從|自)\s*$", pre, re.I)
+        if not span and (re.search(FROM + r"$", pre, re.I)
+                         or re.match(r"\s*(?:年)?\s*(?:開始|起(?!來)|實施|啟動|上路)", post)
+                         or re.search(r"(?:自|從)\s*$", pre)):
             start = y if y in c.starts else (start or -1)     # -1: a start not on the page
         else:
             year = y
@@ -256,6 +268,8 @@ class RulesRouter:
         if start == -1:                       # an explicit start year the page does not have
             return Route(lang=lang, confidence=1.0, clarify={"reason": "out_of_grid", "candidates": c.starts})
         town = _town_of(b, s)
+        # round 10 (A4): one township, not named, asked for its subsidence under a policy
+        unnamed = town is None and G.unnamed_township(s, b) and G.subsidence_words(s)
         follow = prev is not None and (_has(FOLLOW, s) or (len(s) < 30 and not _has(RAIL + RANK + SOLVED, s)))
         # ruling D3 (a single township's water level) is refused by hard_refusal's guard above
         # intent
@@ -272,7 +286,7 @@ class RulesRouter:
             preset = "solved_compare"
         elif ((_has(STARTCMP, s) or self._both_starts(s)) and (cuts or follow) and not town):
             preset = "start_compare"
-        elif town is not None or _has(TOWN_INTENT, s):
+        elif town is not None or _has(TOWN_INTENT, s) or unnamed:
             preset = "township_internals"
         elif follow and cuts and prev.get("preset") in ("start_compare", "township_internals", "rail_internals"):
             preset = prev["preset"]           # "and also aquaculture 10%?" keeps the previous question type
@@ -324,7 +338,8 @@ class RulesRouter:
             elif "town" in prevp:
                 params["town"], _ = prevp["town"], inherit.append("town")
             else:
-                return Route(preset=preset, params=params, lang=lang, confidence=0.6,
+                # A4: the unnamed-township subsidence question is a confident clarification
+                return Route(preset=preset, params=params, lang=lang, confidence=1.0 if unnamed else 0.6,
                              clarify={"reason": "ambiguous_town",
                                       "candidates": [c.towns[i]["en"] for i in (town or range(len(c.towns)))]})
         if preset == "lever_rank":

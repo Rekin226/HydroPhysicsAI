@@ -25,16 +25,35 @@ PRESET_DOCS = {
     "lever_rank": "Ranking of the water-use classes by head rise ('head') or by head rise per energy given up "
                   "('gwh'). Model internals.",
     "township_internals": "One township's model-internal subsidence row under a policy (labelled, size untested). "
-                          "Needs cuts, start, year and a township from the enum.",
+                          "Needs cuts, start, year and a township from the enum. One township referred to but "
+                          "not named ('that coastal township') -> clarify ambiguous_town. The pooled Changhua "
+                          "panel only as the labelled spillover of a Yunlin policy ('what does a Yunlin "
+                          "irrigation cut do to Changhua', 'spill over into Changhua').",
     "rail_internals": "High-speed rail: the head answer plus the rail's model-internal distortion note. "
                       "Never a yes/no or a verdict.",
     "solved_compare": "The page's full-model runs side by side at a reporting year.",
     "cheapest_for_head": "Lowest-energy page lever setting that reaches a head target at the registered wells.",
-    "how_sure": "How far the result is tested and when the registered tests are scored (no parameters).",
+    "how_sure": "How far the result is tested and when the registered tests are scored (no parameters). "
+                "Includes whether the subsidence size was tested at all (checked against leveling, held up, "
+                "能不能當真) when no size is asked, and how sure Changhua's direction test is (does pumping "
+                "on the Changhua side move heads the right way at wells the model was not tuned on).",
 }
+# reporting years (A5): "as of <year>", "by <year>", "in <year>" give the reporting year, not a start
+YEAR_NOTE = ("A year given as 'as of <year>', 'by <year>', 'in <year>' or 截至/到<year> is the reporting "
+             "year, not a start; only 'from / starting / beginning <year>' or <year>年開始/起 is a start. "
+             "A question that gives a reporting year but no start uses the first start: a missing start "
+             "is never a clarification.")
 REFUSAL_DOCS = {
-    "changhua_lever": "any question about Changhua levers or cuts",
-    "subsidence_size": "how much subsidence or how many centimetres are avoided, at fan or county scale",
+    "changhua_lever": "a lever, cut, head, subsidence or any value that is Changhua's (by name, its townships, "
+                      "north of the Choushui, the neighbouring county, both counties, the whole fan), and "
+                      "Changhua's direction asked as a value. NOT refused: a Yunlin question that "
+                      "leaves Changhua out ('Changhua unchanged', 'nothing north of the river', 'the neighbouring "
+                      "county isn't in the model') -> route it as the Yunlin question; the pooled Changhua row "
+                      "as the spillover of a Yunlin policy -> township_internals; one how-sure question about "
+                      "whether Changhua's direction test was run -> how_sure",
+    "subsidence_size": "how much subsidence or how many centimetres are avoided, at fan or county scale, or any "
+                       "size, number or adjective of it, also inside a how-sure question ('how sure are you of "
+                       "the three centimetres'). NOT refused: asking only whether the subsidence size was tested -> how_sure",
     "area": "area sinking faster than a threshold",
     "recommendation": "which policy to choose or recommend",
     "volumes_money": "pumping volumes, money, budgets",
@@ -64,8 +83,8 @@ clarification reason. Use only enum values. If the question continues the previo
 "same for the later start", "and irrigation?"), copy the unchanged parameters from "previous" and list
 them in "inherit". If a required parameter is missing and not in "previous", set clarify. If a cut is not
 on the five-percent grid, set clarify to out_of_grid. Default the reporting year to the page's last year
-and the start to the first start only when the question gives no year at all. answer_lang is the question's
-language (zh for Chinese).
+and the start to the first start only when the question gives no year at all. {YEAR_NOTE}
+answer_lang is the question's language (zh for Chinese).
 
 What each claim status allows: S, D, N may be answered; L only as labelled model internals; W never.
 Questions whose answer would be a W quantity must be refused with the matching reason.

@@ -9,6 +9,7 @@ Commands:
   parity   JS-vs-Python parity report for a page (local; needs Playwright)
   mcp      an MCP stdio server exposing the presets (team-internal)
   bundle   build a private deployment bundle for a page
+  replay-r9  the round-9 guards replayed at $0 on a held-out set's recorded rows (R10.3b)
 """
 from __future__ import annotations
 
@@ -16,7 +17,8 @@ import importlib
 import sys
 
 COMMANDS = {"preset": "cli", "ask": "cli", "serve": "server", "replay": "audit", "eval": "eval",
-            "parity": "parity", "mcp": "mcp_server", "bundle": "bundle"}
+            "parity": "parity", "mcp": "mcp_server", "bundle": "bundle",
+            "replay-r9": "replay_r9"}
 
 
 def main(argv: list[str] | None = None) -> int:

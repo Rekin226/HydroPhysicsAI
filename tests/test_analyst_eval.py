@@ -215,6 +215,71 @@ def test_pins_are_enforced(fixed):
         EV.check_pins(EV.check_set(qs2), ok)
 
 
+def _fake_code(fixed):
+    for rel in EV.ROUTE_CODE:                       # a fake checkout of the route code
+        (fixed / rel).parent.mkdir(parents=True, exist_ok=True)
+        (fixed / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    return EV.code_pins()
+
+
+def _code_entry(fixed, **pins):
+    _fake_code(fixed)
+    base = {"page_sha256": "a" * 64, "ledger_sha256": "b" * 64, "arms": ["rules"], "repeats": 1}
+    qs, _ = _tiny(fixed, **base, **pins)
+    return EV.check_set(qs), base
+
+
+def test_code_pins_are_enforced(fixed):
+    """R10.2c: an entry pinning main_commit and code_sha256 runs only on that commit, clean, with
+    those route files; every route file must be pinned."""
+    e, ok = _code_entry(fixed, main_commit="abc1234", code_sha256=_fake_code(fixed))
+    clean = {"commit": "abc1234" + "0" * 33, "dirty": False}
+    EV.check_pins(e, ok | {"main_commit": clean})                     # measured code: matches
+    with pytest.raises(EV.EvalSetError, match="pinned to main_commit"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": "def5678" + "0" * 33, "dirty": False}})
+    with pytest.raises(EV.EvalSetError, match="local"):
+        EV.check_pins(e, ok | {"main_commit": clean | {"dirty": True}})
+    with pytest.raises(EV.EvalSetError, match="git cannot tell"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": None, "dirty": None}})
+    (fixed / "hydrophysics_analyst/router/guards.py").write_text("# changed\n", encoding="utf-8")
+    with pytest.raises(EV.EvalSetError, match="router/guards.py"):
+        EV.check_pins(e, ok | {"main_commit": clean})
+
+
+def test_code_pins_must_cover_every_route_file(fixed):
+    pins = _fake_code(fixed)
+    pins.pop("hydrophysics_analyst/router/llm.py")
+    e, ok = _code_entry(fixed, code_sha256=pins)
+    with pytest.raises(EV.EvalSetError, match="router/llm.py"):
+        EV.check_pins(e, ok)
+    e, ok = _code_entry(fixed, main_commit="abc")
+    with pytest.raises(EV.EvalSetError, match="7 hex"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": "abc" + "0" * 37, "dirty": False}})
+
+
+def test_entries_without_code_pins_still_run(fixed):
+    """Backwards compatible: the spent entries pin no code, and a frozen entry without code pins
+    is checked on its four pins only."""
+    e, ok = _code_entry(fixed)
+    EV.check_pins(e, ok)
+    man = json.loads(EV.EVALSETS.joinpath("MANIFEST.json").read_text(encoding="utf-8"))
+    for name, ent in man["sets"].items():
+        if ent.get("role") == "heldout" and ent.get("status") in EV.CLOSED:
+            with pytest.raises(EV.EvalSetError, match="spent|withdrawn"):
+                EV.check_pins(dict(ent, name=name), {})
+
+
+def test_every_route_file_exists_in_the_package():
+    shas = EV.code_pins()
+    assert set(shas) == set(EV.ROUTE_CODE) and all(shas.values())
+
+
+def test_print_pins(capsys):
+    assert EV.main(["--print-pins"]) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert set(got["code_sha256"]) == set(EV.ROUTE_CODE) and "main_commit" in got
+
+
 def test_out_is_recorded_inside_the_repo(fixed):
     assert EV.repo_relative(Path("results/analyst/eval/x")) == "results/analyst/eval/x"
     assert EV.repo_relative(fixed / "results" / "y") == "results/y"

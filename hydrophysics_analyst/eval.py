@@ -36,6 +36,12 @@ per arm. A completed attempt refuses any rerun; an unfinished one may be retried
 ``--retry-reason`` (logged); a set name already logged under another sha, a renamed copy of a
 held-out or logged set (its bytes under another name, any manifest), and a ``spent`` or
 ``withdrawn`` set, are refused.
+
+Code pins (ruling R10.2c, optional, backwards compatible): a held-out entry may also pin
+``main_commit`` (the commit the run must be made from, with no local change to the tracked
+package code) and ``code_sha256`` ({repo path: sha256} of the code that decides a route; it must
+cover every file of ``ROUTE_CODE``). Either pin refuses the run on any mismatch.
+``python -m hydrophysics_analyst eval --print-pins`` prints both for the current checkout.
 """
 from __future__ import annotations
 
@@ -44,6 +50,7 @@ import datetime as dt
 import hashlib
 import json
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -67,6 +74,18 @@ PINS = ("page_sha256", "ledger_sha256", "arms", "repeats")    # a frozen held-ou
 CLOSED = ("spent", "withdrawn")
 ARMS = {"rules": None, "opus-low": "claude-opus-5-5", "opus-low-all": "claude-opus-5-5",
         "haiku-low": "claude-haiku-5-5"}
+
+
+# the code that decides a route or scores it (ruling R10.2c): a held-out entry may pin its sha256
+ROUTE_CODE = ("hydrophysics_analyst/router/__init__.py", "hydrophysics_analyst/router/guards.py",
+              "hydrophysics_analyst/router/rules.py", "hydrophysics_analyst/router/llm.py",
+              "hydrophysics_analyst/router/schemas.py", "hydrophysics_analyst/router/zh.py",
+              "hydrophysics_analyst/eval.py", "hydrophysics_analyst/ask.py",
+              "hydrophysics_analyst/llm/backend.py", "hydrophysics_analyst/binding.py",
+              "hydrophysics_analyst/presets.py", "hydrophysics_analyst/query.py",
+              "hydrophysics_analyst/validate.py", "hydrophysics_analyst/page.py")
+CODE_PINS = ("main_commit", "code_sha256")
+_TRACKED = ("hydrophysics_analyst", "hydrophysics")     # no local change allowed under main_commit
 
 
 class EvalSetError(RuntimeError):
@@ -138,6 +157,60 @@ def check_pins(entry: dict, run: dict) -> None:
             want, got = list(want), list(got)
         if want != got:
             raise EvalSetError(f"{entry['name']} is pinned to {k} {want}, not {got}")
+    check_code_pins(entry, run)
+
+
+def code_pins(paths=ROUTE_CODE, repo: Path | None = None) -> dict:
+    """{repo path: sha256} of the route-deciding code in this checkout (None for a missing file)."""
+    root = Path(repo or REPO)
+    return {p: (file_sha256(root / p) if (root / p).is_file() else None) for p in paths}
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30)
+
+
+def head_commit(repo: Path | None = None) -> dict:
+    """The checkout's HEAD commit and whether its tracked package code has local changes;
+    ``commit`` is None when git cannot tell."""
+    repo = Path(repo or REPO)
+    try:
+        head = _git(repo, "rev-parse", "HEAD")
+        dirty = _git(repo, "diff", "--quiet", "HEAD", "--", *_TRACKED)
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": None, "dirty": None}
+    if head.returncode != 0:
+        return {"commit": None, "dirty": None}
+    return {"commit": head.stdout.strip(), "dirty": dirty.returncode != 0}
+
+
+def check_code_pins(entry: dict, run: dict) -> None:
+    """The optional code pins of a held-out entry (R10.2c). ``run`` may carry ``main_commit``
+    ({commit, dirty}) and ``code_sha256`` as measured; otherwise they are measured here."""
+    name = entry.get("name")
+    if entry.get("main_commit") is not None:
+        want = str(entry["main_commit"])
+        got = run.get("main_commit") or head_commit()
+        if len(want) < 7:
+            raise EvalSetError(f"{name} pins main_commit {want!r}: give at least 7 hex digits")
+        if not got.get("commit"):
+            raise EvalSetError(f"{name} is pinned to commit {want[:12]}, and git cannot tell this "
+                               f"checkout's commit")
+        if not got["commit"].startswith(want):
+            raise EvalSetError(f"{name} is pinned to main_commit {want[:12]}, not "
+                               f"{got['commit'][:12]}")
+        if got.get("dirty") is not False:
+            raise EvalSetError(f"{name} is pinned to main_commit {want[:12]}: the checkout has local "
+                               f"changes under {list(_TRACKED)} (run from a clean checkout)")
+    if entry.get("code_sha256") is not None:
+        want = dict(entry["code_sha256"])
+        missing = [p for p in ROUTE_CODE if p not in want]
+        if missing:
+            raise EvalSetError(f"{name} pins code_sha256 without {missing}: pin every route file")
+        got = run.get("code_sha256") or code_pins(tuple(want))
+        bad = sorted(p for p in want if got.get(p) != want[p])
+        if bad:
+            raise EvalSetError(f"{name} is pinned to other code: sha256 differs for {bad}")
 
 
 def repo_relative(out: Path) -> str:
@@ -447,7 +520,10 @@ def choose(summaries: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--page", type=Path, required=True)
+    ap.add_argument("--page", type=Path)
+    ap.add_argument("--print-pins", action="store_true",
+                    help="print main_commit and code_sha256 of this checkout (to freeze a held-out "
+                         "set) and exit")
     ap.add_argument("--ledger", type=Path)
     ap.add_argument("--questions", type=Path, default=QUESTIONS)
     ap.add_argument("--arms", default="rules,opus-low")
@@ -460,6 +536,12 @@ def main(argv=None) -> int:
     ap.add_argument("--retry-reason", default=None,
                     help="an engineering retry of an unfinished held-out attempt (logged)")
     a = ap.parse_args(argv)
+    if a.print_pins:
+        print(json.dumps({"main_commit": head_commit()["commit"], "dirty": head_commit()["dirty"],
+                          "code_sha256": code_pins()}, indent=1))
+        return 0
+    if a.page is None:
+        ap.error("--page is required")
     run = {"arms": a.arms.split(","), "repeats": a.repeats}
     try:
         entry = check_set(a.questions, a.manifest)
@@ -487,9 +569,10 @@ def main(argv=None) -> int:
             check_pins(entry, run | shas)
             out_rel = repo_relative(out)
             out = REPO / out_rel
+            pins = {k: entry[k] for k in CODE_PINS if entry.get(k) is not None}
             att = begin_attempt(entry, ATTEMPTS, retry_reason=a.retry_reason,
-                                info=shas | {"arms": a.arms, "repeats": a.repeats, "out": out_rel,
-                                      "n_questions": len(items)})
+                                info=shas | pins | {"arms": a.arms, "repeats": a.repeats,
+                                                    "out": out_rel, "n_questions": len(items)})
         else:
             begin_attempt(entry, a.attempts)
     except EvalSetError as e:
