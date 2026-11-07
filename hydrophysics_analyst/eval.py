@@ -4,8 +4,11 @@
         --arms rules,opus-low --repeats 3 [--out results/analyst/eval/<date>]
 
 Arms:
-  rules         hard refusals + the rules parser only (no API); low-confidence = unrouted
-  opus-low      the deployed pipeline: hard refusals, rules, Claude Opus 5.5 (effort low) when unsure
+  rules         hard refusals + the rules stage only (no API): it refuses or clarifies, and every
+                other question gets the no_llm clarification (ruling R9.2: the rules never route
+                a preset); low-confidence = unrouted
+  opus-low      the deployed pipeline: hard refusals, the rules' refusals and clarifications, then
+                Claude Opus 5.5 (effort low) routes every preset
   opus-low-all  every question not hard-refused goes to the LLM (measures the LLM alone)
   haiku-low     as opus-low with Claude Haiku 5.5
 

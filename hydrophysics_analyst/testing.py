@@ -217,3 +217,41 @@ def synthetic_ledger(tmp_path: Path, page: Path) -> Path:
     out = Path(tmp_path) / "claims_synthetic.json"
     out.write_text(json.dumps(led, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
+
+
+class RulesEchoBackend:
+    """TEST DOUBLE ONLY: a fake LLM backend that answers each routing request with the rules
+    parser's own reading, in the LLM's structured-output shape. Tests use it to reach a preset
+    through the LLM path (ruling R9.2: the rules stage never routes a preset itself), so the
+    preset still passes ``from_llm_json``, the enabled-preset check and ``inherit``. Never wire
+    it into a deployment: that would bring back the rules routing presets."""
+
+    name = "fake-rules-echo"
+
+    def __init__(self, b):
+        self.b, self.calls = b, []
+
+    def complete(self, system, messages, *, output_format=None, effort="low", max_tokens=1024):
+        from . import query as Q
+        from .llm.backend import NormalizedResponse
+        from .router.rules import RulesRouter
+        req = json.loads(messages[0]["content"][0]["text"])
+        self.calls.append(req)
+        r = RulesRouter(self.b).route(req["question"], req.get("previous"))
+        p = r.params
+        town = p.get("town")
+        out = {"preset": None if (r.refusal or r.clarify or r.preset == "refuse") else r.preset,
+               "cuts": p.get("cuts"), "start": p.get("start"), "year": p.get("year"),
+               "town": Q.ctx(self.b).towns[town]["en"] if isinstance(town, int) else town,
+               "by": p.get("by"), "target_m": p.get("target_m"), "refusal": r.refusal,
+               "clarify": (r.clarify or {}).get("reason"), "inherit": list(r.inherit),
+               "answer_lang": r.lang}
+        return NormalizedResponse(text=json.dumps(out, ensure_ascii=False), stop_reason="end_turn",
+                                  model=self.name)
+
+
+def echo_llm(b):
+    """An LLMRouter over :class:`RulesEchoBackend` (tests only)."""
+    from .router import routed_presets
+    from .router.llm import LLMRouter
+    return LLMRouter(b, RulesEchoBackend(b), presets=routed_presets())

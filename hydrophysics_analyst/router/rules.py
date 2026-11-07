@@ -1,4 +1,6 @@
-"""Deterministic question parser (en/zh): most questions never need the LLM.
+"""Deterministic question parser (en/zh). Since ruling R9.2 (2026-11-07) its route stands only
+when it refuses or clarifies; a preset it reads is a hint, and the LLM routes every preset
+(``router.route``).
 
 Dictionaries come from the bound page's payload (class names, township names, years, starts);
 patterns cover percentages, "retire/停止", start and target years, per-GWh ranking, the rail,

@@ -439,7 +439,8 @@ def refuse(b, p, lang):
 
 
 def clarification(b: PageBundle, preset: str | None, params: dict, reason: str, candidates, lang: str) -> Answer:
-    key = reason if reason in ("ambiguous_town", "missing_year", "missing_cut", "out_of_grid") else "unknown"
+    key = (reason if reason in ("ambiguous_town", "missing_year", "missing_cut", "out_of_grid", "no_llm")
+           else "unknown")
     if reason == "beyond_horizon":
         return refuse(b, {"reason": "beyond_horizon"}, lang)
     spans = [Span("frame", S(lang, f"clarify_{key}"), key=f"clarify_{key}", block="meta")]

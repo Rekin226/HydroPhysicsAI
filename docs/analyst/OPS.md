@@ -10,8 +10,33 @@ that opens the page in the same state. Design: [`../superpowers/specs/2026-11-01
 pip install -e ".[analyst]"   # numpy, pandas, anthropic; no torch, no GPU
 ```
 
-The language model is optional. Without `anthropic`, or with `--no-llm`, the rules parser and
-the form still answer every preset.
+The language model is optional. Without `anthropic`, or with `--no-llm`, the example questions,
+the form and the `preset` command still answer every preset; a typed question is then only
+refused or clarified (see Routing).
+
+## Routing (the deployed default, ruling R9.2 of 2026-11-07)
+
+Every typed question goes through three stages, in this order:
+
+1. **Hard refusals** on the raw question. A hit is final and the LLM is never called.
+2. **The rules stage may only refuse or clarify.** Its refusals and its confident
+   clarifications (a start year off the page) are final. It **never answers with a preset on
+   its own**: a preset it reads is only a hint, logged as `rules_hint` in the audit record and
+   not shown to the LLM.
+3. **The LLM routes every preset** (Claude Opus 5.5, effort low, one structured-output call).
+   With no LLM (`--no-llm`, `llm.enabled: false`, no key) or when the call fails, the answer is
+   the `no_llm` clarification: use an example question or the form. It is never the rules'
+   preset.
+
+**Why.** On held-out v3 ([`EVAL_2026-11-07.md`](EVAL_2026-11-07.md)) the old pipeline trusted a
+confident rules route. Every one of its unsafe answers came from that stage sending a
+must-refuse question to a preset: 4 per run, the same 4 each time. The arm in which the LLM
+routed every preset had none. The new order is that arm plus the rules' refusals and
+clarifications.
+
+**Not yet scored.** v3 is spent, so this change has no fair score. A new independent held-out
+set (v4) will score it, with near-miss answerable items for an over-refusal count. The bar
+stays at 97 % and 0 unsafe.
 
 ## Everyday use (the team)
 
@@ -28,7 +53,7 @@ claude mcp add twin-analyst -- python -m hydrophysics_analyst mcp --page <page.h
 
 **In the web shell**:
 - **Example questions** sit above the chat, grouped by preset. A click answers immediately,
-  without the LLM.
+  without the LLM: the example carries its preset and parameters, so no routing is involved.
 - **Clarifications** (an ambiguous township, a start year off the page) offer their candidates as
   one-click answers.
 - **Charts.** Answers with a head series, a ranking, a full-run comparison or a cost share include

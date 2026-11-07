@@ -132,7 +132,7 @@ class NullBackend:
     name = "none"
 
     def complete(self, *a, **k):
-        raise BackendUnavailable("no LLM backend configured (rules parser and form only)")
+        raise BackendUnavailable("no LLM backend configured (rules refusals, examples and form only)")
 
 
 PRICES = {  # USD per million tokens (input, output, cache read)

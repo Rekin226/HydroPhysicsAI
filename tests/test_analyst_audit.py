@@ -22,19 +22,29 @@ def built(tmp_path_factory):
     return page, led, PageBundle.load(page, led, allow_pending=True)
 
 
-def test_ask_rules_path_logs_and_replays(built, tmp_path):
+def test_ask_llm_path_logs_and_replays(built, tmp_path):
     page, led, b = built
-    ans, v, rec = ask(b, "停止養殖抽水對2032年水位影響？", use_llm=False, audit_dir=tmp_path)
-    assert v == [] and rec["stage"] == "rules" and ans.lang == "zh"
+    ans, v, rec = ask(b, "停止養殖抽水對2032年水位影響？", llm=testing.echo_llm(b), audit_dir=tmp_path)
+    assert v == [] and rec["stage"] == "llm" and ans.lang == "zh" and ans.preset == "policy_head"
+    assert rec["rules_hint"]["preset"] == "policy_head"         # the rules' parse, logged only
     again = audit.replay(rec["id"], b, tmp_path)
     assert again.text() == ans.text()
 
 
+def test_without_the_llm_a_preset_question_is_clarified_not_answered(built, tmp_path):
+    _, _, b = built
+    ans, v, rec = ask(b, "停止養殖抽水對2032年水位影響？", use_llm=False, audit_dir=tmp_path)
+    assert v == [] and rec["stage"] == "rules" and ans.clarify["reason"] == "no_llm"
+    assert rec["answer_preset"] == "clarify" and rec["rules_hint"]["preset"] == "policy_head"
+    with pytest.raises(audit.ReplayMismatch):                       # nothing was answered
+        audit.replay(rec["id"], b, tmp_path)
+
+
 def test_session_follow_up(built, tmp_path):
     _, _, b = built
-    s = Session()
-    ask(b, "Cut aquaculture 30% from 2026", use_llm=False, audit_dir=tmp_path, session=s)
-    ans, _, _ = ask(b, "same for 2030", use_llm=False, audit_dir=tmp_path, session=s)
+    s, llm = Session(), testing.echo_llm(b)
+    ask(b, "Cut aquaculture 30% from 2026", llm=llm, audit_dir=tmp_path, session=s)
+    ans, _, _ = ask(b, "same for 2030", llm=llm, audit_dir=tmp_path, session=s)
     assert ans.params["start"] == 2030 and ans.params["cuts"][0]["class"] == "aquaculture"
 
 
@@ -59,7 +69,7 @@ def test_clarification_is_not_a_validator_failure(built, tmp_path):
 
 def test_replay_refuses_another_page(built, tmp_path):
     page, led, b = built
-    _, _, rec = ask(b, "Retire aquaculture", use_llm=False, audit_dir=tmp_path)
+    _, _, rec = ask(b, "Retire aquaculture", llm=testing.echo_llm(b), audit_dir=tmp_path)
     other = PageBundle.load(page, led, allow_pending=True)
     other.page_sha256 = "x" * 64
     with pytest.raises(audit.ReplayMismatch):

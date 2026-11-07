@@ -3,8 +3,8 @@
     python -m hydrophysics_analyst mcp --page results/twin/twin_app_20261107a.html
 
 Register in Claude Code, e.g. ``claude mcp add twin-analyst -- python -m hydrophysics_analyst mcp
---page <page>``. Tools: ``ask_twin`` (a plain-language question, routed by the rules parser and,
-if needed, the LLM router) and one tool per preset with its enum-only schema. Every tool returns
+--page <page>``. Tools: ``ask_twin`` (a plain-language question: the rules may refuse or clarify,
+the LLM router chooses every preset) and one tool per preset with its enum-only schema. Every tool returns
 a finished answer that already passed the validator and was written to the audit log, prefixed
 with an instruction to relay it verbatim.
 
