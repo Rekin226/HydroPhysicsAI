@@ -7,6 +7,7 @@ and ``e24Line()``, line by line and claim by claim.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -80,6 +81,46 @@ MC = {
                                                 "lo": [-2.0, -1.0], "hi": [0.3, 0.4]}}},
            "lofo": {"Yunlin": {"inside": 40, "n": 44}, "Changhua": {"inside": 41, "n": 44}}},
 }
+# the registry flags and result blocks the build reads from the local registry (absent on CI,
+# where results/ is not checked out): set here, made-up numbers, so the page carries every line
+REG = {k: True for k in ("e02c", "ext", "no_band", "n3", "n3sl", "fv", "x5clm", "x5n2c", "fs",
+                         "e02d", "e02y", "dr", "fm", "fv2", "fvext", "fw1", "fw2", "chx", "chb",
+                         "fvs2", "n2rd", "chx2c", "sd2", "e02z")} | {"n3_conv12": False,
+                                                                     "n3_conv24": False}
+RES = {
+    "fv": {"status": "not_evaluable", "why": "superposition failed",
+           "superposition": {"pass": False, "max_abs_window_m": 0.31, "tolerance_m": 0.02}},
+    "x5clm": {"evaluable": True, "F": 0.45, "caps_c13a_at_N": True},
+    "x5n2c": {"status": "estimated", "false_pass": 0.12},
+    "fm": {"case": "within_first_year", "clause_case": "window_beyond_memory", "lstar_months": 10,
+           "lstar_month": "2023-10", "floor_m": 0.06},
+    "dr": {"Yunlin": {"evaluable": True, "excess_drift_6y_m": 0.7, "include_drift": True},
+           "Changhua": {"evaluable": False, "excess_drift_6y_m": None, "include_drift": False}},
+    "fv2": {"status": "scored", "level": "not_shown_weak", "p_level": 0.95,
+            "coverage": {"Yunlin": {"reading": "weak_by_design", "p": 0.33},
+                         "Changhua": {"reading": "not_shown_weak", "p": 0.52}}},
+    "fv2fy": {"status": "scored", "rain": "climatology",
+              "rc": {"Yunlin": {"reading": "not_shown_to_omit", "rc": 0.95, "t_lo": 0.94,
+                                "t_hi": 0.96, "lo": 0.93, "hi": 0.97},
+                     "Changhua": {"reading": "not_represented"}},
+              "agg": {"n2_lo": -0.55, "n2_hi": 0.6, "l2_lo": -0.4, "l2_hi": 0.42}},
+    "fvext": {"status": "scored", "reading": "not_shown_weak", "p": 0.6},
+    "chx": {"verdict": "direction_supported_size_not", "beta": 0.17, "lo": 0.03, "hi": 0.44,
+            "n_wells": 21},
+    "chb": {"verdict": "direction_supported", "beta": 0.37, "lo": 0.15, "hi": 1.3, "n_wells": 11,
+            "p_k0": 0.14, "p_k1": 0.35},
+    "fvs2": {"status": "scored", "reading": "not_shown_weak", "p": 0.93, "p0": 0.48},
+    "n2rd": {"wording": "informative", "false_pass": 0.2, "ws05": 0.75, "ws2": 0.02, "cov": 0.83,
+             "power": 0.95, "power_canal": 0.15, "power_forcing": 0.5},
+    "chx2c": {"reading": "not_separable", "beta": 0.15, "lo": -0.04, "hi": 0.45},
+    "sd2": {"label": "model-form spread, not an interval",
+            "ab": {"n_columns": 9, "lo_cm": 0.5, "hi_cm": 1.4, "coast_lo": 0.4, "coast_hi": 0.75,
+                   "inland_robust": False, "inland_ratio": 2.0, "inland_lo_cm": 0.54,
+                   "inland_hi_cm": 1.09},
+            "a": {"n_columns": 3, "lo_cm": 1.39, "hi_cm": 1.42, "coast_lo": 0.596,
+                  "coast_hi": 0.6, "inland_robust": True, "inland_ratio": 1.01,
+                  "inland_lo_cm": 1.07, "inland_hi_cm": 1.08}},
+}
 # the round-8 page lines the port now mirrors (plan #19), by their own page string
 PORTED = ("ev_status", "evc_nc_fail", "evc_cov", "evc_pro_iv", "evc_pro_dr", "evc_hyb",
           "evc_ring_ref", "evc_pile", "evc_pr_heads", "evc_pr_ch_head", "evc_pr_heads_size",
@@ -101,7 +142,9 @@ def _page(tmp_path, *, pb=True, members=True, fy_agg=True, all30=False):
     from hydrophysics.twin.release import read_payload
     page = testing.build_synthetic_page(tmp_path, all30=all30)
     p = read_payload(page)
-    p["modelcard"].update(MC)
+    p["modelcard"].update(copy.deepcopy(MC))
+    p["modelcard"]["registrations"] = dict(REG)
+    p["modelcard"]["results"] = copy.deepcopy(RES)
     if not pb:
         p["modelcard"].pop("pb")
     if not fy_agg:
