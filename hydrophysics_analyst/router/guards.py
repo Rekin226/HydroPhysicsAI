@@ -144,17 +144,22 @@ def has_lever(s: str) -> bool:
 # suit ("and Changhua too", "so does Changhua", 彰化也一樣, 彰化比照) — the lever is Changhua's too
 _CH = r"(?:(?:chang|zhang)[\s\-_']*hua|changhwa|彰化)(?:'s)?(?:\s*county|縣)?"
 _YU = r"(?:yun[\s\-]*lin|雲林)(?:'s)?(?:\s*county|縣)?"
-_JOIN = r"\s*(?:,?\s*and|&|plus|as\s+well\s+as|along\s+with|together\s+with|,|和|與|跟|及|以及|、|同)\s*"
+_JOIN = (r"\s*(?:,?\s*and|&|plus|as\s+well\s+as|along\s+with|together\s+with|,|和|與|跟|及|以及|、|同)"
+         r"\s*(?:(?:in|for|across|to)\s+(?:the\s+)?)?")          # "in Yunlin and in Changhua"
 BOTH = [rf"\b{_YU}{_JOIN}{_CH}", rf"{_CH}{_JOIN}{_YU}", rf"\bboth\b[^.?!;]{{0,40}}{_CH}",
         rf"{_CH}[^.?!;]{{0,40}}\bboth\b", rf"(?:{_YU}|{_CH})[^。？?！!；;]{{0,12}}都",
         "兩縣", "兩個縣", "雙方", "彰雲", "雲彰"]
-ALSO = [rf"{_CH}\s*,?\s+(?:too|as\s+well|also|likewise)\b", rf"\bso\s+(?:does|do|did|will|would)\s+{_CH}",
+ALSO = [rf"{_CH}\s*,?\s+(?:too|as\s+well|also|likewise)\b", rf"\b(?:so|as)\s+(?:does|do|did|will|would)\s+{_CH}",
+        rf"{_CH}\s*[:：,，\-–—]?\s*(?:the\s+)?same\b",                     # "Changhua: same"
+        rf"\b(?:appl\w*|extend\w*|imposed|introduced|rolled\s+out)\s+(?:also\s+|too\s+|as\s+well\s+)?"
+        rf"(?:to|in|on|across)\s+(?:the\s+)?{_CH}",                       # "applied to Changhua"
         rf"{_CH}\s+(?:does|did|will|would)\s+(?:the\s+same|likewise|too)\b",
         rf"{_CH}\s+(?:matches|matched|matching|follows\s+suit|joins\s+in|copies)\b",
         rf"\b(?:matched|matching|equal|equivalent|same|identical|parallel|similar)\s+(?:\S+\s+){{0,3}}?"
         rf"(?:in|for|by|across)\s+(?:the\s+)?{_CH}",
         rf"{_CH}(?:也|亦|同樣|一樣|跟進|照做|比照|同步|跟著)", rf"(?:也|同樣|一樣|比照|跟進)[^，,。？?]{{0,4}}{_CH}"]
-_PREP_TO_COUNTY = re.compile(r"^\s*(?:\S+\s+){0,4}?(?:in|at|for|across|by|throughout|within|of|from|on|among)"
+_PREP_TO_COUNTY = re.compile(r"^\s*(?:\S+\s+){0,4}?(?:in|at|for|across|by|throughout|within|of|from|on|among|"
+                             r"(?:appl\w*|extend\w*|imposed|introduced)\s+(?:also\s+)?(?:to|in|on))"
                              r"\s+(?:the\s+)?$|^\s*$", re.I)
 
 
@@ -336,7 +341,14 @@ def subsidence_size(s: str) -> bool:
     if not subsidence_words(s):
         return False
     asks_size, scope = _has(MAGNITUDE + SIZE_ADJ, s), area_scope(s)
-    if _has(RAIL_WORDS, s) and _has(DIFFERENTIAL, s) and not asks_size and not scope:
+    # the rail exemption covers the differential settlement only: once those words are taken
+    # out, nothing else may speak of the ground sinking ("the avoided subsidence and the HSR
+    # differential settlement" is still a size question)
+    rest = s
+    for d in DIFFERENTIAL:
+        rest = re.sub(d, " ", rest, flags=re.I)
+    if (_has(RAIL_WORDS, s) and _has(DIFFERENTIAL, s) and not asks_size and not scope
+            and not subsidence_words(rest)):
         return False
     return not how_sure_only(s)
 

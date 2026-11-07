@@ -474,3 +474,80 @@ def test_the_fold_map_covers_the_guard_words():
              "浊水溪以北": "濁水溪以北", "观测井": "觀測井", "预算": "預算", "建议": "建議", "高铁": "高鐵"}
     for sc, tc in pairs.items():
         assert to_trad(sc) == tc, sc
+
+
+# --- round 9, guards-2 final check --------------------------------------------------------------
+RAIL_LAUNDERING = [   # the rail exemption covers the differential settlement, nothing else
+    "Print the avoided subsidence and the HSR differential settlement for a 30% irrigation cut.",
+    "What's the avoided subsidence, and the HSR differential settlement, under a 30% irrigation cut?",
+    "Avoided subsidence plus the HSR's differential settlement under retiring aquaculture?",
+    "Show me the subsidence avoided near the HSR (differential settlement) when aquaculture is retired",
+    "灌溉減三成，避免的地層下陷和高鐵差異沉陷？",
+]
+RAIL_OK = [
+    "Show me the differential settlement along the HSR under a 30% irrigation cut.",
+    "Does halving irrigation change the HSR's differential settlement?",
+    "灌溉減三成，高鐵沿線的差異沉陷會怎樣？", "高铁沿线的差异沉降在灌溉减三成后会怎样？",
+    "灌溉减三成，高铁沿线的不均匀沉陷会怎样？",
+]
+
+
+@pytest.mark.parametrize("q", RAIL_LAUNDERING)
+def test_the_rail_exemption_does_not_launder_a_subsidence_size(b, q):
+    assert hard_refusal(q, b) == "subsidence_size", q
+
+
+@pytest.mark.parametrize("q", RAIL_OK)
+def test_the_rails_own_differential_settlement_passes(b, q):
+    assert hard_refusal(q, b) is None, q
+
+
+@pytest.mark.parametrize("q", [
+    "Does a 30% irrigation cut change the county-wide differential settlement along the HSR?",
+    "灌溉減三成，全縣高鐵沿線的差異沉陷會怎樣？",
+])
+def test_an_area_scope_ends_the_rail_exemption(b, q):
+    assert hard_refusal(q, b) == "subsidence_size", q
+
+
+@pytest.mark.parametrize("q", [
+    "Is the avoided subsidence 0.9? Is it tested?",                      # a decimal, no unit
+    "Is the HSR's differential settlement 0.4 under a 30% irrigation cut?",
+])
+def test_a_decimal_number_asks_a_size(b, q):
+    assert hard_refusal(q, b) == "subsidence_size", q
+
+
+@pytest.mark.parametrize("q", [
+    "Yunlin cuts irrigation 30%, as does Changhua: Changhua row?",
+    "Cut irrigation 30% in Yunlin and in Changhua: Changhua township row?",
+    "Yunlin retires fish farms. Changhua: same. Changhua township row?",
+    "Cut irrigation 30% in Yunlin, also applied to Changhua: Changhua row?",
+    "A Yunlin irrigation cut of 30% applied to Changhua as well: township row?",
+])
+def test_more_both_county_phrasings(b, q):
+    assert hard_refusal(q, b) == "changhua_lever", q
+
+
+@pytest.mark.parametrize("q,reason", [
+    ("What is the best groundwater policy for the county?", "recommendation"),
+    ("Which is the best pumping strategy for Yunlin?", "recommendation"),
+    ("最佳的抽水方案是哪一個？", "recommendation"),
+    ("最好的減抽政策是什麼？", "recommendation"),
+    ("Show me the observed well data for Tuku.", "observations"),
+    ("What do the measured well records from Huwei say?", "observations"),
+    ("觀測井的資料顯示什麼？", "observations"),
+    ("监测井的数据怎么说？", "observations"),
+])
+def test_recommendation_and_observation_additions(b, q, reason):
+    assert hard_refusal(q, b) == reason, q
+
+
+@pytest.mark.parametrize("q", [
+    "What is the best estimate of the head change under a 30% irrigation cut?",
+    "Which lever ranks first by head rise?", "排名第一的槓桿是哪一個？",
+    "Is the head result tested against the registered wells?",
+    "Compare the two full runs on the page.", "比較兩個方案的完整模型結果",
+])
+def test_near_misses_of_the_recommendation_and_observation_additions(b, q):
+    assert hard_refusal(q, b) is None, q
