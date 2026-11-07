@@ -543,29 +543,34 @@ def test_a_three_outcome_reading_refuses_an_inconsistent_ledger():
         P.recount(ledger, pmap)
 
 
-def test_e02_follows_its_r9_4_reading_and_is_unchanged_now():
-    """E02's D qualifier comes from E02.decidability.v1's pre-declared outcome once the ledger
-    cites it; on the committed ledger it is still D with decidability unknown."""
+def test_e02_stays_d_unknown_by_r9_4b_and_the_hook_works_on_the_real_ledger():
+    """R9.4b (seventeenth set, user_rulings_2026-11-07d.json sha256 bfeed6d6): E02's drafted
+    reading is not registered or run, so E02's entry stays D-unknown. The reading_outcomes hook
+    is kept; on the real ledger with E02's entry swapped for a hook spec it would grade E02 by a
+    recorded outcome (what-if only; nothing here needs the reading to exist)."""
     pmap = P.load_map()
-    rep = "results/dataprep/reports/E02.decidability.v1/report.json"
-    assert pmap["claims"]["E02"]["grade"] == {"D": {"D": {
-        "measured_by": "E02.decidability.v1", "reading_report": rep,
-        "reading_outcomes": OUTCOMES3, "otherwise": "D-unknown"}}}
-    assert "R9.4" in pmap["rule"] and "338f2de4" in pmap["rule"]
-    assert "R9.4" in pmap["claims"]["E02"]["reason"]
+    assert pmap["claims"]["E02"]["grade"] == {"D": {"D": "D-unknown"}}
+    assert "R9.4b" in pmap["claims"]["E02"]["reason"] and "bfeed6d6" in pmap["claims"]["E02"][
+        "reason"]
+    assert "R9.4b" in pmap["rule"] and "bfeed6d6" in pmap["rule"]
     ledger = _ledger()
     base = P.recount(ledger, pmap)
     assert _row(base, "E02")["grade_key"] == "D-unknown" and _row(base, "E02")["weight"] == 1
     fc0 = base["parts"]["forecast_start_validation"]
-    for out, key in OUTCOMES3.items():           # what-if: the ledger change after the run
+    rep = "reports/E02.what_if/report.json"
+    hook = copy.deepcopy(pmap)
+    hook["claims"]["E02"]["grade"] = {"D": {"D": {
+        "measured_by": "E02.what_if.v1", "reading_report": rep,
+        "reading_outcomes": OUTCOMES3, "otherwise": "D-unknown"}}}
+    assert _row(P.recount(ledger, hook), "E02")["grade_key"] == "D-unknown"
+    for out, key in OUTCOMES3.items():
         lg = copy.deepcopy(ledger)
-        lg["registry_hashes"]["E02.decidability.v1"] = "f" * 64
+        lg["registry_hashes"]["E02.what_if.v1"] = "f" * 64
         e = next(c for c in lg["claims"] if c["id"] == "E02")
-        e["cites"]["registrations"].append("E02.decidability.v1")
         e["cites"]["reports"].append(rep)
-        e["decidability_reading"] = {"registration": "E02.decidability.v1", "report": rep,
+        e["decidability_reading"] = {"registration": "E02.what_if.v1", "report": rep,
                                      "outcome": out}
-        res = P.recount(lg, pmap)
+        res = P.recount(lg, hook)
         assert _row(res, "E02")["grade_key"] == key, out
         delta = {"D-measured": 0.1, "D-weak": -0.1, "D-unknown": 0.0}[key]
         assert res["parts"]["forecast_start_validation"]["official"] - fc0["official"] == \

@@ -1773,24 +1773,43 @@ def test_e02_and_e21_notes_name_c30s_pieces():
     assert "Pass on T-level makes C30-scen's heads part S-limited" in cl["E21"]["notes"]
 
 
-def test_e02_carries_its_r9_4_reading_and_its_grade_follows_only_a_cited_outcome():
-    """R9.4: E02's own pooled rule gets E02.decidability.v1 (three pre-declared outcomes). Until
-    the ledger cites the registration, its report and the recorded outcome, E02 records none;
-    once it does, the row carries all three together (the progress map refuses anything less)."""
+R9B_SRC = "results/dataprep/rulings/user_rulings_2026-11-07d.json (sha256 bfeed6d6)"
+
+
+def test_e02_records_r9_4_and_r9_4b_and_stays_d_unknown():
+    """R9.4 drafted E02.decidability.v1; R9.4b (seventeenth set) keeps it unregistered: FV v2
+    reading 1's P = 0.736 on E02's own rule already leaves E02 not shown decidable. E02 cites
+    no such registration or report and records no reading outcome."""
     e02, reg = CL()["E02"], "E02.decidability.v1"
-    rep = "results/dataprep/reports/E02.decidability.v1/report.json"
     n = e02["notes"]
-    for k in (f"Round 9 (user ruling R9.4, {R9_SRC})", reg, "dataprep_staging/e02_decid",
-              "'measured' (P >= 0.8 and P0 <= 0.2)", "'weak' (P < 0.5 or P0 > 0.5)",
-              "'unchanged' (D unknown, also when not evaluable)", "equal-skill null",
-              "No status change; no page line."):
+    for k in (f"Round 9 (user ruling R9.4b, {R9B_SRC})",
+              "FV.decidability.v2 reading 1 already gives P = 0.736 on E02's own rule (Q0 0.468, "
+              "R0 0.492, R1c 0.992, X5R1 0.992; results/dataprep/reports/"
+              "FV.decidability.v2_postfailure/report_worlds.json, sha 320ac928)",
+              "so E02 is not shown decidable and stays D unknown",
+              "no registration is spent on a known answer", reg,
+              "dataprep_staging/e02_decid", "No status change; no page line."):
         assert k in n, k
-    assert _r9("R9.4") in e02["ruling_also"] and _st("E02") == {"D"}
-    if reg in L()["registry_hashes"]:
-        rec = e02["decidability_reading"]
-        assert reg in e02["cites"]["registrations"] and rep in e02["cites"]["reports"]
-        assert rec["registration"] == reg and rec["report"] == rep
-        assert rec["outcome"] in ("measured", "weak", "unchanged", "not_evaluable")
-    else:
-        assert "decidability_reading" not in e02 and rep not in e02["cites"]["reports"]
+    for x, src in (("sixteenth set) (R9.4)", R9_SRC), ("seventeenth set) (R9.4b)", R9B_SRC)):
+        rid = f"user ruling 2026-11-07 ({x}"
+        assert rid in e02["ruling_also"], rid
+        assert src in next(r["text"] for r in L()["rulings"] if r["id"] == rid), rid
+    assert "superseded by R9.4b" in next(r["text"] for r in L()["rulings"]
+                                         if r["id"] == _r9("R9.4"))
+    assert _st("E02") == {"D"} and "decidability_reading" not in e02
+    assert reg not in L()["registry_hashes"] and reg not in e02["cites"]["registrations"]
+    assert not any(reg in p for p in e02["cites"]["reports"])
     assert reg not in C.template_src()
+    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07d.json"
+    if rf.exists():
+        assert C.sha256(rf).startswith("bfeed6d6")
+
+
+def test_evidence_section_27_records_round_9():
+    ev = " ".join((C.REPO / "docs/TWIN_EVIDENCE_2026-10.md").read_text(encoding="utf-8").split())
+    sec = ev.split("## 27. Round 9 (2026-11-07)")[1]
+    for k in ("338f2de4", "bfeed6d6", R9_LINE, "P = 0.736", "sha 320ac928",
+              "not registered or run", "stays D unknown", "C30-scen, C30-fc",
+              "No status changes"):
+        assert k in sec, k
+    assert "No row uses it" in ev.split("## 26.")[1].split("## 27.")[0]

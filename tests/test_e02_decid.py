@@ -601,8 +601,19 @@ def test_draft_declaration_key_fields(tmp_path, synth):
     assert any("too late" in m for m in late)
 
 
-def test_the_declared_progress_spec_is_the_committed_mapping():
+def test_not_registered_by_r9_4b_and_e02_stays_d_unknown(tmp_path, synth):
+    """User ruling R9.4b: the reading is kept as unregistered code. The docstrings and the
+    declaration say so, readiness never reads 'ready', and E02's committed progress entry stays
+    D-unknown (the hook spec is declared here only)."""
+    for p in (D / "run_e02d1.py", D / "prereg_e02d1.py"):
+        assert "not registered by user ruling R9.4b" in p.read_text(encoding="utf-8"), p
+    assert "bfeed6d6" in R.NOT_REGISTERED
+    d = PR.draft_prereg(prereg_dir=tmp_path, P=synth)
+    assert d["status_note"].startswith("Draft only, not registered by user ruling R9.4b")
+    assert PR.readiness(d, P=synth, prereg_dir=tmp_path)[0].startswith(
+        "E02.decidability.v1 is not registered by user ruling R9.4b")
     pmap = json.loads((REPO / "hydrophysics" / "twin" / "progress_map_v1.json").read_text())
-    assert pmap["claims"]["E02"]["grade"] == {"D": {"D": PR.PROGRESS_SPEC}}
+    assert pmap["claims"]["E02"]["grade"] == {"D": {"D": "D-unknown"}}
+    assert "R9.4b" in pmap["claims"]["E02"]["reason"]
     assert PR.PROGRESS_SPEC["reading_report"] == R.REPORT
     assert PR.PROGRESS_SPEC["reading_outcomes"] == R.LEDGER_GRADE

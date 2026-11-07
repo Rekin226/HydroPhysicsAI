@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4)",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6)",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -175,20 +175,10 @@
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "E02.decidability.v1",
-      "reading_report": "results/dataprep/reports/E02.decidability.v1/report.json",
-      "reading_outcomes": {
-       "measured": "D-measured",
-       "weak": "D-weak",
-       "unchanged": "D-unknown",
-       "not_evaluable": "D-unknown"
-      },
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
-   "reason": "Prospective heads test (E02). FV.decidability.v1 not evaluable; FV v2 reads E02c's rules, while E02's own pooled rule has only a report-only P 0.736 with no null reading: decidability unknown. User ruling R9.4 (sixteenth set, results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4): its registered reading E02.decidability.v1 sets the D qualifier by its pre-declared outcome once the ledger cites the registration with a real hash, lists results/dataprep/reports/E02.decidability.v1/report.json among the row's cites.reports and records the outcome (decidability_reading): measured -> D-measured, weak -> D-weak, unchanged or not evaluable -> D-unknown."
+   "reason": "Prospective heads test (E02). FV.decidability.v1 not evaluable; FV v2 reads E02c's rules, while E02's own pooled rule has only FV v2 reading 1's report-only P 0.736 (Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992) with no null reading: decidability unknown. User ruling R9.4b (seventeenth set, results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6): E02 is not shown decidable and stays D unknown; its drafted reading E02.decidability.v1 is not registered or run, so the three-outcome hook (reading_outcomes) is not used for E02."
   },
   "E03": {
    "part": "forecast_start_validation",

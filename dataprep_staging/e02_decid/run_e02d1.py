@@ -1,6 +1,12 @@
 """E02.decidability.v1 (round 9, user ruling R9.4; model-only, CPU): can E02's OWN pooled rule
 decide?
 
+STATUS: not registered by user ruling R9.4b (seventeenth set,
+results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6). FV.decidability.v2
+reading 1 already gives P = 0.736 on E02's own rule on these same forwards, so the outcome would
+almost surely be 'unchanged'; no registration is spent on a known answer. This file is kept as
+unregistered code: ``run`` refuses without a registration, and none is to be made.
+
 E02 (results/twin/prospective_2026-11, registered 2026-10-11) is decided by
 ``twin.validation.evaluate`` on its registered protocol: pooled central 90 % coverage in
 [0.85, 0.95] AND equal-station RMSE ratio to the month-of-year climatology (``baseline_m``) <=
@@ -193,6 +199,10 @@ ATTEMPTS_NAME = "attempts.jsonl"
 RULINGS = "results/dataprep/rulings/user_rulings_2026-11-07c.json"
 RULINGS_SHA = "338f2de4cfdbf3811c9a871d3bf4972d18c88f8f9da41000f73d287385d7223f"
 RULING_ID = "R9.4"
+NOT_REGISTERED = ("not registered by user ruling R9.4b (seventeenth set, "
+                  "results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6): FV v2 "
+                  "reading 1's P = 0.736 on E02's own rule already leaves E02 not shown decidable "
+                  "(D unknown); no registration is spent on a known answer")
 
 _TAIL = {"en": " Model-only; nothing here is evidence about the aquifer.",
          "zh": "僅模型；此處沒有任何關於含水層的證據。"}

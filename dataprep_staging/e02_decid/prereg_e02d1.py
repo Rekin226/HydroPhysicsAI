@@ -1,7 +1,10 @@
 """Draft declaration of E02.decidability.v1 (harness.prereg3 schema, kind 'declaration'), built
-in code because dataprep_staging/ ignores *.json. Nothing here writes to the registry: the lead
-reviews the draft and registers it with prereg3.write_prereg after this code is on main
-(R7.commit_first). No statistic is computed here; the only things read are sha256s, FV v2's
+in code because dataprep_staging/ ignores *.json. Nothing here writes to the registry.
+
+STATUS: not registered by user ruling R9.4b (seventeenth set,
+results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6): the draft is kept as
+unregistered code, and ``readiness`` always reports that ruling, so the draft never reads
+"ready to register". No statistic is computed here; the only things read are sha256s, FV v2's
 attempts log (hashes), the source declarations' frozen_code, MANIFEST metadata, the rulings
 file and the rule fields of E02's protocol. Every path comes from run_e02d1.DecidPaths, so the
 tests build the draft from synthetic files only.
@@ -137,7 +140,8 @@ BUILDER = (
     "only on synthetic worlds (osse_fv2.build_synthetic; SMOKE_SEED and the tests' seeds); the "
     "registered seed's draws were never made.")
 
-#: the progress-map qualifier this reading feeds (progress_map_v1.json, E02's D at status 'D')
+#: the progress-map qualifier this reading would feed (hydrophysics/twin/progress.py
+#: reading_outcomes); NOT in progress_map_v1.json: by R9.4b E02's entry stays D-unknown
 PROGRESS_SPEC = {"measured_by": R.ID, "reading_report": R.REPORT,
                  "reading_outcomes": dict(R.LEDGER_GRADE), "otherwise": "D-unknown"}
 
@@ -253,6 +257,7 @@ def draft_prereg(prereg_dir=None, P: R.DecidPaths | None = None) -> dict:
                  "three pre-declared outcomes (measured / weak / unchanged), model-only",
         "label": "model-only decidability reading (user ruling R9.4); no fresh units; scored "
                  "once; no follow-up",
+        "status_note": f"Draft only, {R.NOT_REGISTERED}.",
         "estimand": {
             "P": "equal-weight mean over FV v2's truths R0, Q0, R1c and X5R1 of P(E02's rule "
                  "passes | obs = ZR + D_T + R_T,k + e_k) on 2026-11..2027-10 at E02's 158 "
@@ -429,7 +434,7 @@ def readiness(d: dict, P: R.DecidPaths | None = None, prereg_dir=None, now=None)
     """Everything that must hold before the lead registers the draft (empty = ready)."""
     P = P or R.DecidPaths()
     now = now or dt.datetime.now(dt.timezone.utc)
-    out = []
+    out = [f"E02.decidability.v1 is {R.NOT_REGISTERED}"]
     if now >= TOO_LATE:
         out.append("E02's window has closed (2027-10-31): too late for a reading registered "
                    "before the outcome")
@@ -483,7 +488,7 @@ def main(argv=None, prereg_dir=None) -> int:
     print("validate_prereg:", errs or "ok")
     print("readiness:", readiness(d, prereg_dir=prereg_dir) or "ready to register")
     print("this script sha256:", O.sha256(Path(__file__)))
-    print("not written: the lead registers with prereg3.write_prereg after review")
+    print(f"not written: {R.NOT_REGISTERED}")
     return 1 if errs else 0
 
 
