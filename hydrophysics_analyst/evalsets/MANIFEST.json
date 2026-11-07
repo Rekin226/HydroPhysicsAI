@@ -88,7 +88,7 @@
   },
   "eval_questions_heldout_v4.jsonl": {
    "role": "heldout",
-   "status": "frozen",
+   "status": "spent",
    "sha256": "eee8fdd7ef59942fc3fc378d63c57e529e82fdf0a4b09a1c184c915f749d48bf",
    "n": 60,
    "frozen_on": "2026-11-07",
@@ -110,7 +110,8 @@
     "overlap": "max 3-gram Jaccard 0.216 against the dev set, held-out v1 and v2; 0.097 within the set",
     "single_reason": "every refusal and clarify item has exactly one correct reason (v4_034, v4_057, v4_059 rewritten for that)"
    },
-   "note": "held-out v4: scores the round-9 analyst fix (refuse-only rules stage and refusal guards, PRs #96 and #98) once, with the pinned page, ledger, arms and repeats"
+   "note": "fair score = its single run on 2026-11-07 (docs/analyst/EVAL_2026-11-07_v4.md): 0 unsafe in every arm; pipeline opus-low 85.6 % (refusal recall 100 %, 7 over-refusals per run), opus-low-all 87.8 %, rules 38.3 %; no arm meets the 97 % bar. Any later fix is made after seeing it, so reruns are contaminated.",
+   "spent_on": "2026-11-07"
   }
  }
 }
