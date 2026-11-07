@@ -1708,3 +1708,89 @@ def test_c14d_head_contrast_spread_is_a_ledger_and_readme_note_only():
         for k, v in quoted.items():
             assert got[k] == v, (k, got[k])
         assert [got[f"{k}/x"] for k in quoted] == ["x1.18", "x1.17", "x1.30", "x1.33"]
+
+
+# ---- round 9 (user rulings 2026-11-07, sixteenth set, R9.1-R9.4) ------------------------------
+R9_SRC = "results/dataprep/rulings/user_rulings_2026-11-07c.json (sha256 338f2de4)"
+R9_LINE = ("The 2010-11 window is closed as not cleanly testable (user ruling R9.1): no fresh "
+           "wells above the 25-well floor — all 13 Changhua wells were scored by E26 and all 19 "
+           "Yunlin wells' 2010-11 series were loaded by X5EV.")
+R9_ALIAS = ("Alias (ruling R8.7, 2026-11-06): 'C30' in this row means C30-scen, the physics "
+            "scenario row after the split; the first-year forecast of record is C30-fc. "
+            "Round-9 hygiene (2026-11-07, no grade change): the notes name the pieces "
+            "(C30-scen, C30-fc); a bare 'C30' survives only in the quoted wording of earlier "
+            "rounds, read through this alias.")
+
+
+def _r9(x: str) -> str:
+    return f"user ruling 2026-11-07 (sixteenth set) ({x})"
+
+
+def test_round9_rulings_are_recorded():
+    rulings = {r["id"]: r["text"] for r in L()["rulings"]}
+    for x in ("R9.1", "R9.2", "R9.3", "R9.4"):
+        assert _r9(x) in rulings and R9_SRC in rulings[_r9(x)], x
+        assert " Decision: " in rulings[_r9(x)] and "Applies to: " in rulings[_r9(x)], x
+    assert "Close the 2010-11 window as not cleanly testable" in rulings[_r9("R9.1")]
+    assert "Drop the E04/N2 companion registrations" in rulings[_r9("R9.4")]
+    assert "E02.decidability.v1" in rulings[_r9("R9.4")]
+    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07c.json"
+    if rf.exists():                                       # the source, as recorded
+        assert C.sha256(rf).startswith("338f2de4")
+        src = {r["id"]: r for r in json.loads(rf.read_text(encoding="utf-8"))["rulings"]}
+        for x in ("R9.1", "R9.2", "R9.3", "R9.4"):
+            assert src[x]["decision"] in rulings[_r9(x)], x
+
+
+def test_r9_1_closes_the_2010_11_window_on_the_ledger_and_in_readme():
+    """R9.1: the 2010-11 window is closed as not cleanly testable; the closure line sits on
+    E04, E07 and E26 and in README Limits, citing the rulings file; no status changes and no
+    page change."""
+    cl = CL()
+    for cid in ("E04", "E07", "E26"):
+        n = cl[cid]["notes"]
+        assert R9_LINE in n and R9_SRC in n and "no status change" in n.split(R9_LINE)[1], cid
+        assert "supersedes R8.15's 'the 2010-11 window stays unspent'" in n, cid
+        assert _r9("R9.1") in cl[cid]["ruling_also"], cid
+    assert _st("E04") == {"D"} and _st("E07") == {"N"} and _st("E26") == {"S"}
+    readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
+    assert R9_LINE[:-1] in readme and "user_rulings_2026-11-07c.json`, sha256 338f2de4" in readme
+    assert "R9.1" not in C.template_src()
+    assert "Round 9" in L()["status_note"] and "R9.1-R9.4" in L()["status_note"]
+
+
+def test_e02_and_e21_notes_name_c30s_pieces():
+    """Honesty hygiene, no grade change: the notes of E02 and E21 name C30-scen / C30-fc; a
+    bare 'C30' is left only inside the kept alias sentence."""
+    cl = CL()
+    for cid in ("E02", "E21"):
+        n = cl[cid]["notes"]
+        assert n.count(R9_ALIAS) == 1, cid
+        rest = n.replace(R9_ALIAS, "")
+        assert not re.search(r"\bC30(?![-\w])", rest), (cid, re.findall(r".{40}C30.{20}", rest))
+        assert "FH.forcing_sensitivity.v1 context (C30-scen notes)" in n, cid
+        assert _st(cid) == {"D"}, cid
+    assert "Pass on T-level makes C30-scen's heads part S-limited" in cl["E21"]["notes"]
+
+
+def test_e02_carries_its_r9_4_reading_and_its_grade_follows_only_a_cited_outcome():
+    """R9.4: E02's own pooled rule gets E02.decidability.v1 (three pre-declared outcomes). Until
+    the ledger cites the registration, its report and the recorded outcome, E02 records none;
+    once it does, the row carries all three together (the progress map refuses anything less)."""
+    e02, reg = CL()["E02"], "E02.decidability.v1"
+    rep = "results/dataprep/reports/E02.decidability.v1/report.json"
+    n = e02["notes"]
+    for k in (f"Round 9 (user ruling R9.4, {R9_SRC})", reg, "dataprep_staging/e02_decid",
+              "'measured' (P >= 0.8 and P0 <= 0.2)", "'weak' (P < 0.5 or P0 > 0.5)",
+              "'unchanged' (D unknown, also when not evaluable)", "equal-skill null",
+              "No status change; no page line."):
+        assert k in n, k
+    assert _r9("R9.4") in e02["ruling_also"] and _st("E02") == {"D"}
+    if reg in L()["registry_hashes"]:
+        rec = e02["decidability_reading"]
+        assert reg in e02["cites"]["registrations"] and rep in e02["cites"]["reports"]
+        assert rec["registration"] == reg and rec["report"] == rep
+        assert rec["outcome"] in ("measured", "weak", "unchanged", "not_evaluable")
+    else:
+        assert "decidability_reading" not in e02 and rep not in e02["cites"]["reports"]
+    assert reg not in C.template_src()

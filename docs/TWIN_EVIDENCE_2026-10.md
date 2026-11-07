@@ -2196,7 +2196,14 @@ The rule:
   is D with decidability measured by its registered reading,
   `results/dataprep/reports/E02z.level_years23.v1/decidability/report.json` (sha256 0e5e83d3,
   declared by `E02z.level_years23.v1`; "not_shown_weak" in every county and window: Yunlin P
-  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites.
+  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites. A reading may instead
+  pre-declare several outcomes (user ruling R9.4, sixteenth set,
+  `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4): E02's qualifier
+  follows the outcome of `E02.decidability.v1`, its own pooled rule's reading (measured: D
+  measured; weak: D weak; unchanged or not evaluable: D unknown), once the ledger cites the
+  registration with a real hash, lists its report and records the outcome on the row; a cited
+  reading without a recorded outcome, or an outcome without both citations, refuses. Until then
+  E02 is D with decidability unknown, as today.
 - **Composite statuses** (R8.16a; flagged in the output: C05, C09, C14a, C14a-r, C14b, C14e,
   C26, and at the audit state C01 and C30): a W anywhere grades the row W; otherwise the row is
   graded by its first code, the status of what the row shows now (a trailing D is the pending
