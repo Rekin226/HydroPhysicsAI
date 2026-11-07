@@ -18,7 +18,26 @@ refused or clarified (see Routing).
 
 Every typed question goes through three stages, in this order:
 
-1. **Hard refusals** on the raw question. A hit is final and the LLM is never called.
+1. **Hard refusals** on the raw question. A hit is final and the LLM is never called. They
+   include four deterministic guards ([`router/guards.py`](../../hydrophysics_analyst/router/guards.py)),
+   in English and Chinese (traditional and simplified). Each guard only refuses; none routes.
+   - `changhua_lever`: Changhua by name (also "chang hua"), by one of its townships (二林,
+     溪州, Erlin ...), or by geography (north of the Choushui River, 濁水溪以北, 溪北, the
+     county to the north, both counties). The one exception is the pooled township row asked
+     by the name Changhua, with no lever and no head.
+   - `subsidence_size`: how much the ground sinks, settles or rebounds, in any wording ("land
+     settle", 地面少沉, 沉降, cm, 公分). Three exceptions: a named Yunlin township (its
+     internals row), the rail's differential settlement, and questions about how far the
+     result is tested that do not ask for a size.
+   - `beyond_horizon`: any year, lead or decade after the page's last year. This includes
+     "N years after a start", 十年後, 民國125年, "after 2032" and "the 2040s".
+   - `township_head` (ruling D3): a township reference together with any head word (water
+     level, groundwater, water table, aquifer, 水位, 地下水), unless the question is about
+     subsidence.
+
+   The guards were written from the ledger rulings and the page. Their authors knew only the
+   four failure classes of the v3 report, not its items. On the dev set they refuse 0 of the
+   117 answerable items (`over_refusals` in the eval summary).
 2. **The rules stage may only refuse or clarify.** Its refusals and its confident
    clarifications (a start year off the page) are final. It **never answers with a preset on
    its own**: a preset it reads is only a hint, logged as `rules_hint` in the audit record and

@@ -1,7 +1,7 @@
 """Question routing: hard refusals, then the rules (refuse or clarify only), then the LLM.
 
-Order (spec §8, ruling R9.2 of 2026-11-07): ``hard_refusal`` on the raw question first — a hit
-skips the LLM entirely; then the rules parser, which may only **refuse or clarify**: it never
+Order (spec §8, ruling R9.2 of 2026-11-07): ``hard_refusal`` on the raw question first (with the
+deterministic guards of ``router.guards``) — a hit skips the LLM entirely; then the rules parser, which may only **refuse or clarify**: it never
 routes a preset on its own. Every preset is chosen by one LLM structured-output call. The rules'
 own parse travels along as a hint (``info["rules_hint"]``, logged in the audit record); it is not
 put into the LLM's prompt, so the LLM routes the question as if the rules had not read it.

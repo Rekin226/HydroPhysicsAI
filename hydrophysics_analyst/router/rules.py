@@ -7,8 +7,10 @@ patterns cover percentages, "retire/停止", start and target years, per-GWh ran
 start comparisons and follow-up patches ("same for 2026", 「改成2030年」).
 
 ``hard_refusal`` runs on the raw question before anything else and overrides any route, rules
-or LLM (spec §8): any Changhua mention (except asking for the pooled township row), subsidence
-size or area, money or volumes, recommendations, individual observations, years after the horizon.
+or LLM (spec §8): any Changhua mention (except asking for the pooled township row by name), money
+or volumes, recommendations, individual observations, years or leads after the horizon, area,
+subsidence size, a single township's water level (ruling D3). The Changhua, horizon, subsidence
+and township-head checks are the deterministic guards of ``router.guards``.
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import unicodedata
 
 from .. import query as Q
 from ..page import PageBundle
+from . import guards as G
 from .schemas import Route
 
 CLASS_WORDS = {
@@ -48,7 +51,11 @@ RECOMMEND = [r"recommend\w*", r"should\s+(?:we|i|the)", r"which\s+(?:policy|opti
              "該選"]
 OBS = [r"benchmark\w*", r"\bstations?\b", r"\bgnss\b", r"\bgps\b", r"\breadings?\b", r"which\s+well",
        r"specific\s+well", r"well\s+(?:no|#)", r"individual\s+wells?",
-       "水準點", "單一觀測井", "哪一口井", "測站", "觀測站", "監測站", "讀數"]
+       "水準點", "單一觀測井", "哪一口井", "測站", "觀測站", "監測站", "讀數",
+       # one named well's record (not the registered wells, which are the head answer's unit)
+       r"\b(?:the|a|that|this|one)\s+(?:\w+\s+){0,2}monitoring\s+well\b(?!s)",
+       r"(?:那個|這個|某個|那口|這口|某口|一口|那个|这个|某个|这口)[^，,。？?]{0,8}(?:監測井|觀測井|监测井|观测井)",
+       "觀測值", "观测值", "實測值", "实测值"]
 RAIL = [r"\bhsr\b", r"high[-\s]speed\s+rail\w*", r"\bthsr\b", r"\brail\w*", r"\btrain\w*", "高鐵", "鐵路"]
 RANK = [r"\brank\w*", r"which\s+(?:class|lever|use|sector)", r"most\s+effective", r"biggest\s+(?:head\s+)?(?:rise|effect)",
         r"per\s+gwh", r"compare\s+(?:the\s+)?classes", "排序", "哪個類別", "哪一類", "效益最高", "最有效"]
@@ -64,8 +71,6 @@ FROM = (r"(?:from|starting(?:\s+in)?|start(?:s|ed|ing)?\s+(?:in\s+)?|beg(?:an|un
 HOWSURE = [r"how\s+(?:sure|confident|reliable|trustworthy|certain)", r"can\s+(?:we|i)\s+trust", r"\bvalidat\w*",
            r"how\s+(?:well\s+)?tested", r"when\s+(?:is|will)\s+(?:it|this)\s+(?:be\s+)?(?:tested|scored)", r"\buncertain\w*",
            "可信", "可靠", "多準", "信心", "驗證", "檢驗", "不確定"]
-HEADQ = [r"water[\s-]*levels?", r"\bheads?\b", r"groundwater\s+(?:level|table)", r"water\s+table",
-         "水位", "水頭", "地下水位"]
 VAGUE_TIME = [r"a\s+few\s+years", r"some\s+years", r"in\s+the\s+future", r"eventually", r"down\s+the\s+road",
               "幾年後", "未來幾年", "以後", "將來"]
 ADD = [r"\balso\b", r"\bplus\b", r"\bon\s+top\b", r"\badd(?:ing)?\b", r"as\s+well", r"\btoo\b",
@@ -91,12 +96,24 @@ def _pooled_names(b: PageBundle) -> list[str]:
     return [n for t in Q.ctx(b).towns if t.get("pooled") for n in (t["en"], t["zh"])]
 
 
+def _yunlin_town(b: PageBundle, s: str) -> bool:
+    """A page township other than the pooled Changhua row is named."""
+    c = Q.ctx(b)
+    t = _town_of(b, s)
+    hits = [t] if isinstance(t, int) else (t or [])
+    return any(not c.towns[i].get("pooled") for i in hits)
+
+
 def hard_refusal(q: str, b: PageBundle) -> str | None:
     s = _norm(q)
-    c = Q.ctx(b)
-    ch = re.search(CHANGHUA, s, re.I) or any(n and n in s for n in _pooled_names(b))
-    # the only allowed Changhua question: the pooled township row's labelled spillover
-    if ch and not (_has(TOWN_INTENT, s) and not _has(LEVER_NEAR_CH, s)):
+    via = G.changhua_ref(s)
+    ch = bool(via) or any(n and n in s for n in _pooled_names(b))
+    # the only allowed Changhua question: the pooled township row's labelled spillover, asked as
+    # that row by the name Changhua itself, with no lever near it and no head (C13a); a Changhua
+    # township or a geographic reference is always refused
+    sl = re.sub(r"chang[\s\-_]*hua", "changhua", s, flags=re.I)
+    if ch and (via - {"word"} or not _has(G.POOLED_ROW, s) or _has(LEVER_NEAR_CH, sl)
+               or _has(G.HEAD_WORDS, s)):
         return "changhua_lever"
     if _has(MONEY, s):
         return "volumes_money"
@@ -104,13 +121,14 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
         return "recommendation"
     if _has(OBS, s):
         return "observations"
-    for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", s):
-        if int(y) > c.years[-1]:
-            return "beyond_horizon"
+    if G.beyond_horizon(s, b):
+        return "beyond_horizon"
     if _has(AREA, s) and _has(SUBS + [r"sink", r"rate", "速率"], s):
         return "area"
-    if _has(SUBS, s) and not _town_of(b, s) and not ch:
+    if G.subsidence_size(s) and not _yunlin_town(b, s) and not ch:
         return "subsidence_size"
+    if G.township_head(s, b):                         # ruling D3
+        return "township_head"
     return None
 
 
@@ -229,12 +247,7 @@ class RulesRouter:
             return Route(lang=lang, confidence=1.0, clarify={"reason": "out_of_grid", "candidates": c.starts})
         town = _town_of(b, s)
         follow = prev is not None and (_has(FOLLOW, s) or (len(s) < 30 and not _has(RAIL + RANK + SOLVED, s)))
-        # ruling D3: a single township's head / water level is not offered (the head answer is the
-        # mean at N2's registered wells); subsidence questions about a township stay internals
-        if ((town is not None or _has(TOWN_INTENT, s)) and _has(HEADQ, s) and not _has(SUBS, s)
-                and not _has(RAIL + RANK, s)):
-            return Route(preset="refuse", params={"reason": "township_head"}, refusal="township_head",
-                         lang=lang, confidence=1.0)
+        # ruling D3 (a single township's water level) is refused by hard_refusal's guard above
         # intent
         if _has(HOWSURE, s) and not cuts and not _has(RAIL + RANK, s):
             return Route(preset="how_sure", params={}, lang=lang, confidence=1.0)

@@ -219,12 +219,18 @@ def test_presets_come_only_from_the_llm_path(b, q, preset, sub):
     assert len(llm.backend.calls) == 1
 
 
-# Must be refused (subsidence size, C03 withdrawn) but worded so the old rules read it as a
-# confident policy_head: "settle" is not one of their subsidence words.
+# Must be refused (subsidence size, C03 withdrawn) but worded so the round-8 rules read it as a
+# confident policy_head ("settle" was not one of their subsidence words). The guards of round 9
+# now refuse it deterministically; here they are switched off, standing for any must-refuse
+# wording that slips past every deterministic check.
 SETTLE = "How much less would the land settle if aquaculture were retired from 2026?"
 
 
-def test_a_must_refuse_question_the_rules_used_to_route_never_reaches_a_preset_from_them(b):
+def test_a_must_refuse_question_the_rules_used_to_route_never_reaches_a_preset_from_them(b, monkeypatch):
+    import hydrophysics_analyst.router as RT
+    import hydrophysics_analyst.router.rules as RU
+    monkeypatch.setattr(RT, "hard_refusal", lambda q, b: None)
+    monkeypatch.setattr(RU, "hard_refusal", lambda q, b: None)
     old = RulesRouter(b).route(SETTLE)
     assert old.preset == "policy_head" and old.confidence >= 0.9      # what the rules read
     r, info = route(b, SETTLE, llm=None)
@@ -246,7 +252,7 @@ def test_an_llm_error_falls_back_to_a_clarification_not_the_rules_preset(b):
 def test_rules_refusals_and_confident_clarifications_stand_without_the_llm(b):
     llm = _llm(b, [])                                   # empty script: any call fails the test
     r, info = route(b, "What would a 30% irrigation cut do to heads in Huwei township by 2032?", llm=llm)
-    assert r.refusal == "township_head" and info["stage"] == "rules"
+    assert r.refusal == "township_head" and info["stage"] == "hard_refusal"     # the D3 guard
     r, info = route(b, "從2027年開始畜牧業減少一半，水位會怎樣？", llm=llm)
     assert r.clarify["reason"] == "out_of_grid" and info["stage"] == "rules"
 
