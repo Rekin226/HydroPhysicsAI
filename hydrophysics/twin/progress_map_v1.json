@@ -1,0 +1,641 @@
+{
+ "schema": "twin-progress-map/1",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b)",
+ "parts": [
+  "head_response_yunlin",
+  "forecast_start_validation",
+  "uncertainty_bands",
+  "subsidence_cut_response",
+  "changhua"
+ ],
+ "grades": {
+  "S": 1.0,
+  "S-dt": 0.9,
+  "S-dt-dir-size": 0.75,
+  "D-measured": 0.7,
+  "D-unknown": 0.6,
+  "D-weak": 0.5,
+  "N": 0.5,
+  "L": 0.25,
+  "W": 0.15
+ },
+ "grades_note": "S: supported by a prospective or fresh registered test; S-dt: S (design-time); S-dt-dir-size: S (design-time), direction only, on a claim about a size; D-measured: a registered synthetic reading says the test can decide; D-unknown: decidability unknown; D-weak: weak by design. A D decidable only after 2030-01-15 is D-pending at the same grades (ruling R8.4b). N, L and W are graded by their code and need no qualifier.",
+ "end_goal_grade": 1.0,
+ "end_goal_note": "end-goal convention (ruling R8.12b, bookkeeping only, never shown alone): a row the mapping marks withdrawn_with_reason (withdrawn under every outcome, with the reason stated in the ledger), registered_undecidable or no_target counts as honestly narrowed, graded end_goal_grade; 'requires' names the registration that must be cited at the ledger state for the mark to apply",
+ "composite": "first",
+ "composite_note": "official rule (user ruling 2026-11-07, fourteenth set, R8.16a): a W in a composite status grades the row W; otherwise the row is graded by its first code, the status of what the row shows now (the trailing D is the pending decider, a trailing L the internals label). The earlier default (mapping default-v1) took the highest code.",
+ "split_weights": true,
+ "split_note": "split rule (user rulings 2026-11-07: R8.16b, fourteenth set, results/dataprep/rulings/user_rulings_2026-11-07.json sha256 c0886864; R8.17a and R8.17d, fifteenth set, results/dataprep/rulings/user_rulings_2026-11-07b.json sha256 7602157b). A row carrying split_of {parent: P, parent_status: S0, piece_status_at_split: s_i} is a piece of the ledger row P, whose status was S0 when it was split, and the piece's own status at the split was s_i; P's entry lists its pieces in split_into. Weight (R8.16b, R8.17d): the parent's display weight W_P is the largest display weight among the pieces present at the ledger state, and piece i weighs w_i = W_P * d_i / sum_j d_j, d being each piece's own display weight (C01's three pieces 2/3 each; C30-scen 4/3 and C30-fc 2/3). Grade (R8.17a, removing only the uplift the split itself created): g_P is P's grade at S0 under the composite-first rule, from P's own mapping entry; m0 is the pieces' weighted mean grade (weights w_i) at their at-split statuses s_i and m1 at their current statuses; the split uplift is u = max(0, m0 - g_P); if u > 0 every piece's grade is multiplied by max(0, m1 - u) / m1, so the pieces' weighted mean becomes m1 - u. The at-split statuses must have unconditional qualifiers, so m0 is fixed by the mapping. Guarantee: the pieces together weigh exactly W_P; at the statuses of the split their mean grade is at most g_P (a split cannot raise its part's weight or grade); a later status change of a piece moves the part by exactly that change's weighted grade (later evidence counts in full). This implements R8.17a's stated intent; the literal reading 'never above g_P' would also freeze later evidence. Uniform scaling can show a piece below its own grade (display only: the part score depends only on the pieces' weighted sum, the same as capping only the piece above the parent). Before a split only P is present and is graded and weighted as P.",
+ "answer_tiles": [
+  "tW",
+  "tC"
+ ],
+ "answer_tiles_note": "the template's TILE_IDS[:PRIMARY] (tests/test_twin_progress.py checks the current template); PRIMARY = 2 at every ledger state since the page scoping of 2026-10-29",
+ "headline_functions": [
+  "renderHeadline"
+ ],
+ "claims": {
+  "C01": {
+   "part": "head_response_yunlin",
+   "grade": {
+    "S+D": {
+     "S": "S-dt-dir-size",
+     "D": "D-unknown"
+    },
+    "S": {
+     "S": "S-dt"
+    }
+   },
+   "reason": "Head change under a policy at N2's unit, the headline answer. Before the round-8 split (status S+D) the row claimed the change itself, a size, while its S covered only the direction (design-time, R0 recipe): S design-time direction-only on a size claim. After the split (status S) the row claims the direction only: S design-time. The D of the pre-split S+D (N2) is graded unknown, as C01-w is (R8.16c); under the composite-first rule the row grades its S.",
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D",
+    "piece_status_at_split": "S"
+   },
+   "split_into": [
+    "C01",
+    "C01-w",
+    "C01-sz"
+   ]
+  },
+  "C01-w": {
+   "part": "head_response_yunlin",
+   "grade": {
+    "D": {
+     "D": "D-unknown"
+    }
+   },
+   "reason": "N2's within-window anomaly response. Decidability measured by X5.n2_reading.v1 ('informative', not decisive: false pass 0.20, power 0.95, 0.15 under the canal confounder); the ledger labels it 'D, decidability measured'. Graded D, decidability unknown, by user ruling 2026-11-07 (fourteenth set) (R8.16c): the 'informative' reading cannot decide under the canal confounder, so it does not say the test can decide.",
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D",
+    "piece_status_at_split": "D"
+   }
+  },
+  "C01-sz": {
+   "part": "head_response_yunlin",
+   "reason": "Size of the head lever by Dec 2032, model-only, 'size likely too small; not gated' (N).",
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D",
+    "piece_status_at_split": "N"
+   }
+  },
+  "C02": {
+   "part": "head_response_yunlin",
+   "reason": "Per-cell layer-2 head difference map (the head answer drawn per cell)."
+  },
+  "C04": {
+   "part": "head_response_yunlin",
+   "reason": "The headline sentence; it now leads with the Yunlin head response (C01) and sends subsidence to Model internals."
+  },
+  "C08": {
+   "part": "none",
+   "reason": "No science part: the energy given up on tile tC is an input and accounting number, labelled so (page_scoping.answer_tiles_allowed_note: 'L only for an input or accounting number labelled so (the cost tile, C08)'); like the configuration line E12 it claims nothing about the response."
+  },
+  "C12": {
+   "part": "head_response_yunlin",
+   "reason": "Class ranking by head rise at N2's wells (model-only linear transfer)."
+  },
+  "C16": {
+   "part": "head_response_yunlin",
+   "grade": {
+    "S": {
+     "S": "S-dt"
+    }
+   },
+   "reason": "Registered N1 head (and subsidence) verdicts; design-time window (masked recipe designed on fits that saw 2016-18)."
+  },
+  "C22": {
+   "part": "head_response_yunlin",
+   "reason": "Which model is the deliverable: N1 head verdicts reach the page model only through a post-hoc, model-only comparison."
+  },
+  "C24": {
+   "part": "head_response_yunlin",
+   "grade": {
+    "S": {
+     "S": "S-dt"
+    }
+   },
+   "reason": "README 'head response supported' (2015 drought, 2016-18 masked), S on R0, design-time. The README sentence claims that a response exists, not its size."
+  },
+  "C28": {
+   "part": "head_response_yunlin",
+   "reason": "Superposition error of the fast estimate of the policy response (the policy engine's accuracy). Weight 2 as derived from display_map.functions.renderHeadline, no override, by user ruling 2026-11-07 (fifteenth set) (R8.17c): the headline code can carry C28's text (hl_none branch)."
+  },
+  "E16": {
+   "part": "head_response_yunlin",
+   "reason": "Policy monotonicity check of the policy engine (not a measured intervention)."
+  },
+  "C30": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "N+D": {
+     "D": {
+      "measured_by": "FV.decidability.v2_postfailure",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "retired": true,
+   "reason": "Retired at ruling R8.7 (split into C30-scen and C30-fc); kept for ledger states before 2026-11-06. Baseline projection fields with registered D sub-labels; the heads part is decided by E02c's strict level rule, whose decidability FV.decidability.v2 measured (level P 0.96, null false pass 0.0).",
+   "split_into": [
+    "C30-scen",
+    "C30-fc"
+   ]
+  },
+  "C30-scen": {
+   "part": "forecast_start_validation",
+   "reason": "Baseline projection fields after Dec 2022: the physics model's average-weather scenario, not a forecast (N), on the baseline headline.",
+   "split_of": {
+    "parent": "C30",
+    "parent_status": "N+D",
+    "piece_status_at_split": "N"
+   }
+  },
+  "C30-fc": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": "D-unknown"
+    }
+   },
+   "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475). Graded D with decidability unknown (0.6) by user ruling 2026-11-07 (fifteenth set) (R8.17b), consistent with C01-w under R8.16c.",
+   "split_of": {
+    "parent": "C30",
+    "parent_status": "N+D",
+    "piece_status_at_split": "D"
+   }
+  },
+  "E01": {
+   "part": "forecast_start_validation",
+   "reason": "After-the-fact 2023-26 new-data check of the frozen forecast (N)."
+  },
+  "E02": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": "D-unknown"
+    }
+   },
+   "reason": "Prospective heads test (E02). FV.decidability.v1 not evaluable; FV v2 reads E02c's rules, while E02's own pooled rule has only a report-only P 0.736 with no null reading: decidability unknown."
+  },
+  "E03": {
+   "part": "forecast_start_validation",
+   "reason": "Statistical layer 2023-26 retrospective score (N)."
+  },
+  "E04": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": "D-unknown"
+    }
+   },
+   "reason": "Statistical layer registered prospectively. FV.stat.v1 was not evaluable (engineering); FV.stat.v2 measured its decidability ('not_shown_weak'). Graded D with decidability unknown (0.6) by user ruling 2026-11-07 (fifteenth set) (R8.17b), consistent with C01-w under R8.16c."
+  },
+  "E07": {
+   "part": "forecast_start_validation",
+   "reason": "Held-out years 2020-22, rule declared before the registry (N)."
+  },
+  "E08": {
+   "part": "forecast_start_validation",
+   "reason": "Unseen wells 5-fold (N)."
+  },
+  "E11": {
+   "part": "forecast_start_validation",
+   "reason": "Observed layer-2 wells and the missed 2022 recovery (N)."
+  },
+  "E15": {
+   "part": "forecast_start_validation",
+   "reason": "Previous / alternative model answers and scores (N)."
+  },
+  "E21": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": "D-weak"
+    }
+   },
+   "reason": "E02c, per-county coverage gate-3 and the strict level rule. FV.decidability.v2 measured the level rule decisive (P 0.96, null false pass 0.0); its coverage half is weak by design in Yunlin (P 0.35) and within Monte Carlo noise of weak in Changhua (0.501). Graded D-weak on its coverage half by user ruling 2026-11-07 (fourteenth set) (R8.16c)."
+  },
+  "E22": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": {
+      "measured_by": "FV.ext.v1",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "reason": "Level at the 66 never-calibrated external wells (N3F); FV.ext.v1 reads N3F's whole rule 'not shown weak' (P 0.59)."
+  },
+  "E23": {
+   "part": "forecast_start_validation",
+   "reason": "Start-state invariance of the head lever (FS.start_invariance.v1, model-only, L): a property of the forecast start state (as FM.origin_memory.v1's start memory is), so in the forecast-start part."
+  },
+  "E30": {
+   "part": "forecast_start_validation",
+   "grade": {
+    "D": {
+     "D": {
+      "measured_by": "E02z.level_years23.v1",
+      "reading_report": "results/dataprep/reports/E02z.level_years23.v1/decidability/report.json",
+      "reading_sha256": "0e5e83d3",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "decidable_not_before": "2029-01-15",
+   "reason": "Strict level rule years 2-3 (E02z). Decidability measured by its registered decidability reading, results/dataprep/reports/E02z.level_years23.v1/decidability/report.json (sha256 0e5e83d3; 'not_shown_weak' in every county and window: Yunlin P 0.999-1.000, Changhua 0.68-0.69, null false pass 0), which the registration E02z.level_years23.v1 declares: measured when the ledger cites that registration with a real hash and lists the reading among the row's cites.reports. No ruling moves E30 (R8.17b covers E04 and C30-fc only)."
+  },
+  "C07": {
+   "part": "uncertainty_bands",
+   "reason": "Sample sign agreement of parameter sets: a spread display (Model internals)."
+  },
+  "C14a": {
+   "part": "uncertainty_bands",
+   "grade": {
+    "N+D": {
+     "D": "D-weak"
+    }
+   },
+   "reason": "Per-well 90 % head interval decided by E02/E02c coverage: weak by design in Yunlin (FV v2 coverage P 0.35; U1.HB.power false-fail 0.82-0.83 under a year shock), Changhua 0.501 within Monte Carlo noise of weak."
+  },
+  "C14a-r": {
+   "part": "uncertainty_bands",
+   "grade": {
+    "N+D": {
+     "D": {
+      "measured_by": "U1.decomp_power.v1",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "reason": "Per-well relative spread (E02d), decisive by design (U1.decomp_power.v1)."
+  },
+  "C14b": {
+   "part": "uncertainty_bands",
+   "grade": {
+    "N+D": {
+     "D": {
+      "measured_by": "U1.decomp_power.v1",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "decidable_not_before": "2029-01-15",
+   "reason": "The interval recipe outside the first window, decided by E02y (years 2-3); the relative test is primary in both counties by U1.decomp_power.v1's 12-month gate."
+  },
+  "C14c": {
+   "part": "uncertainty_bands",
+   "end_goal": {
+    "kind": "no_target",
+    "by": "U1.no_band.v1",
+    "requires": "U1.no_band.v1"
+   },
+   "reason": "Aggregate run spreads: a parameter spread, no predictive interval; no held data can calibrate one (registered narrowing U1.no_band.v1)."
+  },
+  "C14d": {
+   "part": "uncertainty_bands",
+   "end_goal": {
+    "kind": "no_target",
+    "by": "U1.no_band.v1",
+    "requires": "U1.no_band.v1"
+   },
+   "reason": "Head-contrast run spreads, Model internals; no band by U1.no_band.v1."
+  },
+  "C14e": {
+   "part": "uncertainty_bands",
+   "end_goal": {
+    "kind": "no_target",
+    "by": "U1.no_band.v1",
+    "requires": "U1.no_band.v1"
+   },
+   "reason": "Subsidence level and contrast bands, permanently Model internals; no held data can calibrate a subsidence band (U1.no_band.v1)."
+  },
+  "C14f": {
+   "part": "uncertainty_bands",
+   "grade": {
+    "D": {
+     "D": {
+      "measured_by": "FV.ext.v1",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "reason": "Frozen per-well interval at N3F's 66 external wells, decided by N3F's coverage clause; FV.ext.v1 reads the whole rule 'not shown weak'."
+  },
+  "C14f-r": {
+   "part": "uncertainty_bands",
+   "end_goal": {
+    "kind": "registered_undecidable",
+    "by": "U1.ext_transfer_power.v1",
+    "requires": "U1.ext_transfer_power.v1"
+   },
+   "reason": "Departure-transfer band at the external wells (E02x): undecidable by design (U1.ext_transfer_power.v1), not registered."
+  },
+  "E29": {
+   "part": "uncertainty_bands",
+   "end_goal": {
+    "kind": "registered_undecidable",
+    "by": "FB.family_power.v1",
+    "requires": "FB.family_power.v1"
+   },
+   "reason": "Family Bayes-factor test: not decidable by design (FB.family_power.v1); placed with the bands as section 22 does (FB)."
+  },
+  "C03": {
+   "part": "subsidence_cut_response",
+   "end_goal": {
+    "kind": "withdrawn_with_reason",
+    "by": "user ruling 2026-11-01 fourth set (a): stays W under every N3 outcome"
+   },
+   "reason": "Fan-average avoided subsidence: W, stays W under every N3 outcome (fourth set (a))."
+  },
+  "C05": {
+   "part": "subsidence_cut_response",
+   "reason": "Area sinking faster than the threshold: W, with an N3S-L D sub-label (a pass returns at most a narrowed claim, so not withdrawn under every outcome)."
+  },
+  "C06": {
+   "part": "subsidence_cut_response",
+   "reason": "THSR angular distortion: L, Model internals."
+  },
+  "C09": {
+   "part": "subsidence_cut_response",
+   "end_goal": {
+    "kind": "withdrawn_with_reason",
+    "by": "user ruling 2026-11-01 fourth set (a): the fan total stays W under every N3 outcome"
+   },
+   "reason": "Fan baseline total: W under every N3 outcome; D only for the narrowed pile sub-claim."
+  },
+  "C10": {
+   "part": "subsidence_cut_response",
+   "reason": "Benefit is a one-time rebound (L)."
+  },
+  "C11": {
+   "part": "subsidence_cut_response",
+   "reason": "Per-township avoided cm (L)."
+  },
+  "C15": {
+   "part": "subsidence_cut_response",
+   "reason": "Avoided subsidence all elastic (L, model-only)."
+  },
+  "C17": {
+   "part": "subsidence_cut_response",
+   "reason": "README policy timing row (N)."
+  },
+  "C18": {
+   "part": "subsidence_cut_response",
+   "reason": "README projection row (N)."
+  },
+  "C19": {
+   "part": "subsidence_cut_response",
+   "reason": "README creep uncertainty row (L)."
+  },
+  "C23": {
+   "part": "subsidence_cut_response",
+   "reason": "README overview: subsidence only as the elastic rebound, size untested (N)."
+  },
+  "C25": {
+   "part": "subsidence_cut_response",
+   "reason": "Long-run sinking under a cut: untested (N)."
+  },
+  "C26": {
+   "part": "subsidence_cut_response",
+   "grade": {
+    "N+D": {
+     "D": "D-unknown"
+    }
+   },
+   "reason": "Coastal forecasts and benefit not reliable (N) with the N3S-L L1 sub-label; no decidability report exists for N3S-L."
+  },
+  "C27": {
+   "part": "subsidence_cut_response",
+   "reason": "1-3 yr subsidence size not supported (N)."
+  },
+  "C29": {
+   "part": "subsidence_cut_response",
+   "reason": "Per-cell avoided subsidence fields (L)."
+  },
+  "C31": {
+   "part": "subsidence_cut_response",
+   "end_goal": {
+    "kind": "registered_undecidable",
+    "by": "N3.piles_prospective.v1 (G0 failed; N3.G0prime.v1 failed)",
+    "requires": "N3.piles_prospective.v1"
+   },
+   "reason": "Compaction per metre at the 2 Yunlin piles: conversion not identifiable by design (N3 G0; G0' failed for every estimator)."
+  },
+  "E05": {
+   "part": "subsidence_cut_response",
+   "reason": "2023-25 compaction rings, after the fact (N)."
+  },
+  "E06": {
+   "part": "subsidence_cut_response",
+   "reason": "Deep benchmarks, report-only (N)."
+  },
+  "E09": {
+   "part": "subsidence_cut_response",
+   "reason": "Leveling skill, fit period (N)."
+  },
+  "E10": {
+   "part": "subsidence_cut_response",
+   "reason": "Compaction rings R2 (N)."
+  },
+  "E13": {
+   "part": "subsidence_cut_response",
+   "reason": "Column start-up / restart artefacts (L)."
+  },
+  "E14": {
+   "part": "subsidence_cut_response",
+   "reason": "Creep ceiling sensitivity (L)."
+  },
+  "E19": {
+   "part": "subsidence_cut_response",
+   "reason": "2023-25 GNSS rates, after the fact (N)."
+  },
+  "E24": {
+   "part": "subsidence_cut_response",
+   "reason": "Model-form spread of the cut30 avoided subsidence (L)."
+  },
+  "C13a": {
+   "part": "changhua",
+   "reason": "Changhua all-class head lever: W until N2C is scored (capped at N by F = 0.49), so not withdrawn under every outcome."
+  },
+  "C13b": {
+   "part": "changhua",
+   "end_goal": {
+    "kind": "withdrawn_with_reason",
+    "by": "user ruling 2026-10-29 third set (d); X5.lever_class_share.v1"
+   },
+   "reason": "Changhua class levers: withdrawn under every outcome (x1.39)."
+  },
+  "C13c": {
+   "part": "changhua",
+   "end_goal": {
+    "kind": "withdrawn_with_reason",
+    "by": "N2C.page_mapping.never; user ruling 2026-11-01 fourth set (a)"
+   },
+   "reason": "Changhua subsidence lever: withdrawn under every outcome."
+  },
+  "C20": {
+   "part": "changhua",
+   "reason": "README head response in both counties, narrowed for Changhua (N)."
+  },
+  "C21": {
+   "part": "changhua",
+   "reason": "MODEL_CARD, same narrowing as C20 (N)."
+  },
+  "E20": {
+   "part": "changhua",
+   "grade": {
+    "D": {
+     "D": {
+      "measured_by": "X5.n2c_reading.v1",
+      "otherwise": "D-unknown"
+     }
+    }
+   },
+   "reason": "N2C Changhua head response test; decidability measured by X5.n2c_reading.v1."
+  },
+  "E25": {
+   "part": "changhua",
+   "grade": {
+    "S": {
+     "S": "S-dt-dir-size"
+    }
+   },
+   "reason": "Direction of R1c's Changhua response at 23 external screens: S design-time, a direction claim (size not supported is a stated limit). Graded S design-time direction-only on a size claim (0.75) by user ruling 2026-11-07 (fourteenth set) (R8.16c): a direction-only answer to Changhua's size question."
+  },
+  "E26": {
+   "part": "changhua",
+   "grade": {
+    "S": {
+     "S": "S-dt-dir-size"
+    }
+   },
+   "reason": "Direction of R1c's Changhua response in 2010-11: S design-time, a direction claim. Graded S design-time direction-only on a size claim (0.75) by user ruling 2026-11-07 (fourteenth set) (R8.16c): a direction-only answer to Changhua's size question."
+  },
+  "E12": {
+   "part": "none",
+   "reason": "No science part: model configuration numbers: a description of the model, no claim about the world or about a test."
+  },
+  "E17": {
+   "part": "none",
+   "reason": "No science part: the evidence badge's count of checks: bookkeeping over every part, part of claim honesty."
+  },
+  "E18": {
+   "part": "none",
+   "reason": "No science part: release status, decision note, reproducibility: process, part of claim honesty."
+  },
+  "Z01": {
+   "part": "none",
+   "reason": "No science part: UI numbers (not a claim)."
+  },
+  "Z02": {
+   "part": "none",
+   "reason": "No science part: legend and axis numbers (not a claim)."
+  },
+  "Z03": {
+   "part": "none",
+   "reason": "No science part: illustrative 3D geometry (not a claim)."
+  },
+  "Z04": {
+   "part": "none",
+   "reason": "No science part: payload numbers the page never reads (not displayed)."
+  }
+ },
+ "mappings": {
+  "default-v1": {
+   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights with no grade cap, the C28 weight override 2 -> 1, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E04 and C30-fc measured by FV.stat.v2; E30 measured by its own registration E02z.level_years23.v1; E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a and R8.17a-d.",
+   "composite": "max",
+   "split_weights": false,
+   "claims": {
+    "C01": {
+     "grade": {
+      "S+D": {
+       "S": "S-dt-dir-size",
+       "D": {
+        "measured_by": "X5.n2_reading.v1",
+        "otherwise": "D-unknown"
+       }
+      },
+      "S": {
+       "S": "S-dt"
+      }
+     }
+    },
+    "C01-w": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "X5.n2_reading.v1",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "E21": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "FV.decidability.v2_postfailure",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "E25": {
+     "grade": {
+      "S": {
+       "S": "S-dt"
+      }
+     }
+    },
+    "E26": {
+     "grade": {
+      "S": {
+       "S": "S-dt"
+      }
+     }
+    },
+    "E04": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "FV.stat.v2",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "C30-fc": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "FV.stat.v2",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "E30": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "E02z.level_years23.v1",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "C28": {
+     "weight": 1,
+     "weight_reason": "display_map.functions maps renderHeadline to C28 only because the provenance chip beside the headline is set inside that function; the chip qualifies how a number was computed and is not the answer, so it weighs as an evidence row (1), not as the headline (2)"
+    }
+   },
+   "split_cap": false
+  }
+ },
+ "split_cap": true
+}
