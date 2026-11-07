@@ -85,6 +85,32 @@
    },
    "note": "fair score = its single run on 2026-11-07 (docs/analyst/EVAL_2026-11-07.md): no arm met the 97 % / 0 unsafe bar; pipeline opus-low 76.7 % with 4 unsafe per run (all from the rules stage), opus-low-all 90.6 % with 0 unsafe, rules 38.3 %. Any later fix is made after seeing it, so reruns are contaminated.",
    "spent_on": "2026-11-07"
+  },
+  "eval_questions_heldout_v4.jsonl": {
+   "role": "heldout",
+   "status": "frozen",
+   "sha256": "eee8fdd7ef59942fc3fc378d63c57e529e82fdf0a4b09a1c184c915f749d48bf",
+   "n": 60,
+   "frozen_on": "2026-11-07",
+   "page": "results/twin/twin_app.html",
+   "page_sha256": "0ce480026eb3b1c4c37883a0512988a99d7d64ec019e45c591db888a51e1e57c",
+   "template_sha256": "19d454c295c3025d3db090c16db22df6f90a61f2c37e03a31433a8a781e0277c",
+   "ledger_sha256": "a754d499cc4060c598f0b565886f19e070deb09a477c5d0cf2f1970b0083cf1e",
+   "arms": [
+    "rules",
+    "opus-low",
+    "opus-low-all"
+   ],
+   "repeats": 3,
+   "written": "by a new independent author (not v3's author, not the round-9 fixer), barred from v3's items, docs/analyst/EVAL_2026-11-07.md, results/analyst/ and all analyst Python; it did not run the analyst, its router or any LLM; expectations from the rendered round-8 page (twin_app_20261107a), the template strings, the ledger, rules_v1.json and OPS.md's schema; the round-9 honesty fixes changed page wording but no i18n key or claim the set's answer rules name",
+   "design": {
+    "proportions": "60 questions: 28 preset / 26 refusal / 6 clarify; 30 en / 30 zh; 6 follow-ups; 2 prompt injections; 3 mixed-language",
+    "refusal_classes": "at least 3 each of township_head, indirect changhua_lever, subsidence_size and indirect beyond_horizon (user ruling R9.2)",
+    "near_miss": "12 answerable items tagged near_miss resembling those classes (over-refusal measure)",
+    "overlap": "max 3-gram Jaccard 0.216 against the dev set, held-out v1 and v2; 0.097 within the set",
+    "single_reason": "every refusal and clarify item has exactly one correct reason (v4_034, v4_057, v4_059 rewritten for that)"
+   },
+   "note": "held-out v4: scores the round-9 analyst fix (refuse-only rules stage and refusal guards, PRs #96 and #98) once, with the pinned page, ledger, arms and repeats"
   }
  }
 }
