@@ -28,7 +28,14 @@ What comes from where:
   ``PENDING`` hash refuses). REG is the registration of a decidability reading; when the
   reading ships inside the test's own registration the spec also names it
   (``reading_report``, with its ``reading_sha256`` for the record), and the row must list
-  that report in its ``cites.reports`` (E30).
+  that report in its ``cites.reports`` (E30). A reading with pre-declared outcomes
+  (``reading_outcomes: {outcome: grade key}``, user ruling R9.4: E02.decidability.v1's
+  measured / weak / unchanged) grades the row by the outcome the row itself records in
+  ``decidability_reading: {registration, report, outcome}``, and only when the ledger cites the
+  registration with a real hash and the row lists the report; until then ``otherwise``. A
+  recorded outcome without both citations, both citations without a recorded outcome, an
+  undeclared outcome, or a recorded outcome on a row whose current-status D qualifier has no
+  ``reading_outcomes`` refuses, so a recorded reading always decides, whichever way it went.
 * SPLIT rows (user rulings R8.16b, R8.17a, R8.17d): a row the mapping marks
   ``split_of: {parent: P, parent_status: S0, piece_status_at_split: s_i}`` is a piece of the
   ledger row P, whose status was S0 when it was split; the piece's status then was s_i.
@@ -202,12 +209,42 @@ def _cited(reg: str, registry: dict) -> bool:
     return reg in registry
 
 
+def _outcome_qualifier(spec: dict, registry: dict, claim: dict) -> tuple[str, str]:
+    """A reading with pre-declared outcomes (``reading_outcomes``): the grade key of the outcome
+    the row records in ``decidability_reading`` ({registration, report, outcome}), which counts
+    only when the ledger cites the registration with a real hash and the row lists the report
+    in ``cites.reports``. A recorded outcome without those citations, a citation pair without a
+    recorded outcome, another reading's record or an undeclared outcome refuse: once a reading
+    is cited, its outcome (whichever it is) decides the qualifier."""
+    cid, reg, rep = claim.get("id", "?"), spec["measured_by"], spec["reading_report"]
+    cited = _cited(reg, registry)
+    rep_cited = rep in ((claim.get("cites") or {}).get("reports") or [])
+    rec = claim.get("decidability_reading")
+    if rec is None:
+        if cited and rep_cited:
+            raise MappingError(f"{cid}: cites {reg} and its report but records no outcome "
+                               "(decidability_reading)")
+        return spec["otherwise"], f"{reg}: no outcome recorded at this ledger state"
+    if rec.get("registration") != reg or rec.get("report") != rep:
+        raise MappingError(f"{cid}: decidability_reading names another reading than {reg}")
+    if not (cited and rep_cited):
+        raise MappingError(f"{cid}: records the outcome of {reg} but the ledger does not cite "
+                           "both the registration and its report")
+    out = rec.get("outcome")
+    if out not in spec["reading_outcomes"]:
+        raise MappingError(f"{cid}: outcome {out!r} is not one {reg} declared")
+    return spec["reading_outcomes"][out], f"{reg} outcome {out!r}"
+
+
 def _qualifier(spec, registry: dict, claim: dict | None = None) -> tuple[str, str]:
     """(grade key, why) of one S/D qualifier, resolving a conditional ``measured_by``: measured
     when the registration is cited with a real hash and, if the spec names a
-    ``reading_report``, the row's ``cites.reports`` lists that decidability reading."""
+    ``reading_report``, the row's ``cites.reports`` lists that decidability reading. A spec
+    with ``reading_outcomes`` grades by the recorded outcome (:func:`_outcome_qualifier`)."""
     if isinstance(spec, str):
         return spec, ""
+    if spec.get("reading_outcomes") is not None:
+        return _outcome_qualifier(spec, registry, claim or {})
     reg = spec["measured_by"]
     if not _cited(reg, registry):
         return spec["otherwise"], f"{reg} not cited at this ledger state"
@@ -272,6 +309,23 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
         eg = e.get("end_goal")
         if eg and eg.get("kind") not in END_GOAL_KINDS:
             probs.append(f"{c['id']}: end_goal kind {eg.get('kind')!r} unknown")
+        for status, quals in e.get("grade", {}).items():
+            for code, spec in quals.items():
+                if not isinstance(spec, dict) or spec.get("reading_outcomes") is None:
+                    continue
+                ro = spec["reading_outcomes"]
+                if not spec.get("reading_report") or not spec.get("measured_by") or \
+                        spec.get("otherwise") not in pmap["grades"] or \
+                        not isinstance(ro, dict) or not ro or \
+                        any(v not in pmap["grades"] for v in ro.values()):
+                    probs.append(f"{c['id']}: {status}/{code} reading_outcomes needs "
+                                 "measured_by, a reading_report, otherwise and grade keys")
+        if c.get("decidability_reading") is not None:
+            spec = e.get("grade", {}).get(c["status_current"], {}).get("D")
+            if not isinstance(spec, dict) or spec.get("reading_outcomes") is None:
+                probs.append(f"{c['id']}: records a decidability_reading but its mapping for "
+                             f"status {c['status_current']!r} has no reading_outcomes (a "
+                             "recorded outcome is never ignored)")
     split_parts: dict[str, set] = {}
     for cid, e in pmap["claims"].items():
         so = e.get("split_of")

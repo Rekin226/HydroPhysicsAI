@@ -469,3 +469,135 @@ def test_every_main_state_from_the_audit_to_today_recounts():
         ledger = P.load_ledger(at=rev)[0]
         for name in (None, "default-v1"):
             P.recount(ledger, P.with_mapping(P.load_map(), name))
+
+
+# ---- user ruling R9.4 (sixteenth set): a reading with three pre-declared outcomes -------------
+# results/dataprep/rulings/user_rulings_2026-11-07c.json (sha256 338f2de4)
+REP3 = "reports/R3/report.json"
+OUTCOMES3 = {"measured": "D-measured", "weak": "D-weak", "unchanged": "D-unknown",
+             "not_evaluable": "D-unknown"}
+
+
+def _three(outcome=None, cite_reg=True, cite_rep=True):
+    """F1 (D, forecast part) decided by REG.three.v1's recorded outcome."""
+    ledger, pmap = _synthetic()
+    pmap["claims"]["F1"]["grade"] = {"D": {"D": {
+        "measured_by": "REG.three.v1", "reading_report": REP3,
+        "reading_outcomes": dict(OUTCOMES3), "otherwise": "D-unknown"}}}
+    f1 = ledger["claims"][7]
+    assert f1["id"] == "F1"
+    if cite_reg:
+        ledger["registry_hashes"]["REG.three.v1"] = "f" * 64
+    if cite_rep:
+        f1["cites"] = {"reports": [REP3]}
+    if outcome is not None:
+        f1["decidability_reading"] = {"registration": "REG.three.v1", "report": REP3,
+                                      "outcome": outcome}
+    return ledger, pmap
+
+
+def test_a_three_outcome_reading_grades_by_its_recorded_outcome():
+    fc = {}
+    for out, key in OUTCOMES3.items():
+        ledger, pmap = _three(out)
+        res = P.recount(ledger, pmap)
+        assert _row(res, "F1")["grade_key"] == key, out
+        assert "REG.three.v1 outcome" in _row(res, "F1")["grade_why"]
+        fc[out] = res["parts"][PARTS[1]]["official"]
+    # F1 (weight 1) and F2 (N, weight 1): the outcome moves the part by +-0.1 / 2
+    assert fc["measured"] - fc["unchanged"] == pytest.approx(5.0)
+    assert fc["weak"] - fc["unchanged"] == pytest.approx(-5.0)
+    assert fc["not_evaluable"] == fc["unchanged"]
+    # before the ledger cites the registration and the report: 'otherwise', whatever happened
+    for kw in ({"cite_reg": False, "cite_rep": False}, {"cite_rep": False},
+               {"cite_reg": False}):
+        ledger, pmap = _three(None, **kw)
+        r = _row(P.recount(ledger, pmap), "F1")
+        assert r["grade_key"] == "D-unknown" and "no outcome recorded" in r["grade_why"], kw
+
+
+def test_a_three_outcome_reading_refuses_an_inconsistent_ledger():
+    ledger, pmap = _three(None)                   # both cited, outcome not recorded
+    with pytest.raises(P.MappingError, match="F1: cites REG.three.v1 and its report but "
+                                             "records no outcome"):
+        P.recount(ledger, pmap)
+    for kw in ({"cite_rep": False}, {"cite_reg": False}):      # an outcome cannot hide
+        ledger, pmap = _three("weak", **kw)
+        with pytest.raises(P.MappingError, match="does not cite both"):
+            P.recount(ledger, pmap)
+    ledger, pmap = _three("decisive")
+    with pytest.raises(P.MappingError, match="'decisive' is not one REG.three.v1 declared"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _three("measured")
+    ledger["claims"][7]["decidability_reading"]["registration"] = "REG.other.v1"
+    with pytest.raises(P.MappingError, match="another reading"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _three("measured")
+    ledger["registry_hashes"]["REG.three.v1"] = "PENDING"
+    with pytest.raises(P.MappingError, match="PENDING"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _three("measured")
+    pmap["claims"]["F1"]["grade"]["D"]["D"]["reading_outcomes"]["weak"] = "D-feeble"
+    with pytest.raises(P.MappingError, match="reading_outcomes needs measured_by, a "
+                                             "reading_report, otherwise and grade keys"):
+        P.recount(ledger, pmap)
+    for key in ("measured_by", "otherwise", "reading_report"):    # MappingError, not KeyError
+        ledger, pmap = _three("measured")
+        del pmap["claims"]["F1"]["grade"]["D"]["D"][key]
+        with pytest.raises(P.MappingError, match="reading_outcomes needs measured_by"):
+            P.recount(ledger, pmap)
+
+
+def test_a_recorded_outcome_is_never_silently_ignored():
+    """A row carrying decidability_reading whose current-status qualifier has no
+    reading_outcomes refuses (plain string, plain measured_by spec, or no D qualifier)."""
+    rec = {"registration": "REG.three.v1", "report": REP3, "outcome": "weak"}
+    for spec in ("D-unknown", {"measured_by": "REG.measured.v1", "otherwise": "D-unknown"}):
+        ledger, pmap = _three(None)
+        pmap["claims"]["F1"]["grade"] = {"D": {"D": spec}}
+        ledger["claims"][7]["decidability_reading"] = dict(rec)
+        with pytest.raises(P.MappingError, match="F1: records a decidability_reading but its "
+                                                 "mapping for status 'D' has no "
+                                                 "reading_outcomes"):
+            P.recount(ledger, pmap)
+    ledger, _ = _three(None)
+    pmap = _synthetic()[1]
+    ledger["claims"][9]["decidability_reading"] = dict(rec)      # S1, W+D, no D qualifier
+    with pytest.raises(P.MappingError, match="S1: records a decidability_reading"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _three("weak")                                # the hook itself: accepted
+    assert _row(P.recount(ledger, pmap), "F1")["grade_key"] == "D-weak"
+
+
+def test_e02_stays_d_unknown_by_r9_4b_and_the_hook_works_on_the_real_ledger():
+    """R9.4b (seventeenth set, user_rulings_2026-11-07d.json sha256 bfeed6d6): E02's drafted
+    reading is not registered or run, so E02's entry stays D-unknown. The reading_outcomes hook
+    is kept; on the real ledger with E02's entry swapped for a hook spec it would grade E02 by a
+    recorded outcome (what-if only; nothing here needs the reading to exist)."""
+    pmap = P.load_map()
+    assert pmap["claims"]["E02"]["grade"] == {"D": {"D": "D-unknown"}}
+    assert "R9.4b" in pmap["claims"]["E02"]["reason"] and "bfeed6d6" in pmap["claims"]["E02"][
+        "reason"]
+    assert "R9.4b" in pmap["rule"] and "bfeed6d6" in pmap["rule"]
+    ledger = _ledger()
+    base = P.recount(ledger, pmap)
+    assert _row(base, "E02")["grade_key"] == "D-unknown" and _row(base, "E02")["weight"] == 1
+    fc0 = base["parts"]["forecast_start_validation"]
+    rep = "reports/E02.what_if/report.json"
+    hook = copy.deepcopy(pmap)
+    hook["claims"]["E02"]["grade"] = {"D": {"D": {
+        "measured_by": "E02.what_if.v1", "reading_report": rep,
+        "reading_outcomes": OUTCOMES3, "otherwise": "D-unknown"}}}
+    assert _row(P.recount(ledger, hook), "E02")["grade_key"] == "D-unknown"
+    for out, key in OUTCOMES3.items():
+        lg = copy.deepcopy(ledger)
+        lg["registry_hashes"]["E02.what_if.v1"] = "f" * 64
+        e = next(c for c in lg["claims"] if c["id"] == "E02")
+        e["cites"]["reports"].append(rep)
+        e["decidability_reading"] = {"registration": "E02.what_if.v1", "report": rep,
+                                     "outcome": out}
+        res = P.recount(lg, hook)
+        assert _row(res, "E02")["grade_key"] == key, out
+        delta = {"D-measured": 0.1, "D-weak": -0.1, "D-unknown": 0.0}[key]
+        assert res["parts"]["forecast_start_validation"]["official"] - fc0["official"] == \
+            pytest.approx(100 * delta / fc0["weight"]), out

@@ -2196,7 +2196,13 @@ The rule:
   is D with decidability measured by its registered reading,
   `results/dataprep/reports/E02z.level_years23.v1/decidability/report.json` (sha256 0e5e83d3,
   declared by `E02z.level_years23.v1`; "not_shown_weak" in every county and window: Yunlin P
-  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites.
+  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites. A reading may instead
+  pre-declare several outcomes (`reading_outcomes`, user ruling R9.4, sixteenth set,
+  `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4): the row is then
+  graded by the outcome it records, only once the ledger cites the registration with a real
+  hash and lists its report; a cited reading without a recorded outcome, or an outcome without
+  both citations, refuses. No row uses it: E02's drafted reading is not registered (R9.4b,
+  section 27), so E02 stays D with decidability unknown.
 - **Composite statuses** (R8.16a; flagged in the output: C05, C09, C14a, C14a-r, C14b, C14e,
   C26, and at the audit state C01 and C30): a W anywhere grades the row W; otherwise the row is
   graded by its first code, the status of what the row shows now (a trailing D is the pending
@@ -2313,3 +2319,35 @@ row-by-row assignment is not part of the record. The driving rows at the audit s
 
 The audited figures of section 21 and the estimates of section 22 stay as they were labelled
 and are shown beside the official figure; section 22's figures were estimates, not a recount.
+
+## 27. Round 9 (2026-11-07)
+
+User rulings of 2026-11-07, sixteenth set (R9.1-R9.4,
+`results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4) and seventeenth set
+(R9.4b, `results/dataprep/rulings/user_rulings_2026-11-07d.json`, sha256 bfeed6d6). The ledger
+records each as `user ruling 2026-11-07 (sixteenth set) (<id>)` or `(seventeenth set) (R9.4b)`.
+No status changes; the progress figures are unchanged (6-part 54.0 with claim honesty 98 as an
+estimate, science trust 45.2, forecast part 52.5).
+
+- **The 2010-11 window is closed (R9.1).** The 2010-11 window is closed as not cleanly testable
+  (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in
+  E26's registered unit (I1.CH_backcast.v1; 12 scored, the 13th read in its product build but
+  never placed) and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check
+  2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared ids — 13 of
+  13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19). No test and no read; the
+  line sits on E04, E07 and E26 and in README Limits, and supersedes R8.15's "window unspent".
+- **E02's decidability (R9.4, R9.4b).** R9.4 dropped the E04/N2 companion registrations and
+  asked for a synthetic reading of E02's own pooled rule. It was drafted as
+  `E02.decidability.v1` (`dataprep_staging/e02_decid`, model-only): power P in FV v2's four
+  truth families and the pass rate P0 of an equal-skill null, with three pre-declared outcomes
+  (measured: P >= 0.8 and P0 <= 0.2; weak: P < 0.5 or P0 > 0.5; otherwise unchanged). Its right-
+  kind worlds are FV v2's own forwards, on which FV.decidability.v2 reading 1 already gives
+  P = 0.736 for E02's own rule (Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992;
+  `results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json`, sha 320ac928),
+  so "measured" was out of reach and "unchanged" almost certain. By R9.4b it is not registered
+  or run: E02 is not shown decidable and stays D unknown, and no registration is spent on a
+  known answer. The code stays as unregistered code; the progress rule keeps the three-outcome
+  hook (section 26), unused.
+- **C30 hygiene.** The notes of E02 and E21 now name C30's pieces (C30-scen, C30-fc) where they
+  said "C30"; the R8.7 alias sentence is kept for the quoted wording of earlier rounds. No grade
+  change.

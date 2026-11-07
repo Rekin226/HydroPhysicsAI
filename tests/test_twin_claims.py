@@ -1708,3 +1708,117 @@ def test_c14d_head_contrast_spread_is_a_ledger_and_readme_note_only():
         for k, v in quoted.items():
             assert got[k] == v, (k, got[k])
         assert [got[f"{k}/x"] for k in quoted] == ["x1.18", "x1.17", "x1.30", "x1.33"]
+
+
+# ---- round 9 (user rulings 2026-11-07, sixteenth set, R9.1-R9.4) ------------------------------
+R9_SRC = "results/dataprep/rulings/user_rulings_2026-11-07c.json (sha256 338f2de4)"
+R9_LINE = ("The 2010-11 window is closed as not cleanly testable (user ruling R9.1): no fresh "
+           "wells above the 25-well floor — all 13 Changhua wells were in E26's registered unit "
+           "(I1.CH_backcast.v1; 12 scored, the 13th read in its product build but never placed) "
+           "and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check "
+           "2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared "
+           "ids — 13 of 13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19).")
+#: the ruling's own words, quoted verbatim in the ledger's rulings list (left as ruled)
+R9_RULED = ("all 13 Changhua wells scored by E26; all 19 Yunlin wells' 2010-11 series loaded by "
+            "X5EV")
+R9_ALIAS = ("Alias (ruling R8.7, 2026-11-06): 'C30' in this row means C30-scen, the physics "
+            "scenario row after the split; the first-year forecast of record is C30-fc. "
+            "Round-9 hygiene (2026-11-07, no grade change): the notes name the pieces "
+            "(C30-scen, C30-fc); a bare 'C30' survives only in the quoted wording of earlier "
+            "rounds, read through this alias.")
+
+
+def _r9(x: str) -> str:
+    return f"user ruling 2026-11-07 (sixteenth set) ({x})"
+
+
+def test_round9_rulings_are_recorded():
+    rulings = {r["id"]: r["text"] for r in L()["rulings"]}
+    for x in ("R9.1", "R9.2", "R9.3", "R9.4"):
+        assert _r9(x) in rulings and R9_SRC in rulings[_r9(x)], x
+        assert " Decision: " in rulings[_r9(x)] and "Applies to: " in rulings[_r9(x)], x
+    assert "Close the 2010-11 window as not cleanly testable" in rulings[_r9("R9.1")]
+    assert R9_RULED in rulings[_r9("R9.1")]                      # the verbatim quote stays
+    for cid in ("E04", "E07", "E26"):                            # the old closure wording is gone
+        assert "Changhua wells were scored by E26" not in CL()[cid]["notes"], cid
+    assert "Drop the E04/N2 companion registrations" in rulings[_r9("R9.4")]
+    assert "E02.decidability.v1" in rulings[_r9("R9.4")]
+    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07c.json"
+    if rf.exists():                                       # the source, as recorded
+        assert C.sha256(rf).startswith("338f2de4")
+        src = {r["id"]: r for r in json.loads(rf.read_text(encoding="utf-8"))["rulings"]}
+        for x in ("R9.1", "R9.2", "R9.3", "R9.4"):
+            assert src[x]["decision"] in rulings[_r9(x)], x
+
+
+def test_r9_1_closes_the_2010_11_window_on_the_ledger_and_in_readme():
+    """R9.1: the 2010-11 window is closed as not cleanly testable; the closure line sits on
+    E04, E07 and E26 and in README Limits, citing the rulings file; no status changes and no
+    page change."""
+    cl = CL()
+    for cid in ("E04", "E07", "E26"):
+        n = cl[cid]["notes"]
+        assert R9_LINE in n and R9_SRC in n and "no status change" in n.split(R9_LINE)[1], cid
+        assert "supersedes R8.15's 'the 2010-11 window stays unspent'" in n, cid
+        assert _r9("R9.1") in cl[cid]["ruling_also"], cid
+    assert _st("E04") == {"D"} and _st("E07") == {"N"} and _st("E26") == {"S"}
+    readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
+    assert R9_LINE[:-1] in readme and "user_rulings_2026-11-07c.json`, sha256 338f2de4" in readme
+    assert "R9.1" not in C.template_src()
+    assert "Round 9" in L()["status_note"] and "R9.1-R9.4" in L()["status_note"]
+
+
+def test_e02_and_e21_notes_name_c30s_pieces():
+    """Honesty hygiene, no grade change: the notes of E02 and E21 name C30-scen / C30-fc; a
+    bare 'C30' is left only inside the kept alias sentence."""
+    cl = CL()
+    for cid in ("E02", "E21"):
+        n = cl[cid]["notes"]
+        assert n.count(R9_ALIAS) == 1, cid
+        rest = n.replace(R9_ALIAS, "")
+        assert not re.search(r"\bC30(?![-\w])", rest), (cid, re.findall(r".{40}C30.{20}", rest))
+        assert "FH.forcing_sensitivity.v1 context (C30-scen notes)" in n, cid
+        assert _st(cid) == {"D"}, cid
+    assert "Pass on T-level makes C30-scen's heads part S-limited" in cl["E21"]["notes"]
+
+
+R9B_SRC = "results/dataprep/rulings/user_rulings_2026-11-07d.json (sha256 bfeed6d6)"
+
+
+def test_e02_records_r9_4_and_r9_4b_and_stays_d_unknown():
+    """R9.4 drafted E02.decidability.v1; R9.4b (seventeenth set) keeps it unregistered: FV v2
+    reading 1's P = 0.736 on E02's own rule already leaves E02 not shown decidable. E02 cites
+    no such registration or report and records no reading outcome."""
+    e02, reg = CL()["E02"], "E02.decidability.v1"
+    n = e02["notes"]
+    for k in (f"Round 9 (user ruling R9.4b, {R9B_SRC})",
+              "FV.decidability.v2 reading 1 already gives P = 0.736 on E02's own rule (Q0 0.468, "
+              "R0 0.492, R1c 0.992, X5R1 0.992; results/dataprep/reports/"
+              "FV.decidability.v2_postfailure/report_worlds.json, sha 320ac928)",
+              "so E02 is not shown decidable and stays D unknown",
+              "no registration is spent on a known answer", reg,
+              "dataprep_staging/e02_decid", "No status change; no page line."):
+        assert k in n, k
+    for x, src in (("sixteenth set) (R9.4)", R9_SRC), ("seventeenth set) (R9.4b)", R9B_SRC)):
+        rid = f"user ruling 2026-11-07 ({x}"
+        assert rid in e02["ruling_also"], rid
+        assert src in next(r["text"] for r in L()["rulings"] if r["id"] == rid), rid
+    assert "superseded by R9.4b" in next(r["text"] for r in L()["rulings"]
+                                         if r["id"] == _r9("R9.4"))
+    assert _st("E02") == {"D"} and "decidability_reading" not in e02
+    assert reg not in L()["registry_hashes"] and reg not in e02["cites"]["registrations"]
+    assert not any(reg in p for p in e02["cites"]["reports"])
+    assert reg not in C.template_src()
+    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07d.json"
+    if rf.exists():
+        assert C.sha256(rf).startswith("bfeed6d6")
+
+
+def test_evidence_section_27_records_round_9():
+    ev = " ".join((C.REPO / "docs/TWIN_EVIDENCE_2026-10.md").read_text(encoding="utf-8").split())
+    sec = ev.split("## 27. Round 9 (2026-11-07)")[1]
+    for k in ("338f2de4", "bfeed6d6", R9_LINE, "P = 0.736", "sha 320ac928",
+              "not registered or run", "stays D unknown", "C30-scen, C30-fc",
+              "No status changes"):
+        assert k in sec, k
+    assert "No row uses it" in ev.split("## 26.")[1].split("## 27.")[0]
