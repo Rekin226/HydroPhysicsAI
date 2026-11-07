@@ -2,8 +2,9 @@
 
 A fixed character map, not a general converter: it covers the page's township names (鄉/乡,
 鎮/镇, 崙/仑, 庫/库, 東/东, 長/长 ...), the lever and class words (減/减, 養殖/养殖, 工業/工业,
-槓桿/杠杆, 縣/县, 雲林/云林), and the words the refusal guards read (head, subsidence, time,
-money, observations). ``臺`` is folded to ``台`` as the page writes 台西鄉. Characters whose
+槓桿/杠杆, 縣/县, 雲林/云林), and the words the rules and refusal guards read (head, subsidence,
+time, money, observations, how-sure wording, the both-counties markers); a test folds those
+words from their simplified forms. ``臺`` is folded to ``台`` as the page writes 台西鄉. Characters whose
 simplified form is also a common traditional character with another meaning are left alone
 (里, 干, 只, 系, 制, 范, 松, 余, 台).
 """
@@ -19,6 +20,8 @@ _PAIRS = (
     "员員 盐鹽 总總 处處 带帶 结結 报報 纪紀 国國 华華 产產 猪豬 饮飲 选選 择擇 种種 类類 别別 "
     "电電 单單 较較 马馬 启啟 动動 迟遲 继繼 续續 偿償 块塊 灾災 损損 稳穩 准準 确確 "
     "宽寬 广廣 务務 规規 则則 统統 计計 图圖 页頁 览覽 网網 络絡 级級 围圍 "
+    "异異 匀勻 据據 评評 录錄 没沒 泄洩 缓緩 体體 输輸 与與 币幣 顷頃 还還 拟擬 换換 从從 采採 进進 "
+    "杆桿 赖賴 释釋 认認 "
     "臺台"
 )
 S2T = str.maketrans({p[0]: p[1] for p in _PAIRS.split() if len(p) == 2})

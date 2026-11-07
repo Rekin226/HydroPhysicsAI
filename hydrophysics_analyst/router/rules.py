@@ -46,14 +46,23 @@ MONEY = [r"hectares?", r"\bacres?\b", r"land\s+area", "公頃", "甲地", "土�
          "新台幣", "台幣", "錢", "成本", "經費", "花費", "補償", "補助", "價格", "金額"]
 RECOMMEND = [r"recommend\w*", r"should\s+(?:we|i|the)", r"which\s+(?:policy|option)\s+(?:is\s+)?best",
              r"best\s+(?:policy|option|choice)", r"what\s+should", "建議", "應該", "最好的政策", "最佳方案",
-             "該選"]
+             "該選",
+             # "the best groundwater policy", 最佳的抽水方案 (not "best estimate", not a lever ranking)
+             r"\bbest\s+(?:\S+\s+){0,3}?(?:policy|policies|option|options|choice|strategy|strategies|plan|"
+             r"scenario|course\s+of\s+action)\b",
+             r"最(?:佳|好)的?[^，,。？?；;]{0,8}(?:方案|政策|選擇|策略|做法)"]
 OBS = [r"benchmark\w*", r"\bstations?\b", r"\bgnss\b", r"\bgps\b", r"\breadings?\b", r"which\s+well",
        r"specific\s+well", r"well\s+(?:no|#)", r"individual\s+wells?",
        "水準點", "單一觀測井", "哪一口井", "測站", "觀測站", "監測站", "讀數",
        # one named well's record (not the registered wells, which are the head answer's unit)
        r"\b(?:the|a|that|this|one)\s+(?:\w+\s+){0,2}monitoring\s+well\b(?!s)",
        r"(?:那個|這個|某個|那口|這口|某口|一口|那个|这个|某个|这口)[^，,。？?]{0,8}(?:監測井|觀測井|监测井|观测井)",
-       "觀測值", "观测值", "實測值", "实测值"]
+       "觀測值", "观测值", "實測值", "实测值",
+       # a well's observed data (not the registered wells' mean, which is the head answer)
+       r"(?:觀測井|監測井|水井)[^，,。？?；;]{0,8}(?:資料|數據|紀錄|記錄|觀測)",
+       r"\b(?:observed|measured|recorded)\s+(?:\w+\s+)?(?:wells?|stations?|benchmarks?)\s+"
+       r"(?:data|records?|readings?|series|values?)\b",
+       r"\bwells?\s+(?:data|records?)\s+(?:from|at|for|of|in)\b"]
 RAIL = [r"\bhsr\b", r"high[-\s]speed\s+rail\w*", r"\bthsr\b", r"\brail\w*", r"\btrain\w*", "高鐵", "鐵路"]
 RANK = [r"\brank\w*", r"which\s+(?:class|lever|use|sector)", r"most\s+effective", r"biggest\s+(?:head\s+)?(?:rise|effect)",
         r"per\s+gwh", r"compare\s+(?:the\s+)?classes", "排序", "哪個類別", "哪一類", "效益最高", "最有效"]

@@ -73,7 +73,7 @@ def _clauses(s: str) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 # Changhua
 # ---------------------------------------------------------------------------------------------
-CHANGHUA_WORD = r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰化"
+CHANGHUA_WORD = r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰\s*化"
 CHOUSHUI = (r"(?:choushui|chuoshui|zhuoshui|jhuoshuei|jhuoshui|choshui|cho[\s\-]shui|chou[\s\-]shui|"
             r"zhuo[\s\-]shui|jhuo[\s\-]shuei)(?:[\s\-]*(?:river|creek|hsi|xi))?")
 RIVER = rf"(?:the\s+)?(?:{CHOUSHUI}|river)"
@@ -140,27 +140,70 @@ def has_lever(s: str) -> bool:
     return _has(LEVER, norm(s))
 
 
+# both counties under one lever ("Yunlin and Changhua", 雲林和彰化都 ...) or Changhua following
+# suit ("and Changhua too", "so does Changhua", 彰化也一樣, 彰化比照) — the lever is Changhua's too
+_CH = r"(?:(?:chang|zhang)[\s\-_']*hua|changhwa|彰化)(?:'s)?(?:\s*county|縣)?"
+_YU = r"(?:yun[\s\-]*lin|雲林)(?:'s)?(?:\s*county|縣)?"
+_JOIN = (r"\s*(?:,?\s*and|&|plus|as\s+well\s+as|along\s+with|together\s+with|,|和|與|跟|及|以及|、|同)"
+         r"\s*(?:(?:in|for|across|to)\s+(?:the\s+)?)?")          # "in Yunlin and in Changhua"
+BOTH = [rf"\b{_YU}{_JOIN}{_CH}", rf"{_CH}{_JOIN}{_YU}", rf"\bboth\b[^.?!;]{{0,40}}{_CH}",
+        rf"{_CH}[^.?!;]{{0,40}}\bboth\b", rf"(?:{_YU}|{_CH})[^。？?！!；;]{{0,12}}都",
+        "兩縣", "兩個縣", "雙方", "彰雲", "雲彰"]
+ALSO = [rf"{_CH}\s*,?\s+(?:too|as\s+well|also|likewise)\b", rf"\b(?:so|as)\s+(?:does|do|did|will|would)\s+{_CH}",
+        rf"{_CH}\s*[:：,，\-–—]?\s*(?:the\s+)?same\b",                     # "Changhua: same"
+        rf"\b(?:appl\w*|extend\w*|imposed|introduced|rolled\s+out)\s+(?:also\s+|too\s+|as\s+well\s+)?"
+        rf"(?:to|in|on|across)\s+(?:the\s+)?{_CH}",                       # "applied to Changhua"
+        rf"{_CH}\s+(?:does|did|will|would)\s+(?:the\s+same|likewise|too)\b",
+        rf"{_CH}\s+(?:matches|matched|matching|follows\s+suit|joins\s+in|copies)\b",
+        rf"\b(?:matched|matching|equal|equivalent|same|identical|parallel|similar)\s+(?:\S+\s+){{0,3}}?"
+        rf"(?:in|for|by|across)\s+(?:the\s+)?{_CH}",
+        rf"{_CH}(?:也|亦|同樣|一樣|跟進|照做|比照|同步|跟著)", rf"(?:也|同樣|一樣|比照|跟進)[^，,。？?]{{0,4}}{_CH}"]
+_PREP_TO_COUNTY = re.compile(r"^\s*(?:\S+\s+){0,4}?(?:in|at|for|across|by|throughout|within|of|from|on|among|"
+                             r"(?:appl\w*|extend\w*|imposed|introduced)\s+(?:also\s+)?(?:to|in|on))"
+                             r"\s+(?:the\s+)?$|^\s*$", re.I)
+
+
+def _cjk(ch: str) -> bool:
+    return "\u4e00" <= ch <= "\u9fff"
+
+
 def changhua_owns_a_lever(s: str) -> bool:
-    """Some lever in the question is not Yunlin's: in its clause the county nearest to it is
-    Changhua or a pronoun, or no county is named there and the last one named before it is not
-    Yunlin. Clauses split on punctuation (also ，：) and on and / while / 並且 ..."""
+    """Some lever in the question is not Yunlin's.
+
+    - Both counties under one lever (BOTH) or Changhua following suit (ALSO), when a lever is
+      asked at all.
+    - Otherwise each lever is owned by the nearest county or pronoun in its clause, measured
+      from the lever word itself. In English a county that comes after the lever owns it only
+      when it is its object or place ("cut Changhua irrigation", "a cut in Changhua"), not a
+      target ("a Yunlin cut does to Changhua's row"); in Chinese the nearest wins either way.
+      On a tie Changhua (or a pronoun) wins.
+    - A lever in a clause with no county is owned by the last county named before it; with
+      none, it is not Yunlin's. Clauses split on punctuation (also ，：) and and / while / 並且 ..."""
     s = norm(s)
+    if not has_lever(s):
+        return False
+    if _has(BOTH + ALSO, s):
+        return True
     last = None                                   # the county last named in an earlier clause
     for cl in _clauses(s):
-        lev = _first(LEVER, cl)
-        yun = _first(YUNLIN, cl)
-        cha = [m.start() for m in re.finditer(CHANGHUA_WORD, cl, re.I)]
-        pro = _first(PRONOUN, cl)
-        for p in lev:
-            # nearest county to the lever; on a tie Changhua (or a pronoun) wins
-            near = sorted([(abs(p - q), 1, "y") for q in yun] + [(abs(p - q), 0, "c") for q in cha + pro])
-            if near and near[0][2] != "y":
+        levs = [m for p in LEVER for m in re.finditer(p, cl, re.I)]
+        cty = ([(m, "y") for p in YUNLIN for m in re.finditer(p, cl, re.I)]
+               + [(m, "c") for m in re.finditer(CHANGHUA_WORD, cl, re.I)]
+               + [(m, "c") for p in PRONOUN for m in re.finditer(p, cl, re.I)])
+        for lv in levs:
+            zh = _cjk(cl[lv.start()])
+            near = []
+            for m, k in cty:
+                if m.end() <= lv.start():                         # the county comes first
+                    near.append((lv.start() - m.end(), k == "y", k))
+                elif m.start() >= lv.end() and (zh or _PREP_TO_COUNTY.match(cl[lv.end():m.start()])):
+                    near.append((m.start() - lv.end(), k == "y", k))      # it comes after, as object
+            if near and min(near)[2] != "y":
                 return True
             if not near and last != "y":
                 return True
-        if yun or cha:
-            tail = max([(q, "y") for q in yun] + [(q, "c") for q in cha])
-            last = tail[1]
+        if cty:
+            last = max((m.start(), k) for m, k in cty)[1]        # a pronoun counts as Changhua
     return False
 
 
@@ -222,12 +265,16 @@ SUBS_MOVE = [rf"{GROUND}(?:\s+(?:level|surface|elevation))?[^.?!;,]{{0,30}}?\b(?
 DIFFERENTIAL = [r"differential\s+(?:settlement|subsidence|sinking)", r"angular\s+distortion",
                 r"\bdistortion\b", "差異沉陷", "差異沉降", "不均勻沉陷", "角變量", "角變形"]
 RAIL_WORDS = [r"\bhsr\b", r"high[-\s]speed\s+rail\w*", r"\bthsr\b", r"\brail\w*", r"\btrain\w*", "高鐵", "鐵路"]
+# the bare words size / number ("is the size of the response tested?") ask about a size without
+# asking for it; every other MAGNITUDE pattern asks for it
+SIZE_WORD = r"\b(?:size|number)\s+of\b"
+SIZE_ADJ = [r"\b(?:large|larger|small|smaller|big|bigger|significant|substantial|sizable|sizeable|tiny|huge|"
+            r"meaningful|material|negligible)\b", "很大", "很小", "大不大", "顯著", "明顯", "可觀", r"\d+\.\d+"]
 MAGNITUDE = [r"how\s+(?:much|many|big|large|deep|fast|far\s+(?:down|up))\b", r"\bby\s+how\s+much\b",
-             r"\b(?:amount|magnitude|figure|estimate|number|value|size)\s+of\b", r"\bin\s+(?:cm|mm|centimet\w*)\b",
+             r"\b(?:amount|magnitude|figure|estimate|value)\s+of\b", SIZE_WORD, r"\bin\s+(?:cm|mm|centimet\w*)\b",
              "多少", "幾公分", "多大", "多深", "多快", "幾釐米",
-             r"\b(?:give|tell|show|state|quote|print|output|reveal|dump|display|list|report)\s+(?:(?:me|us)\s+)?"
-             r"(?!(?:me|us)\b)(?!whether|if\b|why|how\s+(?:sure|well|far))(?:the\s+)?(?:\w+\s+){0,3}"
-             r"(?:subsid|sink|settl|avoid)", "給我", "告訴我", "直接", "列出", "輸出", "印出", "顯示"] + SUBS_UNITS
+             # an imperative to show it is in WHAT (it blocks the how-sure exemption, not the rail one)
+             "給我", "告訴我", "直接", "列出", "輸出", "印出", "顯示"] + SUBS_UNITS
 META = [r"how\s+(?:sure|confident|reliable|trustworthy|certain|well\s+tested|far\s+(?:is|are)\b)",
         r"\btest(?:ed|s|ing)?\b", r"\bvalidat\w*", r"\bverif\w*", r"\bwithdrawn?\b", r"\bsupported\b",
         r"\bevidence\b", r"\btrust\w*", r"\bconfiden\w*", r"\breliab\w*", r"\buncertain\w*",
@@ -235,16 +282,29 @@ META = [r"how\s+(?:sure|confident|reliable|trustworthy|certain|well\s+tested|far
         r"\bscored\b",
         "可信", "可靠", "多準", "信心", "驗證", "檢驗", "測試", "撤回", "為什麼", "為何", "證據", "支持", "不確定",
         "評分", "登錄"]
-# where the size is asked: overrides the named-township and pooled-row exemptions and the
-# how-sure exemption
+# where the size is asked: overrides the named-township and pooled-row exemptions, the rail
+# exemption and the how-sure exemption. Bare whole / entire / total / overall / 總 / 平均 / 整個 /
+# 整體 count only next to a county or fan word: "Tuku's total" is still Tuku's row.
+_WIDE = r"(?:county|fan|alluvial|yun[\s\-]*lin|region)"
 SCOPE_AREA = [r"\bfan\b", r"\bfan[\s\-]*(?:average|wide|total|mean)\b", r"\balluvial\b",
-              r"\bcounty[\s\-]*wide\b", r"\b(?:whole|entire|across\s+the|all\s+of\s+the|over\s+the)\s+county\b",
-              r"\bthe\s+county\s+as\s+a\s+whole\b", r"\bcounty\s+(?:total|average|mean)\b",
-              r"\bwhole\b", r"\bentire\b", r"\btotal\b", r"\boverall\b", r"\bregion[\s\-]*wide\b",
-              r"\b(?:all|every|each)\s+(?:the\s+)?townships?\b",
-              "全縣", "全雲林", "整個", "整體", "沖積扇", "全扇", "全區", "總", "平均", "各鄉鎮", "所有鄉鎮", "全部鄉鎮",
-              "縣內", "全域"]
-SCOPE_META = SCOPE_AREA + [r"\bavoid\w*", "減少下陷", "下陷減少", "少沉", "避免", "減緩"]
+              r"\bcounty[\s\-]*wide\b", r"\b(?:across|all\s+of|over)\s+the\s+county\b",
+              rf"\b(?:whole|entire|total|overall)\s+(?:of\s+)?(?:the\s+)?(?:\S+\s+){{0,2}}?{_WIDE}",
+              rf"\b{_WIDE}(?:'s)?\s+(?:\S+\s+){{0,2}}?(?:total|overall|average|mean|as\s+a\s+whole)\b",
+              r"\bregion[\s\-]*wide\b", r"\b(?:all|every|each)\s+(?:the\s+)?townships?\b",
+              "全縣", "全雲林", "沖積扇", "全扇", "扇區", "全區", "各鄉鎮", "所有鄉鎮", "全部鄉鎮", "縣內", "全域",
+              r"(?:總|平均|整個|整體)[^，,。？?；;]{0,3}(?:縣|沖積扇|扇區|扇|雲林)",
+              r"(?:縣|沖積扇|扇區|雲林)[^，,。？?；;]{0,4}(?:總|平均|整體)"]
+# a how-sure question: a yes/no or how-sure form ...
+YESNO = [r"^\s*(?:please\s+)?(?:is|are|has|have|was|were|does|do|did|can|could|will|would|should|"
+         r"how\s+(?:sure|confident|reliable|certain|well|far\s+(?:is|are|has))|why|when|"
+         r"tell\s+(?:me|us)\s+(?:whether|if))\b",
+         r"[嗎][？?]?\s*$", "有沒有", "是否", "為什麼", "為何", "何時", "什麼時候"]
+# ... that does not ask what the quantity is, or for it to be shown (tell keeps its whether / if)
+WHAT = [r"\bwhat(?:'s|\s+is|\s+are|\s+was|\s+were|\s+would\s+be|\s+will\s+be)\b"
+        r"(?!\s+(?:the\s+)?(?:evidence|status|test|basis|reason))",
+        r"\b(?:give|tell|show|state|quote|print|output|reveal|dump|display|list|report)\b"
+        r"(?!\s+(?:me\s+|us\s+)?(?:whether|if)\b)",
+        "是多少", "有多少", "多少", "給我", "告訴我", "列出", "輸出", "印出", "顯示"]
 
 
 def _ground(s: str) -> str:
@@ -261,20 +321,36 @@ def area_scope(s: str) -> bool:
     return _has(SCOPE_AREA, norm(s))
 
 
+def how_sure_only(s: str) -> bool:
+    """Asks how far the subsidence result is tested, not what it is: how-sure wording (META) in a
+    yes/no or how-sure form (YESNO), with no 'what is', no give / show / print / list, no 多少
+    (WHAT), no lever, no area-scope word, and no size asked except by the bare words size /
+    number (no size adjective, no decimal number either)."""
+    s = norm(s)
+    asks = [p for p in MAGNITUDE if p != SIZE_WORD] + SIZE_ADJ
+    return (_has(META, s) and _has(YESNO, s) and not _has(WHAT, s) and not has_lever(s)
+            and not area_scope(s) and not _has(asks, s))
+
+
 def subsidence_size(s: str) -> bool:
-    """A question about how much the ground sinks / settles / rebounds. Exempt here, unless an
-    area-scope word is present: the rail's differential settlement (C06) when no size is asked;
-    and a how-sure question (META) only when it asks no size, reads no cut or policy and has no
-    scope word (SCOPE_META: also 'avoided'). The caller adds the named-township and pooled-row
-    exemptions, which an area-scope word also overrides."""
+    """A question about how much the ground sinks / settles / rebounds. Exempt here: the rail's
+    differential settlement (C06) when no size is asked and no area-scope word is present, and a
+    :func:`how_sure_only` question. The caller adds the named-township and pooled-row exemptions,
+    which an area-scope word overrides."""
     s = norm(s)
     if not subsidence_words(s):
         return False
-    asks_size, scope = _has(MAGNITUDE, s), area_scope(s)
-    if _has(RAIL_WORDS, s) and _has(DIFFERENTIAL, s) and not asks_size and not scope:
+    asks_size, scope = _has(MAGNITUDE + SIZE_ADJ, s), area_scope(s)
+    # the rail exemption covers the differential settlement only: once those words are taken
+    # out, nothing else may speak of the ground sinking ("the avoided subsidence and the HSR
+    # differential settlement" is still a size question)
+    rest = s
+    for d in DIFFERENTIAL:
+        rest = re.sub(d, " ", rest, flags=re.I)
+    if (_has(RAIL_WORDS, s) and _has(DIFFERENTIAL, s) and not asks_size and not scope
+            and not subsidence_words(rest)):
         return False
-    how_sure_only = _has(META, s) and not asks_size and not has_lever(s) and not _has(SCOPE_META, s)
-    return not how_sure_only
+    return not how_sure_only(s)
 
 
 # ---------------------------------------------------------------------------------------------

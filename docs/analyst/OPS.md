@@ -36,10 +36,21 @@ Every typed question goes through three stages, in this order:
      hold: the name Changhua and nothing else above; the row asked as a row (row, township, 列,
      鄉鎮, "not yet split"); an explicitly Yunlin policy (Yunlin, 雲林); no head word; none of
      Changhua's own classes named next to it ("Changhua's irrigation", 彰化的養殖); and no lever
-     that is Changhua's. A lever is Changhua's when, within its clause (split on punctuation
-     including ，： and on and / while / 並且), the county nearest to it is Changhua or a pronoun
-     (it, they, 也, 當地 ...). If the clause names no county, the lever is Changhua's unless the
-     last county named before it is Yunlin. Ties go to Changhua.
+     that is Changhua's. A lever is Changhua's in any of these cases:
+     - both counties are under one lever: "Yunlin and Changhua", "both … Changhua",
+       雲林和彰化 / 與 / 都, 兩縣;
+     - Changhua follows suit: "and Changhua too", "so does Changhua", "a matched / equal cut in
+       Changhua", 彰化也 / 一樣 / 比照 / 跟進;
+     - within the lever's clause (split on punctuation including ，： and on and / while /
+       並且), the county nearest to the lever word is Changhua or a pronoun (it, they, 也,
+       當地 ...). Distance is measured from the lever word, not from the clause start. In
+       English a county after the lever owns it only as its object or place ("cut Changhua
+       irrigation", "a cut in Changhua"). It does not own it as a target: in "what does a
+       Yunlin cut do to Changhua's township row?" the lever stays Yunlin's. In Chinese the
+       nearest county wins either way;
+     - the clause names no county and the last county named before it is not Yunlin.
+
+     Ties go to Changhua.
 
      The refusal cites the lever it reads. A class lever (C13b) or the subsidence lever (C13c)
      gets "withdrawn under every outcome". Only the all-class head lever gets C13a's "untested
@@ -50,14 +61,28 @@ Every typed question goes through three stages, in this order:
      1. a named Yunlin township (its internals row, C11);
      2. the pooled Changhua row, when the exception above holds;
      3. the rail's differential settlement or angular distortion (C06), when no size is asked;
-     4. a how-sure question (tested, validated, withdrawn, evidence, trust, 驗證, 可信 ...), but
-        only when it asks no size, reads no cut or policy, and has no scope word (the area
-        words below, plus avoided, 減少下陷, 少沉).
+     4. a how-sure question (`guards.how_sure_only`), when all of these hold:
+        - it uses how-sure wording (tested, validated, withdrawn, evidence, trust, 驗證,
+          可信 ...);
+        - it has a yes/no or how-sure form (is / are / has / was / does / can / how sure /
+          why / when / tell me whether …, 嗎, 有沒有, 是否, 為什麼);
+        - it has no "what is / what's", no give / show / print / list / report, and no 多少;
+        - it has no cut or policy and no area-scope word;
+        - it asks no size, except through the bare words "size of" / "number of". A size
+          adjective (large, small, big, significant, substantial, 很大, 顯著) or a decimal
+          number counts as asking one.
 
-     An **area-scope word overrides all four exemptions**: fan, fan-average, alluvial,
-     county-wide, whole, entire, total, overall, all / each townships, 全縣, 全雲林, 整個, 整體,
-     沖積扇, 全扇, 總, 平均, 各鄉鎮, 縣內. A size is asked by how much / how many / by how much,
-     amount / size of, cm, 多少, 幾公分, or a request to give / show / print / list it
+        So "Is the size of the subsidence response tested?" and 下陷大小有經過檢驗嗎 are
+        answered. "Is the avoided subsidence large? Is it tested?" and "What is the avoided
+        subsidence, and is it trustworthy?" are refused.
+
+     An **area-scope word overrides exemptions 1–3** (and blocks 4). The area-scope words are
+     fan, fan-average, alluvial, county-wide, across the county, all / each townships, 全縣,
+     全雲林, 沖積扇, 全扇, 扇區, 各鄉鎮, 縣內. The bare words whole, entire, total, overall, 總,
+     平均, 整個 and 整體 count only next to a county or fan word ("the whole county", "county
+     total", 全縣總共, 整體縣). So "the total avoided subsidence in Tuku" and 土庫鎮平均下陷 stay
+     Tuku's internals row. A size is asked by how much / how many / by how much, amount of,
+     a size adjective, cm, 多少, 幾公分, or a request to give / show / print / list it
      (給我, 直接, 列出).
    - **`beyond_horizon`**: anything after the page's last year:
      - explicit and spelled years: 2040, '35, twenty thirty-five, two thousand and forty;
