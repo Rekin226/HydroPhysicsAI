@@ -5,7 +5,8 @@ STATUS: not registered by user ruling R9.4b (seventeenth set,
 results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6). FV.decidability.v2
 reading 1 already gives P = 0.736 on E02's own rule on these same forwards, so the outcome would
 almost surely be 'unchanged'; no registration is spent on a known answer. This file is kept as
-unregistered code: ``run`` refuses without a registration, and none is to be made.
+unregistered code: ``run`` and the real branch of ``_score`` refuse with this ruling's reason
+even if a registration existed (``_refuse_by_ruling``); only the synthetic smoke runs.
 
 E02 (results/twin/prospective_2026-11, registered 2026-10-11) is decided by
 ``twin.validation.evaluate`` on its registered protocol: pooled central 90 % coverage in
@@ -520,6 +521,12 @@ def close(rep: dict, why: str) -> dict:
     return rep
 
 
+def _refuse_by_ruling() -> None:
+    """User ruling R9.4b: the reading is never run, even if a registration existed. Only the
+    synthetic smoke (SMOKE_SEED, every path outside results/) passes."""
+    raise EngineeringFailure(f"{ID} never runs: {NOT_REGISTERED}")
+
+
 def _registry_guard(P: DecidPaths, prereg_dir=None, rows_dir=None) -> None:
     """A run on real paths (any under results/) uses the real registry and ledger rows only:
     a temporary registry holding a copy of the declaration must never unlock the real worlds."""
@@ -550,6 +557,7 @@ def _score(P: DecidPaths, *, seed: int, plan: V2.Plan | None = None, k_null: int
             raise EngineeringFailure("a smoke runs on SMOKE_SEED and synthetic worlds outside "
                                      "results/ only")
     else:
+        _refuse_by_ruling()
         if seed != SEED or plan != PLAN or k_null != K_NULL:
             raise EngineeringFailure(f"{ID} scores only on its registered seed, plan and K")
         _registry_guard(P, prereg_dir, rows_dir)
@@ -706,6 +714,7 @@ def run(P: DecidPaths | None = None, *, prereg_dir=None, rows_dir=None, log=prin
     logs 'start' and 'engineering_failure', 'error' or 'success' (with the report sha256) to
     attempts.jsonl beside the report, and writes report.json once (mode 'x'). No statistic
     is logged."""
+    _refuse_by_ruling()                               # R9.4b: never runs, registered or not
     P = P or DecidPaths()
     _registry_guard(P, prereg_dir, rows_dir)          # real paths: the real registry only
     load_registered(ID, prereg_dir, rows_dir)         # before anything is logged or read

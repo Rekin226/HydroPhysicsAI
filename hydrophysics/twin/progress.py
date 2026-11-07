@@ -33,8 +33,9 @@ What comes from where:
   measured / weak / unchanged) grades the row by the outcome the row itself records in
   ``decidability_reading: {registration, report, outcome}``, and only when the ledger cites the
   registration with a real hash and the row lists the report; until then ``otherwise``. A
-  recorded outcome without both citations, both citations without a recorded outcome, or an
-  undeclared outcome refuses, so a cited reading always decides, whichever way it went.
+  recorded outcome without both citations, both citations without a recorded outcome, an
+  undeclared outcome, or a recorded outcome on a row whose current-status D qualifier has no
+  ``reading_outcomes`` refuses, so a recorded reading always decides, whichever way it went.
 * SPLIT rows (user rulings R8.16b, R8.17a, R8.17d): a row the mapping marks
   ``split_of: {parent: P, parent_status: S0, piece_status_at_split: s_i}`` is a piece of the
   ledger row P, whose status was S0 when it was split; the piece's status then was s_i.
@@ -313,10 +314,18 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
                 if not isinstance(spec, dict) or spec.get("reading_outcomes") is None:
                     continue
                 ro = spec["reading_outcomes"]
-                if not spec.get("reading_report") or not isinstance(ro, dict) or not ro or \
+                if not spec.get("reading_report") or not spec.get("measured_by") or \
+                        spec.get("otherwise") not in pmap["grades"] or \
+                        not isinstance(ro, dict) or not ro or \
                         any(v not in pmap["grades"] for v in ro.values()):
-                    probs.append(f"{c['id']}: {status}/{code} reading_outcomes needs a "
-                                 "reading_report and grade keys")
+                    probs.append(f"{c['id']}: {status}/{code} reading_outcomes needs "
+                                 "measured_by, a reading_report, otherwise and grade keys")
+        if c.get("decidability_reading") is not None:
+            spec = e.get("grade", {}).get(c["status_current"], {}).get("D")
+            if not isinstance(spec, dict) or spec.get("reading_outcomes") is None:
+                probs.append(f"{c['id']}: records a decidability_reading but its mapping for "
+                             f"status {c['status_current']!r} has no reading_outcomes (a "
+                             "recorded outcome is never ignored)")
     split_parts: dict[str, set] = {}
     for cid, e in pmap["claims"].items():
         so = e.get("split_of")

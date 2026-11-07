@@ -339,7 +339,15 @@ def test_world_files_and_fv2_attempts_must_match(tmp_path):
 
 
 # ---- registration and the run ----------------------------------------------------------------
-def test_scoring_is_private_and_needs_the_registration(synth, tmp_path):
+@pytest.fixture
+def gate_open(monkeypatch):
+    """Open the R9.4b gate for one test, to check the machinery behind it (registration,
+    world binding, attempts log). The real module never runs: see
+    test_r9_4b_refuses_every_real_run_even_when_registered."""
+    monkeypatch.setattr(R, "_refuse_by_ruling", lambda: None)
+
+
+def test_scoring_is_private_and_needs_the_registration(synth, tmp_path, gate_open):
     assert not hasattr(R, "score")
     for kw in ({}, {"k_null": 3}, {"seed": R.SEED + 1}, {"plan": R.SYNTH_PLAN}):
         with pytest.raises(R.EngineeringFailure, match="registered seed|INDEX.jsonl"):
@@ -384,7 +392,7 @@ def _attempts(report: Path) -> list[dict]:
     return [json.loads(x) for x in (report.parent / R.ATTEMPTS_NAME).read_text().splitlines()]
 
 
-def test_run_refuses_before_logging_or_reading(tmp_path, synth):
+def test_run_refuses_before_logging_or_reading(tmp_path, synth, gate_open):
     reg = tmp_path / "prereg"
     reg.mkdir()
     P = dataclasses.replace(synth, report=str(tmp_path / "rep" / "r.json"))
@@ -426,7 +434,7 @@ def test_run_refuses_changed_code_another_design_or_index_sha(monkeypatch):
         R.load_registered()
 
 
-def test_run_logs_start_and_success_with_the_report_sha(monkeypatch, tmp_path, synth):
+def test_run_logs_start_and_success_with_the_report_sha(monkeypatch, tmp_path, synth, gate_open):
     P = dataclasses.replace(synth, report=str(tmp_path / "rep" / "report.json"))
     monkeypatch.setattr(R, "load_registered", lambda *a, **k: ({"frozen_code": {}}, "f" * 64))
     monkeypatch.setattr(R, "_score", lambda *a, **k: {"status": "scored",
@@ -453,7 +461,7 @@ def _tmp_registry(tmp_path, P):
     return reg, rows
 
 
-def test_a_temporary_registry_never_unlocks_the_real_worlds(tmp_path, synth):
+def test_a_temporary_registry_never_unlocks_the_real_worlds(tmp_path, synth, gate_open):
     reg, rows = _tmp_registry(tmp_path, synth)
     doc, sha = R.load_registered(prereg_dir=reg, rows_dir=rows)   # the copy itself is intact
     assert {k: doc["design"][k] for k in R.design()} == R.design() and len(sha) == 64
@@ -472,7 +480,8 @@ def test_a_temporary_registry_never_unlocks_the_real_worlds(tmp_path, synth):
 
 
 def test_a_registered_synthetic_run_scores_once_and_binds_the_declared_worlds(tmp_path,
-                                                                             monkeypatch):
+                                                                             monkeypatch,
+                                                                             gate_open):
     """Registered on a temporary registry with SYNTHETIC worlds, the real branch of _score
     (the registered seed; load_registered; the declared world files) runs end to end. The plan,
     K and FV v1's export pins are shrunk or swapped to the synthetic ones by monkeypatching the
@@ -501,6 +510,24 @@ def test_a_registered_synthetic_run_scores_once_and_binds_the_declared_worlds(tm
     with pytest.raises(R.EngineeringFailure):
         R.run(P, prereg_dir=reg, rows_dir=rows, log=_quiet)
     assert not Path(P.report).exists()
+
+
+def test_r9_4b_refuses_every_real_run_even_when_registered(tmp_path, synth):
+    """R9.4b: run() and the real branch of _score refuse with the ruling's reason before
+    anything is read or logged, even with an intact registration; the smoke still runs."""
+    reg, rows = _tmp_registry(tmp_path, synth)
+    assert R.load_registered(prereg_dir=reg, rows_dir=rows)[1]      # registered and intact
+    P = dataclasses.replace(synth, report=str(tmp_path / "rep" / "report.json"))
+    msg = "never runs: not registered by user ruling R9.4b"
+    for paths in (P, R.DecidPaths()):
+        with pytest.raises(R.EngineeringFailure, match=msg):
+            R.run(paths, prereg_dir=reg, rows_dir=rows, log=_quiet)
+        with pytest.raises(R.EngineeringFailure, match=msg):
+            R._score(paths, seed=R.SEED, prereg_dir=reg, rows_dir=rows, log=_quiet)
+    assert R.main(["run"], prereg_dir=reg, rows_dir=rows) == 1         # CLI: refused
+    assert not (tmp_path / "rep").exists()                  # nothing written or logged
+    assert R._score(synth, seed=R.SMOKE_SEED, plan=R.SYNTH_PLAN, k_null=4, smoke=True,
+                    log=_quiet)["smoke"] is True
 
 
 # ---- model-only -------------------------------------------------------------------------------

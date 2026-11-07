@@ -1713,8 +1713,14 @@ def test_c14d_head_contrast_spread_is_a_ledger_and_readme_note_only():
 # ---- round 9 (user rulings 2026-11-07, sixteenth set, R9.1-R9.4) ------------------------------
 R9_SRC = "results/dataprep/rulings/user_rulings_2026-11-07c.json (sha256 338f2de4)"
 R9_LINE = ("The 2010-11 window is closed as not cleanly testable (user ruling R9.1): no fresh "
-           "wells above the 25-well floor — all 13 Changhua wells were scored by E26 and all 19 "
-           "Yunlin wells' 2010-11 series were loaded by X5EV.")
+           "wells above the 25-well floor — all 13 Changhua wells were in E26's registered unit "
+           "(I1.CH_backcast.v1; 12 scored, the 13th read in its product build but never placed) "
+           "and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check "
+           "2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared "
+           "ids — 13 of 13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19).")
+#: the ruling's own words, quoted verbatim in the ledger's rulings list (left as ruled)
+R9_RULED = ("all 13 Changhua wells scored by E26; all 19 Yunlin wells' 2010-11 series loaded by "
+            "X5EV")
 R9_ALIAS = ("Alias (ruling R8.7, 2026-11-06): 'C30' in this row means C30-scen, the physics "
             "scenario row after the split; the first-year forecast of record is C30-fc. "
             "Round-9 hygiene (2026-11-07, no grade change): the notes name the pieces "
@@ -1732,6 +1738,9 @@ def test_round9_rulings_are_recorded():
         assert _r9(x) in rulings and R9_SRC in rulings[_r9(x)], x
         assert " Decision: " in rulings[_r9(x)] and "Applies to: " in rulings[_r9(x)], x
     assert "Close the 2010-11 window as not cleanly testable" in rulings[_r9("R9.1")]
+    assert R9_RULED in rulings[_r9("R9.1")]                      # the verbatim quote stays
+    for cid in ("E04", "E07", "E26"):                            # the old closure wording is gone
+        assert "Changhua wells were scored by E26" not in CL()[cid]["notes"], cid
     assert "Drop the E04/N2 companion registrations" in rulings[_r9("R9.4")]
     assert "E02.decidability.v1" in rulings[_r9("R9.4")]
     rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07c.json"

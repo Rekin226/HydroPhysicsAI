@@ -2330,8 +2330,11 @@ No status changes; the progress figures are unchanged (6-part 54.0 with claim ho
 estimate, science trust 45.2, forecast part 52.5).
 
 - **The 2010-11 window is closed (R9.1).** The 2010-11 window is closed as not cleanly testable
-  (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were scored
-  by E26 and all 19 Yunlin wells' 2010-11 series were loaded by X5EV. No test and no read; the
+  (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in
+  E26's registered unit (I1.CH_backcast.v1; 12 scored, the 13th read in its product build but
+  never placed) and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check
+  2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared ids — 13 of
+  13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19). No test and no read; the
   line sits on E04, E07 and E26 and in README Limits, and supersedes R8.15's "window unspent".
 - **E02's decidability (R9.4, R9.4b).** R9.4 dropped the E04/N2 companion registrations and
   asked for a synthetic reading of E02's own pooled rule. It was drafted as

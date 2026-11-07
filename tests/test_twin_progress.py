@@ -538,9 +538,35 @@ def test_a_three_outcome_reading_refuses_an_inconsistent_ledger():
         P.recount(ledger, pmap)
     ledger, pmap = _three("measured")
     pmap["claims"]["F1"]["grade"]["D"]["D"]["reading_outcomes"]["weak"] = "D-feeble"
-    with pytest.raises(P.MappingError, match="reading_outcomes needs a reading_report and "
-                                             "grade keys"):
+    with pytest.raises(P.MappingError, match="reading_outcomes needs measured_by, a "
+                                             "reading_report, otherwise and grade keys"):
         P.recount(ledger, pmap)
+    for key in ("measured_by", "otherwise", "reading_report"):    # MappingError, not KeyError
+        ledger, pmap = _three("measured")
+        del pmap["claims"]["F1"]["grade"]["D"]["D"][key]
+        with pytest.raises(P.MappingError, match="reading_outcomes needs measured_by"):
+            P.recount(ledger, pmap)
+
+
+def test_a_recorded_outcome_is_never_silently_ignored():
+    """A row carrying decidability_reading whose current-status qualifier has no
+    reading_outcomes refuses (plain string, plain measured_by spec, or no D qualifier)."""
+    rec = {"registration": "REG.three.v1", "report": REP3, "outcome": "weak"}
+    for spec in ("D-unknown", {"measured_by": "REG.measured.v1", "otherwise": "D-unknown"}):
+        ledger, pmap = _three(None)
+        pmap["claims"]["F1"]["grade"] = {"D": {"D": spec}}
+        ledger["claims"][7]["decidability_reading"] = dict(rec)
+        with pytest.raises(P.MappingError, match="F1: records a decidability_reading but its "
+                                                 "mapping for status 'D' has no "
+                                                 "reading_outcomes"):
+            P.recount(ledger, pmap)
+    ledger, _ = _three(None)
+    pmap = _synthetic()[1]
+    ledger["claims"][9]["decidability_reading"] = dict(rec)      # S1, W+D, no D qualifier
+    with pytest.raises(P.MappingError, match="S1: records a decidability_reading"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _three("weak")                                # the hook itself: accepted
+    assert _row(P.recount(ledger, pmap), "F1")["grade_key"] == "D-weak"
 
 
 def test_e02_stays_d_unknown_by_r9_4b_and_the_hook_works_on_the_real_ledger():
