@@ -25,7 +25,7 @@
  "composite": "first",
  "composite_note": "official rule (user ruling 2026-11-07, fourteenth set, R8.16a): a W in a composite status grades the row W; otherwise the row is graded by its first code, the status of what the row shows now (the trailing D is the pending decider, a trailing L the internals label). The earlier default (mapping default-v1) took the highest code.",
  "split_weights": true,
- "split_note": "split rule (user rulings 2026-11-07: R8.16b, fourteenth set, results/dataprep/rulings/user_rulings_2026-11-07.json sha256 c0886864; R8.17a and R8.17d, fifteenth set, results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)). A row carrying split_of {parent: P, parent_status: S0} is a piece of the ledger row P, whose status was S0 when it was split; the parent's entry lists its pieces in split_into. Weight (R8.16b, R8.17d): the parent's display weight W_P is the largest display weight among the pieces present at the ledger state, and piece i weighs W_P * d_i / sum_j d_j, where d is each piece's own display weight (C01's three pieces 2/3 each; C30-scen 4/3 and C30-fc 2/3). Grade cap (R8.17a): g_P is P's grade at status S0 under the composite-first rule, from P's own mapping entry; if the weighted mean grade of the pieces present, sum_i w_i g_i / sum_i w_i, exceeds g_P, every piece's grade is multiplied by g_P divided by that mean, so the pieces' weighted mean equals g_P; otherwise the grades stand. Guarantee: the pieces together weigh exactly W_P and their weighted mean grade is at most g_P, so a split cannot raise its part's weight or grade above the parent's as it stood at the split; it can lower them. At a ledger state before the split only P is present and is graded and weighted as P.",
+ "split_note": "split rule (user rulings 2026-11-07: R8.16b, fourteenth set, results/dataprep/rulings/user_rulings_2026-11-07.json sha256 c0886864; R8.17a and R8.17d, fifteenth set, results/dataprep/rulings/user_rulings_2026-11-07b.json sha256 7602157b). A row carrying split_of {parent: P, parent_status: S0, piece_status_at_split: s_i} is a piece of the ledger row P, whose status was S0 when it was split, and the piece's own status at the split was s_i; P's entry lists its pieces in split_into. Weight (R8.16b, R8.17d): the parent's display weight W_P is the largest display weight among the pieces present at the ledger state, and piece i weighs w_i = W_P * d_i / sum_j d_j, d being each piece's own display weight (C01's three pieces 2/3 each; C30-scen 4/3 and C30-fc 2/3). Grade (R8.17a, removing only the uplift the split itself created): g_P is P's grade at S0 under the composite-first rule, from P's own mapping entry; m0 is the pieces' weighted mean grade (weights w_i) at their at-split statuses s_i and m1 at their current statuses; the split uplift is u = max(0, m0 - g_P); if u > 0 every piece's grade is multiplied by max(0, m1 - u) / m1, so the pieces' weighted mean becomes m1 - u. The at-split statuses must have unconditional qualifiers, so m0 is fixed by the mapping. Guarantee: the pieces together weigh exactly W_P; at the statuses of the split their mean grade is at most g_P (a split cannot raise its part's weight or grade); a later status change of a piece moves the part by exactly that change's weighted grade (later evidence counts in full). This implements R8.17a's stated intent; the literal reading 'never above g_P' would also freeze later evidence. Uniform scaling can show a piece below its own grade (display only: the part score depends only on the pieces' weighted sum, the same as capping only the piece above the parent). Before a split only P is present and is graded and weighted as P.",
  "answer_tiles": [
   "tW",
   "tC"
@@ -49,7 +49,8 @@
    "reason": "Head change under a policy at N2's unit, the headline answer. Before the round-8 split (status S+D) the row claimed the change itself, a size, while its S covered only the direction (design-time, R0 recipe): S design-time direction-only on a size claim. After the split (status S) the row claims the direction only: S design-time. The D of the pre-split S+D (N2) is graded unknown, as C01-w is (R8.16c); under the composite-first rule the row grades its S.",
    "split_of": {
     "parent": "C01",
-    "parent_status": "S+D"
+    "parent_status": "S+D",
+    "piece_status_at_split": "S"
    },
    "split_into": [
     "C01",
@@ -67,7 +68,8 @@
    "reason": "N2's within-window anomaly response. Decidability measured by X5.n2_reading.v1 ('informative', not decisive: false pass 0.20, power 0.95, 0.15 under the canal confounder); the ledger labels it 'D, decidability measured'. Graded D, decidability unknown, by user ruling 2026-11-07 (fourteenth set) (R8.16c): the 'informative' reading cannot decide under the canal confounder, so it does not say the test can decide.",
    "split_of": {
     "parent": "C01",
-    "parent_status": "S+D"
+    "parent_status": "S+D",
+    "piece_status_at_split": "D"
    }
   },
   "C01-sz": {
@@ -75,7 +77,8 @@
    "reason": "Size of the head lever by Dec 2032, model-only, 'size likely too small; not gated' (N).",
    "split_of": {
     "parent": "C01",
-    "parent_status": "S+D"
+    "parent_status": "S+D",
+    "piece_status_at_split": "N"
    }
   },
   "C02": {
@@ -146,7 +149,8 @@
    "reason": "Baseline projection fields after Dec 2022: the physics model's average-weather scenario, not a forecast (N), on the baseline headline.",
    "split_of": {
     "parent": "C30",
-    "parent_status": "N+D"
+    "parent_status": "N+D",
+    "piece_status_at_split": "N"
    }
   },
   "C30-fc": {
@@ -159,7 +163,8 @@
    "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475). Graded D with decidability unknown (0.6) by user ruling 2026-11-07 (fifteenth set) (R8.17b), consistent with C01-w under R8.16c.",
    "split_of": {
     "parent": "C30",
-    "parent_status": "N+D"
+    "parent_status": "N+D",
+    "piece_status_at_split": "D"
    }
   },
   "E01": {
@@ -233,11 +238,16 @@
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": "D-unknown"
+     "D": {
+      "measured_by": "E02z.level_years23.v1",
+      "reading_report": "results/dataprep/reports/E02z.level_years23.v1/decidability/report.json",
+      "reading_sha256": "0e5e83d3",
+      "otherwise": "D-unknown"
+     }
     }
    },
    "decidable_not_before": "2029-01-15",
-   "reason": "Strict level rule years 2-3 (E02z). Its decidability study ships inside E02z's own registration (E02z.level_years23.v1); no separate registered decidability reading exists, and a registration cannot measure its own decidability by being cited, so D with decidability unknown. (default-v1 used measured_by E02z.level_years23.v1.)"
+   "reason": "Strict level rule years 2-3 (E02z). Decidability measured by its registered decidability reading, results/dataprep/reports/E02z.level_years23.v1/decidability/report.json (sha256 0e5e83d3; 'not_shown_weak' in every county and window: Yunlin P 0.999-1.000, Changhua 0.68-0.69, null false pass 0), which the registration E02z.level_years23.v1 declares: measured when the ledger cites that registration with a real hash and lists the reading among the row's cites.reports. No ruling moves E30 (R8.17b covers E04 and C30-fc only)."
   },
   "C07": {
    "part": "uncertainty_bands",

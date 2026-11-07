@@ -25,18 +25,29 @@ What comes from where:
   gives for the row's exact status string (``grade[status][code]``). A D qualifier may be
   conditional, ``{"measured_by": REG, "otherwise": "D-unknown"}``: measured exactly when the
   ledger's ``registry_hashes`` cites REG at that ledger state with a real hash (a literal
-  ``PENDING`` hash refuses); REG must be a registered decidability reading of the test, not
-  the test's own registration.
+  ``PENDING`` hash refuses). REG is the registration of a decidability reading; when the
+  reading ships inside the test's own registration the spec also names it
+  (``reading_report``, with its ``reading_sha256`` for the record), and the row must list
+  that report in its ``cites.reports`` (E30).
 * SPLIT rows (user rulings R8.16b, R8.17a, R8.17d): a row the mapping marks
-  ``split_of: {parent: P, parent_status: S0}`` is a piece of the ledger row P, whose status
-  was S0 when it was split. Weight: the parent's display weight W_P is the largest display
-  weight among the pieces present at the ledger state, and piece i weighs
-  W_P * d_i / sum_j d_j (d: each piece's own display weight). Grade cap: g_P is P's grade at
-  S0 under the composite-first rule, from P's own mapping entry; if the pieces' weighted mean
-  grade exceeds g_P, every piece's grade is multiplied by g_P / mean, so the mean equals g_P.
-  So the pieces together weigh exactly W_P and their weighted mean grade is at most g_P: a
-  split cannot raise its part's weight or grade above the parent's as it stood at the split
-  (it can lower them). Before the split only P is present and is graded as P.
+  ``split_of: {parent: P, parent_status: S0, piece_status_at_split: s_i}`` is a piece of the
+  ledger row P, whose status was S0 when it was split; the piece's status then was s_i.
+  Weight: the parent's display weight W_P is the largest display weight among the pieces
+  present at the ledger state, and piece i weighs w_i = W_P * d_i / sum_j d_j (d: each
+  piece's own display weight). Grade: g_P is P's grade at S0 under the composite-first rule,
+  from P's own mapping entry; m0 is the pieces' weighted mean grade at their at-split
+  statuses s_i (unconditional qualifiers, so m0 is fixed by the mapping) and m1 at their
+  current statuses; the split's own uplift is u = max(0, m0 - g_P), and if u > 0 every
+  piece's grade is multiplied by max(0, m1 - u) / m1, so the pieces' weighted mean is m1 - u.
+  So the pieces together weigh exactly W_P; at the statuses of the split their mean grade is
+  at most g_P (a split cannot raise its part's weight or grade); and a later status change of
+  a piece moves the part by exactly that change's weighted grade (later evidence counts in
+  full). This implements R8.17a's stated intent; the literal reading "never above g_P" would
+  freeze later evidence too. The uniform scaling can show a piece below its own grade; that is
+  display only, since the part score depends on the pieces' weighted sum alone, the same as
+  capping only the piece above the parent. A split is in effect at a ledger state when a piece
+  other than P itself is present; before that only P is present and is weighted and graded as
+  P.
 * COMPOSITE statuses (``S+D``, ``N+D``, ``W+D``, ``W+L``): a W anywhere grades the row W (a
   withdrawn row asserts nothing, and its pending decider does not restore it); otherwise the
   official rule (``first``, user ruling R8.16a) grades the first code, the status of what the
@@ -191,14 +202,19 @@ def _cited(reg: str, registry: dict) -> bool:
     return reg in registry
 
 
-def _qualifier(spec, registry: dict) -> tuple[str, str]:
-    """(grade key, why) of one S/D qualifier, resolving a conditional ``measured_by``."""
+def _qualifier(spec, registry: dict, claim: dict | None = None) -> tuple[str, str]:
+    """(grade key, why) of one S/D qualifier, resolving a conditional ``measured_by``: measured
+    when the registration is cited with a real hash and, if the spec names a
+    ``reading_report``, the row's ``cites.reports`` lists that decidability reading."""
     if isinstance(spec, str):
         return spec, ""
     reg = spec["measured_by"]
-    if _cited(reg, registry):
-        return "D-measured", f"measured by {reg}"
-    return spec["otherwise"], f"{reg} not cited at this ledger state"
+    if not _cited(reg, registry):
+        return spec["otherwise"], f"{reg} not cited at this ledger state"
+    rep = spec.get("reading_report")
+    if rep and rep not in ((claim or {}).get("cites") or {}).get("reports", []):
+        return spec["otherwise"], f"{rep} not cited by the row at this ledger state"
+    return "D-measured", f"measured by {rep or reg}"
 
 
 def grade(claim: dict, entry: dict, registry: dict, grades: dict,
@@ -214,7 +230,7 @@ def grade(claim: dict, entry: dict, registry: dict, grades: dict,
                     continue
                 raise MappingError(f"{claim['id']}: status {status!r} carries an {code} code "
                                    "the mapping gives no qualifier for")
-            key, why = _qualifier(spec, registry)
+            key, why = _qualifier(spec, registry, claim)
         elif code in ("N", "L", "W"):
             key, why = code, ""
         else:
@@ -267,6 +283,13 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
         parent = pmap["claims"].get(so["parent"])
         if parent is None or cid not in parent.get("split_into", []):
             probs.append(f"{cid}: its parent {so['parent']} must list it in split_into")
+        if pmap.get("split_cap"):
+            s0 = so.get("piece_status_at_split")
+            if not s0:
+                probs.append(f"{cid}: split_of needs piece_status_at_split under the split cap")
+            elif any(not isinstance(q, str) for q in e.get("grade", {}).get(s0, {}).values()):
+                probs.append(f"{cid}: the qualifier of its at-split status {s0!r} must be "
+                             "unconditional, so that the at-split grade is fixed")
         split_parts.setdefault(so["parent"], set()).add(e.get("part"))
     probs += [f"split pieces of {p} sit in more than one part: {sorted(ps)}"
               for p, ps in split_parts.items() if len(ps) > 1]
@@ -274,12 +297,15 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
 
 
 def _apply_splits(rows: list[dict], pmap: dict, registry: dict) -> dict[str, list[dict]]:
-    """Share each split parent's weight among its pieces (R8.16b, R8.17d) and cap their mean
-    grade at the parent's composite-first grade (R8.17a); see the module docstring."""
+    """Share each split parent's weight among its pieces (R8.16b, R8.17d) and remove the grade
+    uplift the split itself created (R8.17a); see the module docstring."""
     groups: dict[str, list[dict]] = {}
     for r in rows:
         if r["split_of"]:
             groups.setdefault(r["split_of"]["parent"], []).append(r)
+    for parent in [p for p, ps in groups.items() if all(r["id"] == p for r in ps)]:
+        for r in groups.pop(parent):      # before the split: only P is present, graded as P
+            r["split_of"] = None
     for parent, pieces in groups.items():
         w_parent = max(r["display_weight"] for r in pieces)
         dsum = sum(r["display_weight"] for r in pieces)
@@ -291,11 +317,19 @@ def _apply_splits(rows: list[dict], pmap: dict, registry: dict) -> dict[str, lis
         g_parent = grade({"id": parent, "status_current": status0}, pmap["claims"][parent],
                          registry, pmap["grades"], "first")["grade"]
         wsum = sum(r["weight"] for r in pieces)
-        mean = sum(r["weight"] * r["grade"] for r in pieces) / wsum if wsum else 0.0
+        if not wsum:
+            continue
+        g_split = {r["id"]: grade({"id": r["id"],
+                                   "status_current": r["split_of"]["piece_status_at_split"]},
+                                  pmap["claims"][r["id"]], registry, pmap["grades"],
+                                  pmap.get("composite", "first"))["grade"] for r in pieces}
+        m0 = sum(r["weight"] * g_split[r["id"]] for r in pieces) / wsum
+        m1 = sum(r["weight"] * r["grade"] for r in pieces) / wsum
+        uplift = max(0.0, m0 - g_parent)
         for r in pieces:
-            r["parent_grade"] = g_parent
-        if mean > g_parent:
-            f = g_parent / mean
+            r["parent_grade"], r["split_uplift"] = g_parent, uplift
+        if uplift > 0 and m1 > 0:
+            f = max(0.0, m1 - uplift) / m1
             for r in pieces:
                 r["uncapped_grade"], r["grade"] = r["grade"], r["grade"] * f
                 r["intended_grade"] = 0.0 if r["graded_code"] in ("W", "L") else r["grade"]

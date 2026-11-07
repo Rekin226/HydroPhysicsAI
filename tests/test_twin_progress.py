@@ -266,12 +266,14 @@ def _split_synthetic():
     pmap.update(split_weights=True, split_cap=True)
     ledger["claims"] += [_claim("A1-w", "D", ["tile:tW"]), _claim("A1-sz", "N", ["i18n:q"])]
     ledger["display_map"]["tiles"]["tW"].append("A1-w")
-    so = {"parent": "A1", "parent_status": "S+D"}
-    pmap["claims"]["A1"].update(split_of=so, split_into=["A1", "A1-w", "A1-sz"])
+    def so(st):
+        return {"parent": "A1", "parent_status": "S+D", "piece_status_at_split": st}
+    pmap["claims"]["A1"].update(split_of=so("S"), split_into=["A1", "A1-w", "A1-sz"])
     pmap["claims"]["A1"]["grade"]["S+D"] = {"S": "S-dt-dir-size", "D": "D-unknown"}
     pmap["claims"]["A1-w"] = {"part": PARTS[0], "grade": {"D": {"D": "D-measured"}},
-                              "reason": "r", "split_of": so}
-    pmap["claims"]["A1-sz"] = {"part": PARTS[0], "reason": "r", "split_of": so}
+                              "reason": "r", "split_of": so("D")}
+    pmap["claims"]["A1-sz"] = {"part": PARTS[0], "grade": {"S": {"S": "S-dt"}}, "reason": "r",
+                               "split_of": so("N")}
     return ledger, pmap
 
 
@@ -301,32 +303,83 @@ def test_split_pieces_share_the_parent_weight_in_proportion():
         P.recount(ledger, pmap)
 
 
-def test_split_pieces_cannot_average_above_the_parent_grade():
-    """R8.17a: if the pieces' weighted mean grade exceeds the parent's composite-first grade at
-    its status when split, every piece's grade is scaled by g_P / mean."""
-    ledger, pmap = _split_synthetic()
-    res = P.recount(ledger, pmap)
-    w = [0.8, 0.8, 0.4]
-    raw = [0.9, 0.7, 0.5]                                   # S-dt, D-measured, N
-    mean = sum(a * b for a, b in zip(w, raw, strict=True)) / 2       # 0.74
-    assert mean < 0.75                                       # below the parent's S-dt-dir-size
-    assert [_row(res, c)["grade"] for c in ("A1", "A1-w", "A1-sz")] == pytest.approx(raw)
-    pmap["claims"]["A1-sz"]["grade"] = {"S": {"S": "S"}}     # raise a piece: mean 0.94 > 0.75
-    ledger["claims"][-1]["status_current"] = "S"
-    res = P.recount(ledger, pmap)
-    raw = [0.9, 0.7, 1.0]
-    mean = sum(a * b for a, b in zip(w, raw, strict=True)) / 2
-    got = [_row(res, c)["grade"] for c in ("A1", "A1-w", "A1-sz")]
-    assert got == pytest.approx([g * 0.75 / mean for g in raw])
-    assert sum(a * b for a, b in zip(w, got, strict=True)) / 2 == pytest.approx(0.75)
-    assert _row(res, "A1")["grade_capped"] == pytest.approx(0.75 / mean)
-    assert _row(res, "A1")["intended_grade"] == pytest.approx(got[0])
-    # the parent's grade is composite-first: a parent N+D grades its N (0.5)
-    pmap["claims"]["A1"]["grade"]["N+D"] = {"D": "D-measured"}
+def _set_parent_status(pmap, status):
     for c in ("A1", "A1-w", "A1-sz"):
-        pmap["claims"][c]["split_of"] = {"parent": "A1", "parent_status": "N+D"}
+        pmap["claims"][c]["split_of"]["parent_status"] = status
+
+
+W_PIECES = (0.8, 0.8, 0.4)                                  # 2 * (2, 2, 1) / 5
+
+
+def _wmean(grades):
+    return sum(w * g for w, g in zip(W_PIECES, grades, strict=True)) / 2
+
+
+def test_split_uplift_is_removed():
+    """R8.17a: the uplift the split itself created, u = max(0, m0 - g_P), is removed by scaling
+    every piece by (m1 - u) / m1; with no later change (m1 = m0) the pieces' mean is g_P."""
+    ledger, pmap = _split_synthetic()
+    raw = (0.9, 0.7, 0.5)                                    # S-dt, D-measured, N at the split
+    res = P.recount(ledger, pmap)                            # parent S+D -> 0.75 > m0 0.74
+    assert [_row(res, c)["grade"] for c in ("A1", "A1-w", "A1-sz")] == pytest.approx(raw)
+    assert _row(res, "A1")["split_uplift"] == 0 and _row(res, "A1")["grade_capped"] is None
+    pmap["claims"]["A1"]["grade"]["N+D"] = {"D": "D-measured"}
+    _set_parent_status(pmap, "N+D")                          # parent graded N: 0.5 < 0.74
     res = P.recount(ledger, pmap)
+    got = [_row(res, c)["grade"] for c in ("A1", "A1-w", "A1-sz")]
+    m0 = _wmean(raw)
     assert _row(res, "A1")["parent_grade"] == 0.5
+    assert _row(res, "A1")["split_uplift"] == pytest.approx(m0 - 0.5)
+    assert got == pytest.approx([g * 0.5 / m0 for g in raw])
+    assert _wmean(got) == pytest.approx(0.5)
+    assert _row(res, "A1")["intended_grade"] == pytest.approx(got[0])
+    # display only: a piece can show below its own grade (A1-sz 0.5 -> 0.34)
+    assert got[2] < raw[2]
+
+
+def test_a_later_status_change_counts_in_full():
+    """A piece's status change after the split moves the part by exactly that change's
+    weighted grade gain; the split's own uplift stays removed."""
+    ledger, pmap = _split_synthetic()
+    pmap["claims"]["A1"]["grade"]["N+D"] = {"D": "D-measured"}
+    _set_parent_status(pmap, "N+D")
+    before = P.recount(ledger, pmap)["parts"][PARTS[0]]
+    ledger["claims"][-1]["status_current"] = "S"            # A1-sz: N (0.5) -> S-dt (0.9)
+    after = P.recount(ledger, pmap)
+    assert after["parts"][PARTS[0]]["weight"] == pytest.approx(before["weight"])
+    gain = 0.4 * (0.9 - 0.5)                                # w_i * delta g
+    assert after["parts"][PARTS[0]]["official"] - before["official"] == pytest.approx(
+        100 * gain / before["weight"])
+    assert _wmean([_row(after, c)["grade"] for c in ("A1", "A1-w", "A1-sz")]) == \
+        pytest.approx(_wmean((0.9, 0.7, 0.9)) - (_wmean((0.9, 0.7, 0.5)) - 0.5))
+
+
+def test_split_rule_edge_cases():
+    # before the split only the parent is present: weighted and graded as itself, uncapped
+    ledger, pmap = _split_synthetic()
+    pre, _ = _synthetic()
+    pre["claims"][0]["status_current"] = "S+D"
+    r = _row(P.recount(pre, pmap), "A1")
+    assert (r["weight"], r["grade"], r["split_of"]) == (2, 0.75, None)
+    # an at-split status with a conditional qualifier refuses (m0 must be fixed)
+    pmap["claims"]["A1-w"]["grade"]["D"]["D"] = {"measured_by": "REG.measured.v1",
+                                                 "otherwise": "D-unknown"}
+    with pytest.raises(P.MappingError, match="A1-w: the qualifier of its at-split status"):
+        P.recount(ledger, pmap)
+    ledger, pmap = _split_synthetic()
+    del pmap["claims"]["A1-sz"]["split_of"]["piece_status_at_split"]
+    with pytest.raises(P.MappingError, match="A1-sz: split_of needs piece_status_at_split"):
+        P.recount(ledger, pmap)
+
+
+def test_a_reading_report_must_be_cited_by_the_row():
+    ledger, pmap = _synthetic()
+    pmap["claims"]["F1"]["grade"] = {"D": {"D": {
+        "measured_by": "REG.measured.v1", "reading_report": "reports/R/decidability.json",
+        "reading_sha256": "00000000", "otherwise": "D-unknown"}}}
+    assert _row(P.recount(ledger, pmap), "F1")["grade_key"] == "D-unknown"
+    ledger["claims"][7]["cites"] = {"reports": ["reports/R/decidability.json"]}
+    assert _row(P.recount(ledger, pmap), "F1")["grade_key"] == "D-measured"
 
 
 def test_the_default_mapping_is_the_ruled_one():
@@ -337,17 +390,20 @@ def test_the_default_mapping_is_the_ruled_one():
     assert "R8.17" in pmap["rule"] and "7602157b" in pmap["rule"]
     cl = pmap["claims"]
     so = {c: cl[c].get("split_of") for c in ("C01", "C01-w", "C01-sz", "C30-scen", "C30-fc")}
-    assert so == {**{c: {"parent": "C01", "parent_status": "S+D"}
-                     for c in ("C01", "C01-w", "C01-sz")},
-                  **{c: {"parent": "C30", "parent_status": "N+D"}
-                     for c in ("C30-scen", "C30-fc")}}
+    at = {"C01": "S", "C01-w": "D", "C01-sz": "N", "C30-scen": "N", "C30-fc": "D"}
+    assert so == {c: {"parent": c[:3], "parent_status": "S+D" if c.startswith("C01") else "N+D",
+                      "piece_status_at_split": at[c]} for c in at}
     assert cl["C01"]["split_into"] == ["C01", "C01-w", "C01-sz"]
     assert cl["C30"]["split_into"] == ["C30-scen", "C30-fc"] and cl["C30"]["retired"]
     assert cl["C01-w"]["grade"] == {"D": {"D": "D-unknown"}}                         # R8.16c
     assert cl["E21"]["grade"] == {"D": {"D": "D-weak"}}
     assert cl["E25"]["grade"] == cl["E26"]["grade"] == {"S": {"S": "S-dt-dir-size"}}
-    for c in ("E04", "C30-fc", "E30"):                                              # R8.17b
+    for c in ("E04", "C30-fc"):                                                     # R8.17b
         assert cl[c]["grade"] == {"D": {"D": "D-unknown"}}, c
+    e30 = cl["E30"]["grade"]["D"]["D"]                      # not ruled: its registered reading
+    assert e30["measured_by"] == "E02z.level_years23.v1" and e30["reading_sha256"] == "0e5e83d3"
+    assert e30["reading_report"] == ("results/dataprep/reports/E02z.level_years23.v1/"
+                                     "decidability/report.json")
     assert "weight" not in cl["C28"]                                                # R8.17c
     assert not any("plan" in e["reason"] for e in cl.values())
     assert P.with_mapping(pmap, None) is pmap and P.with_mapping(pmap, "official") is pmap
@@ -380,8 +436,8 @@ PINNED = {
                   "science": (45.0754, 37.8435, 56.6219), "six": (53.3961, 63.0182),
                   "default_v1": (48.36, 56.13)},
     TODAY: {"honesty": 98.0,
-            "parts": (49.3939, 51.7857, 42.7778, 35.5682, 45.625),
-            "science": (45.0301, 37.9444, 57.0579), "six": (53.8584, 63.8816),
+            "parts": (49.3939, 52.5, 42.7778, 35.5682, 45.625),
+            "science": (45.173, 38.0873, 57.2008), "six": (53.9775, 64.0006),
             "default_v1": (49.16, 57.30)},
 }
 
