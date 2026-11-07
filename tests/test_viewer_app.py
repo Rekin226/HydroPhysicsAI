@@ -385,6 +385,55 @@ def test_rail_tile_and_alternative_model_in_the_payload(tmp_path, quiet):
     assert "D.hsr.mixed" in html and "structWeak" in html
 
 
+
+PREV_JS = """() => { const out = {}; out.none = (tileLabels(), $("miPrev").hidden);
+  D.alt.prev = {name: "prev_synth"};
+  for (const l of ["en", "zh"]) { LANG = l; renderCard(); tileLabels();
+    const row = [...$("cardBody").querySelectorAll(".kv > div")].find(e => e.textContent === tr("kv_prev"));
+    out[l] = {row: row ? row.nextElementSibling.textContent : null, card: $("cardBody").textContent,
+      mi: $("miPrev").textContent, hidden: $("miPrev").hidden, box: $("miPrev").parentElement.id,
+      base: tr("pl_base", {a: "", b: "", v: "", mine: ""}).split("{")[0].slice(0, 6)}; }
+  return out; }"""
+
+
+def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path, quiet):
+    """User ruling R10.1 (B): the card's previous-model row keeps the observation-scored
+    comparisons; the previous model's subsidence sizes (and this model's beside them) render
+    only in the Model internals block, labelled, in EN and ZH (synthetic page)."""
+    fw, _, _ = _write_inputs(tmp_path)
+    import shutil
+
+    alt = tmp_path / "alt.npz"
+    shutil.copy(fw, alt)
+    pd.read_csv(tmp_path / "fwd.members.csv").to_csv(tmp_path / "alt.members.csv", index=False)
+    _, out, _ = _build(tmp_path, alt_npz=str(alt), alt_theta=None, prev_dir=None)  # synthetic
+    pw, browser = _browser()
+    try:
+        page = browser.new_page()
+        page.goto(out.as_uri())
+        page.wait_for_function("document.body.dataset.ready === '1'", timeout=30000)
+        got = page.evaluate(PREV_JS)
+    finally:
+        browser.close()
+        pw.stop()
+    assert got["none"] is True                       # no previous model: nothing in the block
+    for lang, row_head, mi_head, base, resp in (
+            ("en", "Compared with the previous model (prev_synth)",
+             "Model internals, previous model (prev_synth): it projects a ",
+             "model internals: its size is untested", "model internals, size untested"),
+            ("zh", "與前一版模型（prev_synth）相比",
+             "模型內部數值，前一版模型（prev_synth）的推估：基準情境",
+             "模型內部數值：其大小未經檢驗", "模型內部數值，大小未經檢驗")):
+        g = got[lang]
+        assert g["row"] and g["row"].startswith(row_head), (lang, g["row"])
+        assert " cm" not in g["row"] and "公分" not in g["row"], (lang, g["row"])
+        assert base not in g["card"] and resp not in g["card"], lang
+        assert "prev_synth" in g["card"]                         # the comparison stays
+        assert g["box"] == "tilesMore" and not g["hidden"], lang
+        assert g["mi"].startswith(mi_head), (lang, g["mi"])
+        assert base in g["mi"] and resp in g["mi"], (lang, g["mi"])
+
+
 # data-prep units ---------------------------------------------------------------------------
 def test_pack_roundtrip_and_never_clips():
     a = np.array([[0.0, 1.234, -2.5], [np.nan, 400.0, 3.0]])

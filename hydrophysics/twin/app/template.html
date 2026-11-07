@@ -1073,7 +1073,8 @@ en: {
   tt_n1_design: ", design-time", tt_n1_other: " (other model, not counted)", tt_n1_ref: "no change {c}; reference year {z}", mdl_r0: "R0 recipe", mdl_r1c: "census model R1c", mdl_none: "model not recorded",
   best_clim: "climatology", best_clim_trend: "climatology + trend", best_persist: "persistence",
   th_test: "Test", th_this: "This model", th_verdict: "Verdict", th_ref: "Reference", th_prev: "Previous model", th_tests: "How the model is tested",
-  pl: "Compared with the previous model ({name}), this one does better on {gain}, and worse on {lose}. The previous model projects {proj}.",
+  pl: "Compared with the previous model ({name}), this one does better on {gain}, and worse on {lose}.",
+  prev_mi: "Model internals, previous model ({name}): it projects {proj}.",
   pl_heldout: "the held-out years (error ratio {a} against {b})", pl_anom: "head changes at unseen wells ({a} against {b})", pl_lev: "the leveling out of fold ({a} against {b})",
   pl_chain: "the full-chain hindcast ({a} against {b})", pl_abs: "absolute levels at unseen wells ({a} against {b})", pl_rings: "the compaction rings ({a} against {b})",
   pl_base: "a {a}–{b} baseline of {v} cm ({mine} here; model internals: its size is untested, and the distal coast does not sink in this model)", pl_resp: "{p} avoids {v} cm ({mine} here; model internals, size untested)",
@@ -1463,7 +1464,8 @@ zh: {
   tt_n1_design: "，設計期視窗", tt_n1_other: "（其他模型，不計入）", tt_n1_ref: "不變基準 {c}；參考年基準 {z}", mdl_r0: "R0 配方", mdl_r1c: "普查模型 R1c", mdl_none: "未記錄模型",
   best_clim: "氣候平均", best_clim_trend: "氣候平均加趨勢", best_persist: "持續法",
   th_test: "檢驗", th_this: "本模型", th_verdict: "判定", th_ref: "參考", th_prev: "前一版模型", th_tests: "模型的檢驗",
-  pl: "與前一版模型（{name}）相比，本模型在{gain}較好；在{lose}較差。前一版的推估：{proj}。",
+  pl: "與前一版模型（{name}）相比，本模型在{gain}較好；在{lose}較差。",
+  prev_mi: "模型內部數值，前一版模型（{name}）的推估：{proj}。",
   pl_heldout: "保留年份檢驗（誤差比 {a}，前一版 {b}）", pl_anom: "未見過的井的水頭變化（{a}，前一版 {b}）", pl_lev: "水準測量跨折（{a}，前一版 {b}）",
   pl_chain: "全鏈回推（{a}，前一版 {b}）", pl_abs: "未見過的井的絕對水位（{a}，前一版 {b}）", pl_rings: "壓密環（{a}，前一版 {b}）",
   pl_base: "基準情境{a}–{b}年下陷 {v} 公分（本模型 {mine}；模型內部數值：其大小未經檢驗，且本模型的遠端沿海不下陷）", pl_resp: "「{p}」減少 {v} 公分（本模型 {mine}；模型內部數值，大小未經檢驗）",
@@ -1835,12 +1837,14 @@ function buildTiles() {
   const a = $("tiles"), b = $("tilesMore"); a.textContent = ""; b.textContent = "";
   const note = document.createElement("p"); note.className = "minote"; note.id = "miNote"; b.appendChild(note);
   TILE_IDS.forEach((id, i) => (i < PRIMARY ? a : b).appendChild(mk(id)));
+  const prev = document.createElement("p"); prev.className = "minote"; prev.id = "miPrev"; prev.hidden = true; b.appendChild(prev);
 }
 function tileLabels() {
   const lab = {tA: tr("tAvoid"), tR: tr("tArea", {t: S.thr}), tF: tr("tConf"), tH: tr("tHsr"), tW: tr(N2U() ? "tHead" : "tHead_l2"), tC: tr("tCost")};
   for (const id of TILE_IDS) { const el = $(id); setText(el.querySelector(".kl"), lab[id]); el.querySelector(".qbtn").setAttribute("aria-label", tr("def_of", {k: lab[id]})); }
   setText($("moreBtn"), tr(S.more ? "less_metrics" : "more_metrics", {n: TILE_IDS.length - PRIMARY}));
   setText($("miNote"), tr("mi_note") + fwNote());
+  const pz = prevSizeLine(); $("miPrev").hidden = !pz; setHtml($("miPrev"), pz);
   $("moreBtn").setAttribute("aria-expanded", S.more);
 }
 function fwNote() {                     // FW.weather_replay v1 (pumping only) and v2 (weather): a qualitative note under Model internals, no number
@@ -2878,10 +2882,14 @@ function prevLine() {                  // "Compared with the previous model: ...
   cmp(mc.chain && mc.chain.r2, pv.chain && pv.chain.r2, "chain");
   cmp(mc.r2_kfold, pv.r2_kfold, "abs");
   cmp(mc.column && mc.column.rings, pv.column && pv.column.rings, "rings");
+  return tr("pl", {name: esc(pv.name), gain: andJoin(gain), lose: andJoin(lose)});
+}
+function prevSizeLine() {              // R10.1: the previous model's subsidence sizes sit under Model internals only (E15)
+  const pv = PREV(), a = D.alt; if (!pv) return "";
   const resp = D.solved.filter(x => x.members && a.resp[x.name]).map(x => [policyPhrase(x.factors), -a.resp[x.name].subs_mean, -mMean(x.members)]);
   const base = a.baseFwd != null ? tr("pl_base", {a: M.years[YR], b: M.years[Y-1], v: f2(a.baseFwd), mine: f2(baseFwdFan())}) : "";
-  const rs = resp.map(q => tr("pl_resp", {p: lc(q[0]), v: f2(q[1]), mine: f2(q[2])}));
-  return tr("pl", {name: esc(pv.name), gain: andJoin(gain), lose: andJoin(lose), proj: [base].concat(rs).filter(Boolean).join(tr("semi"))});
+  const proj = [base].concat(resp.map(q => tr("pl_resp", {p: lc(q[0]), v: f2(q[1]), mine: f2(q[2])}))).filter(Boolean).join(tr("semi"));
+  return proj ? tr("prev_mi", {name: esc(pv.name), proj}) : "";
 }
 
 // ---------- the model card: evidence first, then the numbers behind it -------------------

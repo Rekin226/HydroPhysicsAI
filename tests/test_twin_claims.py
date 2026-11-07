@@ -1830,3 +1830,58 @@ def test_evidence_section_27_records_round_9():
               "No status changes"):
         assert k in sec, k
     assert "No row uses it" in ev.split("## 26.")[1].split("## 27.")[0]
+
+
+R10_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+R10_IDS = ("R10.1", "R10.2a", "R10.2b", "R10.2c", "R10.3a", "R10.3b", "R10.3c", "R10.4")
+
+
+def test_round10_rulings_are_recorded():
+    """The eighteenth set (round 10): eight rulings, each citing its file and sha256."""
+    text = {r["id"]: r["text"] for r in L()["rulings"]}
+    for rid in R10_IDS:
+        t = text[f"user ruling 2026-11-07 (eighteenth set) ({rid})"]
+        assert " Decision: " in t and " Applies to: " in t and t.endswith(R10_SRC), rid
+    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07e.json"
+    if rf.is_file():                                   # a local record; absent on CI
+        assert C.sha256(rf).startswith("88260aab")
+
+
+def test_previous_model_size_clause_sits_under_model_internals_only():
+    """User ruling R10.1 (B): the model card's previous-model row (kv_prev, prevLine) keeps the
+    observation-scored comparisons only; the previous model's baseline and avoided subsidence,
+    with this model's figure beside them (pl_base, pl_resp), render only in the Model internals
+    block (prevSizeLine -> #miPrev inside #tilesMore), labelled, in EN and ZH. All of it stays
+    on E15, which stays N; no new claim id."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    for d in (en, zh):
+        assert "{proj}" not in d["pl"] and "{proj}" in d["prev_mi"]
+        assert "{gain}" in d["pl"] and "{lose}" in d["pl"]
+    assert en["prev_mi"].startswith("Model internals") and zh["prev_mi"].startswith("模型內部")
+    assert "model internals" in en["pl_base"] and "size is untested" in en["pl_base"]
+    assert "model internals, size untested" in en["pl_resp"]
+    for k in ("pl_base", "pl_resp"):
+        assert "模型內部數值" in zh[k] and "大小未經檢驗" in zh[k], k
+    assert "預報" not in zh["prev_mi"] + zh["pl"] + zh["pl_base"] + zh["pl_resp"]
+    size = {"pl_base", "pl_resp", "prev_mi"}
+    bodies = C._function_bodies()
+    users = sorted(n for n, b in bodies.items() if size & C.tr_keys(b))
+    assert users == ["prevSizeLine"], users
+    assert not size & C.function_keys("prevLine")
+    callers = sorted(n for n, b in bodies.items()
+                     if n != "prevSizeLine" and re.search(r"(?<![A-Za-z0-9_$])prevSizeLine\(", b))
+    assert callers == ["tileLabels"], callers
+    assert 'setHtml($("miPrev"), pz)' in bodies["tileLabels"]
+    # #miPrev is built inside the Model internals block (#tilesMore), never in the card
+    assert 'prev.id = "miPrev"' in bodies["buildTiles"] and "b.appendChild(prev)" in bodies[
+        "buildTiles"] and 'b = $("tilesMore")' in bodies["buildTiles"]
+    assert "prevSizeLine" not in C.function_closure("renderCard")
+    assert "prevLine" in C.function_closure("renderCard")
+    for fn in L()["page_scoping"]["answer_functions"]:
+        assert "prevSizeLine" not in C.function_closure(fn), fn
+    # the ledger: E15 owns the new key and function, stays N, and the label is checked
+    assert _st("E15") == {"N"}
+    assert DM()["i18n"]["prev_mi"] == ["E15"] and DM()["functions"]["prevSizeLine"] == ["E15"]
+    assert DM()["card_rows"]["kv_prev"] == ["E15"] and DM()["functions"]["prevLine"] == ["E15"]
+    assert "i18n:prev_mi" in CL()["E15"]["text_keys"]
+    assert "prev_mi" in L()["page_scoping"]["internals_labelled_keys"]
