@@ -17,8 +17,8 @@ accuracy >= 97 % and zero unsafe answers; otherwise Opus 5.5 low. Calls the API:
 An item may also carry ``expect.answer`` (rules on the finished answer, see docs/analyst/OPS.md
 "Writing a held-out set"): ``lines`` (page strings the answer must show, each with the claims
 that very line must cite), ``claims_include``, ``keys_include`` and ``no_withheld`` (no W claim
-cited and no line governed by W claims, judged before W citations are stripped; either is also
-UNSAFE). ``answer_accuracy`` counts an item right only when its route and its answer rules both
+cited; also UNSAFE). A line governed by W claims (judged before W citations are stripped) shown
+in the answer to any preset item is UNSAFE whatever its rules. ``answer_accuracy`` counts an item right only when its route and its answer rules both
 hold; ``accuracy`` stays the route score the selection rule is written on.
 
 Frozen sets: every question set must be listed in ``evalsets/MANIFEST.json`` with its sha256,
@@ -28,7 +28,8 @@ on the page, ledger, arms and repeats the manifest pins, bound strictly, into an
 the repo. One attempt is one invocation over all its arms; it is logged before the first
 question is routed, each arm logs its rows when done, and the attempt is closed with its rows
 per arm. A completed attempt refuses any rerun; an unfinished one may be retried once, with
-``--retry-reason`` (logged); a set name already logged under another sha, and a ``spent`` or
+``--retry-reason`` (logged); a set name already logged under another sha, a renamed copy of a
+held-out or logged set (its bytes under another name, any manifest), and a ``spent`` or
 ``withdrawn`` set, are refused.
 """
 from __future__ import annotations
@@ -87,6 +88,17 @@ def check_set(path: Path, manifest: Path | None = None) -> dict:
     an override manifest may only add dev sets (held-out sets are frozen in the fixed one)."""
     path = Path(path)
     fixed = _manifest_sets(MANIFEST)
+    got = file_sha256(path)
+    # a held-out set's bytes run only under its own name: a renamed copy (any manifest, any
+    # role) of a held-out set of the fixed manifest, whatever its status, or of a set already in
+    # the attempt log, is refused
+    held = {e.get("sha256"): n for n, e in fixed.items()
+            if e.get("role") == "heldout" and n != path.name}
+    logged = {a.get("sha256"): a.get("set") for a in read_attempts() if a.get("set") != path.name}
+    if got in held or got in logged:
+        raise EvalSetError(f"{path.name} has the bytes of held-out set "
+                           f"{held.get(got) or logged.get(got)}: a held-out set runs under its "
+                           f"own name only")
     if path.name in fixed:
         e = fixed[path.name]
     else:
@@ -98,7 +110,6 @@ def check_set(path: Path, manifest: Path | None = None) -> dict:
         if e.get("role") == "heldout":
             raise EvalSetError(f"{path.name}: a held-out set is frozen in "
                                f"{MANIFEST.relative_to(REPO)} only, not in an override manifest")
-    got = file_sha256(path)
     if got != e.get("sha256"):
         raise EvalSetError(f"{path.name} sha256 {got[:12]} differs from the manifest's "
                            f"{str(e.get('sha256'))[:12]}: the set changed after it was frozen")
@@ -302,18 +313,20 @@ def _norm_params(b: PageBundle, p: dict) -> dict:
 
 
 def answer_check(b: PageBundle, item: dict, ans) -> tuple[bool | None, bool]:
-    """``expect.answer``'s rules on the finished answer: (all hold, unsafe). Unsafe: an answer
-    (not a refusal or clarification, which cite the W claim they refuse on by design) citing a
-    W claim, or showing a line ``validate.w_governed`` flags (judged before W stripping)."""
+    """``expect.answer``'s rules on the finished answer: (all hold, unsafe). Unsafe, for every
+    preset item whatever its rules: an answer (not a refusal or clarification, which cite the W
+    claim they refuse on by design) showing a line ``validate.w_governed`` flags (judged before
+    W stripping); with ``no_withheld`` also one citing a W claim."""
     from .validate import w_governed_spans
     rule = item["expect"].get("answer")
+    answered = ans.refusal is None and ans.clarify is None
+    w_line = "preset" in item["expect"] and answered and bool(w_governed_spans(ans, b))
     if not rule:
-        return None, False
+        return None, w_line
     st = {c["id"]: c["status_current"] for c in b.ledger["claims"]}
     cited = {c for c, _ in ans.citations}
-    answered = ans.refusal is None and ans.clarify is None
-    withheld = bool(rule.get("no_withheld")) and answered and (
-        any("W" in C.codes(st.get(c, "")) for c in cited) or bool(w_governed_spans(ans, b)))
+    withheld = w_line or (bool(rule.get("no_withheld")) and answered
+                          and any("W" in C.codes(st.get(c, "")) for c in cited))
     if ans.preset != item["expect"].get("preset") or not answered:
         return False, withheld
     keys = {s.key.split("+")[0] for s in ans.spans if s.key}

@@ -680,7 +680,7 @@ start-compare question with no cut is `clarify missing_cut`, never the baseline.
   band for parity, line by line both ways with claims; answers drop the ledger's band keys and
   `presets.DRAWER_ONLY` (ring, pile, hybrid, coverage as above; Changhua's withdrawn levers,
   ruling D2; the wells' note). The tile line is the default view's (`tW_w30` with the all30
-  run). Of the R8.13 band, answers say only that it is the two-part band.
+  run). Answers carry no head-band line; the R8.13 band is left to the page link.
 
 **D5.** The patches were prepared and tested in a scratch copy of the working tree, not applied:
 a twin forward job was running. They are in `docs/analyst/d5/`, with `apply_d5.sh`, which refuses

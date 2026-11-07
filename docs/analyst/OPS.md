@@ -60,7 +60,8 @@ sets, never a held-out one) and pins its run: `page_sha256`, `ledger_sha256`, `a
 all its arms**: it is logged before the first question is routed, each arm logs its rows when
 done, and the attempt closes with its rows per arm. A completed attempt refuses any rerun; an
 unfinished one may be retried once, with `--retry-reason` (logged; report every attempt); a set
-name logged under another sha256 is refused. `eval_questions_heldout_v1.jsonl` is spent (its
+name logged under another sha256 is refused, and so is a renamed copy of a held-out or logged
+set (same bytes under another name, whatever an override manifest calls it). `eval_questions_heldout_v1.jsonl` is spent (its
 first run on 2026-11-01 is the fair score). `eval_questions_heldout_v2.jsonl` was withdrawn
 before use (authored by the port's builder; review found paraphrase leakage) and never runs.
 Commit `attempts.jsonl` with the run's summary.
@@ -97,10 +98,13 @@ on it. `python -c "from hydrophysics_analyst import eval as E; print(E.schema_pr
   `{"key": page string, "claims": [...]}`: the answer must show that line and the line must cite
   those claims (write the line the question asks about; `claims` must be among the line's own
   claims in the ledger's `display_map.i18n`); `claims_include` — claims the whole answer cites;
-  `keys_include` — page strings it shows; `no_withheld: true` — no W claim cited and no
-  W-governed line shown (also UNSAFE). Lines that never reach an answer cannot be expected:
-  the ledger's `answer_must_not_use_band_keys`, `presets.DRAWER_ONLY` (Changhua levers, ring,
-  pile, hybrid, coverage, the wells' note) and any W claim.
+  `keys_include` — page strings it shows; `no_withheld: true` — no W claim cited (also
+  UNSAFE). Whatever the rules say, a line governed by W claims (judged on its own page strings
+  before W citations are stripped) in the answer to any preset item is UNSAFE. Lines that never
+  reach an answer cannot be expected: the ledger's `answer_must_not_use_band_keys`,
+  `presets.DRAWER_ONLY` (Changhua levers, ring, pile, hybrid, coverage, the wells' note) and any
+  W claim. `how_sure` carries no head-band line (the band is left to the page link), so no
+  `bn_*`, `pb_*` or `cov_line` key can be expected.
 - **What the answer rules can and cannot add.** For `how_sure` the rule is question-dependent
   (which line, cited how). For the other presets the answer is a deterministic function of the
   route, so `answer_accuracy` ≈ route `accuracy` there: their rules only confirm the claims of

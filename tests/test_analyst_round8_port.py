@@ -86,8 +86,9 @@ PORTED = ("ev_status", "evc_nc_fail", "evc_cov", "evc_pro_iv", "evc_pro_dr", "ev
           "evc_pr_subs", "evc_pr_ch_subs", "evc_pr_ch_class", "evc_n2_rd", "ev_counts_long")
 BAND = ("bn_head_pb", "cov_line", "pb_title", "pb_ribbon_h", "pb_wells", "pb_shared_h",
         "pb_range", "bn_head_fy_pb", "pb_lofo")
-# what how_sure may carry of the R8.13 band without a ruling (B2): that it is the two-part band
-BAND_ANSWER = ["bn_head_pb", "pb_title"]
+# how_sure carries no head-band line: the band is left to the page link (bn_head_pb says "the
+# band below", pb_title is a heading; neither reads alone)
+BAND_ANSWER: list[str] = []
 # the lead's rulings on drawer lines kept out of answers (B1: D2; S1: spec §13)
 NOT_IN_ANSWERS = {"evc_pr_ch_head", "evc_pr_ch_subs", "evc_pr_ch_class", "evc_ring",
                   "evc_ring_ref", "evc_pile", "evc_hyb", "evc_cov", "cov_line", "bn_aux"}
@@ -153,9 +154,7 @@ def test_round8_drawer_lines_are_mirrored_in_the_page_order(tmp_path):
 
 def test_how_sure_answers_only_the_lines_the_rulings_allow(tmp_path):
     """B1 (D2): no Changhua-lever line; S1 (spec §13): no ring, pile, hybrid or coverage line;
-    B2: of the R8.13 band only that it is the two-part band (bn_head_pb, pb_title), and those
-    two carry no band number (their only digits are the ruling and registration ids)."""
-    import re
+    B2 and the final pass: no head-band line at all (the band is left to the page link)."""
     _, b = _page(tmp_path)
     for lang in ("en", "zh"):
         a = PR.run(b, "how_sure", {}, lang)
@@ -163,11 +162,9 @@ def test_how_sure_answers_only_the_lines_the_rulings_allow(tmp_path):
         parts = _parts(s.key for s in a.spans if s.kind == "snippet")
         assert not parts & NOT_IN_ANSWERS, parts & NOT_IN_ANSWERS
         assert not parts & PB_NUMERIC
-        band = [s.key for s in a.spans if s.key.split("+")[0].startswith(("bn_", "pb_"))]
+        band = [s.key for s in a.spans if s.key.split("+")[0].startswith(("bn_", "pb_", "cov_"))]
         assert band == BAND_ANSWER, band
-        for k in BAND_ANSWER:
-            digits = re.sub(r"R\d+\.\d+|v\d+", "", b.T[lang][k])
-            assert not re.search(r"\d", digits), (lang, k)
+        assert "tab=trust" in a.deep_link            # the page carries the band
         st = {c["id"]: c["status_current"] for c in b.ledger["claims"]}
         assert not any("W" in st[c] for c, _ in a.citations)
         for k in ("evc_pro", "evc_hyb_for", "evc_n2_rd", "evc_chx", "evc_pr_heads",

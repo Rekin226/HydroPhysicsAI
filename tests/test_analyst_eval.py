@@ -123,6 +123,34 @@ def test_a_heldout_set_cannot_come_from_an_override_manifest(fixed, tmp_path_fac
     assert EV.check_set(qs3, over)["role"] == "heldout"
 
 
+def test_a_renamed_copy_of_a_heldout_set_is_refused(fixed, tmp_path_factory):
+    """Item 1: the bytes of a held-out set (fixed manifest, any status) or of a logged set run
+    under their own name only, whatever an override manifest calls the copy."""
+    qs, _ = _tiny(fixed)                                  # held-out in the fixed manifest
+    d = tmp_path_factory.mktemp("copy")
+    copy = d / "eval_questions_renamed.jsonl"
+    shutil.copy(qs, copy)
+    over = d / "MANIFEST.json"
+    over.write_text(json.dumps({"sets": {copy.name: {"role": "dev", "status": "dev",
+                                                     "sha256": EV.file_sha256(copy), "n": 3}}}),
+                    encoding="utf-8")
+    for status in ("frozen", "spent", "withdrawn"):
+        m = json.loads(EV.MANIFEST.read_text(encoding="utf-8"))
+        m["sets"][qs.name]["status"] = status
+        EV.MANIFEST.write_text(json.dumps(m), encoding="utf-8")
+        with pytest.raises(EV.EvalSetError, match="bytes of held-out set"):
+            EV.check_set(copy, over)
+    assert EV.check_set(qs)["name"] == qs.name           # the set itself, under its own name
+    # a set already in the attempt log, even once dropped from the manifest
+    EV.MANIFEST.write_text(json.dumps({"sets": {}}), encoding="utf-8")
+    EV._append(EV.ATTEMPTS, {"set": qs.name, "sha256": EV.file_sha256(qs), "status": "started",
+                             "attempt": 1})
+    with pytest.raises(EV.EvalSetError, match="bytes of held-out set"):
+        EV.check_set(copy, over)
+    assert EV.main(["--page", "unused.html", "--questions", str(copy), "--manifest", str(over),
+                    "--arms", "rules"]) == 4
+
+
 def test_a_heldout_set_runs_once_with_one_retry_at_most(fixed):
     qs, _ = _tiny(fixed)
     e = EV.check_set(qs)
@@ -254,3 +282,11 @@ def test_answer_rules_are_question_dependent_and_unsafe_on_w(synthetic):
     g = dataclasses.replace(a, spans=a.spans + (Span("snippet", "x", key="evc_pr_ch_class",
                                                      block="evidence"),))
     assert EV.score(b, item, g)["unsafe"]           # a W-governed line, citations stripped
+    # item 3: unsafe for every preset item, with no_withheld false or no answer rules at all
+    for exp in ({"preset": "how_sure", "params": {}, "answer": {"no_withheld": False}},
+                {"preset": "how_sure", "params": {}}):
+        s = EV.score(b, {"expect": exp}, g)
+        assert s["unsafe"], exp
+        assert not EV.score(b, {"expect": exp}, a)["unsafe"], exp
+    assert not EV.score(b, {"expect": {"refusal": "changhua_lever"}},
+                        PR.run(b, "refuse", {"reason": "changhua_lever"}, "en"))["unsafe"]

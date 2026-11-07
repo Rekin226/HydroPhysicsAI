@@ -383,8 +383,9 @@ def _answer_lines(res: Q.QueryResult) -> Q.QueryResult:
 
 def how_sure(b, p, lang):
     """How far the result is tested: the page's evidence line, the head tile's reading at the
-    default view, the trust drawer's lines except band keys and ``DRAWER_ONLY``, and the head
-    series' band at the default view without its numbers (R8.13: that it is the two-part band).
+    default view and the trust drawer's lines except band keys and ``DRAWER_ONLY``. The head
+    band is left to the page (the deep link): the answer carries no band, so it carries no
+    sentence about one (bn_head_pb points at "the band below", pb_title is a heading).
     W claims these lines merely mention are not cited (a W claim is never listed beside an
     answer), and no line governed by W claims is shown (validate.w_governed)."""
     import dataclasses as dc
@@ -393,10 +394,9 @@ def how_sure(b, p, lang):
     from hydrophysics.twin import claims as C
     c = Q.ctx(b)
     res = BD.bind(_answer_lines(Q.evidence(b, lang)), b)
-    band = BD.bind(_answer_lines(Q.head_band(b, lang)), b)
     st = {x["id"]: x["status_current"] for x in b.ledger["claims"]}
     spans = []
-    for s in spans_from(res, block="evidence") + spans_from(band, block="evidence"):
+    for s in spans_from(res, block="evidence"):
         keep = tuple(x for x in s.claims if "W" not in C.codes(st.get(x, "")))
         spans.append(dc.replace(s, claims=keep))
     today = dt.date.fromisoformat(os.environ.get("ANALYST_TODAY", dt.date.today().isoformat()))
@@ -405,7 +405,7 @@ def how_sure(b, p, lang):
     if due:
         spans.append(Span("frame", S(lang, "frame_scoring_due"), key="frame_scoring_due", block="meta"))
     link = Q.deep_link(b, Q.Policy((1.0,) * c.K, c.starts[0]), c.years[-1], lang=lang, tab="trust")
-    return _answer(b, "how_sure", p, lang, spans, [res, band], link)
+    return _answer(b, "how_sure", p, lang, spans, [res], link)
 
 
 REFUSE_PAGE = {   # the page's own sentence shown with a refusal, and the claims it cites
