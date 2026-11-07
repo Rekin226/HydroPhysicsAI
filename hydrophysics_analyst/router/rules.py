@@ -15,7 +15,6 @@ and township-head checks are the deterministic guards of ``router.guards``.
 from __future__ import annotations
 
 import re
-import unicodedata
 
 from .. import query as Q
 from ..page import PageBundle
@@ -38,14 +37,13 @@ HALF = [r"\bhalv\w*", r"\bhalf\b", "減半", "一半"]
 CHANGHUA = r"\bchanghua\b|彰化"
 TOWN_INTENT = [r"\btownships?\b", r"\btowns?\b", r"what\s+happens\s+to", r"\bin\s+\w+\s+township",
                "鄉鎮", "會怎樣", "會如何", "這個鎮", "地區"]
-LEVER_NEAR_CH = [r"(?:cut|reduc\w*|retir\w*|stop\w*|lower\w*|curb\w*)\s+(?:\w+\s+){0,3}changhua",
-                 r"changhua(?:'s)?\s+(?:\w+\s+){0,2}(?:pumping|irrigation|aquaculture|livestock|"
-                 r"industry|domestic|wells?|cut|lever)",
-                 r"彰化[^。；？?]{0,8}(?:減|停止|抽水|灌溉|養殖|畜牧|工業|槓桿)"]
 SUBS = [r"subsid\w*", r"\bsink\w*", r"\bsank\b", r"\bcm\b", r"centimet\w*", "下陷", "沉陷", "公分", "地層"]
 AREA = [r"\barea\b", r"km²", r"km2", r"square\s+k", "面積", "平方公里"]
 MONEY = [r"hectares?", r"\bacres?\b", r"land\s+area", "公頃", "甲地", "土地面積", r"\bmoney\b", r"\bnt\$", r"\$", r"dollars?", r"\bbudget\b", r"\bprice\b", r"\bnt\s*d\b",
-         r"cubic", r"m³", r"m3\b", r"\bvolume\w*", r"\btons?\b", "元", "預算", "費用", "立方", "抽水量", "噸"]
+         r"cubic", r"m³", r"m3\b", r"\bvolume\w*", r"\btons?\b", "預算", "費用", "立方", "抽水量", "噸",
+         # 元 only as money (next to a number or a money word): 元長鄉 is a Yunlin township
+         r"[\d一二兩三四五六七八九十百千萬億]\s*(?:萬|億)?\s*元(?!長)", r"(?:多少|幾|幾百|幾千|幾萬)\s*(?:萬|億)?\s*元",
+         "新台幣", "台幣", "錢", "成本", "經費", "花費", "補償", "補助", "價格", "金額"]
 RECOMMEND = [r"recommend\w*", r"should\s+(?:we|i|the)", r"which\s+(?:policy|option)\s+(?:is\s+)?best",
              r"best\s+(?:policy|option|choice)", r"what\s+should", "建議", "應該", "最好的政策", "最佳方案",
              "該選"]
@@ -85,7 +83,8 @@ def _has(pats, s: str) -> bool:
 
 
 def _norm(s: str) -> str:
-    return unicodedata.normalize("NFKC", s)
+    """NFKC and simplified -> traditional (router.zh): every pattern and page name is traditional."""
+    return G.norm(s)
 
 
 def detect_lang(q: str) -> str:
@@ -107,13 +106,13 @@ def _yunlin_town(b: PageBundle, s: str) -> bool:
 def hard_refusal(q: str, b: PageBundle) -> str | None:
     s = _norm(q)
     via = G.changhua_ref(s)
-    ch = bool(via) or any(n and n in s for n in _pooled_names(b))
-    # the only allowed Changhua question: the pooled township row's labelled spillover, asked as
-    # that row by the name Changhua itself, with no lever near it and no head (C13a); a Changhua
-    # township or a geographic reference is always refused
-    sl = re.sub(r"chang[\s\-_]*hua", "changhua", s, flags=re.I)
-    if ch and (via - {"word"} or not _has(G.POOLED_ROW, s) or _has(LEVER_NEAR_CH, sl)
-               or _has(G.HEAD_WORDS, s)):
+    ch = bool(via - {"fan"}) or any(n and _norm(n) in s for n in _pooled_names(b))
+    # the only allowed Changhua question (guards.pooled_row_ok): the pooled township row's
+    # labelled spillover, asked as that row by the name Changhua, under an explicitly Yunlin
+    # policy, with no head word (C13a) and no lever that is Changhua's; a Changhua township or a
+    # geographic reference is always refused
+    pooled_ok = ch and G.pooled_row_ok(s)
+    if ch and not pooled_ok:
         return "changhua_lever"
     if _has(MONEY, s):
         return "volumes_money"
@@ -125,9 +124,13 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
         return "beyond_horizon"
     if _has(AREA, s) and _has(SUBS + [r"sink", r"rate", "速率"], s):
         return "area"
-    if G.subsidence_size(s) and not _yunlin_town(b, s) and not ch:
+    # a named Yunlin township (its internals row, C11) and the pooled row are exempt, unless an
+    # area-scope word (fan, county-wide, whole, total, 全縣, 整個, 沖積扇 ...) asks the size wider
+    if G.subsidence_size(s) and (G.area_scope(s) or not (_yunlin_town(b, s) or pooled_ok)):
         return "subsidence_size"
-    if G.township_head(s, b):                         # ruling D3
+    if "fan" in via and G.has_lever(s):                # a lever over the whole fan includes Changhua
+        return "changhua_lever"
+    if G.township_head(s, b):                         # ruling D3, whatever else is asked
         return "township_head"
     return None
 
@@ -136,9 +139,7 @@ def _town_of(b: PageBundle, s: str):
     c = Q.ctx(b)
     hits = []
     for i, t in enumerate(c.towns):
-        names = [t["en"], t["zh"]]
-        if not t.get("pooled"):
-            names.append(re.sub("[鄉鎮市]$", "", t["zh"]))
+        names = [t["en"], _norm(t["zh"])] if t.get("pooled") else G.town_names(t)
         for n in names:
             if n and len(n) >= 2 and re.search(re.escape(n), s, re.I):
                 hits.append(i)

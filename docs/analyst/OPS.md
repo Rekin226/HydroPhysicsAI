@@ -20,32 +20,76 @@ Every typed question goes through three stages, in this order:
 
 1. **Hard refusals** on the raw question. A hit is final and the LLM is never called. They
    include four deterministic guards ([`router/guards.py`](../../hydrophysics_analyst/router/guards.py)),
-   in English and Chinese (traditional and simplified). Each guard only refuses; none routes.
-   - `changhua_lever`: Changhua by name (also "chang hua"), by one of its townships (二林,
-     溪州, Erlin ...), or by geography (north of the Choushui River, 濁水溪以北, 溪北, the
-     county to the north, both counties). The one exception is the pooled township row asked
-     by the name Changhua, with no lever and no head.
-   - `subsidence_size`: how much the ground sinks, settles or rebounds, in any wording ("land
-     settle", 地面少沉, 沉降, cm, 公分). Three exceptions: a named Yunlin township (its
-     internals row), the rail's differential settlement, and questions about how far the
-     result is tested that do not ask for a size.
-   - `beyond_horizon`: any year, lead or decade after the page's last year. This includes
-     "N years after a start", 十年後, 民國125年, "after 2032" and "the 2040s".
-   - `township_head` (ruling D3): a township reference together with any head word (water
-     level, groundwater, water table, aquifer, 水位, 地下水), unless the question is about
-     subsidence.
+   in English and Chinese. Simplified Chinese is first folded to traditional by a fixed
+   character map ([`router/zh.py`](../../hydrophysics_analyst/router/zh.py)). The map covers the
+   page's township names and the lever, class, head, subsidence and time words, so the 20
+   Yunlin townships match in all three scripts. Each guard only refuses; none routes.
+   - **`changhua_lever`**: refused when Changhua is reached in any of these ways:
+     - by name: Changhua, Chang-hua, Zhanghua, 彰化;
+     - by one of its townships, in Hanyu, Wade-Giles or Tongyong spellings: 二林, 溪州, 鹿港,
+       Erlin, Lu-kang, Peitou ...;
+     - by geography: north of or the far bank of the Choushui, 濁水溪以北, 溪北, the county
+       north of or above Yunlin, Yunlin and its neighbour, both counties, 兩縣, 彰雲;
+     - for a lever question only: the whole alluvial fan (全扇區, 整個沖積扇).
 
-   The guards were written from the ledger rulings and the page. Their authors knew only the
-   four failure classes of the v3 report, not its items. On the dev set they refuse 0 of the
-   117 answerable items (`over_refusals` in the eval summary).
+     **One exception**, the pooled row's labelled spillover. It passes only if all of these
+     hold: the name Changhua and nothing else above; the row asked as a row (row, township, 列,
+     鄉鎮, "not yet split"); an explicitly Yunlin policy (Yunlin, 雲林); no head word; none of
+     Changhua's own classes named next to it ("Changhua's irrigation", 彰化的養殖); and no lever
+     that is Changhua's. A lever is Changhua's when, within its clause (split on punctuation
+     including ，： and on and / while / 並且), the county nearest to it is Changhua or a pronoun
+     (it, they, 也, 當地 ...). If the clause names no county, the lever is Changhua's unless the
+     last county named before it is Yunlin. Ties go to Changhua.
+
+     The refusal cites the lever it reads. A class lever (C13b) or the subsidence lever (C13c)
+     gets "withdrawn under every outcome". Only the all-class head lever gets C13a's "untested
+     (N2C registered ...)" with E20.
+   - **`subsidence_size`**: how much the ground sinks, settles, deforms or rebounds, in any
+     wording: "land settle", "land … go down", land-surface, ground deformation, 地面少沉,
+     沉降, cm, 公分. Exact exemptions:
+     1. a named Yunlin township (its internals row, C11);
+     2. the pooled Changhua row, when the exception above holds;
+     3. the rail's differential settlement or angular distortion (C06), when no size is asked;
+     4. a how-sure question (tested, validated, withdrawn, evidence, trust, 驗證, 可信 ...), but
+        only when it asks no size, reads no cut or policy, and has no scope word (the area
+        words below, plus avoided, 減少下陷, 少沉).
+
+     An **area-scope word overrides all four exemptions**: fan, fan-average, alluvial,
+     county-wide, whole, entire, total, overall, all / each townships, 全縣, 全雲林, 整個, 整體,
+     沖積扇, 全扇, 總, 平均, 各鄉鎮, 縣內. A size is asked by how much / how many / by how much,
+     amount / size of, cm, 多少, 幾公分, or a request to give / show / print / list it
+     (給我, 直接, 列出).
+   - **`beyond_horizon`**: anything after the page's last year:
+     - explicit and spelled years: 2040, '35, twenty thirty-five, two thousand and forty;
+     - ROC years: 民國125年, 民國一二五年, 民國一百二十五年;
+     - leads from the named start, or from the first start: "N years after", "in N years",
+       "year 10 of", "a dozen years", 十年後, 第N年;
+     - spans, which end at start + N − 1: "for seven years from 2026" passes, eight is
+       refused; 未來七年 passes, 未來八年 is refused;
+     - decades, mid-century, "after 2032", "after the page ends".
+   - **`township_head`** (ruling D3): a township reference with any head word (water level,
+     head, groundwater, water table, aquifer, 水位, 地下水, 水頭, 含水層), **whatever else is
+     asked**. A township head question with a subsidence word is still refused. The township
+     reference is a page township's name, its bare name or the words township, town, village,
+     鄉, 鎮. "Groundwater pumping" and 地下水抽取 are not head words. A township question
+     about subsidence alone, with no head word, is its internals row.
+
+   The guards were written from the ledger rulings and the page. Their authors also knew the
+   four failure classes of the v3 report and the abridged v3 items printed in
+   [`EVAL_2026-11-07.md`](EVAL_2026-11-07.md). v3 is spent, and nothing else from v3 was used.
+   On the dev set the guards refuse 0 of the 117 answerable items (`over_refusals` in the eval
+   summary).
 2. **The rules stage may only refuse or clarify.** Its refusals and its confident
    clarifications (a start year off the page) are final. It **never answers with a preset on
    its own**: a preset it reads is only a hint, logged as `rules_hint` in the audit record and
    not shown to the LLM.
 3. **The LLM routes every preset** (Claude Opus 5.5, effort low, one structured-output call).
-   With no LLM (`--no-llm`, `llm.enabled: false`, no key) or when the call fails, the answer is
-   the `no_llm` clarification: use an example question or the form. It is never the rules'
-   preset.
+   With no LLM (`--no-llm`, `llm.enabled: false`, no key), or when the call fails or times out,
+   the answer is one of two things, and never the rules' preset:
+   - if the rules asked to clarify (e.g. an ambiguous township), that clarification, **bare**:
+     no preset and no parameters, so the shell offers no one-click buttons built from the
+     rules' reading;
+   - otherwise, the `no_llm` clarification: use an example question or the form.
 
 **Why.** On held-out v3 ([`EVAL_2026-11-07.md`](EVAL_2026-11-07.md)) the old pipeline trusted a
 confident rules route. Every one of its unsafe answers came from that stage sending a

@@ -40,7 +40,9 @@ CASES = [
     ("Does waiting until 2030 matter for retiring aquaculture?", "start_compare", {"year": 2032}),
     ("What happens to Tuku if we retire aquaculture?", "township_internals", {"town": 1}),
     ("土庫鎮如果灌溉減半會怎樣？", "township_internals", {"town": 1, "cuts": [{"class": "irrigation", "pct": 50}]}),
-    ("What happens to Changhua township if we retire aquaculture?", "township_internals", {"town": 0}),
+    # the pooled Changhua row only under an explicitly Yunlin policy (round 9, S6)
+    ("Under a Yunlin aquaculture retirement, what happens to the Changhua township row?", "township_internals",
+     {"town": 0}),
 ]
 REFUSE = [
     ("Cut Changhua aquaculture 30%", "changhua_lever"),

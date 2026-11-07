@@ -114,7 +114,7 @@ def write_inputs(tmp_path: Path, members: bool = True):
     return fw, bs, A
 
 
-def _side_inputs(tmp_path: Path, A: int) -> dict:
+def _side_inputs(tmp_path: Path, A: int, names: tuple = TOWNS) -> dict:
     hsr = tmp_path / "hsr.csv"
     ch = np.arange(0, 4.01, 0.25)
     pd.DataFrame({"chainage_km": ch, "x_twd97": X0 + 1000 + ch * 700,
@@ -123,7 +123,10 @@ def _side_inputs(tmp_path: Path, A: int) -> dict:
     pd.DataFrame({"name_zh": ["甲"], "name_en": ["A"], "x_twd97": [X0 + 1000],
                   "y_twd97": [Y0 + 4500]}).to_csv(st, index=False)
     towns = tmp_path / "towns.csv"
-    cell_town = [None] * 10 + [TOWNS[0]] * 10 + [TOWNS[1]] * (A - 20)
+    if tuple(names) == TOWNS:
+        cell_town = [None] * 10 + [TOWNS[0]] * 10 + [TOWNS[1]] * (A - 20)
+    else:                          # many townships: 4 pooled cells, the rest dealt out in turn
+        cell_town = [None] * 4 + [names[i % len(names)] for i in range(A - 4)]
     pd.DataFrame({"cell": range(A), "town": cell_town}).to_csv(towns, index=False)
     return {"hsr_csv": str(hsr), "hsr_stations_csv": str(st), "townships_csv": str(towns)}
 
@@ -179,7 +182,8 @@ def _write_payload(page: Path, payload: dict) -> None:
 
 
 def build_synthetic_page(tmp_path: Path, *, n2: bool = True, basis: bool = True,
-                         three: str = "none", all30: bool = False) -> Path:
+                         three: str = "none", all30: bool = False, towns: tuple = TOWNS) -> Path:
+    """``towns``: the township names (zh) the cells are dealt to; at most ``A - 4`` of them."""
     from hydrophysics.twin import viewer_app as va
     from hydrophysics.twin.release import read_payload
     tmp_path = Path(tmp_path)
@@ -188,7 +192,7 @@ def build_synthetic_page(tmp_path: Path, *, n2: bool = True, basis: bool = True,
     opts = dict(leveling="none", wells="none", temporal_npz=None, column_csv=None,
                 rivers_csv=None, theta_json=None, alt_npz=None, rheo_npz=None,
                 log=lambda s: None, three=three)
-    opts.update(_side_inputs(tmp_path, A))
+    opts.update(_side_inputs(tmp_path, A, tuple(towns)))
     with _quiet(va):
         va.build(str(fw), str(bs) if basis else None, str(out), **opts)
     payload = read_payload(out)
@@ -229,6 +233,8 @@ class RulesEchoBackend:
     name = "fake-rules-echo"
 
     def __init__(self, b):
+        if getattr(b, "mode", "dev") == "deploy":
+            raise RuntimeError("RulesEchoBackend is a test double: it is never used on a deploy-mode bundle")
         self.b, self.calls = b, []
 
     def complete(self, system, messages, *, output_format=None, effort="low", max_tokens=1024):

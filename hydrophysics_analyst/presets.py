@@ -423,7 +423,12 @@ def refuse(b, p, lang):
     spans = [Span("frame", S(lang, f"refuse_{reason}"), key=f"refuse_{reason}", block="refusal")]
     key, cl = REFUSE_PAGE.get(reason, (None, ()))
     if key == "ledger:changhua_label":
-        lab = b.ledger["page_scoping"]["changhua_lever_rule"]["labels"][lang][0]
+        # C13a's "untested" wording only for the all-class (pooled) head lever, the one Changhua
+        # lever a registered test (N2C, E20) can still decide; a class lever (C13b) or the
+        # subsidence lever (C13c) is "withdrawn under every outcome"
+        lever = p.get("lever", "head")
+        i, cl = {"class": (1, ("C13b",)), "subsidence": (1, ("C13c",))}.get(lever, (0, cl))
+        lab = b.ledger["page_scoping"]["changhua_lever_rule"]["labels"][lang][i]
         spans.append(Span("snippet", lab, key="changhua_label", claims=cl, block="refusal"))
     elif key == "more_metrics":
         spans.append(Span("snippet", c.tr(lang, "more_metrics", {"n": 4}), key=key, claims=cl, block="refusal"))
