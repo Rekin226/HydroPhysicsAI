@@ -260,6 +260,22 @@
   {
    "id": "user ruling 2026-11-07 (fourteenth set) (R8.16c)",
    "text": "Apply candidate B's strict readings? Decision: Yes, all three: C01-w as D with decidability unknown (N2 'informative' cannot decide under the canal confounder); E21 graded D-weak on its coverage half; E25 and E26 graded 0.75 (direction-only answers to Changhua's size question). Applies to: C01-w, E21, E25, E26. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fifteenth set) (R8.17a)",
+   "text": "May splitting a row raise its grade? Decision: No: the pieces of a split may not average above the parent's composite-first grade (cap); C30's split no longer lifts the forecast part. Applies to: C30-scen, C30-fc, C01, C01-w, C01-sz. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fifteenth set) (R8.17b)",
+   "text": "Keep E04 and C30-fc at D measured (FV.stat.v2 not_shown_weak; null P0 0.475)? Decision: No: grade them D with decidability unknown (0.6), consistent with C01-w under R8.16c. Applies to: E04, C30-fc. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fifteenth set) (R8.17c)",
+   "text": "C28 weight? Decision: Weight 2, no override: the headline code can carry C28's text (hl_none branch). Applies to: C28. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (fifteenth set) (R8.17d)",
+   "text": "How do split pieces share the parent's weight? Decision: In proportion to each piece's own display weight (C30-scen 4/3, C30-fc 2/3; C01's pieces unchanged). Applies to: C30-scen, C30-fc. Implemented in hydrophysics/twin/progress.py and progress_map_v1.json (evidence sections 21 and 26); no status changes. Source: results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)."
   }
  ],
  "page": {

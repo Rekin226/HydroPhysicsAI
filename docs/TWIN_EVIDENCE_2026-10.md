@@ -1642,8 +1642,9 @@ appear together; none is shown alone, and none is averaged into another silently
   outcome with a stated reason, or closed by a registered undecidability or no-target
   declaration, count as "honestly narrowed". It is bookkeeping, not evidence, and changes no
   status. On the audited statuses it gives about **61-62 %** on the 6-part basis, and it is
-  always shown beside the official 53.6 % and beside the disclosure downgrades listed below,
-  never alone.
+  always shown beside the official figure (computed under rulings R8.16 and R8.17: 53.4 % at
+  the audit state, 53.9 % on main 08a6aa7, section 26; the audit's own figure was 53.6 %) and
+  beside the disclosure downgrades listed below, never alone.
 
 A D that can be decided only after 2030-01-15 counts as D-pending under this rubric (0.6, or
 0.7 once its decidability is measured; ruling R8.4b).
@@ -1667,11 +1668,14 @@ the two are not independent; FV v2's Changhua split by truth family; and the x1.
 dependence of the headline cut30 lever (C01, C12). A disclosure downgrade is always reported
 with any gain, and with the end-goal figure whenever that figure is shown.
 
-Computed figure (user rulings 2026-11-07, fourteenth set, R8.16a/b/c;
-`results/dataprep/rulings/user_rulings_2026-11-07.json`, sha256 c0886864). From 2026-11-07 the
-official progress figure is computed from the ledger by `hydrophysics/twin/progress.py` under
-the ruled rule (the strict mapping with the composite-first rule; the pieces of a split row
-share the parent's display weight); section 26 gives the rule in full and the figures. The
+Computed figure (user rulings 2026-11-07: fourteenth set, R8.16a/b/c,
+`results/dataprep/rulings/user_rulings_2026-11-07.json`, sha256 c0886864; fifteenth set,
+R8.17a-d, `results/dataprep/rulings/user_rulings_2026-11-07b.json`, sha256 7602157b). From
+2026-11-07 the official progress figure is computed from the ledger by
+`hydrophysics/twin/progress.py` under the ruled rule (the strict mapping with the
+composite-first rule; the pieces of a split row share the parent's display weight in proportion
+to their own and may not average above the parent's grade); section 26 gives the rule in full
+and the figures. The
 audited table above stays as the historical audit of 2026-11-02 and section 22's figures stay
 labelled estimates; both are shown beside the computed figure, and the part-level differences
 from the audit are disclosed in section 26. Claim honesty remains an audit or estimate input
@@ -2159,10 +2163,11 @@ Section 21 says the progress figures come from the claims ledger by a fixed rule
 can be recomputed. Until 2026-11-07 they could not be: the audited figures of section 21 and
 the estimates of section 22 were worked out by hand (section 22 says its "now" column is an
 estimate from per-action effects, not a recount). `hydrophysics/twin/progress.py` applies the
-rule to any ledger state, with the committed mapping `hydrophysics/twin/progress_map_v1.json`.
-User rulings R8.16a/b/c (2026-11-07, fourteenth set;
-`results/dataprep/rulings/user_rulings_2026-11-07.json`, sha256 c0886864) fixed the official
-rule; it is the mapping file's default. Recompute with
+rule to a ledger state, with the committed mapping `hydrophysics/twin/progress_map_v1.json`.
+User rulings of 2026-11-07 fixed the official rule, which is the mapping file's default: the
+fourteenth set, R8.16a/b/c (`results/dataprep/rulings/user_rulings_2026-11-07.json`, sha256
+c0886864), and the fifteenth, R8.17a-d, after an adversarial review
+(`results/dataprep/rulings/user_rulings_2026-11-07b.json`, sha256 7602157b). Recompute with
 `python -m hydrophysics.twin.progress --at <commit> --honesty <pct>` (`--json` for the per-row
 table, `--mapping default-v1` for the recount's first default, kept for comparison only).
 Nothing but the ledger and the mapping is read.
@@ -2178,31 +2183,34 @@ The rule:
   headline function (`display_map.functions.renderHeadline`); 1 for any other row the page
   shows (a `tile:`, `i18n:` or `card:` text key, or any page section of `display_map`); 0.5
   for a row with only `doc:` keys or doc anchors; 0 for the ledger's Z rows and for mirror rows
-  (none in the ledger). One override, with its reason in the mapping: C28, 2 -> 1 (the
-  provenance chip is set inside `renderHeadline`, but it qualifies how a number was computed
-  and is not the answer).
-- **Split rows** (R8.16b): rows the mapping marks `split_of: P` are the pieces of the ledger
-  row P (C01 -> C01 / C01-w / C01-sz; C30 -> C30-scen / C30-fc). The parent's display weight is
-  the largest display weight among the pieces present at the ledger state (the pieces
-  partition the parent's display, so the parent was shown wherever a piece is), and each piece
-  weighs that weight divided by the number of pieces present: C01's three pieces weigh 2/3
-  each, C30-scen and C30-fc 1 each. The parent's total weight in its part is unchanged, so a
-  split cannot raise the part's score by itself. Before the split only the parent row is
-  present and keeps its weight; the rule applies at every ledger state.
+  (none in the ledger). No override: C28 keeps its derived 2 (R8.17c: the headline code can
+  carry C28's text, the hl_none branch).
 - **Grade**: section 21's table, by status code. S and D codes take the qualifier the mapping
-  gives for the row's exact status string, so a status change without a mapping change makes
-  the recount refuse. A D's "decidability measured" is conditional on the ledger: it applies
-  exactly when the ledger's `registry_hashes` cites the registration that measured it (for
-  E04, FV.stat.v2), so the same mapping gives "decidability unknown" at the audit state and
-  "measured" today. R8.16c's strict readings: C01-w is D with decidability unknown (N2's
-  "informative" reading cannot decide under the canal confounder; the pre-split C01's D is
-  read the same way); E21 (E02c) is D weak by design, graded on its coverage half; E25 and E26
-  are S design-time, direction only, on a claim about a size (0.75: direction-only answers to
-  Changhua's size question).
+  gives for the row's exact status string. A D's "decidability measured" is conditional on the
+  ledger: it applies only when the ledger's `registry_hashes` cites the registered
+  decidability reading the mapping names, with a real hash. The ruled readings: C01-w, E04 and
+  C30-fc are D with decidability unknown (R8.16c, R8.17b); E21 (E02c) is D weak by design on
+  its coverage half (R8.16c); E25 and E26 are S design-time, direction only, on a claim about
+  a size (0.75, R8.16c); E30 is D with decidability unknown, because its decidability study
+  ships inside E02z's own registration and no separate reading is registered.
 - **Composite statuses** (R8.16a; flagged in the output: C05, C09, C14a, C14a-r, C14b, C14e,
   C26, and at the audit state C01 and C30): a W anywhere grades the row W; otherwise the row is
   graded by its first code, the status of what the row shows now (a trailing D is the pending
   decider, a trailing L the internals label).
+- **Split rows** (R8.16b, R8.17a, R8.17d): a row marked `split_of: {parent: P, parent_status:
+  S0}` is a piece of the ledger row P, whose status was S0 when it was split (C01 -> C01 /
+  C01-w / C01-sz, S0 = S+D; C30 -> C30-scen / C30-fc, S0 = N+D); P's own entry lists its
+  pieces in `split_into`. Weight: the parent's display weight W_P is the largest display weight
+  among the pieces present at the ledger state, and piece i weighs W_P d_i / sum_j d_j, d being
+  each piece's own display weight (C01's three pieces 2/3 each; C30-scen 4/3, C30-fc 2/3).
+  Grade cap: g_P is P's grade at S0 under the composite-first rule (C01: 0.75; C30: N, 0.5);
+  if the pieces' weighted mean grade sum_i w_i g_i / sum_i w_i exceeds g_P, every piece's
+  grade is multiplied by g_P divided by that mean, so the mean equals g_P; otherwise the grades
+  stand. What this guarantees: the pieces together weigh exactly W_P and their weighted mean
+  grade is at most g_P, so a split cannot raise its part's weight, or its grade contribution,
+  above the parent's as it stood at the split; it can lower them (C01's pieces average 0.67
+  against 0.75). Today the cap binds on C30's pieces (mean 0.533 -> 0.5, factor 0.9375: C30-scen
+  0.469, C30-fc 0.5625). Before a split only P is present and is graded and weighted as P.
 - **End-goal convention** (R8.12b, bookkeeping only, always beside): the mapping marks 10 rows
   (C03, C09, C13b and C13c withdrawn under every outcome; C14c, C14d and C14e no target,
   U1.no_band.v1; C14f-r, E29 and C31 registered undecidable), each graded 1.0 in that column
@@ -2211,56 +2219,71 @@ The rule:
   with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
   offered. The 6-part rows use the audit's 95 at the audit state and section 21's estimate of
   98 today, labelled so.
+- **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
+  mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
+  for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
+  to an N, L or W status, or to an already mapped S/D status, does not); or when a
+  `measured_by` or end-goal `requires` registration is cited with a literal `PENDING` hash.
+  Every main state from fd40796 to 08a6aa7 (24 commits) recounts under both mappings
+  (`tests/test_twin_progress.py`); main 85fbb36, the merge that added the ledger, refuses (its
+  ids C13 and C14, replaced since, have no entry), and states before fd40796 are not covered.
 
 The audit state is main fd40796, the last main commit before the round-8 step-0 merge (PR
 #70); its `claims_v1.json` is byte-identical to af97301's, the state the audit read. Today is
-main 08a6aa7 (the ledger of this change adds only the R8.16 rulings, no status).
+main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, no status).
 
 | | audited 2026-11-02 | **official, audit state (fd40796)** | **official, today (08a6aa7)** | default-v1, audit state | default-v1, today | section 22 estimate |
 |---|---|---|---|---|---|---|
-| head response, Yunlin | 60 | 53.5 | 51.8 | 53.5 | 57.5 | 60-61 |
-| forecast start and validation | 56 | 51.2 | 54.6 | 55.8 | 55.7 | 57.7 |
+| head response, Yunlin | 60 | 50.9 | 49.4 | 53.5 | 57.5 | 60-61 |
+| forecast start and validation | 56 | 51.2 | 51.8 | 55.8 | 55.7 | 57.7 |
 | uncertainty bands | 43 | 41.9 | 42.8 | 46.9 | 47.2 | 42.5 |
 | subsidence and cut response | 31 | 35.8 | 35.6 | 36.3 | 36.0 | 31 |
 | Changhua | 36.5 | 45.6 | 45.6 | 49.4 | 49.4 | 35 |
-| **science trust** (mean of 5) | **45.3** | **45.6** | **46.1** | 48.4 | 49.2 | 45.2-45.4 |
+| **science trust** (mean of 5) | **45.3** | **45.1** | **45.0** | 48.4 | 49.2 | 45.2-45.4 |
 | claim honesty (not computed) | 95 | 95 (audit) | 98 (estimate) | 95 | 98 | 98 |
-| **6-part mean** (headline) | **53.6** | **53.8** | **54.7** | 56.1 | 57.3 | 54.0-54.2 |
-| intended-output variant (science basis) | 35.7 | 38.7 | 39.3 | 41.4 | 42.8 | not recomputed |
-| end-goal convention, science / 6-part (bookkeeping only) | about 61-62 (6-part) | 57.1 / 63.5 | 58.1 / 64.8 | 59.9 / 65.8 | 61.2 / 67.3 | not recomputed |
+| **6-part mean** (headline) | **53.6** | **53.4** | **53.9** | 56.1 | 57.3 | 54.0-54.2 |
+| intended-output variant (science basis) | 35.7 | 37.8 | 37.9 | 41.4 | 42.8 | not recomputed |
+| end-goal convention, science / 6-part (bookkeeping only) | about 61-62 (6-part) | 56.6 / 63.0 | 57.1 / 63.9 | 59.9 / 65.8 | 61.2 / 67.3 | not recomputed |
 
-`tests/test_twin_progress.py` pins the official figures at fd40796 (where the clone has that
-commit).
+`tests/test_twin_progress.py` pins the official figures at fd40796 and at 08a6aa7 (where the
+clone has those commits).
 
-What moved between the two states under the official rule:
+From the audit state to today under the official rule the 6-part mean rises 0.46: +0.50 is
+the claim-honesty input (95 -> 98, an estimate, divided by 6) and -0.04 is science (5/6 of
+science trust's -0.05). By part:
 
-- Head response, Yunlin, -1.7: before the split C01 (S+D) was graded by its S, design-time,
+- Head response, Yunlin, -1.5: before the split C01 (S+D) was graded by its S, design-time,
   direction only, on a size claim (0.75) at weight 2; today its three pieces share that weight
-  2 at 0.9 (C01, direction), 0.6 (C01-w, decidability unknown) and 0.5 (C01-sz, N), a mean of
-  0.67.
-- Forecast start and validation, +3.5: C30 (N+D) was graded by its N (0.5) at weight 2; today
-  C30-scen (N, 0.5) and C30-fc (D measured by FV.stat.v2, 0.7) share that weight; E04 is
-  measured (0.7, was 0.6); and E30 (D measured, 0.7) is new.
+  at 0.9 (C01, direction), 0.6 (C01-w, decidability unknown) and 0.5 (C01-sz, N), a mean of
+  0.67, below the cap.
+- Forecast start and validation, +0.6: the C30 split is held at C30's weight 2 and grade 0.5
+  by the cap; E04 is D unknown in both states; E30 (D unknown, 0.6) is new.
 - Uncertainty bands, +0.9: C14f-r and E29 (N, weight 0.5) are new.
 - Subsidence and cut response, -0.2: E24 moved from README-only (0.5) to the tA definition
   (1) at L.
 - Changhua, 0: the round-8 narrowing of E25 changed no status, and the rule grades statuses
   only.
 
+Two weight choices the rule makes, with their effect sizes: putting C08 (the cost tile, L,
+weight 2) in the head part instead of `none` would give the head part 46.9 at the audit state
+and 45.6 today (-4.0 and -3.8) and science trust -0.8 in both; C20 and C21 weigh 1 because
+their text keys include the page lines `evc_chx` and `evc_chb` they share with E25 and E26 (at
+0.5, as README and model-card rows only, the Changhua part would be 45.0, -0.6, and science
+trust -0.1).
+
 Part-level differences from the 2026-11-02 audit (R8.16a: disclosed, not tuned away). On the
-same ledger the official science trust (45.6) and 6-part mean (53.8) are within 0.3 of the
+same ledger the official science trust (45.1) and 6-part mean (53.4) are within 0.2 of the
 audit's (45.3, 53.6), but the parts differ, in both directions. The audited figures were
 judgments that included the disclosure downgrades of section 21's last paragraph, and their
 row-by-row assignment is not part of the record. The driving rows at the audit state:
 
-- Head response, Yunlin, -6.5 (53.5 against 60): the L rows C12, C28 and E16 (the class
-  ranking, the superposition error of the fast estimate, the policy monotonicity check) pull
-  the part down about 3.5 points each against 60, and the N headline row C04 about 2; C01 (S,
-  0.75 at weight 2), C16 and C24 (S design-time, 0.9) pull it up. No ruling moves C28 or E16
-  out of the part.
+- Head response, Yunlin, -9.1 (50.9 against 60): the L rows C28 (weight 2), C12 and E16 (the
+  superposition error of the fast estimate, the class ranking, the policy monotonicity check)
+  pull the part down about 6.4, 3.2 and 3.2 points against 60, and the N headline row C04
+  about 1.8; C01 (S, 0.75 at weight 2), C16 and C24 (S design-time, 0.9) pull it up.
 - Forecast start and validation, -4.8 (51.2 against 56): E23 (L, start-state invariance) about
   -2.4; C30 graded N under the composite-first rule; E21 D weak (0.5); E02 and E04 D unknown
-  (0.6). Today the part is 54.6.
+  (0.6).
 - Uncertainty bands, -1.1 (41.9 against 43): C14e (W), C07 and C14d (L) pull down; C14f (D
   measured by FV.ext.v1, 0.7) is the only row above 0.5, since C14a, C14a-r and C14b are graded
   by their N under the composite-first rule.

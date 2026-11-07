@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07 (fourteenth set) R8.16a/b/c, results/dataprep/rulings/user_rulings_2026-11-07.json (sha256 c0886864)",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b)",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -25,7 +25,7 @@
  "composite": "first",
  "composite_note": "official rule (user ruling 2026-11-07, fourteenth set, R8.16a): a W in a composite status grades the row W; otherwise the row is graded by its first code, the status of what the row shows now (the trailing D is the pending decider, a trailing L the internals label). The earlier default (mapping default-v1) took the highest code.",
  "split_weights": true,
- "split_note": "split rule (user ruling 2026-11-07, fourteenth set, R8.16b): rows carrying split_of P are the pieces of the ledger row P. The parent's display weight is the largest derived (or overridden) weight among the pieces present at the ledger state (the pieces partition the parent's display, so the parent was shown wherever any piece is), and each piece weighs that weight divided by the number of pieces present. The parent's total weight in its part is therefore unchanged and splitting a claim cannot raise its part's score by itself. Pieces of one parent must share a part. At a ledger state before the split only the parent row is present and keeps its weight.",
+ "split_note": "split rule (user rulings 2026-11-07: R8.16b, fourteenth set, results/dataprep/rulings/user_rulings_2026-11-07.json sha256 c0886864; R8.17a and R8.17d, fifteenth set, results/dataprep/rulings/user_rulings_2026-11-07b.json (sha256 7602157b)). A row carrying split_of {parent: P, parent_status: S0} is a piece of the ledger row P, whose status was S0 when it was split; the parent's entry lists its pieces in split_into. Weight (R8.16b, R8.17d): the parent's display weight W_P is the largest display weight among the pieces present at the ledger state, and piece i weighs W_P * d_i / sum_j d_j, where d is each piece's own display weight (C01's three pieces 2/3 each; C30-scen 4/3 and C30-fc 2/3). Grade cap (R8.17a): g_P is P's grade at status S0 under the composite-first rule, from P's own mapping entry; if the weighted mean grade of the pieces present, sum_i w_i g_i / sum_i w_i, exceeds g_P, every piece's grade is multiplied by g_P divided by that mean, so the pieces' weighted mean equals g_P; otherwise the grades stand. Guarantee: the pieces together weigh exactly W_P and their weighted mean grade is at most g_P, so a split cannot raise its part's weight or grade above the parent's as it stood at the split; it can lower them. At a ledger state before the split only P is present and is graded and weighted as P.",
  "answer_tiles": [
   "tW",
   "tC"
@@ -47,7 +47,15 @@
     }
    },
    "reason": "Head change under a policy at N2's unit, the headline answer. Before the round-8 split (status S+D) the row claimed the change itself, a size, while its S covered only the direction (design-time, R0 recipe): S design-time direction-only on a size claim. After the split (status S) the row claims the direction only: S design-time. The D of the pre-split S+D (N2) is graded unknown, as C01-w is (R8.16c); under the composite-first rule the row grades its S.",
-   "split_of": "C01"
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D"
+   },
+   "split_into": [
+    "C01",
+    "C01-w",
+    "C01-sz"
+   ]
   },
   "C01-w": {
    "part": "head_response_yunlin",
@@ -57,12 +65,18 @@
     }
    },
    "reason": "N2's within-window anomaly response. Decidability measured by X5.n2_reading.v1 ('informative', not decisive: false pass 0.20, power 0.95, 0.15 under the canal confounder); the ledger labels it 'D, decidability measured'. Graded D, decidability unknown, by user ruling 2026-11-07 (fourteenth set) (R8.16c): the 'informative' reading cannot decide under the canal confounder, so it does not say the test can decide.",
-   "split_of": "C01"
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D"
+   }
   },
   "C01-sz": {
    "part": "head_response_yunlin",
    "reason": "Size of the head lever by Dec 2032, model-only, 'size likely too small; not gated' (N).",
-   "split_of": "C01"
+   "split_of": {
+    "parent": "C01",
+    "parent_status": "S+D"
+   }
   },
   "C02": {
    "part": "head_response_yunlin",
@@ -104,9 +118,7 @@
   },
   "C28": {
    "part": "head_response_yunlin",
-   "weight": 1,
-   "weight_reason": "display_map.functions maps renderHeadline to C28 only because the provenance chip beside the headline is set inside that function; the chip qualifies how a number was computed and is not the answer, so it weighs as an evidence row (1), not as the headline (2)",
-   "reason": "Superposition error of the fast estimate of the policy response (the policy engine's accuracy)."
+   "reason": "Superposition error of the fast estimate of the policy response (the policy engine's accuracy). Weight 2 as derived from display_map.functions.renderHeadline, no override, by user ruling 2026-11-07 (fifteenth set) (R8.17c): the headline code can carry C28's text (hl_none branch)."
   },
   "E16": {
    "part": "head_response_yunlin",
@@ -123,25 +135,32 @@
     }
    },
    "retired": true,
-   "reason": "Retired at ruling R8.7 (split into C30-scen and C30-fc); kept for ledger states before 2026-11-06. Baseline projection fields with registered D sub-labels; the heads part is decided by E02c's strict level rule, whose decidability FV.decidability.v2 measured (level P 0.96, null false pass 0.0)."
+   "reason": "Retired at ruling R8.7 (split into C30-scen and C30-fc); kept for ledger states before 2026-11-06. Baseline projection fields with registered D sub-labels; the heads part is decided by E02c's strict level rule, whose decidability FV.decidability.v2 measured (level P 0.96, null false pass 0.0).",
+   "split_into": [
+    "C30-scen",
+    "C30-fc"
+   ]
   },
   "C30-scen": {
    "part": "forecast_start_validation",
    "reason": "Baseline projection fields after Dec 2022: the physics model's average-weather scenario, not a forecast (N), on the baseline headline.",
-   "split_of": "C30"
+   "split_of": {
+    "parent": "C30",
+    "parent_status": "N+D"
+   }
   },
   "C30-fc": {
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "FV.stat.v2",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
-   "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475).",
-   "split_of": "C30"
+   "reason": "Forecast of record for 2026-11..2027-10 is E04's statistical layer; decided by E04, whose decidability FV.stat.v2 measured ('not_shown_weak', P 0.93, null P0 0.475). Graded D with decidability unknown (0.6) by user ruling 2026-11-07 (fifteenth set) (R8.17b), consistent with C01-w under R8.16c.",
+   "split_of": {
+    "parent": "C30",
+    "parent_status": "N+D"
+   }
   },
   "E01": {
    "part": "forecast_start_validation",
@@ -164,13 +183,10 @@
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "FV.stat.v2",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
-   "reason": "Statistical layer registered prospectively. FV.stat.v1 was not evaluable (engineering); FV.stat.v2 measured its decidability ('not_shown_weak')."
+   "reason": "Statistical layer registered prospectively. FV.stat.v1 was not evaluable (engineering); FV.stat.v2 measured its decidability ('not_shown_weak'). Graded D with decidability unknown (0.6) by user ruling 2026-11-07 (fifteenth set) (R8.17b), consistent with C01-w under R8.16c."
   },
   "E07": {
    "part": "forecast_start_validation",
@@ -211,20 +227,17 @@
   },
   "E23": {
    "part": "forecast_start_validation",
-   "reason": "Start-state invariance of the head lever (FS.start_invariance.v1, model-only, L); a forecast-start property, in the forecast-start part as the round-8 plan placed it."
+   "reason": "Start-state invariance of the head lever (FS.start_invariance.v1, model-only, L): a property of the forecast start state (as FM.origin_memory.v1's start memory is), so in the forecast-start part."
   },
   "E30": {
    "part": "forecast_start_validation",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "E02z.level_years23.v1",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
    "decidable_not_before": "2029-01-15",
-   "reason": "Strict level rule years 2-3 (E02z); decidability measured by its registered study ('not_shown_weak'; Yunlin P 0.999-1.000, Changhua 0.68-0.69)."
+   "reason": "Strict level rule years 2-3 (E02z). Its decidability study ships inside E02z's own registration (E02z.level_years23.v1); no separate registered decidability reading exists, and a registration cannot measure its own decidability by being cited, so D with decidability unknown. (default-v1 used measured_by E02z.level_years23.v1.)"
   },
   "C07": {
    "part": "uncertainty_bands",
@@ -524,7 +537,7 @@
  },
  "mappings": {
   "default-v1": {
-   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a.",
+   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights with no grade cap, the C28 weight override 2 -> 1, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E04 and C30-fc measured by FV.stat.v2; E30 measured by its own registration E02z.level_years23.v1; E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a and R8.17a-d.",
    "composite": "max",
    "split_weights": false,
    "claims": {
@@ -575,8 +588,44 @@
        "S": "S-dt"
       }
      }
+    },
+    "E04": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "FV.stat.v2",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "C30-fc": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "FV.stat.v2",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "E30": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "E02z.level_years23.v1",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "C28": {
+     "weight": 1,
+     "weight_reason": "display_map.functions maps renderHeadline to C28 only because the provenance chip beside the headline is set inside that function; the chip qualifies how a number was computed and is not the answer, so it weighs as an evidence row (1), not as the headline (2)"
     }
-   }
+   },
+   "split_cap": false
   }
- }
+ },
+ "split_cap": true
 }

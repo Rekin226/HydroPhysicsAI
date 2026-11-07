@@ -21,17 +21,22 @@ What comes from where:
   0.5 for a row shown only in the README, the model card or the evidence update (``doc:``
   text keys or ``doc_anchors`` only); 0 for a row shown nowhere. The mapping may override a
   derived weight, and every override carries its reason (``weight_reason``).
-* SPLIT rows (user ruling R8.16b): rows the mapping marks ``split_of: P`` are the pieces of
-  the ledger row P. The parent's display weight is the largest weight among the pieces
-  present at the ledger state (the pieces partition the parent's display), and each piece
-  weighs that weight divided by the number of pieces present, so the parent's total weight
-  in its part is unchanged and a split cannot raise a part's score by itself. Before the
-  split only the parent row is present and keeps its weight.
 * GRADE: the status code's grade (section 21); S and D codes take the qualifier the mapping
   gives for the row's exact status string (``grade[status][code]``). A D qualifier may be
   conditional, ``{"measured_by": REG, "otherwise": "D-unknown"}``: measured exactly when the
-  ledger's ``registry_hashes`` cites REG at that ledger state. A row the mapping has no
-  qualifier for at its current status is an error, so a status change forces a mapping change.
+  ledger's ``registry_hashes`` cites REG at that ledger state with a real hash (a literal
+  ``PENDING`` hash refuses); REG must be a registered decidability reading of the test, not
+  the test's own registration.
+* SPLIT rows (user rulings R8.16b, R8.17a, R8.17d): a row the mapping marks
+  ``split_of: {parent: P, parent_status: S0}`` is a piece of the ledger row P, whose status
+  was S0 when it was split. Weight: the parent's display weight W_P is the largest display
+  weight among the pieces present at the ledger state, and piece i weighs
+  W_P * d_i / sum_j d_j (d: each piece's own display weight). Grade cap: g_P is P's grade at
+  S0 under the composite-first rule, from P's own mapping entry; if the pieces' weighted mean
+  grade exceeds g_P, every piece's grade is multiplied by g_P / mean, so the mean equals g_P.
+  So the pieces together weigh exactly W_P and their weighted mean grade is at most g_P: a
+  split cannot raise its part's weight or grade above the parent's as it stood at the split
+  (it can lower them). Before the split only P is present and is graded as P.
 * COMPOSITE statuses (``S+D``, ``N+D``, ``W+D``, ``W+L``): a W anywhere grades the row W (a
   withdrawn row asserts nothing, and its pending decider does not restore it); otherwise the
   official rule (``first``, user ruling R8.16a) grades the first code, the status of what the
@@ -39,7 +44,16 @@ What comes from where:
   mapping ``default-v1``) is kept for comparison. Every composite row is flagged.
 
 The official mapping is the map file's base (user rulings 2026-11-07, fourteenth set,
-R8.16a/b/c); ``--mapping default-v1`` lays the recount's first default over it for comparison.
+R8.16a/b/c; fifteenth set, R8.17a-d); ``--mapping default-v1`` lays the recount's first default
+over it for comparison.
+
+Which ledger states can be recounted: a state refuses (``MappingError``) when a claim id has no
+mapping entry, or when a claim's status carries an S or D code the mapping gives no qualifier
+for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
+to an N, L or W status, or to an S/D status already mapped, does not), or when a
+``measured_by`` registration or an end-goal ``requires`` registration is cited with a literal
+``PENDING`` hash. Every main state from fd40796 (the 2026-11-02 audit state) to 08a6aa7 is
+recounted without refusal (``tests/test_twin_progress.py``); earlier states are not covered.
 
 Reported beside each other (never one alone): the five parts, science trust, the 6-part
 headline (only when a claim-honesty figure is supplied: claim honesty is how well the page,
@@ -101,14 +115,14 @@ OFFICIAL = "official"
 def with_mapping(pmap: dict, name: str | None) -> dict:
     """The mapping named ``name``: the map file's base (the official rule) when ``name`` is
     None or ``official``, else the base with that entry of ``mappings`` laid over it (its
-    per-claim fields, its ``composite`` and ``split_weights``)."""
+    per-claim fields, its ``composite``, ``split_weights`` and ``split_cap``)."""
     if not name or name == OFFICIAL:
         return pmap
     alt = pmap.get("mappings", {}).get(name)
     if alt is None:
         raise MappingError(f"no mapping {name!r} in the map file")
     out = dict(pmap, claims={k: dict(v) for k, v in pmap["claims"].items()})
-    for key in ("composite", "split_weights"):
+    for key in ("composite", "split_weights", "split_cap"):
         if key in alt:
             out[key] = alt[key]
     for cid, fields in alt["claims"].items():
@@ -167,17 +181,27 @@ def derived_weight(claim: dict, ledger: dict, pmap: dict,
 
 
 # ---- grade ----------------------------------------------------------------------------------
-def _qualifier(spec, registry: set[str]) -> tuple[str, str]:
+PENDING = "PENDING"
+
+
+def _cited(reg: str, registry: dict) -> bool:
+    """Is ``reg`` cited in ``registry_hashes``? A literal PENDING hash refuses."""
+    if registry.get(reg) == PENDING:
+        raise MappingError(f"{reg} is cited with a PENDING hash: register it before recounting")
+    return reg in registry
+
+
+def _qualifier(spec, registry: dict) -> tuple[str, str]:
     """(grade key, why) of one S/D qualifier, resolving a conditional ``measured_by``."""
     if isinstance(spec, str):
         return spec, ""
     reg = spec["measured_by"]
-    if reg in registry:
+    if _cited(reg, registry):
         return "D-measured", f"measured by {reg}"
     return spec["otherwise"], f"{reg} not cited at this ledger state"
 
 
-def grade(claim: dict, entry: dict, registry: set[str], grades: dict,
+def grade(claim: dict, entry: dict, registry: dict, grades: dict,
           composite: str = "max") -> dict:
     status = claim["status_current"]
     codes = status.split("+")
@@ -188,7 +212,8 @@ def grade(claim: dict, entry: dict, registry: set[str], grades: dict,
             if spec is None:
                 if "W" in codes:          # W grades the row; its D needs no qualifier
                     continue
-                raise MappingError(f"{claim['id']}: no {code} qualifier for status {status!r}")
+                raise MappingError(f"{claim['id']}: status {status!r} carries an {code} code "
+                                   "the mapping gives no qualifier for")
             key, why = _qualifier(spec, registry)
         elif code in ("N", "L", "W"):
             key, why = code, ""
@@ -232,12 +257,52 @@ def check_mapping(ledger: dict, pmap: dict) -> list[str]:
         if eg and eg.get("kind") not in END_GOAL_KINDS:
             probs.append(f"{c['id']}: end_goal kind {eg.get('kind')!r} unknown")
     split_parts: dict[str, set] = {}
-    for e in pmap["claims"].values():
-        if e.get("split_of"):
-            split_parts.setdefault(e["split_of"], set()).add(e.get("part"))
+    for cid, e in pmap["claims"].items():
+        so = e.get("split_of")
+        if not so:
+            continue
+        if not isinstance(so, dict) or not so.get("parent") or not so.get("parent_status"):
+            probs.append(f"{cid}: split_of needs a parent and a parent_status")
+            continue
+        parent = pmap["claims"].get(so["parent"])
+        if parent is None or cid not in parent.get("split_into", []):
+            probs.append(f"{cid}: its parent {so['parent']} must list it in split_into")
+        split_parts.setdefault(so["parent"], set()).add(e.get("part"))
     probs += [f"split pieces of {p} sit in more than one part: {sorted(ps)}"
               for p, ps in split_parts.items() if len(ps) > 1]
     return probs
+
+
+def _apply_splits(rows: list[dict], pmap: dict, registry: dict) -> dict[str, list[dict]]:
+    """Share each split parent's weight among its pieces (R8.16b, R8.17d) and cap their mean
+    grade at the parent's composite-first grade (R8.17a); see the module docstring."""
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        if r["split_of"]:
+            groups.setdefault(r["split_of"]["parent"], []).append(r)
+    for parent, pieces in groups.items():
+        w_parent = max(r["display_weight"] for r in pieces)
+        dsum = sum(r["display_weight"] for r in pieces)
+        for r in pieces:
+            r["weight"] = w_parent * r["display_weight"] / dsum if dsum else 0.0
+        if not pmap.get("split_cap"):
+            continue
+        status0 = pieces[0]["split_of"]["parent_status"]
+        g_parent = grade({"id": parent, "status_current": status0}, pmap["claims"][parent],
+                         registry, pmap["grades"], "first")["grade"]
+        wsum = sum(r["weight"] for r in pieces)
+        mean = sum(r["weight"] * r["grade"] for r in pieces) / wsum if wsum else 0.0
+        for r in pieces:
+            r["parent_grade"] = g_parent
+        if mean > g_parent:
+            f = g_parent / mean
+            for r in pieces:
+                r["uncapped_grade"], r["grade"] = r["grade"], r["grade"] * f
+                r["intended_grade"] = 0.0 if r["graded_code"] in ("W", "L") else r["grade"]
+                if not r["end_goal"]:
+                    r["end_goal_grade"] = r["grade"]
+                r["grade_capped"] = f
+    return groups
 
 
 def recount(ledger: dict, pmap: dict, honesty: float | None = None,
@@ -246,7 +311,7 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
     probs = check_mapping(ledger, pmap)
     if probs:
         raise MappingError("; ".join(probs))
-    registry = set(ledger.get("registry_hashes", {}))
+    registry = dict(ledger.get("registry_hashes", {}))
     grades = pmap["grades"]
     rows = []
     for c in ledger["claims"]:
@@ -255,7 +320,7 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
         w = float(e["weight"]) if "weight" in e else dw
         g = grade(c, e, registry, grades, composite)
         eg = e.get("end_goal")
-        eg_on = bool(eg) and (not eg.get("requires") or eg["requires"] in registry)
+        eg_on = bool(eg) and (not eg.get("requires") or _cited(eg["requires"], registry))
         code = g["graded_code"]
         rows.append({
             "id": c["id"], "status": c["status_current"], "part": e["part"],
@@ -263,19 +328,12 @@ def recount(ledger: dict, pmap: dict, honesty: float | None = None,
             "split_of": e.get("split_of") if pmap.get("split_weights") else None,
             "weight_override": "weight" in e and w != dw,
             "grade": g["grade"], "grade_key": g["grade_key"], "graded_code": code,
-            "grade_why": g["why"], "composite": g["composite"],
+            "grade_why": g["why"], "composite": g["composite"], "grade_capped": None,
             "intended_grade": 0.0 if code in ("W", "L") else g["grade"],
             "end_goal": eg["kind"] if eg_on else None,
             "end_goal_grade": float(pmap["end_goal_grade"]) if eg_on else g["grade"],
         })
-    groups: dict[str, list[dict]] = {}
-    for r in rows:
-        if r["split_of"]:
-            groups.setdefault(r["split_of"], []).append(r)
-    for pieces in groups.values():
-        parent_w = max(r["display_weight"] for r in pieces)
-        for r in pieces:
-            r["weight"] = parent_w / len(pieces)
+    groups = _apply_splits(rows, pmap, registry)
     parts = {}
     for p in pmap["parts"]:
         rs = [r for r in rows if r["part"] == p and r["weight"] > 0]
@@ -334,7 +392,9 @@ def render(res: dict, label: str, pmap: dict) -> str:
     for r in res["rows"]:
         flags = [f for f, on in (("composite", r["composite"]),
                                  ("override", r["weight_override"]),
-                                 (f"split of {r['split_of']}", r["split_of"]),
+                                 (f"split of {(r['split_of'] or {}).get('parent')}",
+                                  r["split_of"]),
+                                 (f"capped x{r['grade_capped'] or 0:.3f}", r["grade_capped"]),
                                  (f"end-goal:{r['end_goal']}", r["end_goal"])) if on]
         basis = r["grade_key"] + (f" [{r['grade_why']}]" if r["grade_why"] else "")
         out.append(f"{r['id']:8s} {r['status']:6s} {r['part']:26s} {r['weight']:>4.3g} "
