@@ -34,7 +34,17 @@ def test_every_committed_set_is_frozen_in_the_manifest():
     v2 = man["sets"][V2.name]
     assert v2["role"] == "heldout" and v2["status"] == "withdrawn"
     assert "withdrawn before use" in v2["note"] and "never run" in v2["note"]
-    assert EV.read_attempts() == []                      # nothing committed has been run
+    # held-out v3 was run exactly once (2026-11-07, docs/analyst/EVAL_2026-11-07.md) and is spent;
+    # no other committed set has been run
+    att = EV.read_attempts()
+    assert {a["set"] for a in att} == {"eval_questions_heldout_v3.jsonl"}
+    assert [a["status"] for a in att] == ["started", "arm_done", "arm_done", "arm_done", "completed"]
+    v3 = man["sets"]["eval_questions_heldout_v3.jsonl"]
+    assert all(a["sha256"] == v3["sha256"] for a in att)
+    assert att[0]["arms"] == ",".join(v3["arms"]) and att[0]["repeats"] == v3["repeats"]
+    assert v3["status"] == "spent" and "fair score" in v3["note"]
+    for a in att:                                           # every attempted set is closed
+        assert man["sets"][a["set"]]["status"] in EV.CLOSED
 
 
 def test_withdrawn_and_spent_sets_are_refused():

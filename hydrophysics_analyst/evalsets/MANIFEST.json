@@ -63,7 +63,7 @@
   },
   "eval_questions_heldout_v3.jsonl": {
    "role": "heldout",
-   "status": "frozen",
+   "status": "spent",
    "sha256": "aed3831578082e65eaad0acd9e8050c191c96d7d5722249c9dcf9613eb04ef77",
    "n": 60,
    "frozen_on": "2026-11-07",
@@ -83,7 +83,8 @@
     "overlap": "max word 3-gram Jaccard 0.207 and character 3-gram 0.241 against the dev set, held-out v1 and v2; 0.125 within the set; 7 drafts over 0.25 were rewritten",
     "single_reason": "every refusal and clarify item has exactly one correct reason (v3_038 and v3_047 rewritten for that)"
    },
-   "note": "held-out v3: runs once with the pinned page, ledger, arms and repeats"
+   "note": "fair score = its single run on 2026-11-07 (docs/analyst/EVAL_2026-11-07.md): no arm met the 97 % / 0 unsafe bar; pipeline opus-low 76.7 % with 4 unsafe per run (all from the rules stage), opus-low-all 90.6 % with 0 unsafe, rules 38.3 %. Any later fix is made after seeing it, so reruns are contaminated.",
+   "spent_on": "2026-11-07"
   }
  }
 }
