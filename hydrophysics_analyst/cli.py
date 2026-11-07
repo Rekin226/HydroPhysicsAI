@@ -1,7 +1,7 @@
 """Command line: answer a preset with explicit parameters, or a plain-language question.
 
     python -m hydrophysics_analyst preset policy_head --cut aquaculture=30 --start 2030 \\
-        --year 2032 --lang zh --page results/twin/twin_app_20261107a.html
+        --year 2032 --lang zh --page results/twin/twin_app_20261107b.html
     python -m hydrophysics_analyst ask "停止養殖抽水對2032年水位影響？" --page ... [--no-llm]
 
 ``--allow-pending`` and ``--unbound`` are development switches (a banner marks every answer);

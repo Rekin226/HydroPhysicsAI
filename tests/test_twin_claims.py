@@ -1210,7 +1210,11 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     # only, so the headline carries it through its per-policy size clause (hl_sz_irr)
     for k in ("hl_sz_irr", "def_tW", "rank_limit"):
         assert "×1.27" in en[k] and "×1.27" in zh[k], k
-    assert "(S, design-time" in en["tW_r"] and "(D)" in en["tW_r"] and "(N;" in en["tW_r"]
+    assert "(S, design-time" in en["tW_r"] and "(N;" in en["tW_r"]
+    # R8.16c: C01-w is D with decidability unknown, and the range lines say so (R9.3 fix)
+    for k in ("tW_r", "tW_r_w30"):
+        assert "(D; decidability unknown: N2 is informative, not decisive)" in en[k], k
+        assert "（D；可判定性未知：N2 具資訊性但不具決定性）" in zh[k], k
     assert "Size (N, model-only)" in en["def_tW"] and "(D):" in en["def_tW"]
     # C27: registered numbers; the 'other way' / 'constant rate' readings are gone
     assert "{syl}" in en["evc_pr_subs"] and "{scu}" in zh["evc_pr_subs"]
@@ -1509,7 +1513,11 @@ def test_round8_2010_11_backcast_is_closed_by_ruling_r8_15():
         assert g0 in c["cites"]["reports"] and rid in c["ruling_also"], cid
     assert _st("E04") == {"D"} and _st("E07") == {"N"} and _st("E26") == {"S"}
     readme = " ".join((C.REPO / "README.md").read_text(encoding="utf-8").split())
-    assert line.split(": ", 1)[1] in readme and "`I1.backcast_2010_11.v1`" in readme
+    # README Limits keeps the declared line up to the stop and says R9.1 closed the window
+    # (R9.3 fix: "window unspent" was superseded by R9.1)
+    stop = line.split(": ", 1)[1].removesuffix(" (window unspent).")
+    assert stop + " (the window was left unspent then; R9.1 below closes it)." in readme
+    assert "`I1.backcast_2010_11.v1`" in readme and "(window unspent)" not in readme
     assert "I1.backcast_2010_11" not in C.template_src()
     assert "I1.backcast_2010_11.v1" not in L()["registry_hashes"]       # never registered
     path = C.REPO / g0

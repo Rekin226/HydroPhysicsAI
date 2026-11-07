@@ -9,7 +9,7 @@
 
 [Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
 
-**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence test (2023-25 rings and GNSS) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. These pile scores are report-only since 2026-10-21 (ruling U7): they were used to choose between columns, so they are not independent skill. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. Registered policy-response tests (section 13, masked 2016-18 refits on a design-time window) support the head response to a pumping change in Yunlin, scored on a masked refit of the R0 recipe (`stage3_datum_gate_m1618`; R0 = `stage3_datum_gate_cwa`, the page model's recipe recalibrated on the rebuilt CWA rainfall), and in Changhua only on the census model R1c. The page displays `stage3_datum_gate` (`datum_gate_innov`), which carries no Changhua pumping; section 11 found it within noise of R0 on every earlier test, and a post-hoc, model-only comparison (not a test) puts their policy responses within 2-4 % of each other fan-wide. The R0 recipe scored on Changhua heads (a declared secondary) is marginal. In Yunlin the modelled head response is smaller than observed. The 1-3-year size of the subsidence response is not supported (two tests disagree in direction). Changhua class-specific and subsidence levers are withdrawn under every outcome, and the Changhua head lever is untested (N2C registered, scored not before 2028-01-15). In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. The round-5 build of the decision page (`results/twin/twin_app_20261029e.html`) carries these labels; the promoted `results/twin/twin_app.html` (the 2026-10-29 build `twin_app_20261029d`) predates them until the round-5 build is promoted. Since 2026-10-29 (user ruling) the page is scoped by a claims ledger (`hydrophysics/twin/claims_v1.json`, checked by `tests/test_twin_claims.py`): its answer is the Yunlin head response; the avoided-subsidence, area and rail numbers and the fan-wide baseline total are withdrawn to a labelled "model internals" section, because their size is not supported (rebuilt page `results/twin/twin_app_20261029c.html`, not yet promoted). The page model is `datum_gate_innov` (theta `stage3_datum_gate`), N2's registered primary model; R0 (`stage3_datum_gate_cwa`) and Q0 are ladder baselines, and the N1 verdicts reach the page model only through a post-hoc, model-only comparison. Inferring the missing quantities from the data already held did not close the open claims (section 14). An identifiability audit shows the calibration data do not pin the size of the head response or the Changhua aquifer properties. A storage-capped column failed its synthetic recovery check. Adding the measured public-supply abstraction improved Changhua head timing but failed the leveling and plausibility gates. The Yunlin head response is now decided prospectively by `N2.policy_response.prospective_2026-11.v1`, registered before its November 2026 to October 2027 window. The subsidence size needs new data (section 14 lists the requests); the Changhua head lever is untested (N2C registered, scored not before 2028-01-15), and the class-specific and subsidence Changhua levers are withdrawn under every outcome (section 17). The September status follows.
+**Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence score (2023-25 rings and GNSS; an after-the-fact score of the frozen model, since every post-2022 subsidence series had been looked at before) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, in a retrospective, after-the-fact score (not a prospective validation), and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. These pile scores are report-only since 2026-10-21 (ruling U7): they were used to choose between columns, so they are not independent skill. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. Registered policy-response tests (section 13, masked 2016-18 refits on a design-time window) support the head response to a pumping change in Yunlin, scored on a masked refit of the R0 recipe (`stage3_datum_gate_m1618`; R0 = `stage3_datum_gate_cwa`, the page model's recipe recalibrated on the rebuilt CWA rainfall), and in Changhua only on the census model R1c, which failed its own rung (I1.R1c) and is not the page model. The page displays `stage3_datum_gate` (`datum_gate_innov`), which carries no Changhua pumping; section 11 found it within noise of R0 on every earlier test, and a post-hoc, model-only comparison (not a test) puts their policy responses within 2-4 % of each other fan-wide. The R0 recipe scored on Changhua heads (a declared secondary) is marginal. In Yunlin the modelled head response is smaller than observed. The 1-3-year size of the subsidence response is not supported (two tests disagree in direction). Changhua class-specific and subsidence levers are withdrawn under every outcome, and the Changhua head lever is untested (N2C registered, scored not before 2028-01-15). In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. The promoted decision page `results/twin/twin_app.html` (byte-identical to the round-8 build `results/twin/twin_app_20261107a.html`, sha256 be1e0e26) carries these labels. Since 2026-10-29 (user ruling) the page is scoped by a claims ledger (`hydrophysics/twin/claims_v1.json`, checked by `tests/test_twin_claims.py`): its answer is the Yunlin head response; the avoided-subsidence, area and rail numbers and the fan-wide baseline total are withdrawn to a labelled "model internals" section, because their size is not supported (on the promoted page, `results/twin/twin_app.html` = `twin_app_20261107a.html`). The page model is `datum_gate_innov` (theta `stage3_datum_gate`), N2's registered primary model; R0 (`stage3_datum_gate_cwa`) and Q0 are ladder baselines, and the N1 verdicts reach the page model only through a post-hoc, model-only comparison. Inferring the missing quantities from the data already held did not close the open claims (section 14). An identifiability audit shows the calibration data do not pin the size of the head response or the Changhua aquifer properties. A storage-capped column failed its synthetic recovery check. Adding the measured public-supply abstraction improved Changhua head timing but failed the leveling and plausibility gates. The within-window anomaly response of the Yunlin heads is decided prospectively by `N2.policy_response.prospective_2026-11.v1`, registered before its November 2026 to October 2027 window and scored not before 2028-01-15; N2 is informative but not decisive for Yunlin (`X5.n2_reading.v1`; decidability unknown, user ruling R8.16c). The direction rests on the design-time step C test, and no N2 verdict decides the size. The subsidence size needs new data (section 14 lists the requests); the Changhua head lever is untested (N2C registered, scored not before 2028-01-15), and the class-specific and subsidence Changhua levers are withdrawn under every outcome (section 17). The September status follows.
 
 **Status in September 2026:** the frozen forecast fails the newer groundwater
 challenge. An observation-update defect is corrected in an opt-in method, but the
@@ -135,7 +135,10 @@ to pass the held-out-years test, and its subsidence skill rose.
 **What it is not.** At wells it never saw, it predicts both head changes and absolute
 levels worse than simple interpolation. It supports conditional policy exploration.
 Registered masked-refit tests support its head response to recorded pumping changes (the
-2015 drought spring, and 2016-18 on a design-time window, Changhua on the census model);
+2015 drought spring, an event that mixes canal water and rain with pumping, so it is
+consistent context rather than the pumping-response test, and 2016-18 on a design-time
+window; Changhua only on the census model R1c, which failed its own rung (I1.R1c) and is
+not the page model);
 the size of the 1-3-year subsidence response remains unsupported, the Changhua
 class-specific and subsidence levers are withdrawn under every outcome, and the Changhua
 head lever is untested (N2C registered, scored not before 2028-01-15)
@@ -247,8 +250,8 @@ python -m hydrophysics.twin.viewer_app \
 
 These are the inputs of the live page, recovered from the hashes in its source manifest;
 [TWIN_RELEASE.md](docs/TWIN_RELEASE.md#building-and-checking-the-viewer) lists each one.
-The ring report is the pre-fix one the page has always embedded (evidence section 5 gives
-the corrected `ring_holdout_ref2023`).
+The page embeds the corrected ring report `ring_holdout_ref2023` (evidence section 5); every
+build from `twin_app_20261024c` on, including the promoted `twin_app_20261107a`, passes it.
 
 `results/twin/twin_app.html` is a research scenario page: one self-contained file of
 about 2.2 MB, with its 3D renderer bundled for offline use. It opens on a basin overview
@@ -348,14 +351,18 @@ in `docs/GPU_SERVER.md`.
   subsidence levers are withdrawn under every outcome, and the Changhua head lever is
   untested (N2C registered, scored not before 2028-01-15).
 - The registered head interval is tested only where registered tests decide it. Its
-  per-well 90 % interval is decided over November 2026 to October 2027; the per-well spread
+  per-well 90 % interval is decided over November 2026 to October 2027 (the interval family
+  was chosen after its 2023-26 coverage was seen, U7; the window is untouched; E02c's
+  per-county coverage gate is weak by design in Yunlin, P = 0.35, so a Yunlin fail would
+  not refute the interval); the per-well spread
   around the county-wide departure is decided separately by
   `E02d.decomposed_prospective_2026-12.v1` (December 2026 to October 2027, a test that is
   decisive by design, `U1.decomp_power.v1`; scored not before 2028-01-15); and outside the
   first window the interval is decided by `E02y.years23_2027-11_2029-10.v1` for 2027-11..2029-10
   (scored from 2029-01-15) and untested beyond. Under user ruling R8.13 the page's drawn run
-  spread is to be replaced by a two-part band (`PB.decomposed_band.v1`, declared, not yet
-  registered or built): a per-well zone ribbon of E02d's frozen half-widths for December 2026
+  spread is replaced by a two-part band (`PB.decomposed_band.v1`, registered sha 8cd8c44c;
+  built `results/twin/pb_band/pb_band.json`, sha c23de702; on the promoted page): a per-well
+  zone ribbon of E02d's frozen half-widths for December 2026
   to October 2027 ('decided by a registered test, E02d, 2028'; at least 5 wells per zone; no
   station ids) and a shared range per county ('cannot be tested before 2030 by design'; the
   spread among model variants only, without forcing-year variation or the between-zone part)
@@ -419,11 +426,13 @@ in `docs/GPU_SERVER.md`.
   model R1c, which failed its own rung (I1.R1c) and is not the page model. The Changhua head
   lever is withdrawn from the page and untested (N2C registered, scored not before 2028-01-15):
   `N2C.changhua_response.prospective_2026-11.v1` scores R1c's head response at 74 Changhua
-  wells over November 2026 to October 2027, and only a "response supported" verdict can
-  show R1c's all-class lever, labelled with R1c's gate failures; no Changhua subsidence
-  lever follows from any verdict. The 1-3-year size of the subsidence response
+  wells over November 2026 to October 2027; its rule allowed only a "response supported"
+  verdict to show R1c's all-class lever, but the scored cap (`X5.changhua_lever_model.v1`,
+  F = 0.49 < 0.5) keeps it at narrowed wording, so no lever is shown under any outcome; no
+  Changhua subsidence lever follows from any verdict. The 1-3-year size of the subsidence response
   does not: on 2016-18 a constant sinking rate partitions the leveling better than the
-  column, while the 2007-10 comparison across places points the other way in Yunlin. In the
+  column, while the 2007-10 comparison across places in Yunlin is inconclusive (its
+  registered verdict). In the
   registered numbers: on the masked 2016-18 refits the Yunlin model lost to both a constant
   sinking rate and reference-year pumping on leveling (observed-on-modelled slope 0.22 [0.17, 0.27]) and the
   Changhua model R1c beat reference-year pumping but lost to a constant sinking rate on leveling (0.40
@@ -434,8 +443,9 @@ in `docs/GPU_SERVER.md`.
   1-3-year size is not supported by the registered tests, and whether a cut changes
   long-run sinking is untested.
 - In this model the avoided subsidence is the head rise times the column's compaction per
-  metre of head change (elastic), so it rests on two links. The head factor is decided in
-  Yunlin by `N2.policy_response.prospective_2026-11.v1`. The conversion factor, the
+  metre of head change (elastic), so it rests on two links. The head factor's within-window
+  response is decided in Yunlin by `N2.policy_response.prospective_2026-11.v1` (pending,
+  scored not before 2028-01-15); no N2 verdict decides the size of the head factor. The conversion factor, the
   compaction per metre of head change, is not identifiable at the 2 Yunlin deep-pile cells
   (土庫國中 and 中科虎尾) by design: N3's synthetic check G0 failed at 12 and 24 months (with
   2 piles the conversion test would call a coefficient twice the true one supported), so
@@ -484,7 +494,8 @@ in `docs/GPU_SERVER.md`.
   checked and not decidable. The planned backcast on 2010-11, the only months no theta has fitted,
   `I1.backcast_2010_11.v1`, is not decidable by design: its primary's synthetic G0 gives power
   0.53 < 0.6 (false pass 0.06), so the whole test would be report-only; by user ruling R8.15 it
-  was stopped before any 2010-11 head was read (window unspent). The 2010-11 window is closed as not cleanly testable (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in E26's registered unit (I1.CH_backcast.v1; 12 scored, the 13th read in its product build but never placed) and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check 2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared ids — 13 of 13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19); `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4; no test, no read. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
+  was stopped before any 2010-11 head was read (the window was left unspent then; R9.1 below
+  closes it). The 2010-11 window is closed as not cleanly testable (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in E26's registered unit (I1.CH_backcast.v1; 12 scored, the 13th read in its product build but never placed) and all 19 Yunlin wells' 2010-11 series were loaded by X5EV (lead's check 2026-11-07: the 32 eligible ids of avail.json against I1.CH_backcast.v1's declared ids — 13 of 13 — and X5EV's confined/unconfined 2010-11 units — 19 of 19); `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4; no test, no read. An after-the-fact two-contrast check at the 23 screens (`I1.CHX.v1.twocontrast`,
   exploratory, narrowing only) puts the Yunlin contrast in the same regression: the Changhua
   slope becomes 0.15 [-0.04, 0.45], so the direction is not separable from Yunlin spill-over.
   The mechanism check CH-J (the secondary of `I1.CHX.v1`, report-only for good) did not reject
