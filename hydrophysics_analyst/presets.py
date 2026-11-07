@@ -366,15 +366,34 @@ def cheapest_for_head(b, p, lang):
     return _answer(b, "cheapest_for_head", q, lang, spans, [res], res.deep_link, charts=charts)
 
 
+# Mirrored page lines that never reach an answer, beyond the ledger's band keys (filtered in
+# the query layer): Changhua's withdrawn levers (ruling D2, W numbers never stated: C13a's head
+# line, C13c, C13b); the retrospective ring, pile, hybrid and coverage scores (spec §13, they stay
+# in the page's drawer); and the layer-2 wells' observed note (observations are out of scope).
+DRAWER_ONLY = frozenset({"evc_pr_ch_head", "evc_pr_ch_subs", "evc_pr_ch_class",
+                         "evc_ring", "evc_ring_ref", "evc_pile", "evc_hyb", "evc_cov", "cov_line",
+                         "bn_aux"})
+
+
+def _answer_lines(res: Q.QueryResult) -> Q.QueryResult:
+    import dataclasses as dc
+    return dc.replace(res, snippets=tuple(s for s in res.snippets
+                                          if not DRAWER_ONLY & set(s.key.split("+"))))
+
+
 def how_sure(b, p, lang):
-    """How far the result is tested: the page's evidence line and registered-test lines. W
-    claims these lines merely mention are not cited (a W claim is never listed beside an answer)."""
+    """How far the result is tested: the page's evidence line, the head tile's reading at the
+    default view and the trust drawer's lines except band keys and ``DRAWER_ONLY``. The head
+    band is left to the page (the deep link): the answer carries no band, so it carries no
+    sentence about one (bn_head_pb points at "the band below", pb_title is a heading).
+    W claims these lines merely mention are not cited (a W claim is never listed beside an
+    answer), and no line governed by W claims is shown (validate.w_governed)."""
     import dataclasses as dc
     import datetime as dt
 
     from hydrophysics.twin import claims as C
     c = Q.ctx(b)
-    res = BD.bind(Q.evidence(b, lang), b)
+    res = BD.bind(_answer_lines(Q.evidence(b, lang)), b)
     st = {x["id"]: x["status_current"] for x in b.ledger["claims"]}
     spans = []
     for s in spans_from(res, block="evidence"):

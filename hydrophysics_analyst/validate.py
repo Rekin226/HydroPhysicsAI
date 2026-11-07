@@ -7,7 +7,9 @@ Rules (spec §8):
 2. banned strings — ``page_scoping.template_absent`` anywhere; the ``headline_must_not_use`` and
    band keys never as snippets; the verdict lexicon only in non-page spans (page strings use those
    words in negated or scoped form);
-3. withheld — no withheld value, and no answer-block sentence governed only by W claims;
+3. withheld — no withheld value, and no answer-block sentence governed by W claims
+   (``w_governed``: judged on the claims of the sentence's own page strings, BEFORE any W
+   citation is stripped — all of them W, or any purely W claim; ruling D2);
 4. labels — every internal or labelled value sits beside its rule's page label;
 5. Changhua — ``claims.lever_mentions`` is empty on the whole composed text, echo included;
 6. citations — exactly the claims of the values shown (and of a refusal's own sentence);
@@ -37,6 +39,26 @@ VERDICT = {
     "zh": ["保護", "安全", "建議", "準確", "保證", "預測", "較好", "較差", "已驗證", "最佳選擇", "應選"],
 }
 PAGE_KEYS_EXTRA = {"pp", "jan", "dec", "tHead", "town_name", "changhua_label"}
+
+
+def w_governed(key: str, ledger: dict) -> tuple[str, ...]:
+    """The W claims that make a sentence unfit for an answer block, from the claims of every
+    page string in its key (``binding.snippet_claims``, never the stripped citations): all of
+    them, when every claim is W; else the purely W ones (status ``W``: withdrawn, no number is
+    shown); else none. A W+D claim beside other claims (a registered test of a withdrawn
+    quantity) does not govern the sentence alone."""
+    st = {c["id"]: c["status_current"] for c in ledger["claims"]}
+    cl = [c for c in BD.snippet_claims(key, ledger) if c in st]
+    if cl and all("W" in C.codes(st[c]) for c in cl):
+        return tuple(cl)
+    return tuple(c for c in cl if set(C.codes(st[c])) == {"W"})
+
+
+def w_governed_spans(ans: Answer, b: PageBundle) -> list[tuple[int, str, tuple[str, ...]]]:
+    """(index, key, W claims) of every answer-block snippet ``w_governed`` flags."""
+    return [(i, s.key, w) for i, s in enumerate(list(ans.echo) + list(ans.spans))
+            if s.kind == "snippet" and s.block not in ("refusal", "internals")
+            and (w := w_governed(s.key, b.ledger))]
 
 
 @dataclass(frozen=True)
@@ -107,6 +129,9 @@ def validate(ans: Answer, b: PageBundle, *, reproduce: bool = True,
         if (s.kind == "snippet" and s.block not in ("refusal", "internals") and s.claims
                 and all("W" in C.codes(st[c]) for c in s.claims if c in st)):
                 out.append(Violation("withheld", i, f"answer sentence {s.key} governed only by W claims"))
+    for i, key, w in w_governed_spans(ans, b):              # before W stripping (ruling D2)
+        out.append(Violation("withheld", i,
+                             f"answer sentence {key} governed by W claims {list(w)}"))
     # 4 labels
     keys_present = [s.key for s in ans.spans if s.kind in ("snippet", "frame")]
     for i, s in enumerate(ans.spans):

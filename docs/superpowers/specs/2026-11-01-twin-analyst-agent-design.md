@@ -676,6 +676,11 @@ start-compare question with no cut is `clarify missing_cut`, never the baseline.
 - `evc_pro_iv` is excluded: it is a band key the ledger keeps out of answers.
 - Ring, pile, hybrid and coverage lines stay in the page's drawer.
 - Parity checks that every `how_sure` sentence appears in the page's evidence line, drawer or tiles.
+- *Round 8 (plan #19, 2026-11-07):* the query layer now mirrors the whole drawer and the head
+  band for parity, line by line both ways with claims; answers drop the ledger's band keys and
+  `presets.DRAWER_ONLY` (ring, pile, hybrid, coverage as above; Changhua's withdrawn levers,
+  ruling D2; the wells' note). The tile line is the default view's (`tW_w30` with the all30
+  run). Answers carry no head-band line; the R8.13 band is left to the page link.
 
 **D5.** The patches were prepared and tested in a scratch copy of the working tree, not applied:
 a twin forward job was running. They are in `docs/analyst/d5/`, with `apply_d5.sh`, which refuses

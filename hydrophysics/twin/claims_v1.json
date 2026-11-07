@@ -378,7 +378,17 @@
    "evc_pro_dr",
    "evc_fv2_rc_nso",
    "evc_fv2_rc_omits",
-   "bn_head_fy"
+   "bn_head_fy",
+   "bn_head_fy_pb",
+   "pb_ribbon_h",
+   "pb_ribbon_what",
+   "pb_wells",
+   "pb_small",
+   "pb_shared_h",
+   "pb_shared_what",
+   "pb_range",
+   "pb_lofo",
+   "pb_lofo_c"
   ]
  },
  "claims": [

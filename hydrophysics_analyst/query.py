@@ -19,7 +19,8 @@ public result (spec P4).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -967,117 +968,587 @@ def _esc(v) -> str:
     return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def evidence(b: PageBundle, lang: str = "en") -> QueryResult:
-    """``evLineText``, ``ev_decision`` and the registered-test lines of ``evidenceItems`` whose
-    inputs are registry flags and dates (template.html ~1653, ~2634). Lines the bound page's
-    dictionary leaves empty (an older template) are skipped."""
-    c = ctx(b)
-    mc, sn = c.mc, []
+def js_keys(d: dict) -> list:
+    """``Object.keys`` order: array-index keys ascending, then the others in insertion order."""
+    def idx(k) -> bool:
+        return (isinstance(k, str) and k.isdigit() and (k == "0" or k[0] != "0")
+                and int(k) < 2**32 - 1)
+    return sorted((k for k in d if idx(k)), key=int) + [k for k in d if not idx(k)]
 
-    def add(key, v=None):
-        t = c.tr(lang, key, v)
-        if t and t != key:
-            sn.append(Snippet(key, lang, t))
-    nc, tp = mc.get("new_data_challenge"), mc.get("temporal")
+
+def _num0(v) -> float:
+    """A JS number in ``Math.min``/``Math.max``: ``null`` counts as 0."""
+    return 0.0 if v is None else float(v)
+
+
+class _Lines:
+    """Builds page lines with the page's ``tr`` and records every key each line used, so a
+    snippet's key names the page string of the line first and then each sub-string that carries
+    claims (``display_map.i18n``): the claims behind the sentence are exactly the page's."""
+
+    def __init__(self, c: Ctx, lang: str):
+        self.c, self.lang, self.sn, self.used = c, lang, [], []
+        self.dm = (c.b.ledger.get("display_map") or {}).get("i18n") or {}
+
+    def t(self, key: str, v: dict | None = None) -> str:
+        self.used.append(key)
+        return self.c.tr(self.lang, key, v)
+
+    def take(self) -> list[str]:
+        k, self.used = self.used, []
+        return k
+
+    def push(self, key: str, text: str, used: list[str] | None = None) -> None:
+        used = self.take() if used is None else used
+        subs = [k for k in dict.fromkeys(used) if k != key and self.dm.get(k)]
+        if key in self.c.b.T["en"] and text:              # an older template: no such line
+            self.sn.append(Snippet("+".join([key, *subs]), self.lang, text))
+
+    def add(self, key: str, v: dict | None = None) -> None:
+        self.push(key, self.t(key, v))
+
+
+def cov_span(cv: dict) -> str:
+    """The page's ``covSpan``."""
+    return nc_span({"forecast_origin": cv.get("forecast_origin"),
+                    "end_exclusive": cv.get("end_exclusive")})
+
+
+def test_counts(c: Ctx) -> tuple[int, int]:
+    """The page's ``testCounts`` over ``testRows`` (with ``n1Rows``): PASS and FAIL rows, without
+    the N1 rows of a model that is not the deliverable recipe (``count === false``)."""
+    mc = c.mc
+    tp = mc.get("temporal")
+    fr = tp.get("fair") if tp else None
+    rows: list[tuple[str | None, bool]] = []
+    nc = mc.get("new_data_challenge")
     if nc:
-        add("ev_nc_pass" if nc.get("beats_best_baseline") else "ev_nc_fail",
-            {"r": J.f2(nc["metrics"]["model_datum"]["rmse_m"]),
-             "c": J.f2(nc["metrics"][nc["best_baseline"]]["rmse_m"]),
-             "b": _best_name(c, lang, nc["best_baseline"]), "span": nc_span(nc)})
-    elif tp and not tp.get("passed"):
-        add("ev_tp_fail", {"y": c.years[c.YO]})
+        rows.append(("PASS" if nc.get("beats_best_baseline") else "FAIL", True))
+    if fr is not None:
+        rows += [(fr.get("verdict"), True), (None, True)]
+    elif tp:
+        rows.append(("PASS" if tp.get("passed") else "FAIL", True))
+    if mc.get("r2_anom") is not None:
+        rows.append((mc.get("verdict_anom") or None, True))
+    if mc.get("r2_kfold") is not None:
+        rows.append((mc.get("verdict") or None, True))
+    pr = mc.get("policy_response")
+    if pr:
+        for kind in ("heads", "subsidence"):
+            for row in (pr.get(kind) or {}).values():
+                if not row.get("model"):
+                    continue
+                both = (row.get("verdict_cl") == "model_better"
+                        and row.get("verdict_zr") == "model_better")
+                rows.append(("PASS" if both else "FAIL",
+                             row["model"].get("deliverable_recipe") is True))
+    p = sum(1 for v, n in rows if n and v == "PASS")
+    f = sum(1 for v, n in rows if n and v == "FAIL")
+    return p, f
+
+
+def _pr_span(r: dict) -> str:
+    m = re.match(r"^(\d{4})-\d{2}\.\.(\d{4})", _sub(r.get("window")))
+    return f"{m.group(1)}–{m.group(2)[2:]}" if m else ""
+
+
+def _pr_design(r: dict) -> bool:
+    return r.get("design_time") is True or "design-time" in _sub(r.get("window"))
+
+
+def _sub(v) -> str:
+    """``String(v)``."""
+    return J._sub_str(v) if not isinstance(v, (dict, list)) else str(v)
+
+
+def _policy_response_lines(L: _Lines, r: dict) -> None:
+    """``policyResponseLines`` (with ``chCapF`` / ``chCapRd``): the registered N1 verdicts."""
+    c, f2 = L.c, J.f2
+    mc = c.mc
+    rg, res = mc.get("registrations") or {}, mc.get("results") or {}
+    h, s, ch = r.get("heads") or {}, r.get("subsidence") or {}, r.get("changhua")
+    span = _pr_span(r)
+    dt = L.t("pr_design") if _pr_design(r) else ""
+    dtp = L.t("pr_design_p") if _pr_design(r) else ""
+
+    def passed(row) -> bool:
+        return row.get("verdict_cl") == "model_better" and row.get("verdict_zr") == "model_better"
+
+    def sized(row) -> bool:
+        return (bool(row) and row.get("slope_obs_on_model") is not None
+                and bool(row.get("slope_ci")) and len(row["slope_ci"]) == 2)
+
+    def pr_model(row) -> str:
+        i = _sub(((row or {}).get("model") or {}).get("id") or "")
+        return L.t("prm_r1c" if i.startswith("R1c") else "prm_r0" if i.startswith("R0")
+                   else "prm_none")
+
+    def cap_f() -> str:
+        x = res.get("x5clm")
+        if not x:
+            return L.t("pr_ch_cap_f")
+        if not (x.get("caps_c13a_at_N") and x.get("F") is not None):
+            return ""
+        return L.t("pr_ch_cap_f_res", {"f": f2(x["F"])})
+
+    def cap_rd() -> str:
+        x = res.get("x5n2c")
+        if not x:
+            return L.t("pr_ch_cap_rd")
+        if x.get("status") != "estimated" or x.get("false_pass") is None:
+            return ""
+        return L.t("pr_ch_rd_held" if x["false_pass"] >= .25 else "pr_ch_rd_res",
+                   {"p": f2(x["false_pass"])})
+
+    for cty, row in h.items():
+        other = bool(row.get("model")) and row["model"].get("deliverable_recipe") is False
+        rs = L.t("pr_beats" if passed(row) else "pr_not_beats",
+                 {"r": f2(row["rmse_model_m"]), "c": f2(row["rmse_cl_m"])})
+        sec = (r.get("secondary") or {}).get(cty + "_heads_deliverable_recipe")
+        np_ = (L.t("pr_ch_nopump", {"r": f2(sec["rmse_model_m"]), "c": f2(sec["rmse_cl_m"]),
+                                    "q": f2(sec["ratio_cl"]), "u": J.sg(sec["ci_cl"][1], 4)})
+               if cty == "changhua" and c.nochp() and sec else "")
+        if cty == "changhua" and row.get("model") and row["model"].get("id") == "R1c-m1618":
+            sl = (L.t("pr_ch_slope", {"s": f2(row["slope_obs_on_model"]),
+                                      "lo": f2(row["slope_ci"][0]), "hi": f2(row["slope_ci"][1])})
+                  if sized(row) else "")
+            caps = (cap_f() if rg.get("x5clm") else "") + (cap_rd() if rg.get("x5n2c") else "")
+            L.add("evc_pr_ch_head", {"span": span, "dt": dt, "res": rs, "sl": sl,
+                                     "note": np_ + caps})
+            continue
+        note = ((L.t("pr_other_note") if other else "") + np_
+                + (L.t("pr_ch_untested") if cty == "changhua" else ""))
+        L.add("evc_pr_heads", {"cty": L.t("cty_" + cty), "span": span, "dt": dt,
+                               "mdl": pr_model(row), "res": rs, "note": note})
+    hy = h.get("yunlin")
+    if sized(hy):                       # observed on modelled slope
+        L.add("evc_pr_heads_size", {"span": span, "dt": dt, "hy": f2(hy["slope_obs_on_model"]),
+                                    "hyl": f2(hy["slope_ci"][0]), "hyu": f2(hy["slope_ci"][1]),
+                                    "my": pr_model(hy)})
+    if s.get("yunlin") and s.get("changhua"):
+        ok = [k for k in ("yunlin", "changhua") if passed(s[k])]
+        if len(ok) == 2:
+            L.add("evc_pr_subs_ok", {"span": span, "dt": dtp,
+                                     "list": L.t("list_and").join(L.t("cty_" + k) for k in ok)})
+        else:
+            def sres(k):
+                zr = s[k].get("verdict_zr") == "model_better"
+                if s[k].get("verdict_cl") == "model_better":
+                    return L.t("pr_s_beat" if zr else "pr_s_lost_zr")
+                return L.t("pr_s_lost_cl" if zr else "pr_s_lost_both")
+
+            def ci(row, i):
+                ok = row.get("slope_ci") and len(row["slope_ci"]) == 2
+                return f2(row["slope_ci"][i]) if ok else "–"
+            bb = (r.get("step_b") or {}).get("yunlin")
+            sb = ""
+            if (bb and bb.get("beta_obs_cm_per_gwh") is not None
+                    and bb.get("beta_model_cm_per_gwh") is not None
+                    and bb.get("ratio_ci") and len(bb["ratio_ci"]) == 2):
+                more = bb["beta_obs_cm_per_gwh"] > bb["beta_model_cm_per_gwh"]
+                vk = "vd_" + _sub(bb.get("verdict"))
+                sb = L.t("pr_stepb", {"dir": L.t("pr_more" if more else "pr_less"),
+                                      "v": (L.t(vk) if vk in c.b.T["en"]
+                                            else _sub(bb.get("verdict"))),
+                                      "o": J.sg(bb["beta_obs_cm_per_gwh"]),
+                                      "m": J.sg(bb["beta_model_cm_per_gwh"]),
+                                      "lo": f2(bb["ratio_ci"][0]), "hi": f2(bb["ratio_ci"][1])})
+            L.add("evc_pr_subs", {"span": span, "dt": dtp,
+                                  "sy": f2(s["yunlin"]["slope_obs_on_model"]),
+                                  "syl": ci(s["yunlin"], 0), "syu": ci(s["yunlin"], 1),
+                                  "sc": f2(s["changhua"]["slope_obs_on_model"]),
+                                  "scl": ci(s["changhua"], 0), "scu": ci(s["changhua"], 1),
+                                  "my": pr_model(s["yunlin"]), "mc": pr_model(s["changhua"]),
+                                  "ry": sres("yunlin"), "rc": sres("changhua"), "sb": sb})
+    if ch and ch.get("status") == "not_supported":       # C13c: withdrawn under every outcome
+        L.add("evc_pr_ch_subs", {"o": J.sg(ch["dose_obs_cm_per_gwh"], 2),
+                                 "m": J.sg(ch["dose_model_cm_per_gwh"], 2)})
+    if h.get("changhua") or ch:                          # C13b: withdrawn whatever any verdict says
+        L.add("evc_pr_ch_class", {"np": L.t("pr_ch_np") if c.nochp() else ""})
+    L.take()
+
+
+def _dr_line(L: _Lines, r: dict | None) -> None:
+    """``drLine`` (DR.relative_drift.v1, C14b)."""
+    if not r:
+        return
+    cs = [k for k in ("Yunlin", "Changhua") if r.get(k)]
+    if not cs:
+        return
+
+    def one(k) -> str:
+        v, cty = r[k], L.t("cty_" + k.lower())
+        if v.get("evaluable") and v.get("excess_drift_6y_m") is not None:
+            return L.t("dr_cty", {"cty": cty, "x": J.f2(v["excess_drift_6y_m"])})
+        return L.t("dr_ne", {"cty": cty})
+    parts = [one(k) for k in cs]
+    L.add("evc_pro_dr", {"list": L.t("list_and").join(parts),
+                         "trig": L.t("pro_dr_trig") if any(r[k].get("include_drift") for k in cs)
+                         else ""})
+
+
+def _ring_line(L: _Lines) -> None:
+    """``ringLine``."""
+    r = L.c.mc.get("ring_holdout")
+    if not r or not r.get("rings") or not r["rings"].get("cum"):
+        return
+    cum = r["rings"]["cum"]
+    arm = ("model" if "model" in cum
+           else next((k for k in js_keys(cum) if not k.startswith("base_")), None))
+    bc = cum.get("base_continue")
+    if not arm or not cum.get(arm) or not bc or cum[arm].get("r2") is None or bc.get("r2") is None:
+        return
+    w = r.get("window")
+    span = f"{_sub(w[0])[:4]}–{_sub(w[1])[2:4]}" if w and len(w) == 2 else ""
+    v = {"span": span, "n": r["rings"].get("n_sites"), "a": J.sg(cum[arm]["r2"], 2),
+         "b": J.sg(bc["r2"], 2)}
+    if (r.get("max_ref_age_days") is not None and cum[arm].get("rmse") is not None
+            and bc.get("rmse") is not None):
+        L.add("evc_ring_ref", v | {"ra": J.f2(cum[arm]["rmse"]), "rb": J.f2(bc["rmse"])})
     else:
-        add("ev_tp_pass", {"y": c.years[c.YO]})
-    add("ev_decision")
-    add("tW_r")
+        L.add("evc_ring", v)
+
+
+def _pile_line(L: _Lines) -> None:
+    """``pileLine``: report-only (ruling U7) when the piles chose between columns."""
+    r, lang, f1 = L.c.mc.get("deep_piles"), L.lang, J.f1
+    if (not r or not r.get("cum") or not r["cum"].get("model")
+            or r["cum"]["model"].get("rmse") is None):
+        return
+    w = r.get("window")
+    span = f"{month_year(w[0], lang)}–{month_year(w[1], lang)}" if w and len(w) == 2 else ""
+    a = r.get("after_feeds") or {}
+    aw = a.get("window")
+    span2 = f"{month_year(aw[0], lang)}–{month_year(aw[1], lang)}" if aw and len(aw) == 2 else ""
+    d = r.get("cum_deep") or {}
+    dm, db, sel = d.get("model") or {}, d.get("base_continue") or {}, r.get("selection")
+    bc = r["cum"].get("base_continue")
+    pre = L.t("evc_pile_ro", {"d": sel.get("date"), "u": sel.get("ruling")}) if sel else ""
+    txt = L.t("evc_pile", {
+        "span": span, "n": r.get("n_sites"), "v": r.get("n_verified_values"),
+        "e": f1(r["cum"]["model"]["rmse"]),
+        "b": f1(bc["rmse"] if bc else math.nan),
+        "nd": "?" if d.get("n_sites") is None else d["n_sites"],
+        "ed": "–" if dm.get("rmse") is None else f1(dm["rmse"]),
+        "bd": "–" if db.get("rmse") is None else f1(db["rmse"]),
+        "kd": "?" if dm.get("n_inside") is None else dm["n_inside"],
+        "span2": span2, "e2": f1(a["model"]["rmse"]) if a.get("model") else "–",
+        "b2": f1(a["base_continue"]["rmse"]) if a.get("base_continue") else "–"})
+    L.push("evc_pile", pre + txt)
+
+
+def band_keys(b: PageBundle) -> set[str]:
+    """The ledger's ``page_scoping.answer_must_not_use_band_keys``."""
+    return set(b.ledger["page_scoping"].get("answer_must_not_use_band_keys", []))
+
+
+def _no_band(b: PageBundle, res: QueryResult) -> QueryResult:
+    banned = band_keys(b)
+    return replace(res, snippets=tuple(s for s in res.snippets
+                                       if not banned & set(s.key.split("+"))))
+
+
+def evidence(b: PageBundle, lang: str = "en", *, full: bool = False) -> QueryResult:
+    """``evLineText``, the head tile's reading at the page's default view (``tW_w30`` when the
+    page has the all30 run; none otherwise) and every line of ``evidenceItems`` (template.html
+    ~2888) in its order. ``full`` keeps every line, for the parity check; otherwise the lines
+    using a band key the ledger keeps out of answers (``answer_must_not_use_band_keys``: the
+    per-well interval ``evc_pro_iv``, DR's drift ``evc_pro_dr``, FV v2's forcing-year coverage
+    ``evc_fv2_rc_*``) are dropped. Lines the bound page's dictionary leaves empty (an older
+    template) are skipped."""
+    res = _drawer(b, lang)
+    return res if full else _no_band(b, res)
+
+
+def _drawer(b: PageBundle, lang: str) -> QueryResult:
+    c = ctx(b)
+    mc, L, f2 = c.mc, _Lines(c, lang), J.f2
+
+    def best(k) -> str:
+        return L.t(BESTK[k]) if k in BESTK else (k or "–")
+    nc, tp = mc.get("new_data_challenge"), mc.get("temporal")
+    if nc:                                                   # evLineText
+        L.add("ev_nc_pass" if nc.get("beats_best_baseline") else "ev_nc_fail",
+              {"r": f2(nc["metrics"]["model_datum"]["rmse_m"]),
+               "c": f2(nc["metrics"][nc["best_baseline"]]["rmse_m"]),
+               "b": best(nc["best_baseline"]), "span": nc_span(nc)})
+    elif tp and not tp.get("passed"):
+        L.add("ev_tp_fail", {"y": c.years[c.YO]})
+    else:
+        L.add("ev_tp_pass", {"y": c.years[c.YO]})
+    rk, r, _ = tile_w(b, Policy((1.0,) * c.K, c.starts[0]), c.years[-1], lang)   # default view
+    if rk:
+        L.push(rk, r, [])
+    # ---- evidenceItems() ----
+    rel = b.get("release")
+    L.add("ev_status", {"u": _esc(rel.get("uncertainty")) if rel else ""})
+    L.add("ev_decision")
+    if nc:
+        L.add("evc_nc_pass" if nc.get("beats_best_baseline") else "evc_nc_fail",
+              {"n": nc.get("stations"), "span": nc_span(nc),
+               "r": f2(nc["metrics"]["model_datum"]["rmse_m"]),
+               "c": f2(nc["metrics"][nc["best_baseline"]]["rmse_m"]),
+               "b": best(nc["best_baseline"])})
+    cv = mc.get("coverage")
+    if cv:
+        L.add("evc_cov", {"n": mc.get("n_members"), "a": J.pctf(100 * cv["picp_90"]),
+                          "span": cov_span(cv),
+                          "x": f2(cv["inflation_90"]), "c": J.pctf(100 * cv["combined_picp_90"]),
+                          "st": cv.get("stations"), "m": J.locale_en(cv["scored_months"])})
     rg = mc.get("registrations") or {}
+    res = mc.get("results") or {}
     q = mc.get("prospective")
     if q:
         qa = month_year(str(q["test_start"])[:7], lang) if q.get("test_start") else ""
         qb = month_year(str(q["test_end"])[:7], lang) if q.get("test_end") else ""
         if q.get("test_start") and q.get("test_end"):
-            add("evc_pro", {"reg": q["registered_on"], "a": qa, "b": qb, "n": q["stations"]})
+            L.add("evc_pro", {"reg": q["registered_on"], "a": qa, "b": qb, "n": q["stations"]})
         else:
-            add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
-        # Band keys the ledger keeps out of answers (page_scoping.answer_must_not_use_band_keys)
-        # stay in the page's drawer only: evc_pro_iv (per-well interval), evc_pro_dr (DR drift),
-        # evc_fv2_rc_* (FV v2 forcing-year coverage). The rest follows evidenceItems()' order.
-        res = mc.get("results") or {}
+            L.add("evc_pro_nodates", {"reg": q["registered_on"], "n": q["stations"]})
+        if q.get("interval_bound") and qa and qb:          # band key: parity only
+            L.add("evc_pro_iv", {"a": qa, "b": qb,
+                                 "out": L.t("pro_out_e02y" if rg.get("e02y") else "pro_out_un")})
+        if rg.get("dr"):                                     # drLine, band key: parity only
+            _dr_line(L, res.get("dr"))
         if rg.get("e02c"):
-            add("evc_pro_e02c")
+            L.add("evc_pro_e02c")
         if rg.get("e02z"):                                   # C30-scen's years-2/3 sub-label (R8.7)
-            add("evc_pro_e02z")
+            L.add("evc_pro_e02z")
         if rg.get("e02d"):
-            add("evc_pro_e02d")
+            L.add("evc_pro_e02d")
         fm = res.get("fm") if rg.get("fm") else None        # fmLine: only its declared case
         if (fm and fm.get("case") == "within_first_year"
                 and fm.get("clause_case") == "window_beyond_memory" and qa and qb):
-            add("evc_pro_fm", {"m": fm["lstar_months"], "lm": month_year(fm["lstar_month"], lang),
-                               "a": qa, "b": qb, "f": J.f2(fm["floor_m"])})
+            L.add("evc_pro_fm", {"m": fm["lstar_months"], "lm": month_year(fm["lstar_month"], lang),
+                                 "a": qa, "b": qb, "f": f2(fm["floor_m"])})
         if rg.get("ext"):
-            add("evc_pro_ext")
+            L.add("evc_pro_ext")
             fx = res.get("fvext")                            # fvextLine
             if rg.get("fvext") and fx and fx.get("status") == "scored":
-                add("evc_fvext_wbd" if fx.get("reading") == "weak_by_design" else "evc_fvext_nsw",
-                    {"p": J.f2(fx["p"])})
+                L.add("evc_fvext_wbd" if fx.get("reading") == "weak_by_design" else "evc_fvext_nsw",
+                      {"p": f2(fx["p"])})
         if rg.get("fv"):
             # fvLine: v2's post-failure exploratory level reading once scored; else v1's line
             # fixed beforehand until its report exists, then its declared not-evaluable line
             v2 = res.get("fv2") if rg.get("fv2") else None
             fv = res.get("fv")
             if v2 and v2.get("status") == "scored":
-                add("evc_fv2_lvl_wbd" if v2.get("level") == "weak_by_design" else "evc_fv2_lvl_nsw",
-                    {"p": J.f2(v2["p_level"])})
+                wbd = v2.get("level") == "weak_by_design"
+                L.add("evc_fv2_lvl_wbd" if wbd else "evc_fv2_lvl_nsw",
+                      {"p": f2(v2["p_level"])})
             elif not fv:
-                add("evc_pro_fv")
+                L.add("evc_pro_fv")
             else:
                 sup = fv.get("superposition") or {}
-                why = (c.tr(lang, "fv_why_sup", {"x": J.f2(sup["max_abs_window_m"]),
-                                                 "t": J.f2(sup["tolerance_m"])})
+                why = (L.t("fv_why_sup", {"x": f2(sup["max_abs_window_m"]),
+                                          "t": f2(sup["tolerance_m"])})
                        if sup and sup.get("pass") is False else _esc(fv.get("why")))
-                add("evc_pro_fv_ne", {"why": why})
-        if rg.get("fv2"):                                    # fv2Lines, without the band-key rc lines
+                L.add("evc_pro_fv_ne", {"why": why})
+        if rg.get("fv2"):                      # fv2Lines (the rc lines are band keys)
             w, y = res.get("fv2"), res.get("fv2fy")
             if w and w.get("status") == "scored":
                 for cty in ("Yunlin", "Changhua"):
                     v = (w.get("coverage") or {}).get(cty)
                     if v and v.get("p") is not None:
-                        add("evc_fv2_cov_wbd" if v.get("reading") == "weak_by_design" else "evc_fv2_cov_nsw",
-                            {"cty": c.tr(lang, "cty_" + cty.lower()), "p": J.f2(v["p"])})
-            if y and y.get("status") == "scored" and (y.get("rc") or {}).get("Changhua"):
-                add("evc_fv2_ch_rep" if y.get("rain") == "replayed" else "evc_fv2_ch_clim")
+                        wbd = v.get("reading") == "weak_by_design"
+                        L.add("evc_fv2_cov_wbd" if wbd else "evc_fv2_cov_nsw",
+                              {"cty": L.t("cty_" + cty.lower()), "p": f2(v["p"])})
+            if y and y.get("status") == "scored":
+                for cty in ("Yunlin", "Changhua"):
+                    v = (y.get("rc") or {}).get(cty)
+                    if not v or v.get("reading") == "not_represented":
+                        continue
+                    forcing = L.t("fv2_forcing_rep" if y.get("rain") == "replayed"
+                                  else "fv2_forcing_clim")
+                    L.add("evc_fv2_rc_omits" if v.get("reading") == "omits" else "evc_fv2_rc_nso",
+                          {"cty": L.t("cty_" + cty.lower()), "forcing": forcing,
+                           "rc": J.pctf(100 * v["rc"]), "tlo": J.pctf(100 * v["t_lo"]),
+                           "thi": J.pctf(100 * v["t_hi"]), "lo": J.pctf(100 * v["lo"]),
+                           "hi": J.pctf(100 * v["hi"])})
+                if (y.get("rc") or {}).get("Changhua"):
+                    L.add("evc_fv2_ch_rep" if y.get("rain") == "replayed" else "evc_fv2_ch_clim")
     if rg.get("no_band"):
-        add("evc_band_none")
-    res = mc.get("results") or {}
-    # the statistical layer's registered-test lines (evidenceItems' hybrid block, without the
-    # retrospective evc_hyb score): its registration, the forecast of record (ruling R8.7, claim
-    # C30-fc) and FV.stat.v2's two lines (fvsLines, ruling R8.8)
+        L.add("evc_band_none")
+    # the statistical layer: its retrospective score, its registration, the forecast of record
+    # (ruling R8.7, claim C30-fc) and FV.stat.v2's two lines (fvsLines, ruling R8.8)
     if mc.get("hybrid"):                                     # the page's `if (mc.hybrid)`
-        g = mc["hybrid"].get("registration") or {}
+        hy = mc["hybrid"]
+        py = hy.get("per_year") or {}
+        ys = js_keys(py)
+        y1 = ys[0] if ys else ""
+        L.add("evc_hyb", {"s": f2(hy["rmse_stat"]), "c": f2(hy["rmse_clim"]),
+                          "r": f2(hy["rmse_model"]),
+                          "span": nc_span(hy), "y1": y1, "s1": f2(py[y1]["stat"]) if y1 else "",
+                          "c1": f2(py[y1]["clim"]) if y1 else "", "p": f2(hy["ratio_phys"])})
+        g = hy.get("registration") or {}
         if g.get("test_start") and g.get("test_end"):
             ga = month_year(str(g["test_start"])[:7], lang)
             gb = month_year(str(g["test_end"])[:7], lang)
-            add("evc_hyb_reg", {"reg": g["registered_on"], "a": ga, "b": gb,
-                                "n": g["stations"]})
+            L.add("evc_hyb_reg", {"reg": g["registered_on"], "a": ga, "b": gb, "n": g["stations"]})
             if g.get("result") not in ("failed", "not_evaluable"):     # forecastOfRecord
-                add("evc_hyb_for", {"a": ga, "b": gb})
+                L.add("evc_hyb_for", {"a": ga, "b": gb})
         f = res.get("fvs2")                                  # fvsLines: under mc.hybrid only
         if (rg.get("fvs2") and f and f.get("status") == "scored"
                 and f.get("reading") == "not_shown_weak"):
-            v = {"p": J.f2(f["p"]), "p0": J.f2(f["p0"]), "q": J.f2(1 - f["p"])}
-            add("evc_hyb_fvs", v)
-            add("evc_hyb_fvs_pass", v)
+            v = {"p": f2(f["p"]), "p0": f2(f["p0"]), "q": f2(1 - f["p"])}
+            L.add("evc_hyb_fvs", v)
+            L.add("evc_hyb_fvs_pass", v)
+    _ring_line(L)
+    _pile_line(L)
+    if mc.get("policy_response"):
+        _policy_response_lines(L, mc["policy_response"])
+    n2 = res.get("n2rd")                                     # n2rdLine: C01's D part (R8.8)
+    if rg.get("n2rd") and n2 and n2.get("wording") == "informative":
+        L.add("evc_n2_rd", {"fp": f2(n2["false_pass"]), "ws05": f2(n2["ws05"]),
+                            "ws2": f2(n2["ws2"]), "cov": f2(n2["cov"]), "pw": f2(n2["power"]),
+                            "pwc": f2(n2["power_canal"]),
+                            "pwf": f2(n2["power_forcing"])})
     for k, key in (("chx", "evc_chx"), ("chb", "evc_chb")):  # chDirLines (E25/E26): direction only
         r = res.get(k)
         if rg.get(k) and r:
-            add(key, {"s": J.f2(r["beta"]), "lo": J.f2(r["lo"]), "hi": J.f2(r["hi"]), "n": r["n_wells"]})
+            txt = L.t(key, {"s": f2(r["beta"]), "lo": f2(r["lo"]), "hi": f2(r["hi"]),
+                            "n": r["n_wells"]})
+            if k == "chx":                                   # chxSepClause (R8.10): narrowing only
+                x = res.get("chx2c")
+                if rg.get("chx2c") and x and x.get("reading") == "not_separable":
+                    txt += L.t("chx_2c_ns" if x["lo"] <= 0 else "chx_2c_ns_gen",
+                               {"s": f2(x["beta"]), "lo": f2(x["lo"]), "hi": f2(x["hi"])})
+            elif r.get("p_k1") is not None and r.get("p_k0") is not None:
+                txt += L.t("chb_syn", {"k1": f2(r["p_k1"]), "k0": f2(r["p_k0"])})
+            L.push(key, txt)
     n3c = rg.get("n3_conv12") or rg.get("n3_conv24")
-    conv = c.tr(lang, "decomp_conv_un" if not rg.get("n3") else "decomp_conv_n3" if n3c else "decomp_conv_g0")
-    if conv and not conv.startswith("decomp_"):
-        add("evc_subs_decomp", {"conv": conv})
+    ck = "decomp_conv_un" if not rg.get("n3") else "decomp_conv_n3" if n3c else "decomp_conv_g0"
+    if ck in b.T["en"]:
+        L.add("evc_subs_decomp", {"conv": L.t(ck)})
     if rg.get("n3"):
-        add("evc_pile_n3", {"conv": c.tr(lang, "pile_conv_12" if rg.get("n3_conv12") else
-                                          "pile_conv_24" if rg.get("n3_conv24") else "pile_conv_ro")})
+        pk = ("pile_conv_12" if rg.get("n3_conv12") else
+              "pile_conv_24" if rg.get("n3_conv24") else "pile_conv_ro")
+        L.add("evc_pile_n3", {"conv": L.t(pk)})
     if rg.get("n3sl"):
-        add("evc_n3sl")
-    return _result(b, "evidence", [], sn, "base", None, None, lang)
+        L.add("evc_n3sl")
+    p, fl = test_counts(c)
+    if p + fl:
+        L.add("ev_counts_long", {"p": p, "f": fl})
+    return _result(b, "evidence", [], L.sn, "base", None, None, lang)
+
+
+def head_band(b: PageBundle, lang: str = "en", *, full: bool = False) -> QueryResult:
+    """The head series' band at the page's default view (head, fan average): ``seriesFor``'s band
+    note (with ``bn_aux``, the layer-2 wells' note), ``covLine`` and, under ruling R8.13
+    (PB.decomposed_band.v1), ``renderPB``'s labelled two-part band (title, notes, zone labels,
+    county ranges, FV v2's forcing-year clause ``bn_head_fy_pb``, the leave-one-family-out line).
+    ``full`` keeps every line, for the parity check; otherwise lines with a ledger band key
+    (every R8.13 number, ``bn_head_fy``) are dropped."""
+    res = _head_band(b, lang)
+    return res if full else _no_band(b, res)
+
+
+def _head_band(b: PageBundle, lang: str) -> QueryResult:
+    c = ctx(b)
+    mc, L = c.mc, _Lines(c, lang)
+    rg, res = mc.get("registrations") or {}, mc.get("results") or {}
+    mf = b.get("memberFields")
+    pb = mc.get("pb")
+    hb = None if pb else (mf or {}).get("baseHeadBandYr")
+    y = res.get("fv2fy") if rg.get("fv2") else None
+    fy_ok = bool(y and y.get("status") == "scored" and y.get("agg"))
+    if pb:
+        L.add("bn_head_pb")
+    elif hb:                                               # headBandNote
+        if not fy_ok:
+            L.add("bn_head", {"n": mf["n"]})
+        else:
+            a = y["agg"]
+            L.add("bn_head_fy", {"n": mf["n"], "n2lo": J.sg(a["n2_lo"]), "n2hi": J.sg(a["n2_hi"]),
+                                 "l2lo": J.sg(a["l2_lo"]), "l2hi": J.sg(a["l2_hi"]),
+                                 "forcing": L.t("fv2_forcing_rep" if y.get("rain") == "replayed"
+                                                else "fv2_forcing_clim")})
+    else:
+        L.add("bn_head_none")
+    wf = b.get("wellsFan")                                 # the fan's layer-2 wells (bn_aux)
+    if wf:
+        pts = [(o, m) for o, m in zip(wf["obs"], wf["model"], strict=False) if o is not None]
+        d = [(_num0(m) - o) for o, m in pts if (_num0(m) - o) == (_num0(m) - o)]
+        gap = sum(d) / len(d) if d else math.nan
+        L.add("bn_aux", {"n": wf.get("n_wells"), "gap": J.sg(gap, 1), "gapa": J.f1(gap)})
+    cv = mc.get("coverage")
+    if (pb or hb) and cv:                                    # covLine (kept under R8.13)
+        L.add("cov_line", {"n": mc.get("n_members"), "a": J.pctf(100 * cv["picp_90"]),
+                           "x": J.f2(cv["inflation_90"]), "span": cov_span(cv),
+                           "c": J.pctf(100 * cv["combined_picp_90"])})
+    rib = (pb or {}).get("ribbon") or {}
+    if pb and rib.get("months"):
+        def lab(o) -> str:
+            return _esc((o or {}).get(lang) or (o or {}).get("en") or "")
+
+        def esc_t(key, v=None) -> str:
+            return _esc(L.t(key, v))
+        sh = (pb.get("shared") or {}).get("counties") or {}
+        cs = [k for k in ("Yunlin", "Changhua") if sh.get(k)]
+        fy = ""
+        if fy_ok and mf and mf.get("baseHeadBandYr"):      # fyClause: the clause only (R8.13)
+            a = y["agg"]
+            fy = L.t("bn_head_fy_pb", {"n2lo": J.sg(a["n2_lo"]), "n2hi": J.sg(a["n2_hi"]),
+                                       "l2lo": J.sg(a["l2_lo"]), "l2hi": J.sg(a["l2_hi"]),
+                                       "forcing": L.t("fv2_forcing_rep"
+                                                      if y.get("rain") == "replayed"
+                                                      else "fv2_forcing_clim")})
+        fy_keys = L.take()
+        L.push("pb_title", esc_t("pb_title"))
+        small = (" " + esc_t("pb_small", {"k": rib["small"]})) if rib.get("small") else ""
+        L.push("pb_ribbon_h", f"<b>{esc_t('pb_ribbon_h')}</b> {lab(rib.get('label'))}. "
+                              f"{esc_t('pb_ribbon_what')} {esc_t('pb_scale')}{small}")
+        zones: dict[str, dict] = {}
+        for z in rib.get("zones") or []:
+            zones[z["zone"]] = {"n": z["n"], "pts": [v for v in z["hw"] if v is not None]}
+        for k in sorted(zones):
+            pts = zones[k]["pts"]
+            if pts:
+                L.push("pb_wells", f"{_esc(k)} ({esc_t('pb_wells', {'n': zones[k]['n']})}) "
+                                   f"±{J.f1(pts[0])}…±{J.f1(pts[-1])} m")
+        if cs:
+            see = L.t("pb_see_fy") if fy else ""
+            L.push("pb_shared_h", f"<b>{esc_t('pb_shared_h')}</b> "
+                                  f"{lab(pb['shared'].get('label'))}. "
+                                  f"{esc_t('pb_shared_what', {'see': see})}")
+            for k in cs:
+                v = sh[k]
+                lo, hi = min(_num0(x) for x in v["lo"]), max(_num0(x) for x in v["hi"])
+                L.push("pb_range", esc_t("pb_range", {"c": L.t("pb_county_" + k),
+                                                      "lo": J.sg(lo, 1), "hi": J.sg(hi, 1)}))
+            if fy:
+                L.push("bn_head_fy_pb", fy, fy_keys)
+            lf = pb.get("lofo") or {}
+            lofo = L.t("pb_sep").join(
+                L.t("pb_lofo_c", {"c": L.t("pb_county_" + k), "k": lf[k]["inside"],
+                                  "n": lf[k]["n"]}) for k in cs if lf.get(k))
+            if lofo:
+                L.push("pb_lofo", esc_t("pb_lofo", {"list": lofo}))
+    L.take()
+    return _result(b, "head_band", [], L.sn, "base", None, None, lang)
+
+
+def e24_line(b: PageBundle, p: Policy, lang: str = "en") -> QueryResult:
+    """``e24Line`` (SD.cut_response_spread.v2, ruling R8.11): tile tA's model-form spread, shown
+    on the page under Model internals only and only for the irrigation ×0.7 lever from 2026 (the
+    run SD v2 measured). Never an answer number: its keys are in ``headline_must_not_use`` and
+    no preset puts it in an answer; it is mirrored for the parity check only."""
+    c = ctx(b)
+    mc, L, f2 = c.mc, _Lines(c, lang), J.f2
+    r = (mc.get("results") or {}).get("sd2")
+    if ((mc.get("registrations") or {}).get("sd2") and r and r.get("ab") and len(p.f) == len(IRR30)
+            and all(abs(v - IRR30[i]) <= 1e-6 for i, v in enumerate(p.f)) and int(p.start) == 2026):
+        def pc(v) -> str:
+            return J.js_num_str(J.js_round(100 * v))
+
+        def one(t) -> dict:
+            inl = L.t("e24_inl_rob" if t["inland_robust"] else "e24_inl_dep",
+                      {"x": f2(t["inland_ratio"]), "ilo": J.to_fixed(t["inland_lo_cm"], 3),
+                       "ihi": J.to_fixed(t["inland_hi_cm"], 3)})
+            a, z = pc(t["coast_lo"]), pc(t["coast_hi"])
+            return {"n": t["n_columns"], "lo": f2(t["lo_cm"]), "hi": f2(t["hi_cm"]),
+                    "crng": a if a == z else f"{a}–{z}", "inl": inl}
+        ta = L.t("def_tA_e24_a", one(r["a"])) if r.get("a") else ""
+        L.add("def_tA_e24", one(r["ab"]) | {"ta": ta})
+    L.take()
+    return _result(b, "e24", [], L.sn, "base", p, None, lang)
