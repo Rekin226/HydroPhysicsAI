@@ -64,7 +64,7 @@ def _post(url, body, headers=None):
 
 
 def test_routes_and_csp(b, tmp_path):
-    app = App(b, use_llm=False, audit_dir=tmp_path)
+    app = App(b, llm=testing.echo_llm(b), audit_dir=tmp_path)       # presets only via the LLM
     srv, base = _serve(app)
     try:
         st, h, body = _get(base + "/")

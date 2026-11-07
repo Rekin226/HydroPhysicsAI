@@ -54,7 +54,7 @@ def ask(b: PageBundle, question: str, *, lang: str | None = None, use_llm: bool 
     else:
         session.update(ans.preset, ans.params)
     rec = {"user": user, "lang": lang, "question": question, "route": r.to_json(), "stage": info.get("stage"),
-           "llm_error": info.get("llm_error"), "answer_preset": ans.preset if not ans.clarify else "clarify",
+           "llm_error": info.get("llm_error"), "rules_hint": info.get("rules_hint"), "answer_preset": ans.preset if not ans.clarify else "clarify",
            "answer_params": ans.params, "answer_text": ans.text(), "citations": ans.citations,
            "refusal": ans.refusal, "clarify": ans.clarify, "fallback": ans.fallback,
            "violations": [v.__dict__ for v in violations], "deep_link": ans.deep_link,

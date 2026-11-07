@@ -54,7 +54,7 @@ def _rpc(srv, msgs):
 
 
 def test_mcp_initialize_list_and_call(built, tmp_path):
-    srv = MCPServer(built[2], use_llm=False, audit_dir=tmp_path)
+    srv = MCPServer(built[2], llm=testing.echo_llm(built[2]), audit_dir=tmp_path)
     r = _rpc(srv, [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                    {"jsonrpc": "2.0", "method": "notifications/initialized"},
                    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},

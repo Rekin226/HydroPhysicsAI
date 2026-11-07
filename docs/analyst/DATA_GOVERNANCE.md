@@ -40,8 +40,9 @@ claim IDs and grid percents.
   requires a specific region, a cloud provider's Claude endpoint in an approved region is the
   alternative, configured through `AnthropicBackend(client_factory=...)`. Availability in a
   Taiwan region is **unverified**.
-- **No language model at all.** Set `llm.enabled: false`. The rules parser and the form answer
-  every preset; unparsed questions get a clarification.
+- **No language model at all.** Set `llm.enabled: false`. The example questions and the form
+  answer every preset; a typed question is refused or clarified by the rules, and otherwise gets
+  the `no_llm` clarification (the rules never choose a preset, ruling R9.2 of 2026-11-07).
 
 ## 4. Records kept on premises
 

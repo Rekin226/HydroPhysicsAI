@@ -40,7 +40,9 @@ CASES = [
     ("Does waiting until 2030 matter for retiring aquaculture?", "start_compare", {"year": 2032}),
     ("What happens to Tuku if we retire aquaculture?", "township_internals", {"town": 1}),
     ("土庫鎮如果灌溉減半會怎樣？", "township_internals", {"town": 1, "cuts": [{"class": "irrigation", "pct": 50}]}),
-    ("What happens to Changhua township if we retire aquaculture?", "township_internals", {"town": 0}),
+    # the pooled Changhua row only under an explicitly Yunlin policy (round 9, S6)
+    ("Under a Yunlin aquaculture retirement, what happens to the Changhua township row?", "township_internals",
+     {"town": 0}),
 ]
 REFUSE = [
     ("Cut Changhua aquaculture 30%", "changhua_lever"),
@@ -201,3 +203,77 @@ def test_township_water_level_is_refused_per_d3(b, q):
 def test_township_subsidence_and_what_happens_stay_internals(b):
     for q in ("What happens to Tuku if we retire aquaculture?", "土庫鎮如果灌溉減半，地層下陷會少幾公分？"):
         assert RulesRouter(b).route(q).preset == "township_internals"
+
+
+# --- ruling R9.2 (2026-11-07): the rules stage may only refuse or clarify ---------------------
+@pytest.mark.parametrize("q,preset,sub", CASES)
+def test_the_rules_stage_never_answers_with_a_preset(b, q, preset, sub):
+    r, info = route(b, q, llm=None)                     # no LLM: the rules' parse is only a hint
+    assert r.preset is None and r.refusal is None and r.clarify["reason"] == "no_llm", (q, r)
+    assert info["stage"] == "rules" and info["rules_hint"]["preset"] == preset
+
+
+@pytest.mark.parametrize("q,preset,sub", CASES)
+def test_presets_come_only_from_the_llm_path(b, q, preset, sub):
+    llm = testing.echo_llm(b)                           # mocked LLM (echoes the rules' reading)
+    r, info = route(b, q, llm=llm)
+    assert info["stage"] == "llm" and r.source == "llm" and r.preset == preset, (q, r)
+    assert len(llm.backend.calls) == 1
+
+
+# Must be refused (subsidence size, C03 withdrawn) but worded so the round-8 rules read it as a
+# confident policy_head ("settle" was not one of their subsidence words). The guards of round 9
+# now refuse it deterministically; here they are switched off, standing for any must-refuse
+# wording that slips past every deterministic check.
+SETTLE = "How much less would the land settle if aquaculture were retired from 2026?"
+
+
+def test_a_must_refuse_question_the_rules_used_to_route_never_reaches_a_preset_from_them(b, monkeypatch):
+    import hydrophysics_analyst.router as RT
+    import hydrophysics_analyst.router.rules as RU
+    monkeypatch.setattr(RT, "hard_refusal", lambda q, b: None)
+    monkeypatch.setattr(RU, "hard_refusal", lambda q, b: None)
+    old = RulesRouter(b).route(SETTLE)
+    assert old.preset == "policy_head" and old.confidence >= 0.9      # what the rules read
+    r, info = route(b, SETTLE, llm=None)
+    assert r.preset is None and r.clarify["reason"] == "no_llm" and info["stage"] == "rules"
+    refusing = _llm(b, [_out(refusal="subsidence_size")])
+    r, info = route(b, SETTLE, llm=refusing)
+    assert info["stage"] == "llm" and r.refusal == "subsidence_size" and r.preset == "refuse"
+
+
+def test_an_llm_error_falls_back_to_a_clarification_not_the_rules_preset(b):
+    class Broken:
+        def route(self, q, prev=None):
+            raise RuntimeError("network down")
+    r, info = route(b, "Retire aquaculture from 2026", llm=Broken())
+    assert r.preset is None and r.clarify["reason"] == "no_llm" and "network down" in info["llm_error"]
+    assert info["rules_hint"]["preset"] == "policy_head"
+
+
+def test_rules_refusals_and_confident_clarifications_stand_without_the_llm(b):
+    llm = _llm(b, [])                                   # empty script: any call fails the test
+    r, info = route(b, "What would a 30% irrigation cut do to heads in Huwei township by 2032?", llm=llm)
+    assert r.refusal == "township_head" and info["stage"] == "hard_refusal"     # the D3 guard
+    r, info = route(b, "從2027年開始畜牧業減少一半，水位會怎樣？", llm=llm)
+    assert r.clarify["reason"] == "out_of_grid" and info["stage"] == "rules"
+
+
+def test_a_low_confidence_rules_clarification_goes_to_the_llm_and_stays_a_clarification(b):
+    q = "What happens to the town if irrigation is cut 30%?"     # rules: ambiguous town, unsure
+    assert RulesRouter(b).route(q).clarify["reason"] == "ambiguous_town"
+    r, info = route(b, q, llm=None)
+    assert r.clarify["reason"] == "ambiguous_town" and info["stage"] == "rules"
+    r, info = route(b, q, llm=_llm(b, [_out(preset="township_internals",
+                                            cuts=[{"class": "irrigation", "pct": 30}],
+                                            start=2026, year=2032, town="Tuku")]))
+    assert info["stage"] == "llm" and r.preset == "township_internals"
+
+
+def test_no_llm_clarification_has_its_own_page_free_sentence(b):
+    from hydrophysics_analyst.ask import answer_route
+    for lang in ("en", "zh"):
+        r, _ = route(b, "Retire aquaculture from 2026", llm=None)
+        a = answer_route(b, r, lang)
+        assert a.clarify["reason"] == "no_llm" and a.spans[0].key == "clarify_no_llm"
+        assert a.citations == () and a.deep_link == ""
