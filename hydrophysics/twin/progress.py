@@ -28,7 +28,8 @@ What comes from where:
   ``PENDING`` hash refuses). REG is the registration of a decidability reading; when the
   reading ships inside the test's own registration the spec also names it
   (``reading_report``, with its ``reading_sha256`` for the record), and the row must list
-  that report in its ``cites.reports`` (E30). A reading with pre-declared outcomes
+  that report in its ``cites.reports`` (E30 before user ruling R10.5; mapping ``pre-R10.5``).
+  A reading with pre-declared outcomes
   (``reading_outcomes: {outcome: grade key}``, user ruling R9.4: E02.decidability.v1's
   measured / weak / unchanged) grades the row by the outcome the row itself records in
   ``decidability_reading: {registration, report, outcome}``, and only when the ledger cites the
@@ -62,8 +63,10 @@ What comes from where:
   mapping ``default-v1``) is kept for comparison. Every composite row is flagged.
 
 The official mapping is the map file's base (user rulings 2026-11-07, fourteenth set,
-R8.16a/b/c; fifteenth set, R8.17a-d); ``--mapping default-v1`` lays the recount's first default
-over it for comparison.
+R8.16a/b/c; fifteenth set, R8.17a-d; user ruling 2026-11-08, twenty-first set, R10.5: R9.4's
+decidability thresholds applied to the D-measured rows, so E22, C14f and E30 are D-unknown);
+``--mapping default-v1`` lays the recount's first default over it for comparison, and
+``--mapping pre-R10.5`` the official rule before R10.5 (the figures of evidence section 26).
 
 Which ledger states can be recounted: a state refuses (``MappingError``) when a claim id has no
 mapping entry, or when a claim's status carries an S or D code the mapping gives no qualifier

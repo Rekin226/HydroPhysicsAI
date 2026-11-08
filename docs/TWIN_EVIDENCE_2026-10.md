@@ -1644,7 +1644,9 @@ appear together; none is shown alone, and none is averaged into another silently
   declaration, count as "honestly narrowed". It is bookkeeping, not evidence, and changes no
   status. On the audited statuses it gives about **61-62 %** on the 6-part basis, and it is
   always shown beside the official figure (computed under rulings R8.16 and R8.17: 53.4 % at
-  the audit state, 54.0 % on main 08a6aa7, section 26; the audit's own figure was 53.6 %) and
+  the audit state, 54.0 % on main 08a6aa7, section 26; the audit's own figure was 53.6 %; with
+  R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, 53.1 %
+  and 53.6 %, section 28) and
   beside the disclosure downgrades listed below, never alone.
 
 A D that can be decided only after 2030-01-15 counts as D-pending under this rubric (0.6, or
@@ -1853,7 +1855,8 @@ Progress: an estimate from the round-8 plan's per-action point effects for the o
 obtained; a row-by-row section-21 recount of the ledger is still to be done. It is not a
 recomputation from the ledger. The gains (E04 D with measured decidability; C01-w; E02z
 registered with measured decidability; later rulings R8.16c and R8.17b grade C01-w and E04
-D with decidability unknown, so of the three only E02z's stands, section 26) are shown together with the downgrade the round produced
+D with decidability unknown, and R10.5 grades E02z's row E30 D with decidability unknown too,
+section 28) are shown together with the downgrade the round produced
 (E25 narrowed by the two-contrast check: Changhua -1 against the after-step-0 figure) and with
 the step-0 disclosure downgrades of section 21. The closures (E02x, FB, N2CS, the GNSS screen,
 COLF, FE report-only, CB) add nothing under the official rule.
@@ -1861,7 +1864,7 @@ COLF, FE report-only, CB) add nothing under the official rule.
 | part | audited 2026-11-02 | after step-0 fixes | now (estimate) | what moved it |
 |---|---|---|---|---|
 | head response, Yunlin | 60 | 60 | 60-61 | 61 only if N2's 'informative' counts as D-measured ("the test can decide" in section 21); under the canal confounder it cannot decide, so 60 stands as the lower end |
-| forecast start and validation | 56 | 56 | 57.7 | E04 D measured (FV.stat.v2; that reading is superseded by R8.17b, E04 D with decidability unknown; the 57.7 is kept as labelled, section 26); E02z registered with measured decidability |
+| forecast start and validation | 56 | 56 | 57.7 | E04 D measured (FV.stat.v2; that reading is superseded by R8.17b, E04 D with decidability unknown; the 57.7 is kept as labelled, section 26); E02z registered with measured decidability (E30 D with decidability unknown since R10.5, section 28) |
 | uncertainty bands | 43 | 42.5 | 42.5 | E02x not registered; CB and FB give no gain |
 | subsidence and cut response | 31 | 31 | 31 | COLF 0 decidable pairs and the GNSS closure give no gain |
 | Changhua | 36.5 | 36 | 35 | E25 narrowing (not separable from Yunlin spill-over), -1 against after-step-0; CH-J report-only, N2CS N line |
@@ -2205,11 +2208,16 @@ The rule:
   inside the test's own registration, when the row's `cites.reports` lists the reading's
   report. The ruled readings: C01-w, E04 and C30-fc are D with decidability unknown (R8.16c,
   R8.17b); E21 (E02c) is D weak by design on its coverage half (R8.16c); E25 and E26 are S
-  design-time, direction only, on a claim about a size (0.75, R8.16c). No ruling moves E30: it
-  is D with decidability measured by its registered reading,
+  design-time, direction only, on a claim about a size (0.75, R8.16c). Until user ruling R10.5
+  (2026-11-08, section 28) no ruling moved E30: it was D with decidability measured by its
+  registered reading,
   `results/dataprep/reports/E02z.level_years23.v1/decidability/report.json` (sha256 0e5e83d3,
   declared by `E02z.level_years23.v1`; "not_shown_weak" in every county and window: Yunlin P
-  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites. A reading may instead
+  0.999-1.000, Changhua 0.68-0.69, null false pass 0), which E30 cites, and E22 and C14f were
+  D with decidability measured by FV.ext.v1 (P 0.59). R10.5 applies R9.4's thresholds
+  (measured needs P >= 0.8 and a null pass rate <= 0.2) to them: E22, C14f and E30 are D with
+  decidability unknown. The figures of this section are those before R10.5 (`--mapping
+  pre-R10.5`); section 28 gives them under R10.5. A reading may instead
   pre-declare several outcomes (`reading_outcomes`, user ruling R9.4, sixteenth set,
   `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4): the row is then
   graded by the outcome it records, only once the ledger cites the registration with a real
@@ -2254,7 +2262,8 @@ The rule:
   with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
   offered. The 6-part rows use the audit's 95 at the audit state and section 21's estimate of
   98 at 08a6aa7, labelled so; the current input is 98.3 (audited 2026-11-07, R9.3; section
-  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1).
+  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5 and 53.6
+  (63.6) under it (section 28).
 - **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
   mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
   for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
@@ -2266,7 +2275,9 @@ The rule:
 
 The audit state is main fd40796, the last main commit before the round-8 step-0 merge (PR
 #70); its `claims_v1.json` is byte-identical to af97301's, the state the audit read. Today is
-main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, no status).
+main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, no status). The
+official columns are the rule before user ruling R10.5 (reproduced by `--mapping pre-R10.5`;
+under R10.5 they are 53.1 and 53.6, section 28).
 
 | | audited 2026-11-02 | **official, audit state (fd40796)** | **official, today (08a6aa7)** | default-v1, audit state | default-v1, today | section 22 estimate |
 |---|---|---|---|---|---|---|
@@ -2293,7 +2304,8 @@ science trust's +0.10). By part:
   at 0.9 (C01, direction), 0.6 (C01-w, decidability unknown) and 0.5 (C01-sz, N), a mean of
   0.67, below the parent's 0.75, so no uplift is removed.
 - Forecast start and validation, +1.3: the C30 split is held at C30's weight 2 and grade 0.5
-  (its own uplift removed); E04 is D unknown in both states; E30 (D measured, 0.7) is new.
+  (its own uplift removed); E04 is D unknown in both states; E30 (D measured, 0.7, before R10.5)
+  is new.
 - Uncertainty bands, +0.9: C14f-r and E29 (N, weight 0.5) are new.
 - Subsidence and cut response, -0.2: E24 moved from README-only (0.5) to the tA definition
   (1) at L.
@@ -2321,7 +2333,7 @@ row-by-row assignment is not part of the record. The driving rows at the audit s
   -2.4; C30 graded N under the composite-first rule; E21 D weak (0.5); E02 and E04 D unknown
   (0.6).
 - Uncertainty bands, -1.1 (41.9 against 43): C14e (W), C07 and C14d (L) pull down; C14f (D
-  measured by FV.ext.v1, 0.7) is the only row above 0.5, since C14a, C14a-r and C14b are graded
+  measured by FV.ext.v1, 0.7, before R10.5) is the only row above 0.5, since C14a, C14a-r and C14b are graded
   by their N under the composite-first rule.
 - Subsidence and cut response, +4.8 (35.8 against 31): the after-the-fact evidence rows E05,
   E06, E09, E10 and E19 (N, 0.5) add about 0.9 each against 31; the W rows C03, C05 and C09 and
@@ -2341,7 +2353,8 @@ User rulings of 2026-11-07, sixteenth set (R9.1-R9.4,
 (R9.4b, `results/dataprep/rulings/user_rulings_2026-11-07d.json`, sha256 bfeed6d6). The ledger
 records each as `user ruling 2026-11-07 (sixteenth set) (<id>)` or `(seventeenth set) (R9.4b)`.
 No status changes; the progress figures are unchanged (6-part 54.0 with claim honesty 98.3
-(audited 2026-11-07, R9.3), science trust 45.2, forecast part 52.5).
+(audited 2026-11-07, R9.3), science trust 45.2, forecast part 52.5; before user ruling R10.5,
+section 28).
 
 - **The 2010-11 window is closed (R9.1).** The 2010-11 window is closed as not cleanly testable
   (user ruling R9.1): no fresh wells above the 25-well floor — all 13 Changhua wells were in
@@ -2389,3 +2402,77 @@ No status changes; the progress figures are unchanged (6-part 54.0 with claim ho
   (a fifth, on section 26's audit-state row, was checked and is correct as written). Under R9.3 the audited figure
   stands after that PR: 98.3 is the claim-honesty input, and the fixes are not re-audited and
   raise no estimate.
+
+## 28. Round 10 (2026-11-07..08)
+
+User rulings: eighteenth set, R10.1-R10.4 (`results/dataprep/rulings/user_rulings_2026-11-07e.json`,
+sha256 88260aab); nineteenth set, R10.1b (`user_rulings_2026-11-08.json`, sha256 81e8a61c);
+twentieth set, R10.2d (`user_rulings_2026-11-08b.json`, sha256 1e191cb9); twenty-first set,
+R10.5 and R10.6 (`user_rulings_2026-11-08c.json`, sha256 8f67973f). The ledger records each as
+`user ruling <date> (<set>) (<id>)`. R10.1 set the round's scope: items A, B and C, with an
+expected effect of 0 on the official figures. No status changed in the round.
+
+- **Item A, analyst guard narrowing (R10.2a-d, R10.3a-c).** The deterministic refusal guards
+  were narrowed for five near-miss classes (A1 Yunlin-only questions that also name the other
+  county, A2 how-sure on whether the subsidence size was tested, A3 how-sure on Changhua's
+  direction test, A4 the unnamed-township internals question, A5 the "As of <year>" misparse), each
+  paired with must-refuse boundary twins; three adversarial reviews tightened A1 and A3, and
+  R10.2d shipped the third review's patch without a fourth (PR #105). Held-out v5 (90 items by
+  a new independent author, composition fixed by R10.2c, frozen with pins in PR #106) was run
+  once on 2026-11-08 (`docs/analyst/EVAL_2026-11-08_v5.md`): the deployed opus-low pipeline
+  routes 86.7 % correctly with 0 unsafe answers in 270 rows (rules alone 44.4 %, opus-low-all
+  87.0 %, both 0 unsafe); no arm meets the 97 % bar. The revert rule (R10.3c) is not triggered,
+  so the narrowed guards stay. The round-9 replay (R10.3b) gives the same 86.7 %. Every A1 and
+  A3 near-miss is still refused at the guards, so v5 shows no gain there; A2, A4 and A5
+  near-misses are answered (27 of 30 rows). v3 76.7 % (4 unsafe per run), v4 85.6 % and v5
+  86.7 % (0 unsafe) are scores on different sets, a range and not a trend.
+- **Item B, previous-model sizes (R10.1, R10.1b).** The previous model's baseline and
+  avoided-subsidence clause moved from the model card under Model internals (E15 stays N), and
+  where its sizes stay in place (caveat 2, caveat 12, the compare panel's previous-model column)
+  they and this model's beside them carry the "model internals, size untested" label, EN and ZH
+  (page `twin_app_20261108a`, PR #104).
+- **Item C, read-only science-lever scan (R10.1).** One independent agent read the ledger, the
+  progress rule and the rulings only (no data, no registration, no held-out unit): no row's
+  grade can move legitimately from held data (every candidate re-litigates a ruling, relabels,
+  or spends a held-out or prospective unit). It flagged one consistency question: R9.4's
+  decidability thresholds bound E02 only, while E22, C14f and E30 were D-measured on readings
+  those thresholds would read "unchanged". R10.5 answers it.
+- **R10.5, R9.4's thresholds applied to every D-measured row.** R9.4's pre-declared rule
+  (`dataprep_staging/e02_decid`, `OUTCOME_RULE`): "measured" if P >= 0.8 and the null pass rate
+  <= 0.2; otherwise "weak" if P < 0.5 or the null pass rate > 0.5; otherwise "unchanged" (D
+  unknown); point estimates decide. Applied to the deciding reading of each row graded
+  D-measured before the ruling (a per-county rule needs every county to pass):
+
+  | row | deciding reading (report sha256) | P | null pass rate | R9.4 outcome | grade |
+  |---|---|---|---|---|---|
+  | E22 | FV.ext.v1 (b29f6cfc), N3F's whole rule | 0.592 (`P.p`) | 0.0 (`null_world.false_pass.p`, K 500) | unchanged (P < 0.8) | D-measured -> D-unknown |
+  | C14f | FV.ext.v1 (b29f6cfc), the same rule (no reading of the coverage clause alone) | 0.592 | 0.0 | unchanged | D-measured -> D-unknown |
+  | E30 | E02z's registered decidability reading (0e5e83d3), per county and window | Yunlin 0.999 / 1.000; Changhua 0.688 / 0.683 (`readings.{B,C}.<county>.P`) | 0.0 in every cell (K 500) | Yunlin measured; Changhua unchanged (P < 0.8) | D-measured -> D-unknown |
+  | E20 | X5.n2c_reading.v1 (d9afc45d) | 0.93 (power, k 1, rho 0); 0.60 with the canal confounder (rho -0.83) | 0.116 (false pass, k 0, rho -0.83); 0.000 at rho 0 | not fixed by the rule: 0.93 reads measured, 0.60 unchanged | D-measured, kept pending a ruling |
+
+  No row reads "weak". E20 is not regraded: the rule does not say which of the reading's two
+  powers is P (the reading's own power line is the unconfounded 0.93, while R8.16c graded
+  C01-w on its confounded power), so the question goes back to the user. The page's reading
+  lines (`evc_fvext_nsw`, E02z's registered suffix) say "not shown weak", which stays true;
+  no page, README or MODEL_CARD string called these rows' decidability measured. The progress
+  mapping keeps the earlier rule as `--mapping pre-R10.5` so section 26's figures stay
+  reproducible.
+
+  | | before R10.5 | under R10.5 | change |
+  |---|---|---|---|
+  | head response, Yunlin | 49.39 | 49.39 | 0 |
+  | forecast start and validation | 52.50 | 51.07 | -1.43 (E22, E30: 2 x 0.1 / 14) |
+  | uncertainty bands | 42.78 | 41.67 | -1.11 (C14f: 0.1 / 9) |
+  | subsidence and cut response | 35.57 | 35.57 | 0 |
+  | Changhua | 45.63 | 45.63 | 0 |
+  | **science trust** (mean of 5) | **45.17** | **44.67** | -0.51 |
+  | claim honesty (audited 2026-11-07, R9.3) | 98.3 | 98.3 | 0 |
+  | **6-part mean** (headline) | **54.03** | **53.60** | -0.42 |
+  | intended-output variant (science) | 38.09 | 37.58 | -0.51 |
+  | end-goal convention, science / 6-part (bookkeeping only) | 57.20 / 64.05 | 56.69 / 63.63 | -0.51 / -0.42 |
+
+  Ledger at main a60eb16, `python -m hydrophysics.twin.progress --honesty 98.3` with the
+  official and the `pre-R10.5` mappings. The ruling's own estimate (about -0.30 headline, -0.37
+  science) counted E22 and C14f; E30's Changhua windows fail the same threshold and add the
+  rest. At the earlier pinned states the official figures become 53.1 (fd40796, honesty 95) and
+  53.6 (08a6aa7, honesty 98), science 44.7 at both (`tests/test_twin_progress.py`).

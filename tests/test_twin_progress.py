@@ -400,10 +400,19 @@ def test_the_default_mapping_is_the_ruled_one():
     assert cl["E25"]["grade"] == cl["E26"]["grade"] == {"S": {"S": "S-dt-dir-size"}}
     for c in ("E04", "C30-fc"):                                                     # R8.17b
         assert cl[c]["grade"] == {"D": {"D": "D-unknown"}}, c
-    e30 = cl["E30"]["grade"]["D"]["D"]                      # not ruled: its registered reading
+    for c in ("E22", "C14f", "E30"):                         # R10.5: R9.4's thresholds
+        assert cl[c]["grade"] == {"D": {"D": "D-unknown"}}, c
+        assert "R10.5" in cl[c]["reason"] and "8f67973f" in cl[c]["reason"], c
+    assert "R10.5" in pmap["rule"] and "8f67973f" in pmap["rule"]
+    pre = P.with_mapping(pmap, "pre-R10.5")["claims"]       # the figures before R10.5
+    e30 = pre["E30"]["grade"]["D"]["D"]
     assert e30["measured_by"] == "E02z.level_years23.v1" and e30["reading_sha256"] == "0e5e83d3"
     assert e30["reading_report"] == ("results/dataprep/reports/E02z.level_years23.v1/"
                                      "decidability/report.json")
+    for c in ("E22", "C14f"):
+        assert pre[c]["grade"] == {"D": {"D": {"measured_by": "FV.ext.v1",
+                                               "otherwise": "D-unknown"}}}, c
+    assert P.with_mapping(pmap, "default-v1")["claims"]["E22"] == pre["E22"]
     assert "weight" not in cl["C28"]                                                # R8.17c
     assert not any("plan" in e["reason"] for e in cl.values())
     assert P.with_mapping(pmap, None) is pmap and P.with_mapping(pmap, "official") is pmap
@@ -429,7 +438,8 @@ def _at(commit):
     return P.load_ledger(at=commit)[0]
 
 
-# Official figures (rulings R8.16a-c, R8.17a-d) as published in evidence section 26.
+# Official figures under rulings R8.16a-c and R8.17a-d, as published in evidence section 26
+# (mapping pre-R10.5), and under R10.5 (the official mapping since, evidence section 28).
 PINNED = {
     AUDIT_STATE: {"honesty": 95.0,
                   "parts": (50.9091, 51.1538, 41.875, 35.814, 45.625),
@@ -440,14 +450,25 @@ PINNED = {
             "science": (45.173, 38.0873, 57.2008), "six": (53.9775, 64.0006),
             "default_v1": (49.16, 57.30)},
 }
+PINNED_R10_5 = {
+    AUDIT_STATE: {"honesty": 95.0,
+                  "parts": (50.9091, 50.3846, 40.625, 35.814, 45.625),
+                  "science": (44.6715, 37.4397, 56.218), "six": (53.0596, 62.6817)},
+    TODAY: {"honesty": 98.0,
+            "parts": (49.3939, 51.0714, 41.6667, 35.5682, 45.625),
+            "science": (44.665, 37.5794, 56.6928), "six": (53.5542, 63.5774)},
+}
 
 
 @pytest.mark.parametrize("commit", [AUDIT_STATE, TODAY])
-def test_ruled_figures_are_reproduced(commit):
-    """The official figures at the 2026-11-02 audit state (main fd40796) and at main 08a6aa7,
-    pinned, with the earlier default (default-v1) beside them."""
-    ledger, pin = _at(commit), PINNED[commit]
-    res = P.recount(ledger, P.load_map(), honesty=pin["honesty"])
+@pytest.mark.parametrize("mapping", ["pre-R10.5", "official"])
+def test_ruled_figures_are_reproduced(commit, mapping):
+    """The figures at the 2026-11-02 audit state (main fd40796) and at main 08a6aa7, pinned
+    under the rule published in section 26 (mapping pre-R10.5) and under R10.5 (official), with
+    the earlier default (default-v1) beside them."""
+    ledger = _at(commit)
+    pin = (PINNED if mapping == "pre-R10.5" else PINNED_R10_5)[commit]
+    res = P.recount(ledger, P.with_mapping(P.load_map(), mapping), honesty=pin["honesty"])
     for p, v in zip(PARTS, pin["parts"], strict=True):
         assert res["parts"][p]["official"] == pytest.approx(v, abs=1e-3), p
     sci = res["science"]
@@ -457,7 +478,7 @@ def test_ruled_figures_are_reproduced(commit):
         pin["six"], abs=1e-3)
     old = P.recount(ledger, P.with_mapping(P.load_map(), "default-v1"), honesty=pin["honesty"])
     assert (old["science"]["official"], old["six_part"]["official"]) == pytest.approx(
-        pin["default_v1"], abs=0.01)
+        PINNED[commit]["default_v1"], abs=0.01)
 
 
 def test_every_main_state_from_the_audit_to_today_recounts():
@@ -467,7 +488,7 @@ def test_every_main_state_from_the_audit_to_today_recounts():
     assert len(revs) >= 2
     for rev in revs:
         ledger = P.load_ledger(at=rev)[0]
-        for name in (None, "default-v1"):
+        for name in (None, "default-v1", "pre-R10.5"):
             P.recount(ledger, P.with_mapping(P.load_map(), name))
 
 

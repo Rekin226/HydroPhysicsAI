@@ -1838,11 +1838,13 @@ R10_IDS = ("R10.1", "R10.2a", "R10.2b", "R10.2c", "R10.3a", "R10.3b", "R10.3c", 
 
 R10B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
 R10D_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08b.json (sha256 1e191cb9)."
+R10E_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08c.json (sha256 8f67973f)."
 
 
 def test_round10_rulings_are_recorded():
-    """Round 10: the eighteenth set's eight rulings, the nineteenth set's R10.1b and the
-    twentieth set's R10.2d, each citing its file and sha256."""
+    """Round 10: the eighteenth set's eight rulings, the nineteenth set's R10.1b, the
+    twentieth set's R10.2d and the twenty-first set's R10.5 and R10.6, each citing its file and
+    sha256; R10.5's regrades carry their reading, P, null rate and threshold on each row."""
     text = {r["id"]: r["text"] for r in L()["rulings"]}
     for rid in R10_IDS:
         t = text[f"user ruling 2026-11-07 (eighteenth set) ({rid})"]
@@ -1853,9 +1855,27 @@ def test_round10_rulings_are_recorded():
     t = text["user ruling 2026-11-08 (twentieth set) (R10.2d)"]
     assert " Decision: Patch and ship" in t and " Applies to: analyst, held-out v5." in t, t
     assert t.endswith(R10D_SRC), t
+    t = text["user ruling 2026-11-08 (twenty-first set) (R10.5)"]
+    assert " Decision: Apply R9.4 now" in t and " Applies to: E22, C14f, E30, E20, progress." in t
+    for k in ("P 0.592", "0.688 / 0.683", "0.999 / 1.000", "pre-R10.5", "E20", "0.93", "0.60",
+              "0.116"):
+        assert k in t, k
+    assert t.endswith(R10E_SRC), t
+    t = text["user ruling 2026-11-08 (twenty-first set) (R10.6)"]
+    assert " Decision: Label caveat 9 now" in t and " Applies to: page, C03, C09." in t, t
+    assert t.endswith(R10E_SRC), t
+    cl = {c["id"]: c for c in L()["claims"]}
+    for cid in ("E22", "C14f", "E30"):                     # R10.5: the arithmetic on each row
+        n = cl[cid]["notes"]
+        assert "user ruling R10.5" in n and "8f67973f" in n and "decidability unknown" in n, cid
+        assert "P >= 0.8" in n and "<= 0.2" in n, cid
+        assert "user ruling 2026-11-08 (twenty-first set) (R10.5)" in cl[cid]["ruling_also"], cid
+    assert "P = 0.592" in cl["E22"]["notes"] and "P = 0.592" in cl["C14f"]["notes"]
+    assert "0.688" in cl["E30"]["notes"] and "0.683" in cl["E30"]["notes"]
     for rf, sha in (("user_rulings_2026-11-07e.json", "88260aab"),
                     ("user_rulings_2026-11-08.json", "81e8a61c"),
-                    ("user_rulings_2026-11-08b.json", "1e191cb9")):
+                    ("user_rulings_2026-11-08b.json", "1e191cb9"),
+                    ("user_rulings_2026-11-08c.json", "8f67973f")):
         f = C.REPO / "results/dataprep/rulings" / rf
         if f.is_file():                                # a local record; absent on CI
             assert C.sha256(f).startswith(sha), rf
