@@ -226,7 +226,9 @@ def _code_entry(fixed, **pins):
     _fake_code(fixed)
     base = {"page_sha256": "a" * 64, "ledger_sha256": "b" * 64, "arms": ["rules"], "repeats": 1}
     qs, _ = _tiny(fixed, **base, **pins)
-    return EV.check_set(qs), base
+    # the route files as loaded (in the fake checkout) and a clean environment
+    run = base | {"loaded": {p: str(fixed / p) for p in EV.ROUTE_CODE}, "env": {}}
+    return EV.check_set(qs), run
 
 
 def test_code_pins_are_enforced(fixed):
@@ -244,6 +246,61 @@ def test_code_pins_are_enforced(fixed):
     (fixed / "hydrophysics_analyst/router/guards.py").write_text("# changed\n", encoding="utf-8")
     with pytest.raises(EV.EvalSetError, match="router/guards.py"):
         EV.check_pins(e, ok | {"main_commit": clean})
+
+
+def test_code_pins_refuse_shadowed_files_and_route_env(fixed):
+    """Review finding 6: a route module loaded from elsewhere (an untracked router/zh/ package
+    shadowing zh.py) and the environment switches that change routes refuse a code-pinned run."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    EV.check_pins(e, ok)
+    shadow = dict(ok["loaded"], **{"hydrophysics_analyst/router/zh.py":
+                                   str(fixed / "hydrophysics_analyst/router/zh/__init__.py")})
+    with pytest.raises(EV.EvalSetError, match="load from elsewhere"):
+        EV.check_pins(e, ok | {"loaded": shadow})
+    for k in EV.ROUTE_ENV:
+        with pytest.raises(EV.EvalSetError, match=k):
+            EV.check_pins(e, ok | {"env": {k: "1"}})
+    e2, ok2 = _code_entry(fixed, main_commit="abc1234")
+    with pytest.raises(EV.EvalSetError, match="ANALYST_ENABLE_CHEAPEST"):
+        EV.check_pins(e2, ok2 | {"main_commit": {"commit": "abc1234" + "0" * 33, "dirty": False},
+                                 "env": {"ANALYST_ENABLE_CHEAPEST": "1"}})
+
+
+def test_the_live_route_files_load_from_the_package():
+    loaded = EV.loaded_route_files()
+    assert {p for p in EV.ROUTE_CODE if p.endswith((".py", ".json"))} == set(loaded)
+    for p, f in loaded.items():
+        assert Path(f) == (EV.REPO / p).resolve(), p
+
+
+def test_an_untracked_file_makes_the_checkout_dirty(tmp_path):
+    """git diff ignores untracked files; head_commit also reads git status (untracked and ignored
+    files, byte-code caches excepted)."""
+    import subprocess
+    if shutil.which("git") is None:
+        pytest.skip("no git")
+    def git(*a):
+        subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (tmp_path / "hydrophysics_analyst" / "router").mkdir(parents=True)
+    (tmp_path / "hydrophysics_analyst" / "router" / "zh.py").write_text("x = 1\n")
+    (tmp_path / ".gitignore").write_text("__pycache__/\n*.local.py\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "c")
+    assert EV.head_commit(tmp_path)["dirty"] is False
+    (tmp_path / "hydrophysics_analyst" / "router" / "__pycache__").mkdir()
+    (tmp_path / "hydrophysics_analyst" / "router" / "__pycache__" / "zh.cpython-311.pyc").write_bytes(b"")
+    assert EV.head_commit(tmp_path)["dirty"] is False                # caches are allowed
+    shadow = tmp_path / "hydrophysics_analyst" / "router" / "zh"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text("x = 2\n")
+    got = EV.head_commit(tmp_path)
+    assert got["dirty"] is True and any("zh/__init__.py" in x for x in got["extra"])
+    (shadow / "__init__.py").unlink()
+    (tmp_path / "hydrophysics_analyst" / "router" / "x.local.py").write_text("x = 3\n")   # ignored
+    assert EV.head_commit(tmp_path)["dirty"] is True
 
 
 def test_code_pins_must_cover_every_route_file(fixed):

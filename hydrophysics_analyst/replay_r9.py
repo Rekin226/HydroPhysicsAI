@@ -11,9 +11,12 @@ the same metrics as ``eval.summarize``; it is reported beside the deployed arm's
 its place. No API call: replayed refusals cost nothing.
 
 Only ``hard_refusal`` is replayed. The round-10 rules-stage changes (A4's confident
-ambiguous_town clarification, A5's "as of <year>") are not undone by the replay; ``info`` counts
-the rows the round-10 hard_refusal refused that round 9 would not have (expected 0: round 10
-only narrows).
+ambiguous_town clarification, A5's "as of <year>") are not undone by the replay. ``info`` counts
+the rows the round-10 hard_refusal refused that round 9 would not have. Round 10 is not a pure
+narrowing: it also added refusals (more lever verbs, a bare "north bank", Yunlin or a place in a
+how-sure subsidence question ...). On the committed dev and spent sets it refuses nothing round
+9 did not (tests/test_analyst_r9_replay.py), but on a new set that count may be above 0; such
+rows keep their recorded round-10 answer, as the pre-declared rule says.
 """
 from __future__ import annotations
 

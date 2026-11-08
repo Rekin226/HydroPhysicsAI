@@ -49,6 +49,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -83,7 +84,17 @@ ROUTE_CODE = ("hydrophysics_analyst/router/__init__.py", "hydrophysics_analyst/r
               "hydrophysics_analyst/eval.py", "hydrophysics_analyst/ask.py",
               "hydrophysics_analyst/llm/backend.py", "hydrophysics_analyst/binding.py",
               "hydrophysics_analyst/presets.py", "hydrophysics_analyst/query.py",
-              "hydrophysics_analyst/validate.py", "hydrophysics_analyst/page.py")
+              "hydrophysics_analyst/validate.py", "hydrophysics_analyst/page.py",
+              # after the review (finding 6): the prompt's topics, the call cache, the package
+              # inits, the session and audit the router's caller uses, the answer strings and the
+              # ledger reader the scorer uses
+              "hydrophysics_analyst/rules_v1.json", "hydrophysics_analyst/strings.json",
+              "hydrophysics_analyst/llm/cache.py", "hydrophysics_analyst/llm/__init__.py",
+              "hydrophysics_analyst/__init__.py", "hydrophysics_analyst/session.py",
+              "hydrophysics_analyst/audit.py", "hydrophysics_analyst/render.py",
+              "hydrophysics/twin/claims.py")
+# environment switches that change routes or answers: a code-pinned run refuses them
+ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY")
 CODE_PINS = ("main_commit", "code_sha256")
 _TRACKED = ("hydrophysics_analyst", "hydrophysics")     # no local change allowed under main_commit
 
@@ -177,11 +188,36 @@ def head_commit(repo: Path | None = None) -> dict:
     try:
         head = _git(repo, "rev-parse", "HEAD")
         dirty = _git(repo, "diff", "--quiet", "HEAD", "--", *_TRACKED)
+        # untracked and ignored files too (an untracked router/zh/__init__.py would shadow zh.py);
+        # only byte-code caches are allowed
+        status = _git(repo, "status", "--porcelain", "--ignored", "--untracked-files=all", "--",
+                      *_TRACKED)
     except (OSError, subprocess.SubprocessError):
         return {"commit": None, "dirty": None}
-    if head.returncode != 0:
+    if head.returncode != 0 or status.returncode != 0:
         return {"commit": None, "dirty": None}
-    return {"commit": head.stdout.strip(), "dirty": dirty.returncode != 0}
+    extra = [ln for ln in status.stdout.splitlines()
+             if ln.strip() and "__pycache__/" not in ln and not ln.rstrip().endswith(".pyc")]
+    return {"commit": head.stdout.strip(), "dirty": dirty.returncode != 0 or bool(extra),
+            "extra": extra[:10]}
+
+
+def loaded_route_files(paths=ROUTE_CODE) -> dict:
+    """{repo path: the file actually loaded for it}: each route module's ``__file__`` (imported
+    here) and the data files binding / render read. A mismatch means something else shadows the
+    pinned file."""
+    import importlib
+
+    from . import binding, render
+    out = {}
+    for p in paths:
+        if p.endswith(".py"):
+            mod = p[:-3].replace("/", ".")
+            mod = mod[:-len(".__init__")] if mod.endswith(".__init__") else mod
+            out[p] = str(Path(importlib.import_module(mod).__file__).resolve())
+    out["hydrophysics_analyst/rules_v1.json"] = str(Path(binding.RULES).resolve())
+    out["hydrophysics_analyst/strings.json"] = str(Path(render.STRINGS).resolve())
+    return {p: f for p, f in out.items() if p in paths}
 
 
 def check_code_pins(entry: dict, run: dict) -> None:
@@ -211,6 +247,17 @@ def check_code_pins(entry: dict, run: dict) -> None:
         bad = sorted(p for p in want if got.get(p) != want[p])
         if bad:
             raise EvalSetError(f"{name} is pinned to other code: sha256 differs for {bad}")
+        loaded = run.get("loaded") or loaded_route_files()
+        shadow = sorted(p for p, f in loaded.items()
+                        if Path(f).resolve() != (Path(REPO) / p).resolve())
+        if shadow:
+            raise EvalSetError(f"{name}: route files load from elsewhere than the pinned paths: "
+                               f"{shadow}")
+    if entry.get("main_commit") is not None or entry.get("code_sha256") is not None:
+        env = run.get("env") if run.get("env") is not None else os.environ
+        set_ = [k for k in ROUTE_ENV if env.get(k)]
+        if set_:
+            raise EvalSetError(f"{name} is code-pinned: unset {set_} (they change routes or answers)")
 
 
 def repo_relative(out: Path) -> str:

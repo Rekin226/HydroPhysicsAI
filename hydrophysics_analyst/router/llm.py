@@ -27,16 +27,19 @@ PRESET_DOCS = {
     "township_internals": "One township's model-internal subsidence row under a policy (labelled, size untested). "
                           "Needs cuts, start, year and a township from the enum. One township referred to but "
                           "not named ('that coastal township') -> clarify ambiguous_town. The pooled Changhua "
-                          "panel only as the labelled spillover of a Yunlin policy ('what does a Yunlin "
-                          "irrigation cut do to Changhua', 'spill over into Changhua').",
+                          "panel only when that row is asked for as a row (row, township row, 那一列, 'not yet "
+                          "split') under an explicitly Yunlin policy, as its labelled spillover; never "
+                          "Changhua's ground, land, elevation or how strongly Changhua is affected.",
     "rail_internals": "High-speed rail: the head answer plus the rail's model-internal distortion note. "
                       "Never a yes/no or a verdict.",
     "solved_compare": "The page's full-model runs side by side at a reporting year.",
     "cheapest_for_head": "Lowest-energy page lever setting that reaches a head target at the registered wells.",
     "how_sure": "How far the result is tested and when the registered tests are scored (no parameters). "
                 "Includes whether the subsidence size was tested at all (checked against leveling, held up, "
-                "能不能當真) when no size is asked, and how sure Changhua's direction test is (does pumping "
-                "on the Changhua side move heads the right way at wells the model was not tuned on).",
+                "能不能當真) when no size, place, policy or comparison is asked, and how sure Changhua's "
+                "direction test is, asked as one question about the direction test itself (does pumping on "
+                "the Changhua side move heads the right way at wells the model was not tuned on) with no "
+                "condition, no lever, no Yunlin and no rise or fall asked.",
 }
 # reporting years (A5): "as of <year>", "by <year>", "in <year>" give the reporting year, not a start
 YEAR_NOTE = ("A year given as 'as of <year>', 'by <year>', 'in <year>' or 截至/到<year> is the reporting "
@@ -46,14 +49,18 @@ YEAR_NOTE = ("A year given as 'as of <year>', 'by <year>', 'in <year>' or 截至
 REFUSAL_DOCS = {
     "changhua_lever": "a lever, cut, head, subsidence or any value that is Changhua's (by name, its townships, "
                       "north of the Choushui, the neighbouring county, both counties, the whole fan), and "
-                      "Changhua's direction asked as a value. NOT refused: a Yunlin question that "
-                      "leaves Changhua out ('Changhua unchanged', 'nothing north of the river', 'the neighbouring "
-                      "county isn't in the model') -> route it as the Yunlin question; the pooled Changhua row "
-                      "as the spillover of a Yunlin policy -> township_internals; one how-sure question about "
-                      "whether Changhua's direction test was run -> how_sure",
+                      "Changhua's direction asked as a value; also what a Yunlin cut does to Changhua (its ground, "
+                      "land, elevation, or how strongly it is affected) unless the pooled row is asked for as a "
+                      "row; and any later reference back to Changhua (there, the latter, next door, 那頭, 前者). "
+                      "NOT refused: a Yunlin question that leaves Changhua out ('Changhua unchanged', 'nothing "
+                      "north of the river', 'the neighbouring county isn't in the model') -> route it as the "
+                      "Yunlin question; the pooled Changhua row asked as a row under a Yunlin policy -> "
+                      "township_internals; one how-sure question about whether Changhua's direction test was "
+                      "run, with no condition or lever -> how_sure",
     "subsidence_size": "how much subsidence or how many centimetres are avoided, at fan or county scale, or any "
                        "size, number or adjective of it, also inside a how-sure question ('how sure are you of "
-                       "the three centimetres'). NOT refused: asking only whether the subsidence size was tested -> how_sure",
+                       "the three centimetres'), or for Yunlin, the county, a policy, a place or against a limit. NOT "
+                       "refused: asking only whether the subsidence size was tested -> how_sure",
     "area": "area sinking faster than a threshold",
     "recommendation": "which policy to choose or recommend",
     "volumes_money": "pumping volumes, money, budgets",

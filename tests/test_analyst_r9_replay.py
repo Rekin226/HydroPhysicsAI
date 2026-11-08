@@ -66,7 +66,9 @@ def test_the_frozen_copy_decides_as_fc7b996_did(b, name):
 
 
 def test_round_ten_only_narrows_on_the_committed_sets(b):
-    """Every question the live hard_refusal refuses, round 9 refused too, with the same reason."""
+    """On the committed dev and spent sets (only there: round 10 also added refusals, e.g. more
+    lever verbs and Yunlin in a how-sure subsidence question), every question the live
+    hard_refusal refuses, round 9 refused too, with the same reason."""
     for name in FC7B996_DECISIONS:
         for it in E.load(E.EVALSETS / name):
             now = hard_refusal(it["question"], b)

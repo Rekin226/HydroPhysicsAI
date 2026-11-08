@@ -125,10 +125,11 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
     # policy, with no head word (C13a) and no lever that is Changhua's; a Changhua township or a
     # geographic reference is always refused
     pooled_ok = ch and G.pooled_row_ok(s)
-    # round 10 (R10.2a): a Yunlin lever's spillover into Changhua asked without the word row,
-    # a Yunlin question that names Changhua (or its geography) only to leave it out (A1), and one
-    # how-sure question about Changhua's direction test (A3), pass on
-    if ch and not (pooled_ok or G.spillover_ok(s) or G.yunlin_only_ok(s) or G.changhua_how_sure_ok(s)):
+    # round 10 (R10.2a): a Yunlin question that names Changhua (or its geography) only to leave
+    # it out (A1), and one how-sure question about Changhua's direction test (A3), pass on. The
+    # pooled row stays answerable only as a row (round 9's pooled_row_ok; ledger C02: Changhua
+    # cells are labelled "spillover of a Yunlin cut ... not a Changhua lever")
+    if ch and not (pooled_ok or G.yunlin_only_ok(s) or G.changhua_how_sure_ok(s)):
         return "changhua_lever"
     if _has(MONEY, s):
         return "volumes_money"
@@ -228,10 +229,19 @@ def parse_years(b: PageBundle, s: str) -> tuple[int | None, int | None]:
         y = int(m.group(1))
         pre = s[max(0, m.start() - 22):m.start()].lower()
         post = s[m.end():m.end() + 6]
-        span = re.match(YEAR_SPAN, s[m.end():], re.I) and re.search(r"(?:from|between|從|自)\s*$", pre, re.I)
-        if not span and (re.search(FROM + r"$", pre, re.I)
-                         or re.match(r"\s*(?:年)?\s*(?:開始|起(?!來)|實施|啟動|上路)", post)
-                         or re.search(r"(?:自|從)\s*$", pre)):
+        clause = re.split(r"[。；;？?！!，,:：]", s[:m.start()])[-1]
+        # a span ("from 2023 to 2028") is a start only when a lever acts on it in the same clause
+        # ("cut irrigation 30% from 2028 to 2032"; review finding 7)
+        span = (re.match(YEAR_SPAN, s[m.end():], re.I) and re.search(r"(?:from|between|從|自)\s*$", pre, re.I)
+                and not G.has_lever(clause))
+        # "as of <year>" is a reporting year, except a year before the first page start with a
+        # lever in the question ("As of 2025, Yunlin cuts irrigation 30%": a start off the page)
+        as_of = re.search(r"(?:as\s+of|截至|截止)\s*$", pre, re.I)
+        if as_of and y < c.starts[0] and G.has_lever(s):
+            start = start or -1
+        elif not span and (re.search(FROM + r"$", pre, re.I)
+                           or re.match(r"\s*(?:年)?\s*(?:開始|起(?!來)|實施|啟動|上路)", post)
+                           or re.search(r"(?:自|從)\s*$", pre)):
             start = y if y in c.starts else (start or -1)     # -1: a start not on the page
         else:
             year = y

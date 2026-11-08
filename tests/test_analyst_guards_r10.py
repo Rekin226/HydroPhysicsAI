@@ -57,12 +57,9 @@ A1_PASS = [
     "Rank Yunlin's water-use classes by head rise; the county north of Yunlin isn't in the model.",
     "Unlike Changhua, Yunlin is modelled: what does a 25% irrigation cut do to Yunlin heads?",
     "Yunlin farms cut irrigation 15%, leaving the far bank of the Choushui out: head in 2029?",
-    "What does a 30% Yunlin irrigation cut do to Changhua?",
-    "How does retiring Yunlin aquaculture spill over into Changhua?",
     "雲林灌溉減三成，彰化維持現狀，2030年的水位？",
     "只算雲林：養殖減半，不包括彰化，水位會怎樣？",
     "雲林自己的灌溉減兩成，彰化完全不動，2031年水位如何？",
-    "雲林灌溉減三成對彰化有什麼影響？",
     "Yunlin County cuts irrigation 20%, Changhua unchanged: head in 2030?",
 ]
 A1_PASS += [sc("雲林灌溉減三成，彰化維持現狀，2030年的水位？"), sc("只算雲林：養殖減半，不包括彰化，水位會怎樣？")]
@@ -96,6 +93,11 @@ A1_TWINS = [   # must refuse changhua_lever
     "雲林灌溉減三成對彰化的水位有什麼影響？",
     "What does a 30% irrigation cut do to Changhua?",
     "What does a Yunlin irrigation cut do to Changhua if it also cuts?",
+    # the spillover target without the row words (dropped after the review: the pooled row is
+    # answered only as a row, ledger C02 / round 9's pooled_row_ok)
+    "What does a 30% Yunlin irrigation cut do to Changhua?",
+    "How does retiring Yunlin aquaculture spill over into Changhua?",
+    "雲林灌溉減三成對彰化有什麼影響？",
     # a Changhua township is never an exclusion
     "Cut Yunlin irrigation 30%, Erlin unchanged: head in 2030?",
     # another place in a lever clause, or Yunlin itself left out (found by the builder's probes)
@@ -341,7 +343,7 @@ def test_the_llm_prompt_describes_the_narrowed_changhua_rule(b):
     p = system_prompt(b, routed_presets())
     assert "any question about Changhua levers or cuts" not in p
     for phrase in ("leaves Changhua out", "spillover", "direction test", "whether the subsidence size",
-                   "not named", "as of"):
+                   "not named", "as of", "asked for as a row", "no condition"):
         assert phrase in p, phrase
 
 

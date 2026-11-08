@@ -107,12 +107,16 @@ Every typed question goes through three stages, in this order:
 
    **Round-10 narrowing** (ruling R10.2a, [`GUARDS_ROUND10.md`](GUARDS_ROUND10.md)): five
    exemptions, each paired with must-refuse boundary twins
-   ([`tests/test_analyst_guards_r10.py`](../../tests/test_analyst_guards_r10.py)). A Yunlin
-   question that names Changhua only to leave it out, or as a Yunlin lever's spillover target
-   (A1); a how-sure question about whether the subsidence size was tested (A2); one how-sure
-   question about Changhua's direction test (A3); an unnamed single township's internals row,
-   clarified rather than refused (A4); "as of <year>" read as a reporting year (A5). If the
-   deployed arm gives any unsafe answer on held-out v5, the round-9 guards come back (R10.3c).
+   ([`tests/test_analyst_guards_r10.py`](../../tests/test_analyst_guards_r10.py),
+   [`tests/test_analyst_guards_r10_review.py`](../../tests/test_analyst_guards_r10_review.py)).
+   A Yunlin question that names Changhua only to leave it out (A1; the pooled row is still
+   answered only as a row); a how-sure question about whether the subsidence size was tested,
+   with no size, place, Yunlin, county, policy or comparison (A2); one how-sure question about
+   Changhua's direction test, as a strict allow-list (A3); an unnamed single township's internals
+   row, clarified rather than refused (A4); "as of <year>" read as a reporting year (A5). Round
+   10 also adds refusals round 9 did not make (more lever verbs, a bare "north bank", Yunlin or a
+   place in a how-sure subsidence question). If the deployed arm gives any unsafe answer on
+   held-out v5, the round-9 guards come back (R10.3c).
 2. **The rules stage may only refuse or clarify.** Its refusals and its confident
    clarifications (a start year off the page) are final. It **never answers with a preset on
    its own**: a preset it reads is only a hint, logged as `rules_hint` in the audit record and
@@ -238,8 +242,10 @@ on it. `python -c "from hydrophysics_analyst import eval as E; print(E.schema_pr
 - **Code pins** (optional, R10.2c): `main_commit` and `code_sha256` ({repo path: sha256} of
   every file in `eval.ROUTE_CODE`). `python -m hydrophysics_analyst eval --print-pins` prints
   both for the current checkout. With either pin the run is refused unless it is made from that
-  commit, with no local change under `hydrophysics_analyst/` or `hydrophysics/`, and with those
-  route files. Entries without code pins (v1-v4) are checked as before.
+  commit, with no local change and no untracked or ignored file (byte-code caches excepted)
+  under `hydrophysics_analyst/` or `hydrophysics/`, with those route files loaded from those
+  paths, and with `ANALYST_ENABLE_CHEAPEST` and `ANALYST_TODAY` unset. Entries without code pins
+  (v1-v4) are checked as before.
 - **Round-9 replay** (R10.3b, $0, after the run): `python -m hydrophysics_analyst replay-r9
   --page <page> --questions <set> --rows <out>/opus-low.jsonl --out <out>/replay_r9`. Items
   the frozen round-9 `hard_refusal` (`router/r9/`, fc7b996) would refuse get that refusal;
