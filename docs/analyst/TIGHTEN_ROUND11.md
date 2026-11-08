@@ -13,10 +13,20 @@ what it changed as `tighten` in the audit record and in eval rows. It can do two
 
 - **(a) A preset becomes `clarify missing_year`.** This happens when all of these hold:
   - the preset reports at a year (every routed preset except `how_sure`);
-  - the question gives a lead of an indefinite number of years ("a few years from now", "in
-    the next few years", "several years later", 過幾年之後, 未來幾年, 數年後);
-  - the question gives no reporting year. A calendar, spelled, two-digit or ROC year, or a
-    definite lead ("in 3 years", 三年後), counts as giving one.
+  - the question gives a forward lead of an indefinite number of years: "a few / several
+    years from now / later / hence / on / down the road", "in a few years", "in the years
+    ahead", 過幾年之後, 幾年後, 未來幾年, 數年後;
+  - the lead is about the reporting year. It is skipped when a start verb shares its clause
+    ("start a few years later", 過幾年再做, 晚幾年開始), when the question compares now with
+    later, or when it asks how long something takes (要幾年後…才會回升);
+  - the question gives no reporting year. Any of these counts as giving one, and then (a) does
+    not fire: a calendar, spelled, two-digit ("in 32", "year 32", '30) or ROC year (民國121年,
+    121年, 一二一年); a year in Chinese digits (二〇三〇); a definite lead ("in 3 years",
+    "3 yrs", 三年後); next year, 明年, 後年; the end of the decade, run or page; the final year.
+
+  Past and duration wording is not a lead: "for / over / during / since / after many years",
+  "in some years" (meaning in certain years), 過去幾年, 這幾年間, 幾年內. When it is unclear
+  whether a question gives a year, the step treats it as giving one and does not fire.
 
   It fires only when the preset would really be answered as that preset. If the run would refuse
   it (no policy, no run, disabled, past the page), clarify it (bad parameters), or swap it for a
@@ -24,10 +34,16 @@ what it changed as `tighten` in the audit record and in eval rows. It can do two
 - **(b) A `clarify unknown` becomes `clarify out_of_grid`.** This happens when the question names
   a start or a cut size off the page grid:
   - a start the rules read as off the page;
-  - a late start the rules do not read: 拖到2029年才實施, 2029年才開始, "not until 2028",
-    "delay ... until 2027";
-  - a percentage off the 5 % grid;
-  - a third, sixth, seventh, ninth or odd eighth (三分之一, 1/3).
+  - a late start the rules do not read, with a start verb: 拖到2029年才實施, 2029年才開始,
+    "not until 2028", "delay ... until 2027". "Wait until 2032", 等到2032年 and 晚到2031年
+    followed by an outcome are reporting years, not starts;
+  - a cut size off the 5 % grid. The size must belong to a cut: a cut word just before it in
+    its clause, or "cut" just after it ("cut by 12%", "a 22% domestic cut", 減18%,
+    減少百分之三十三). A share or a change is not a cut size: "Irrigation is 68% of pumping",
+    佔43%, "head rose 12%", "12% of the farms";
+  - a fraction right after the cut ("cut by a third", "make it a third", 減三分之一,
+    剩原本三分之一). Its value is computed, so 六分之三 is 50 %, on the grid. Ordinals ("a
+    third question") are not read.
 
   Only the catch-all `unknown` is corrected. A specific reason (missing_cut, missing_year,
   ambiguous_town, no_llm) is left as given. This fixes v5_061.
@@ -58,13 +74,16 @@ By construction (`tighten.tighten`):
 By test ([`tests/test_analyst_tighten_r11.py`](../../tests/test_analyst_tighten_r11.py), synthetic
 page):
 - **Property test.** Every committed question (dev set and held-out v1-v5, including the
-  withdrawn v2: 491 questions) plus 35 synthetic ones is crossed with 71 route kinds:
+  withdrawn v2: 491 questions) plus 119 synthetic ones is crossed with 75 route kinds:
   - every routed preset;
   - every refusal reason, alone and with a clarification;
   - a refusal reason on a preset;
   - every clarification reason, bare and with a preset;
   - preset routes that are refused or clarified at run time;
-  - empty routes.
+  - empty routes, and a falsy (`{}`) or reasonless clarify.
+
+  `tighten.outcome` reads a route line for line as `ask.answer_route` does: a falsy `clarify`
+  runs the preset, and a clarify with no reason is an error, which the step leaves alone.
 
   Each pair is judged on the answer the user would get: `answer_route`, then the validator's
   refusal fallback. The test checks that a refused answer is never changed, that a
@@ -77,7 +96,9 @@ page):
   - Boundary twins: a given year or definite lead keeps the preset; `how_sure` is untouched;
     on-grid values keep `unknown`; specific reasons are never re-labelled; refusals are
     untouched; a guard-refused off-grid question stays refused.
-  - Labels: on every committed item the step fires only where the item's label agrees.
+  - Labels: on the committed sets, (a) fires on exactly q138, v3_060 and v5_034, and (b) on
+    exactly the items labelled `out_of_grid`.
+  - Every must-not-fire example from the review of 5511126 is a twin (62 for (a), 23 for (b)).
   - Code pins: `router/tighten.py` is in `eval.ROUTE_CODE`, and its functions are in
     `eval.ROUTE_FUNCS`.
 
@@ -95,11 +116,23 @@ live gives no change.
 
 - No changed row went from right to wrong, and the unsafe counts are unchanged (v3 12, v4 0,
   v5 0). opus-low-all calls the LLM directly and does not pass through `router.route`. On its
-  rows the same replay would change v3_060 once, v4_056 once (unknown → out_of_grid), and
-  v5_034 and v5_061 3 times each, all wrong → right.
+  rows the same replay would change v3_060 once, v4_056 once (unknown → out_of_grid), v5_034
+  twice and v5_061 3 times, all wrong → right.
 - **This is tuned on spent sets.** The step was written after reading v5's errors and the
   v3/v4/v5 items and rows. The figures above are development numbers, not a score. A fair score
   needs a new independently written held-out set. The 97 % bar is unchanged and still not met.
+
+## Review of 5511126 (fixed before merge)
+
+The adversarial review found the safety property held (0 violations over 475 routes x 698
+questions on both pages) but that (a) over-fired. On the reviewer's 54 fresh answerable
+questions it fired on 25; it now fires on 0. On the reviewer's 54 definite-year and
+non-reporting probes it fired on 33; it now fires on 0. On the reviewer's 34 (b) probes it fired
+on 17; it now fires on 3: "cut 29.6%", "cut by 2/3" and 減少百分之三十三, all off the grid.
+The fixes: forward leads only; a start or comparison clause is skipped; more definite-year
+forms; cut sizes must belong to a cut; fraction values are computed; a late start needs a start
+verb; `outcome` mirrors `answer_route`; all helpers are in `eval.ROUTE_FUNCS`. The committed-set
+fire table and the recorded-row re-score did not change.
 
 ## Left out
 

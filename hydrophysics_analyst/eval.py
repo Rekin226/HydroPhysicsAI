@@ -113,7 +113,10 @@ ROUTE_FUNCS = {"hydrophysics_analyst.router.guards": ("norm", "changhua_ref", "h
                "hydrophysics_analyst.router.rules": ("hard_refusal", "parse_years"),
                "hydrophysics_analyst.router": ("route", "_route", "routed_presets"),
                "hydrophysics_analyst.router.tighten": ("tighten", "decide", "missing_year",
-                                                       "off_grid"),
+                                                       "off_grid", "answered_as_preset",
+                                                       "is_refusal", "outcome", "shown_reason",
+                                                       "vague_lead", "gives_year",
+                                                       "off_grid_start", "off_grid_size"),
                "hydrophysics_analyst.router.zh": ("to_trad",),
                "hydrophysics_analyst.router.llm": ("system_prompt",)}
 
