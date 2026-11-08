@@ -1837,11 +1837,12 @@ R10_IDS = ("R10.1", "R10.2a", "R10.2b", "R10.2c", "R10.3a", "R10.3b", "R10.3c", 
 
 
 R10B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
+R10D_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08b.json (sha256 1e191cb9)."
 
 
 def test_round10_rulings_are_recorded():
-    """Round 10: the eighteenth set's eight rulings and the nineteenth set's R10.1b, each
-    citing its file and sha256."""
+    """Round 10: the eighteenth set's eight rulings, the nineteenth set's R10.1b and the
+    twentieth set's R10.2d, each citing its file and sha256."""
     text = {r["id"]: r["text"] for r in L()["rulings"]}
     for rid in R10_IDS:
         t = text[f"user ruling 2026-11-07 (eighteenth set) ({rid})"]
@@ -1849,8 +1850,12 @@ def test_round10_rulings_are_recorded():
     t = text["user ruling 2026-11-08 (nineteenth set) (R10.1b)"]
     assert " Decision: Label in place" in t and " Applies to: E15, E12, page." in t, t
     assert t.endswith(R10B_SRC), t
+    t = text["user ruling 2026-11-08 (twentieth set) (R10.2d)"]
+    assert " Decision: Patch and ship" in t and " Applies to: analyst, held-out v5." in t, t
+    assert t.endswith(R10D_SRC), t
     for rf, sha in (("user_rulings_2026-11-07e.json", "88260aab"),
-                    ("user_rulings_2026-11-08.json", "81e8a61c")):
+                    ("user_rulings_2026-11-08.json", "81e8a61c"),
+                    ("user_rulings_2026-11-08b.json", "1e191cb9")):
         f = C.REPO / "results/dataprep/rulings" / rf
         if f.is_file():                                # a local record; absent on CI
             assert C.sha256(f).startswith(sha), rf
