@@ -1,6 +1,6 @@
 """The local web shell: chat on the left, the bound page on the right (same-origin iframe).
 
-    python -m hydrophysics_analyst serve --page results/twin/twin_app_20261107b.html
+    python -m hydrophysics_analyst serve --page results/twin/twin_app_20261108a.html
         [--port 8765] [--no-llm] [--config analyst_users.json]
         [--allow-remote --behind-proxy]
 

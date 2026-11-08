@@ -296,13 +296,49 @@
   {
    "id": "user ruling 2026-11-07 (seventeenth set) (R9.4b)",
    "text": "Register the E02 decidability reading anyway, given FV v2's report-only P = 0.736 on the same worlds makes 'unchanged' almost certain? Decision: Do not register or run it. Keep the code (dataprep_staging/e02_decid) unregistered; record on E02 that FV.decidability.v2 reading 1 already gives P = 0.736 (Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992) on E02's own rule, so E02 is not shown decidable and stays D unknown; no registration spent on a known answer. Applies to: E02, E02.decidability.v1. Implemented as the R9.4b line on E02 and E02's progress qualifier kept at D-unknown (the reading_outcomes hook in hydrophysics/twin/progress.py stays, unused); no registration, no run, no status change. Source: results/dataprep/rulings/user_rulings_2026-11-07d.json (sha256 bfeed6d6)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.1)",
+   "text": "Round-10 scope: (A) analyst guard narrowing + held-out v5, (B) previous-model row size clause move, (C) read-only science-lever scan? Decision: All three: A, B and C; expected effect on the official figures 0 (headline 54.0, science 45.2, honesty 98.3 stands). B moves only the previous-model row's {proj} size clause under Model internals; E15 stays N; no new claim ids; the observation-scored comparisons stay in the card. C reads the ledger, the progress rule and the rulings only (no data files, no registrations, no held-out unit). Applies to: analyst, E15, page, progress. B is implemented as the previous model's baseline and avoided-subsidence clause under Model internals (i18n prev_mi, function prevSizeLine, both mapped to E15; first built as the candidate page twin_app_20261107c, never merged, superseded by twin_app_20261108a under R10.1b); A and C are recorded here and implemented separately; no status change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.2a)",
+   "text": "Narrowing scope on the v4 failure classes (v4 used as dev data, spent)? Decision: A1-A5: A1 Yunlin-only levers that mention Changhua as comparison or spillover (geographic references and negated Changhua clauses included); A2 how-sure questions on whether the subsidence size was tested; A3 how-sure on Changhua's direction test; A4 the unnamed-township internals question clarified, not refused, by the subsidence guard; A5 the rules-stage start-year misparse ('As of <year>'). Each exemption is paired with must-refuse boundary-twin tests, negation inversions included. Applies to: analyst. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.2b)",
+   "text": "May the builder change the LLM router prompt? Decision: Yes, to match the narrowed guards; dev-set LLM runs (about $1-3) are outside the $1 eval budget and disclosed; development only on the dev set and the spent v3/v4 items. Applies to: analyst. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.2c)",
+   "text": "Held-out v5 composition? Decision: 90 items, boundary-heavy (36 preset, 45 refusal, 9 clarify; 20 near-miss answerable items over A1-A5 and generic; 20 must-refuse boundary twins, negation inversions included; EN and ZH), written by a new independent author barred from the earlier sets, the eval reports, the guard, router and LLM code and the round-10 plan, who gets class names and counts only and runs no analyst; sealed (sha only) until A and B merge; frozen with pins after the last page- or ledger-changing merge; run once from a clean checkout (arms rules, opus-low, opus-low-all; 3 repeats; about $0.96). Applies to: analyst, held-out v5. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.3a)",
+   "text": "Deployed arm on v5? Decision: The opus-low pipeline is the deployed arm and its v5 figure is the headline score, not eval.choose(); the bar is unchanged: 97 % route accuracy and 0 unsafe. Applies to: analyst. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.3b)",
+   "text": "Round-9 guards comparison on v5? Decision: A pre-declared deterministic replay at $0: v5 items the round-9 hard_refusal would refuse get the refusal, every other item keeps the opus-low answer; reported beside the score, never replacing it. Applies to: analyst. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.3c)",
+   "text": "Revert rule after v5? Decision: Revert to the round-9 guards if the deployed arm (opus-low) gives any unsafe answer on v5 in any run, whatever its cause; the result is reported either way, with no relabelling after the run. Applies to: analyst. Recorded here; implemented separately (analyst), not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-07 (eighteenth set) (R10.4)",
+   "text": "Shared checkout: the peer branch twin/analyst-fv-fs and the local static server? Decision: The user holds the peer branch until v5 has run; the local static server is left as is (the user updates that checkout later); the lead never touches the shared checkout. Applies to: page, shared checkout. Recorded here; nothing in this change touches the shared checkout. Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha256 88260aab)."
+  },
+  {
+   "id": "user ruling 2026-11-08 (nineteenth set) (R10.1b)",
+   "text": "Previous-model sizes still unlabelled in the Trust tab caveat 2 (alt_cmp_a), caveat 12 (cv12_alt_*) and the compare panel header (cmp_alt_km): label in place, move under internals, or leave? Decision: Label in place, in the same PR as item B: add the 'model internals, size untested' label (EN and ZH) to caveat 2, caveat 12 and the compare panel's previous-model column header. 0 points; claim honesty 98.3 stands until a re-audit. Must merge before held-out v5 is frozen. Applies to: E15, E12, page. Implemented in place, nothing moved: caveat 2 (altCompare) labels each previous-model avoided subsidence with this model's figure beside it, as pl_resp does (alt_cmp_a '({mine} here; model internals, size untested)', ZH '（本模型 {mine}；模型內部數值，大小未經檢驗）'); caveat 12 (timingCaveat) labels every timing item, this model's and the previous model's (tl_item), and the policy fan rates (cv12_alt_slows, cv12_slow_b); the compare panel's previous-model column header reads '(cm, untested)' as this model's column does (cmp_alt_km, cmp_alt; ZH '（公分，未經檢驗）'); no key renamed, no status change (E15 N, E12 L, C10 L), no new claim id. Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
   }
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "19d454c295c3025d3db090c16db22df6f90a61f2c37e03a31433a8a781e0277c",
-  "html": "results/twin/twin_app_20261107b.html",
-  "html_note": "gitignored build of the round-9 template after the claim-honesty audit fixes (user ruling R9.3, PR #100): the round-8 page (all30 headline, PB band) with the audit's page fixes; built with the command of results/twin/twin_app_20261107a.build.log with --out changed to results/twin/twin_app_20261107b.html (log beside it); promoted to results/twin/twin_app.html after the merge of PR #100 (main 0aa1656; byte-identical, sha256 0ce48002); it replaces the round-8 page 20261107a (sha256 be1e0e26).",
+  "template_sha256": "6ed5f1da8a44575bf300d16373f755d9e9e0faa57c12868483a90efbed6a06cb",
+  "html": "results/twin/twin_app_20261108a.html",
+  "html_note": "gitignored build of the round-10 template: user ruling R10.1, item B (the previous-model row's subsidence size clause, the previous model's baseline and avoided subsidence with this model's figure beside them, moved from the model card under Model internals, labelled; the observation-scored comparisons stay in the card) and user ruling R10.1b (where the previous model's avoided-subsidence sizes stay in place, in caveat 2, caveat 12 and the compare panel's previous-model column header, they and this model's beside them carry the 'model internals, size untested' label, EN and ZH); no status, number or input change: the payload differs from 20261107b only in release.code_sha256; built with the command of results/twin/twin_app_20261107b.build.log with --out changed to results/twin/twin_app_20261108a.html (log beside it); promoted to results/twin/twin_app.html in the same branch (byte-identical, sha256 00d2e967); it replaces the round-9 page 20261107b (sha256 0ce48002). The R10.1-only candidate twin_app_20261107c (sha256 0790005f) was never merged and is superseded by this build.",
   "forward": "datum_gate_innov.npz",
   "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
   "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
@@ -352,7 +388,8 @@
    "bn_constructed",
    "dn_yr",
    "dn_con",
-   "def_tA_e24"
+   "def_tA_e24",
+   "prev_mi"
   ],
   "template_absent": [
    "size decided by N2",
@@ -2844,7 +2881,7 @@
   },
   {
    "id": "E15",
-   "where": "page tF detail, Compare, previous-model line",
+   "where": "page tF detail, Compare, previous-model line, Model internals (previous model's sizes)",
    "claim": "Previous / alternative model answers and scores",
    "status_before": "N",
    "status_current": "N",
@@ -2859,7 +2896,7 @@
     ],
     "manifests": []
    },
-   "notes": "Observation-scored world claim: N (draft had L).",
+   "notes": "Observation-scored world claim: N (draft had L). The previous model's subsidence sizes (and this model's beside them) render under Model internals (prev_mi, R10.1) and, where they stay in place, carry the 'model internals, size untested' label in EN and ZH: caveat 2 (alt_cmp_a), caveat 12 (tl_item, cv12_alt_slows) and the compare panel's previous-model column header (cmp_alt_km, '(cm, untested)') (user ruling R10.1b).",
    "text_keys": [
     "card:kv_prev",
     "i18n:alt_cmp",
@@ -2877,6 +2914,7 @@
     "i18n:pl",
     "i18n:pl_base",
     "i18n:pl_resp",
+    "i18n:prev_mi",
     "i18n:tF_alt"
    ],
    "doc_anchors": {}
@@ -4213,6 +4251,9 @@
    "pl_resp": [
     "E15"
    ],
+   "prev_mi": [
+    "E15"
+   ],
    "pl_rings": [
     "E10"
    ],
@@ -5159,6 +5200,9 @@
     "E09"
    ],
    "prevLine": [
+    "E15"
+   ],
+   "prevSizeLine": [
     "E15"
    ],
    "railLine": [
