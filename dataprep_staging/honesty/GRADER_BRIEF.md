@@ -120,3 +120,38 @@ finding.
 - Grade the state at the pinned commit. A later fix does not change a grade.
 - Do not edit the repository, the inventory or the record. Write only your findings file
   where the lead tells you.
+
+## Operator section (user ruling R11.4; how the lead prepares a grader's workspace)
+
+This section tells the lead how the material above is put in front of a grader; it adds no
+grading instruction. Each grader gets a separate workspace, made outside the repository by one
+command after the inventory is built and hashed:
+
+```bash
+python -m hydrophysics.twin.honesty inventory --page results/twin/twin_app_<pin>.html \
+    --out results/dataprep/reports/HONESTY.round<N>/inventory.json
+python dataprep_staging/honesty/make_grader_workspace.py \
+    --inventory results/dataprep/reports/HONESTY.round<N>/inventory.json \
+    --dest <new directory outside the repository> [--sample <second grader's ids>.json] \
+    --manifest <operator summary path outside the workspace>
+```
+
+- `inventory.json` in the workspace is the masked grader view (`honesty.grader_view`, schema
+  `twin-honesty-grader-view/1`): every statement keeps its id, source, location, weight,
+  claim ids and `check_against`; claim-honesty figures and 6-part figures in its text are
+  replaced by fixed placeholders under the committed rule of
+  `hydrophysics/twin/honesty_mask.py` (patterns with context, not a list of statements; hashed
+  as `mask_rules_sha256`). Its top-level `sha256` is the hashed inventory's, which the
+  findings carry and which the lead gives the grader separately; `view_sha256` hashes the
+  masked record list.
+- `GRADER_BRIEF.md` is this file as committed at the pinned commit, byte for byte.
+- `repo/` is the record: the tracked tree at the pinned commit from `git archive` (no `.git`,
+  so no history, branches or PR refs) and the gitignored record beside it (registrations,
+  reports, rulings, validation units, the twin results with the pinned page). Left out:
+  `*.local.md`, every `HONESTY*` path and stray findings, view or sample files, and the
+  analyst eval reports and answers. The same mask is applied to the text files of `repo/`
+  (not to the brief), so the files a grader opens show the same placeholders as the view.
+- The script stops unless the inventory's input files in the workspace hash to the
+  inventory's `inputs`, and refuses a destination inside the repository or one that is not
+  empty. Its operator summary (copied, left out, masked files) stays outside the workspace;
+  `--check-literal TEXT` lists any file that still contains a given text.
