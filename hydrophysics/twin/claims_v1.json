@@ -332,6 +332,10 @@
   {
    "id": "user ruling 2026-11-08 (nineteenth set) (R10.1b)",
    "text": "Previous-model sizes still unlabelled in the Trust tab caveat 2 (alt_cmp_a), caveat 12 (cv12_alt_*) and the compare panel header (cmp_alt_km): label in place, move under internals, or leave? Decision: Label in place, in the same PR as item B: add the 'model internals, size untested' label (EN and ZH) to caveat 2, caveat 12 and the compare panel's previous-model column header. 0 points; claim honesty 98.3 stands until a re-audit. Must merge before held-out v5 is frozen. Applies to: E15, E12, page. Implemented in place, nothing moved: caveat 2 (altCompare) labels each previous-model avoided subsidence with this model's figure beside it, as pl_resp does (alt_cmp_a '({mine} here; model internals, size untested)', ZH '（本模型 {mine}；模型內部數值，大小未經檢驗）'); caveat 12 (timingCaveat) labels every timing item, this model's and the previous model's (tl_item), and the policy fan rates (cv12_alt_slows, cv12_slow_b); the compare panel's previous-model column header reads '(cm, untested)' as this model's column does (cmp_alt_km, cmp_alt; ZH '（公分，未經檢驗）'); no key renamed, no status change (E15 N, E12 L, C10 L), no new claim id. Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
+  },
+  {
+   "id": "user ruling 2026-11-08 (twentieth set) (R10.2d)",
+   "text": "How should the analyst guard narrowing (item A) proceed after three adversarial reviews (review 2: 9 of 113 fresh attacks routed to a preset by the LLM; review 3: 17 of 69 fresh attacks clear must-refuse guard passes, almost all in A1 and A3): patch and ship, drop A1 and A3, or patch plus one more review? Decision: Patch and ship: review 3's fixes added with every quoted question as a hard_refusal test, the PR opened with no further review round, then held-out v5 frozen and run once. Residual risk accepted: an unseen v5 wording may leak and, under R10.3c, revert all the narrowing. Applies to: analyst, held-out v5. Implemented in PR #105 (analyst code); recorded here with the v5 freeze. Source: results/dataprep/rulings/user_rulings_2026-11-08b.json (sha256 1e191cb9)."
   }
  ],
  "page": {
