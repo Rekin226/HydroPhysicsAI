@@ -396,8 +396,14 @@ PREV_JS = """() => { const out = {}; out.none = (tileLabels(), $("miPrev").hidde
     out[l] = {row: row ? row.nextElementSibling.textContent : null,
       card: $("cardBody").textContent, mi: $("miPrev").textContent,
       hidden: $("miPrev").hidden, box: $("miPrev").parentElement.id,
-      cv2: cv[1].join(""), cv12: cv[11].join(""), cmpAlt: th[th.length - 2],
-      cmpMine: th[1]}; }
+      cv2: cv[1].join(""), cv9: cv[8].join(""), cv12: cv[11].join(""),
+      cmpAlt: th[th.length - 2], cmpMine: th[1]}; }
+  const nm = D.solved[0].name;                     // R10.6: the post-hoc split branch too
+  D.modelcard.posthoc = {elastic: {cells_below_preconsolidation_after_2026_01: 0,
+    policies: {[nm]: {inelastic_cm: 0.01, total_cm: 0.9}}, start: M.starts[0],
+    margin_p5_m: 0.5, horizon_year: M.years[Y-1],
+    lift: {policy: nm, lifted: "2028-01", left_cm: 0.2, at_year: M.years[Y-1]}}};
+  for (const l of ["en", "zh"]) { LANG = l; out[l].cv9split = caveats()[8].join(""); }
   return out; }"""
 
 
@@ -406,7 +412,8 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
     previous-model row no longer carries the sizes (it keeps the observation-scored
     comparisons); the pl_base/pl_resp clause renders only under Model internals (#miPrev in
     #tilesMore); and where the previous model's sizes stay in place (caveat 2, caveat 12, the
-    compare panel's previous-model column header) they carry the size-untested label."""
+    compare panel's previous-model column header) they carry the size-untested label; R10.6:
+    this model's avoided sizes in caveat 9 carry it too, in both of its branches."""
     fw, _, _ = _write_inputs(tmp_path)
     import shutil
 
@@ -447,6 +454,14 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
         assert g["cv2"].count(cm) == g["cv2"].count(resp), (lang, g["cv2"])
         assert g["cv12"].count(resp) >= 1, (lang, g["cv12"])
         assert g["cmpAlt"].endswith(col) and g["cmpMine"].endswith(col), (lang, g["cmpAlt"])
+        # R10.6: this model's avoided sizes in caveat 9 carry the label (fast-response branch:
+        # the late-start comparison; post-hoc split branch: per-policy totals and the lift)
+        cm = " cm" if lang == "en" else " 公分"
+        assert g["cv9"].count(cm) == 2 and g["cv9"].count(resp) == 1, (lang, g["cv9"])
+        sp = g["cv9split"]
+        assert sp.count(cm) == 4 and sp.count(resp) == 3, (lang, sp)
+        for v in ("0.90", "0.20"):
+            assert v in sp, (lang, v, sp)
 
 
 # data-prep units ---------------------------------------------------------------------------

@@ -1954,3 +1954,36 @@ def test_previous_model_sizes_left_in_place_carry_the_label():
     assert _st("E15") == {"N"} and _st("E12") == {"L"} and _st("C10") == {"L"}
     assert "Model internals (previous model's sizes)" in CL()["E15"]["where"]
     assert "R10.1b" in CL()["E15"]["notes"]
+
+
+def test_caveat_9_avoided_sizes_carry_the_label():
+    """User ruling R10.6 (twenty-first set, user_rulings_2026-11-08c.json sha256 8f67973f):
+    this model's avoided-subsidence sizes in Trust caveat 9 carry the 'model internals, size
+    untested' label in place, EN and ZH: the post-hoc split's per-policy totals (cv9_pol), the
+    lifted-policy remainder (cv9_lift) and the late-start comparison (fw_late). Nothing moved:
+    the keys render where they did (elasticCaveat, fastWords, both under caveats()); fw_item
+    prints shares and a month, not a size; C15 and C10 keep their statuses."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    lab = {"en": "(model internals, size untested)", "zh": "模型內部數值，大小未經檢驗"}
+    for lang, d in (("en", en), ("zh", zh)):
+        for k in ("cv9_pol", "cv9_lift", "fw_late"):
+            assert lab[lang] in d[k], (lang, k, d[k])
+        assert " cm" not in d["fw_item"] and "公分" not in d["fw_item"], (lang, d["fw_item"])
+    assert en["cv9_pol"] == "{pol}: inelastic {ie} of {tot} cm (model internals, size untested)"
+    assert zh["cv9_pol"] == "{pol}：非彈性 {ie}／{tot} 公分（模型內部數值，大小未經檢驗）"
+    assert en["cv9_lift"].endswith(" {left} cm of its benefit by Dec {H} "
+                                   "(model internals, size untested).")
+    assert zh["cv9_lift"].endswith("剩下 {left} 公分的效益（模型內部數值，大小未經檢驗）。")
+    assert "{v0} cm in {n0} years from {s0} (model internals, size untested): " in en["fw_late"]
+    assert zh["fw_late"].endswith("{v0} 公分（{n0}年；模型內部數值，大小未經檢驗）。")
+    # where they render: caveat 9 only (no key moved)
+    assert {"cv9_pol", "cv9_lift"} <= C.function_keys("elasticCaveat")
+    assert "fw_late" in C.function_keys("fastWords")
+    assert {"elasticCaveat", "fastWords"} <= set(C._function_bodies())
+    body = C._function_bodies()["caveats"]
+    assert "elasticCaveat(fw)" in body and "fw = fastWords()" in body
+    assert DM()["i18n"]["cv9_pol"] == DM()["i18n"]["cv9_lift"] == ["C15"]
+    assert DM()["i18n"]["fw_late"] == ["C10"]
+    assert _st("C15") == {"L"} and _st("C10") == {"L"}
+    for cid in ("C15", "C10"):
+        assert "R10.6" in CL()[cid]["notes"] and "8f67973f" in CL()[cid]["notes"], cid

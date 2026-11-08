@@ -2476,3 +2476,12 @@ expected effect of 0 on the official figures. No status changed in the round.
   science) counted E22 and C14f; E30's Changhua windows fail the same threshold and add the
   rest. At the earlier pinned states the official figures become 53.1 (fd40796, honesty 95) and
   53.6 (08a6aa7, honesty 98), science 44.7 at both (`tests/test_twin_progress.py`).
+- **R10.6, caveat 9 labelled in place.** This model's avoided-subsidence sizes in Trust caveat 9
+  carry the "model internals, size untested" label, EN and ZH, where they are printed: the
+  post-hoc split's per-policy inelastic and total cm (`cv9_pol`), the cm left after a lifted
+  policy (`cv9_lift`) and the late-start comparison (`fw_late`); `fw_item` prints shares, not
+  sizes. Nothing moved; caveats 3, 7, 8, the caveat-12 baseline rate and the model-card rows are
+  left for the next claim-honesty audit; 0 points, and claim honesty stays 98.3 until a
+  re-audit. Page `twin_app_20261108b` (sha256 9e48c5f7; template sha256 1ab89d5c), built with
+  20261108a's command (only `--out` changed); its payload differs from 20261108a's only in
+  `release.code_sha256`; promoted to `results/twin/twin_app.html`.
