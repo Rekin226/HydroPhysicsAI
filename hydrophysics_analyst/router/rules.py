@@ -129,7 +129,7 @@ def hard_refusal(q: str, b: PageBundle) -> str | None:
     # it out (A1), and one how-sure question about Changhua's direction test (A3), pass on. The
     # pooled row stays answerable only as a row (round 9's pooled_row_ok; ledger C02: Changhua
     # cells are labelled "spillover of a Yunlin cut ... not a Changhua lever")
-    if ch and not (pooled_ok or G.yunlin_only_ok(s) or G.changhua_how_sure_ok(s)):
+    if ch and not (pooled_ok or G.yunlin_only_ok(s) or G.changhua_how_sure_ok(s, b)):
         return "changhua_lever"
     if _has(MONEY, s):
         return "volumes_money"

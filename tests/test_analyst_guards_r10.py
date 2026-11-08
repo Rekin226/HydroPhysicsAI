@@ -51,7 +51,6 @@ def sc(s: str) -> str:
 # --- A1: Yunlin-only levers, Changhua left out or the spillover target --------------------------
 A1_PASS = [
     "Cut Yunlin irrigation 30%, Changhua unchanged: what happens to the head by 2030?",
-    "Yunlin, not Changhua, cuts aquaculture 40%: head in 2031?",
     "If Yunlin halves aquaculture and Changhua does not cut, what does the head do in 2030?",
     "Only Yunlin cuts irrigation 20%; nothing in Changhua changes. Head in 2030?",
     "Rank Yunlin's water-use classes by head rise; the county north of Yunlin isn't in the model.",

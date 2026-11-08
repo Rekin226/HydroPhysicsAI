@@ -94,7 +94,29 @@ ROUTE_CODE = ("hydrophysics_analyst/router/__init__.py", "hydrophysics_analyst/r
               "hydrophysics_analyst/audit.py", "hydrophysics_analyst/render.py",
               "hydrophysics/twin/claims.py")
 # environment switches that change routes or answers: a code-pinned run refuses them
-ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY")
+ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY",
+             # second review: the endpoint or model the backend talks to
+             "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL", "ANTHROPIC_BEDROCK_BASE_URL",
+             "ANTHROPIC_VERTEX_BASE_URL", "ANTHROPIC_VERTEX_PROJECT_ID", "CLAUDE_CODE_USE_BEDROCK",
+             "CLAUDE_CODE_USE_VERTEX", "ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_DEFAULT_OPUS_MODEL")
+FRESH_BYTECODE = ("python -B -X pycache_prefix=\"$(mktemp -d)\" -m hydrophysics_analyst eval ...")
+
+
+def fresh_bytecode() -> bool:
+    """No cached byte-code can have been read for the route modules: Python runs with
+    ``-B`` (writes none) and a ``pycache_prefix`` outside the repo holding no .pyc (with a prefix
+    set, imports read byte-code from the prefix tree only, never from the package's
+    ``__pycache__``, so a planted .pyc there is ignored). Second review, finding 5."""
+    prefix = getattr(sys, "pycache_prefix", None)
+    if not prefix or not sys.flags.dont_write_bytecode:
+        return False
+    pre = Path(prefix).resolve()
+    try:
+        pre.relative_to(Path(REPO).resolve())
+        return False                                   # inside the repo: not fresh by design
+    except ValueError:
+        pass
+    return not any(pre.rglob("*.pyc"))
 CODE_PINS = ("main_commit", "code_sha256")
 _TRACKED = ("hydrophysics_analyst", "hydrophysics")     # no local change allowed under main_commit
 
@@ -254,6 +276,10 @@ def check_code_pins(entry: dict, run: dict) -> None:
             raise EvalSetError(f"{name}: route files load from elsewhere than the pinned paths: "
                                f"{shadow}")
     if entry.get("main_commit") is not None or entry.get("code_sha256") is not None:
+        fresh = run.get("bytecode_fresh")
+        if not (fresh if fresh is not None else fresh_bytecode()):
+            raise EvalSetError(f"{name} is code-pinned: run it without cached byte-code, as "
+                               f"{FRESH_BYTECODE}")
         env = run.get("env") if run.get("env") is not None else os.environ
         set_ = [k for k in ROUTE_ENV if env.get(k)]
         if set_:

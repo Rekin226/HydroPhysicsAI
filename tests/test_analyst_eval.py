@@ -227,7 +227,8 @@ def _code_entry(fixed, **pins):
     base = {"page_sha256": "a" * 64, "ledger_sha256": "b" * 64, "arms": ["rules"], "repeats": 1}
     qs, _ = _tiny(fixed, **base, **pins)
     # the route files as loaded (in the fake checkout) and a clean environment
-    run = base | {"loaded": {p: str(fixed / p) for p in EV.ROUTE_CODE}, "env": {}}
+    run = base | {"loaded": {p: str(fixed / p) for p in EV.ROUTE_CODE}, "env": {},
+                  "bytecode_fresh": True}
     return EV.check_set(qs), run
 
 
@@ -264,6 +265,40 @@ def test_code_pins_refuse_shadowed_files_and_route_env(fixed):
     with pytest.raises(EV.EvalSetError, match="ANALYST_ENABLE_CHEAPEST"):
         EV.check_pins(e2, ok2 | {"main_commit": {"commit": "abc1234" + "0" * 33, "dirty": False},
                                  "env": {"ANALYST_ENABLE_CHEAPEST": "1"}})
+
+
+def test_code_pins_refuse_cached_bytecode_and_endpoint_env(fixed):
+    """Second review: a planted __pycache__/zh.cpython-311.pyc matching zh.py's mtime and size
+    disabled the guards with dirty=False; a code-pinned run now needs -B and a fresh
+    pycache_prefix. The endpoint and model environment variables refuse it too."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    with pytest.raises(EV.EvalSetError, match="cached byte-code"):
+        EV.check_pins(e, ok | {"bytecode_fresh": False})
+    for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"):
+        with pytest.raises(EV.EvalSetError, match=k):
+            EV.check_pins(e, ok | {"env": {k: "x"}})
+
+
+def test_fresh_bytecode_needs_dash_b_and_an_empty_prefix(tmp_path):
+    import os
+    import subprocess
+    import sys
+    code = "from hydrophysics_analyst import eval as E; print(E.fresh_bytecode())"
+    root = str(EV.REPO)
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX")}
+
+    def run(*flags):
+        out = subprocess.run([sys.executable, *flags, "-c", code], cwd=root, capture_output=True,
+                             text=True, timeout=120, env=env)
+        return out.stdout.strip().splitlines()[-1]
+    assert run() == "False"
+    assert run("-X", f"pycache_prefix={tmp_path / 'a'}") == "False"            # writes byte-code
+    assert run("-B", "-X", f"pycache_prefix={tmp_path / 'b'}") == "True"
+    (tmp_path / "c" / "x").mkdir(parents=True)
+    (tmp_path / "c" / "x" / "zh.cpython-311.pyc").write_bytes(b"")
+    assert run("-B", "-X", f"pycache_prefix={tmp_path / 'c'}") == "False"      # a .pyc in it
 
 
 def test_the_live_route_files_load_from_the_package():

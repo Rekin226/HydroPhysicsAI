@@ -25,10 +25,10 @@ review fixes; the section "Review fixes" below lists what changed from 42a859a.
 
 | class | what now passes | where | refused on the other side (twins) |
 |---|---|---|---|
-| A1 | a Yunlin question that names Changhua (by name or by geography) only to leave it out: "nothing on the north side of the river", 彰化那邊完全不動, "the neighbouring county isn't in the model", "Yunlin, not Changhua, cuts ..." | `guards.yunlin_only_ok` | a Changhua-owned lever that also names Yunlin; negation inversions ("not Yunlin but Changhua", "unlike Yunlin, if Changhua cut", 不像雲林，彰化如果減); double negatives (not excluded, isn't unchanged, doesn't cut less, 不是不動); Changhua or a pronoun back in a later clause (its head, 那邊的水位); additive words (also, too, both, same, 也, 都, 除了); another place in a lever clause (the north bank, Chiayi, 溪北); a contrast after Changhua (but, 但); a Changhua township; the whole fan; Yunlin named inside the exclusion clause ("stays the same as Yunlin"); back-references (the latter, next door, over there, that side, 那頭, 前者, 隔壁, 對面, 其, 該地, 另一個縣); broken exclusions (except that, save, bar, until, for now, hardly, far from, not really, only, 暫時, 直到); a later clause with a negation and no Yunlin; a lever in a later county-less clause unless the question scopes itself to Yunlin first (only Yunlin, Yunlin's own, "Yunlin, not Changhua", 只有雲林, 雲林自己) |
+| A1 | a Yunlin question that names Changhua (by name or by geography) only to leave it out: 彰化那邊完全不動, "the neighbouring county isn't in the model", "Changhua aside, Yunlin cuts ...". A lever after the Changhua clause must name Yunlin in its own clause (second review) | `guards.yunlin_only_ok` | a Changhua-owned lever that also names Yunlin; negation inversions ("not Yunlin but Changhua", "unlike Yunlin, if Changhua cut", 不像雲林，彰化如果減); double negatives (not excluded, isn't unchanged, doesn't cut less, 不是不動); Changhua or a pronoun back in a later clause (its head, 那邊的水位); additive words (also, too, both, same, 也, 都, 除了); another place in a lever clause (the north bank, Chiayi, 溪北); a contrast after Changhua (but, 但); a Changhua township; the whole fan; Yunlin named inside the exclusion clause ("stays the same as Yunlin"); back-references (the latter, next door, over there, that side, 那頭, 前者, 隔壁, 對面, 其, 該地, 另一個縣); broken exclusions (except that, save, bar, until, for now, hardly, far from, not really, only, 暫時, 直到); a later clause with a negation and no Yunlin; a lever in a later clause that does not name Yunlin itself; demonstratives (those / these / such / said, in question, concerned, 那些, 這些, 那個, 該, 此, 彼); "except for a / an ...", "apart from" |
 | (A1) | the pooled Changhua row: unchanged from round 9, answered only when asked as a row (row, township, 列, 鄉鎮, "not yet split") under an explicitly Yunlin policy (`guards.pooled_row_ok`). The 42a859a exemption for "what does a Yunlin cut do to Changhua" without the row words was dropped after the review | `guards.pooled_row_ok` | everything round 9 refused, plus follow-suit verbs (Changhua follows / adopts / mirrors / copies it, copied by Changhua, 照著做) |
-| A2 | how-sure questions about whether the subsidence size was tested: "checked against the leveling", "did it hold up", 能不能當真, 減少下陷量有沒有經過檢驗 | `guards.how_sure_only` (META and YESNO widened; 減少下陷量 / "subsidence reduction" is not read as a lever) | a size inside the how-sure form ("how sure are you of the 3 cm", 3cm, a bare number, a spelled number (one, 一點五), positive / zero / half, 一半, 兩成, 三公分, a metre, 寸); a size adjective (considerable, minor, noticeable, a lot ...); a zero verb (halts, ends, ceases, 停止, 不再); a comparison (exceeds, faster, than, a limit, 超過); a cut, a policy or a scenario (政策, 方案); Yunlin or the county (any mention) or another place (coast, inland, a zone, the rail, 沿海); an area scope; a request to work it out (calculate, estimate, I'd like, please, 算一下, 要) |
-| A3 | one how-sure question about Changhua's direction test ("is there any sign that pumping on the Changhua side moves water levels the right way, judged at wells the model was never tuned on") | `guards.changhua_how_sure_ok`, a strict allow-list after the review: the topic must be a direction noun (direction, the right / wrong way, the response, 方向, 反應) | any condition (if, when ..., once, after, under, as, while, 如果, 若, 時, 後, 的話); Yunlin; both counties or following suit; any lever, the word lever(s), 槓桿 or a water-use class; the ground (ground, land, soil, surface, elevation, 地面, 地表, 土地, 地 ...); a rise, fall, recovery, more or less (上升, 回升, 下降, 少, 多); a place word (there, 那邊, 當地); the direction asked as a value (which way, up or down, 升還是降); a second question; a size or unit; 'what is' / show / calculate; a subsidence word; a Changhua township; additive words |
+| A2 | how-sure questions about whether the subsidence size was tested: "checked against the leveling", "did it hold up", 能不能當真, 減少下陷量有沒有經過檢驗 | `guards.how_sure_only` (META and YESNO widened; 減少下陷量 / "subsidence reduction" is not read as a lever) | a size inside the how-sure form ("how sure are you of the 3 cm", 3cm, a bare number, a spelled number (one, 一點五), positive / zero / half, 一半, 兩成, 三公分, a metre, 寸); a size adjective (considerable, minor, noticeable, a lot ...); a zero verb (halts, ends, ceases, 停止, 不再); a comparison (exceeds, faster, than, a limit, 超過); a cut, a policy or a scenario (政策, 方案); Yunlin or the county (any mention) or another place (coast, inland, a zone, the rail, 沿海); an area scope; a request to work it out (calculate, estimate, I'd like, please, 算一下, 要); after the second review also trivial, insignificant, perceptible, pronounced, detectable, noise, magnitude, enough, matter, nothing, nearly, ordinal fractions (fifth ... tenth), any digit, 算不算, 夠不夠, 忽略, 有感, 數量級 and the financial numerals (壹, 貳 ...) |
+| A3 | one how-sure question about Changhua's direction test ("is there any sign that pumping on the Changhua side moves water levels the right way, judged at wells the model was never tuned on") | `guards.changhua_how_sure_ok`, a strict allow-list after the review: the topic must be a direction noun (direction, the right / wrong way, the response, 方向, 反應) | any condition (if, when ..., once, after, under, as, while, 如果, 若, 時, 後, 的話); Yunlin; both counties or following suit; any lever, the word lever(s), 槓桿 or a water-use class; the ground (ground, land, soil, surface, elevation, 地面, 地表, 土地, 地 ...); a rise, fall, recovery, more or less (上升, 回升, 下降, 少, 多); a place word (there, 那邊, 當地); a Yunlin township or the word township (second review); upward / climb / 上揚 / 回漲; a second subject or question joined by and / or / 和 / 與; the direction asked as a value (which way, up or down, 升還是降); a second question; a size or unit; 'what is' / show / calculate; a subsidence word; a Changhua township; additive words |
 | A4 | one township referred to but not named, under a policy ("that coastal township", 靠海那個鄉): the rules clarify `ambiguous_town` with full confidence | `guards.unnamed_township`, `rules.RulesRouter` | no policy; several, each, which, any, average or most townships (各鄉鎮, 哪個鄉, 最); an area scope; a township head question (still `township_head`) |
 | A5 | "as of <year>" is read as a reporting year, and the first year of a span ("from 2023 to 2028", 從2027年到2029年) is not read as a start, so the rules stage no longer clarifies `out_of_grid` | `rules.parse_years` | "as of <year>" after the page's horizon is still `beyond_horizon` (also 截至2036年, 截至民國125年); "starting in 2028" (a start off the page) is still `out_of_grid`; after the review a span's first year is a start again when a lever acts on it in the same clause ("Cut irrigation 30% from 2028 to 2032" -> `out_of_grid`), and "as of <year>" before the first page start with a lever in the question is a start ("As of 2025, Yunlin cuts irrigation 30%" -> `out_of_grid`, as in round 9) |
 
@@ -147,14 +147,51 @@ hard_refusal / rules stage only (no LLM run after the review):
 Every question the review quoted as must-refuse is a test in
 `tests/test_analyst_guards_r10_review.py`, refused at hard_refusal before the LLM.
 
+## Second review fixes (re-review of 1c1745e, NO-GO on one confirmed unsafe route)
+
+Verified at $0 only, at the hard_refusal / rules stage (no LLM call; the prompt changes below are
+not LLM-tested).
+
+1. **The Yunlin-only scope exemption is gone.** At 1c1745e a county-less lever after a Changhua
+   exclusion clause counted as Yunlin's when the question first scoped itself to Yunlin. The
+   re-review routed "Only Yunlin cuts irrigation 30%; Changhua is not modelled; those farmers
+   halve aquaculture: head in 2030?" to policy_head 3/3. Now any lever clause after a Changhua
+   clause must name Yunlin itself. Demonstratives (those, these, such, said, in question,
+   concerned, 那些, 這些, 那個, 該, 此, 彼) count as pronouns in lever ownership and as
+   back-references. **Cost:** v4_004 ("Only Yunlin's own farms, nothing on the north side of the
+   river: if irrigation drops 15% ...") is refused again (`changhua_lever`), and so is "Yunlin,
+   not Changhua, cuts aquaculture 40%".
+2. LEVER also reads a switch to surface, tap, river or reservoir water, moratoria, freezes,
+   quotas, buyouts, water saving and conservation (改用, 替代, 配額, 凍結, 節約用水, 收購, 地面水,
+   管制). CONTRAST adds "except for a / an / the ..." and "apart from".
+3. A3 also refuses a Yunlin township (or the word township), upward / climb / 上揚 / 回漲, and any
+   and / or / 和 / 與 (a second subject or question). **Cost:** held-out v2's v2_030 ("Has the
+   direction of the Changhua pumping response been tested, and with what result?", withdrawn
+   set) is refused again.
+4. A2 gained the size words in the table.
+5. Code pins: a code-pinned run needs `python -B -X pycache_prefix=<fresh dir outside the repo>`
+   (the re-review planted a `router/__pycache__/zh.cpython-311.pyc` matching zh.py's mtime and
+   size that disabled the guards with a clean tree; with a prefix set, imports read byte-code from
+   the prefix only). `ROUTE_ENV` adds the endpoint and model variables (`ANTHROPIC_BASE_URL`,
+   `ANTHROPIC_MODEL`, the Bedrock / Vertex switches, `ANTHROPIC_CUSTOM_HEADERS` ...).
+6. The prompt's Changhua back-reference list has the demonstratives and the new lever words.
+
+Known over-refusals left in place: "Yunlin cuts irrigation 30% with no change in Changhua"
+fails when "no change in Changhua" shares a clause with the lever (the comma form passes); the
+widened CONTRAST list (only, almost, nearly, partly, apart from, 先, 目前 ...) refuses any A1
+question that uses those words after Changhua; A3 refuses any "and" / "or".
+
+Decision changes vs 1c1745e on the dev set and held-out v1-v4 (deterministic, new page):
+exactly two, both answerable items now refused at hard_refusal: v4_004 (policy_head expected)
+and v2_030 (how_sure expected).
+
 ## Doors still open (for the reviewer)
 
 - A1 decides on clause structure and word lists (exclusion phrases, additive words, contrasts,
   breakers, places, back-references). A Changhua lever phrased with words these lists do not
   know could still pass to the LLM; the prompt is then the second line of defence.
-- A county-less lever after a Changhua exclusion clause counts as Yunlin's when the question
-  first scopes itself to Yunlin ("Only Yunlin's own farms, nothing on the north side of the
-  river: if irrigation drops 15% ...").
+- A lever clause after a Changhua exclusion clause passes when it names Yunlin, even if
+  another word in it could point at Changhua that the lists do not know.
 - A3 passes a single yes/no question with test wording and a direction noun about Changhua and
   none of the vetoes ("Is Changhua's response direction tested?"). Whether the how_sure answer
   suits it is up to the LLM.

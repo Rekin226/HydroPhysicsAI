@@ -134,7 +134,57 @@ A1_REVIEW = [
     "只有雲林，彰化不動，外地的養殖減半，水位？",
 ]
 
-REFUSE = ([("A3", q) for q in A3_REVIEW] + [("spill", q) for q in SPILL_REVIEW]
+# second review of 1c1745e: demonstratives, source switches and moratoria, A3 extras, A2 sizes
+A1_REVIEW2 = [
+    "Only Yunlin cuts irrigation 30%; Changhua is not modelled; those farmers halve aquaculture: head "
+    "in 2030?",
+    "Only Yunlin cuts irrigation 30%; Changhua is not modelled; the farmers in question halve "
+    "aquaculture: head in 2030?",
+    "Only Yunlin cuts irrigation 30%; Changhua is not modelled; these growers halve aquaculture: head "
+    "in 2030?",
+    "只有雲林灌溉減三成，彰化不算；那些農民養殖減半，2030年水位？",
+    "只有雲林灌溉減三成，彰化不算；那些魚塭減半，2030年水位？",
+    "雲林灌溉減三成，彰化不動，魚塭改用地面水，2030年水位？",
+    "Yunlin cuts irrigation 30%, Changhua unchanged except for a pumping moratorium: head?",
+    "Yunlin cuts irrigation 30%, Changhua unchanged except for a freeze on new wells: head?",
+    "Yunlin cuts irrigation 30%, Changhua unchanged except for a switch of its fish farms to surface "
+    "water: head?",
+    "Only Yunlin's own farms, nothing on the north side of the river: if irrigation drops 15%, what "
+    "do heads do by 2029?",                     # v4_004's form: the Yunlin-only scope was dropped
+    "Yunlin, not Changhua, cuts aquaculture 40%: head in 2031?",
+]
+A3_REVIEW2 = [
+    "彰化對抽水配額的反應方向有沒有驗證過？",
+    "Has the direction of Changhua's response to water-saving been validated?",
+    "Is the direction of the response at Changhua and Mailiao wells tested?",
+    "Is the direction of the response north of the Choushui tested at Tuku wells?",
+    "Has the upward direction of Changhua's response been verified?",
+    "彰化水位反應方向是上揚，有驗證嗎？",
+    "Is the direction of Changhua's response verified, and when does it climb?",
+    "Has the direction of Changhua's response to a pumping moratorium been tested?",
+    "Has the direction of Changhua's response to a well buyout been checked?",
+]
+A2_REVIEW2 = [
+    "Was it checked whether the avoided subsidence is within an order of magnitude?",
+    "Is it tested whether the avoided subsidence is trivial?",
+    "Is it verified whether the avoided subsidence is insignificant?",
+    "Has it been checked that the avoided subsidence is perceptible?",
+    "Is the avoided subsidence pronounced? Was it checked?",
+    "Is it tested whether the avoided subsidence is detectable above noise?",
+    "Was it checked that the avoided subsidence is a fifth of the total?",
+    "Is the avoided subsidence a tenth? Was it verified?",
+    "Is it tested whether the avoided subsidence is enough to matter?",
+    "Was the avoided subsidence nearly nothing? Was that checked?",
+    "減少下陷量算不算大，有沒有驗證？",
+    "減少下陷量夠不夠，有沒有驗證？",
+    "減少下陷量可以忽略嗎？有沒有驗證？",
+    "減少下陷量有感嗎？有沒有驗證？",
+    "減少下陷量是壹公分嗎？有沒有驗證？",
+]
+
+
+REFUSE = ([("A3", q) for q in A3_REVIEW + A3_REVIEW2] + [("A1", q) for q in A1_REVIEW2]
+          + [("A2", q) for q in A2_REVIEW2] + [("A3", q) for q in A3_REVIEW] + [("spill", q) for q in SPILL_REVIEW]
           + [("A2", q) for q in A2_REVIEW] + [("A1", q) for q in A1_REVIEW])
 
 
@@ -146,12 +196,12 @@ def test_review_must_refuse_questions_are_refused_before_the_llm(b, cls, q):
     assert info["stage"] == "hard_refusal" and r.preset == "refuse", (cls, q)
 
 
-@pytest.mark.parametrize("q", A3_REVIEW + SPILL_REVIEW[:12] + A1_REVIEW)
+@pytest.mark.parametrize("q", A3_REVIEW + SPILL_REVIEW[:12] + A1_REVIEW + A1_REVIEW2 + A3_REVIEW2)
 def test_review_changhua_questions_are_changhua_refusals(b, q):
     assert hard_refusal(q, b) == "changhua_lever", q
 
 
-@pytest.mark.parametrize("q", A2_REVIEW)
+@pytest.mark.parametrize("q", A2_REVIEW + A2_REVIEW2)
 def test_review_subsidence_questions_are_size_refusals(b, q):
     assert hard_refusal(q, b) == "subsidence_size", q
 
@@ -196,6 +246,12 @@ def test_review_over_refusals_now_pass(b, q):
 STILL_REFUSED = [
     "What effect does halving Yunlin aquaculture have on Changhua?",   # spillover without row words
     "Is the subsidence the county's model shows tested at all?",       # how-sure with 'county's'
+    # the cost of the second review: a lever after a Changhua clause must name Yunlin itself
+    "Only Yunlin's own farms, nothing on the north side of the river: if irrigation drops 15%, what "
+    "do heads do by 2029?",
+    "Yunlin, not Changhua, cuts aquaculture 40%: head in 2031?",
+    # "no change in Changhua" in the same clause as the lever is still refused
+    "Yunlin cuts irrigation 30% with no change in Changhua: head in 2030?",
 ]
 
 

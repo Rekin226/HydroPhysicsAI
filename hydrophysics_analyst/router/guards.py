@@ -79,9 +79,19 @@ LEVER = [r"\bcut(?:s|ting)?\b", r"\breduc\w*", r"\bretir\w*", r"\bstop\w*", r"\b
          r"\b(?:use|uses|using|used)\s+less\s+water\b", r"\bless\s+water\b",
          r"\bpump\w*\s+(?:fewer|less|lower)\b", r"\bfewer\s+(?:hours|wells|pumps|days)\b", r"\blowered\b",
          r"\bcutback\w*", r"\bration\w*", r"\brestrict\w*",
+         # second review: a switch to surface or tap water, a moratorium, a freeze, quotas, buyouts
+         r"\b(?:switch\w*|convert\w*|replac\w*|substitut\w*|shift\w*|mov(?:e|es|ed|ing)|turn\w*)\s+(?:\S+\s+){0,4}?"
+         r"(?:to|with|by|onto)\s+(?:\S+\s+){0,2}?(?:surface|tap|river|reservoir|piped|canal|alternative)",
+         r"\bsurface[\s\-]+water\b", r"\btap[\s\-]+water\b", r"\bmoratori\w*", r"\bfreez\w*", r"\bfrozen\b",
+         r"\bquotas?\b", r"\bbuy[\s\-]?outs?\b", r"\bbuy(?:s|ing)?\s+(?:\S+\s+){0,2}?out\b",
+         r"\bwater[\s\-]+saving\b", r"\bsav(?:e|es|ing)\s+water\b", r"\bconserv\w*", r"\bcaps?\s+on\b",
+         "改用", "替代", "配額", "凍結", "節約用水", "節約", "收購", "地面水", "總量管制", "管制",
          "少用水", "關井", "封井", "休耕", "停灌", "節水", "限水", "限抽", "少用"]
 PRONOUN = [r"\b(?:it|its|they|their|them|there|locally)\b", "也", "亦", "當地", "該縣", "他們", "它", "那邊",
-           "那裡", "那裏", "自己"]
+           "那裡", "那裏", "自己",
+           # round 10, second review: demonstratives ("those farmers", "the farmers in question", 那些農民)
+           r"\b(?:those|these|such|said)\b", r"\bin\s+question\b", r"\bconcerned\b",
+           "那些", "這些", "那個", r"(?<!應)該(?!不|會|是|怎)", r"(?<![因如從彼])此(?!外|時)", "彼"]
 CLAUSE = r"[。；;？?！!，,:：]|\band\b|\bwhile\b|\bbut\b|\bthen\b|並且|而且|以及|同時"
 
 
@@ -399,6 +409,12 @@ HOW_SURE_VETO = (YUNLIN + [r"\bcount(?:y|ies)\b", "縣"]
                  + [r"\b(?:considerabl\w*|minor|noticeabl\w*|appreciabl\w*|modest|marginal|measurabl\w*|"
                     r"slight\w*|major|dramatic\w*|notabl\w*|minimal|serious\w*|sever\w*|strong\w*|weak\w*|"
                     r"great\w*|massive|enormous|little|lot|much|real)\b", "嚴重", "很多", "不少", "有限", "微小"]
+                 # second review: more size words, ordinal fractions, any digit, magnitude
+                 + [r"\b(?:trivial|insignificant|perceptibl\w*|imperceptibl\w*|pronounced|detectabl\w*|"
+                    r"undetectabl\w*|noise|noticeabl\w*|magnitude|enough|matter\w*|nothing|nearly|almost|"
+                    r"fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?)\b", r"\d",
+                    "算不算", "夠不夠", "忽略", "有感", "感覺", "數量級", "壹", "貳", r"參(?!數|考|與|加|照)", "肆", "伍", "陸", "柒", "捌",
+                    "玖", "拾"]
                  + [r"\bhalt\w*", r"\bends?\b", r"\bended\b", r"\bending\b", r"\bceas\w*", r"\bvanish\w*",
                     r"\bdisappear\w*", r"\bgone\b", "不再", "消失", "結束", "停止"]
                  + [r"\bthan\b", r"\bexceed\w*", r"\bsurpass\w*", r"\b(?:faster|slower|quicker)\b",
@@ -701,6 +717,7 @@ CONTRAST = [r"\b(?:but|however|yet|though|although|still|nevertheless|nonetheles
             # the review's broken exclusions (finding 4): except that, save, bar, until, for now,
             # hardly, far from, not really ...
             r"\bexcept\s+(?:that|when|if|where|for\s+(?:its|their|it|the\s+\w+\s+it))\b", r"\bsave\b",
+            r"\bexcept\s+(?:for\s+)?(?:a|an|the|some|one|any|its|their|new)\b", r"\bapart\s+from\b",
             r"\bbar\b", r"\bbarring\b", r"\bbut\s+for\b", r"\buntil\b", r"\btill\b", r"\bfor\s+now\b",
             r"\bhardly\b", r"\bscarcely\b", r"\bbarely\b", r"\bfar\s+from\b", r"\bnot\s+really\b",
             r"\bnot\s+so\b", r"\btemporar\w*", r"\b(?:at\s+first|initially|for\s+the\s+(?:moment|time\s+being))\b",
@@ -708,20 +725,15 @@ CONTRAST = [r"\b(?:but|however|yet|though|although|still|nevertheless|nonetheles
             "除非", "暫時", "目前", "先", "直到", "為止", "只到", "幾乎", "不完全", "並非", "未必", "部分"]
 _SET_ASIDE = [r"\bignor\w*", r"\bskip\w*", r"\bset\s+aside\b", r"\bforget\b", "忽略", "撇開", "不管", "不算"]
 # third-person words that could bring Changhua back into a later clause ("there" only as a place)
-_BACK_REF = [r"\b(?:the\s+)?(?:latter|former)\b", r"\bnext\s+door\b", r"\bover\s+there\b",
+_BACK_REF = [r"\b(?:those|these|such|said)\b", r"\bin\s+question\b", r"\bconcerned\b",
+             "那些", "這些", "那個", r"(?<!應)該(?!不|會|是|怎)", r"(?<![因如從彼])此(?!外|時)", "彼",
+             r"\b(?:the\s+)?(?:latter|former)\b", r"\bnext\s+door\b", r"\bover\s+there\b",
              r"\bthat\s+(?:side|place|area|one|county|region|bank|part)\b", r"\bthe\s+excluded\b",
              r"\bthe\s+other\s+(?:one|county|side|place)\b", r"\bthe\s+rest\b", r"\bthe\s+neighbo\w*",
              "那頭", "那一頭", "對面", "隔壁", "前者", "後者", r"其(?!他|中|實|餘)", "該地", "此地", "該處", "那一邊",
              "另一個縣", "另一縣", "別的縣", "鄰近",
              r"\b(?:it|its|they|their|them|locally)\b", r"(?<!\bis\s)(?<!\bare\s)\bthere\b(?!\s+(?:is|are|was|were|will|'s))",
              "當地", "該縣", "他們", "它", "那邊", "那裡", "那裏", "那里", "自己"]
-
-
-YUNLIN_ONLY = [r"\bonly\s+(?:in\s+|for\s+)?yun[\s\-]*lin", r"\bjust\s+(?:in\s+|for\s+)?yun[\s\-]*lin",
-               r"\byun[\s\-]*lin(?:'s)?\s+(?:only|alone)\b", r"\byun[\s\-]*lin'?s?\s+own\b",
-               r"(?:只有|只讓|只算|只看|僅|只在|單單)\s*雲林", r"雲林(?:縣)?(?:的)?自己",
-               # "Yunlin, not Changhua, ..." / 是雲林不是彰化
-               r"\byun[\s\-]*lin(?:'s)?\s*,?\s*(?:and\s+)?not\s+" + _CH_T, r"雲林(?:縣)?\s*[，,]?\s*(?:而)?不是\s*彰化"]
 
 
 def _ch_hit(cl: str) -> bool:
@@ -791,10 +803,9 @@ def yunlin_only_ok(s: str) -> bool:
         # a later clause that negates something without naming Yunlin may be Changhua's (review 4)
         if seen_ch and _has(NEGATION, cl) and not _has(YUNLIN, cl):
             return False
-        # a lever after a Changhua clause, in a clause naming no county, is Yunlin's only when the
-        # question scopes itself to Yunlin first ("Only Yunlin's own farms, nothing north of the
-        # river: if irrigation drops 15% ..."); otherwise it may be Changhua's
-        if seen_ch and has_lever(cl) and not _has(YUNLIN, cl) and not _has(YUNLIN_ONLY, s):
+        # a lever after a Changhua clause must name Yunlin in its own clause (second review: the
+        # Yunlin-only scope exemption let "those farmers halve aquaculture" through; dropped)
+        if seen_ch and has_lever(cl) and not _has(YUNLIN, cl):
             return False
         # no other place than Yunlin outside the exclusion clauses, and Yunlin itself not left out
         if _has(_ELSEWHERE, cl) or (_has(YUNLIN, cl) and _has(NEGATION + _SET_ASIDE, cl)):
@@ -830,7 +841,10 @@ A3_VETO = (
        "上升", "回升", "升高", "下降", "降低", "增加", "減少", "變高", "變低", "恢復", "回彈", "少", "多", "升", "降"]
     # a place word that could be Changhua's own ("there", 那邊)
     + [r"(?<!\bis\s)(?<!\bare\s)(?<!\bwas\s)\bthere\b(?!\s+(?:is|are|was|were|been|any|'s))", "那邊", "那裡",
-       "那裏", "當地", "該地", "那頭"])
+       "那裏", "當地", "該地", "那頭"]
+    # second review: upward / climb, a second subject or question joined by and / or / 和
+    + [r"\bupward\w*", r"\bdownward\w*", r"\bclimb\w*", r"\bascend\w*", r"\bdescend\w*", "上揚", "回漲", "漲", "跌",
+       r"\band\b", r"\bor\b", r"\bplus\b", "和", "與", "及", "跟", "以及", "或"])
 # the direction asked as the answer itself
 DIRECTION_VALUE = [r"\bwhich\s+(?:way|direction)\b", r"\bup\s+or\s+down\b", r"\bdown\s+or\s+up\b",
                    r"\b(?:rise|rises|go\s+up|goes\s+up|increase\w*)\s+or\s+(?:fall|falls|drop|drops|go\s+down|"
@@ -844,7 +858,7 @@ HEAD_SIZE = [r"\bmet(?:er|re)s?\b", r"\b\d*\s*m\b", r"\bfeet\b", r"\bfoot\b",
 _SECOND_Q = r"\b(?:and|but|or)\s+(?:is|are|was|were|has|have|does|do|did|can|could|will|would|what|how)\b"
 
 
-def changhua_how_sure_ok(s: str) -> bool:
+def changhua_how_sure_ok(s: str, b: PageBundle | None = None) -> bool:
     """A3 (R10.2a): one how-sure question about whether Changhua's direction test was run or held
     ("is there any sign that pumping on the Changhua side moves water levels the right way, judged
     at wells the model was never tuned on?").
@@ -859,6 +873,8 @@ def changhua_how_sure_ok(s: str) -> bool:
     s = norm(s)
     ref = changhua_ref(s)
     if not ref or not ref <= {"word", "geo"}:
+        return False
+    if b is not None and township_ref(s, b):       # a Yunlin township or the word township
         return False
     sentences = [x for x in re.split(r"[?？。!！;；]|(?<!\d)\.(?!\d)", s) if x.strip()]
     return (len(sentences) == 1 and s.count("嗎") <= 1 and not re.search(_SECOND_Q, s, re.I)
