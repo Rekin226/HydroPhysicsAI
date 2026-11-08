@@ -36,6 +36,12 @@ per arm. A completed attempt refuses any rerun; an unfinished one may be retried
 ``--retry-reason`` (logged); a set name already logged under another sha, a renamed copy of a
 held-out or logged set (its bytes under another name, any manifest), and a ``spent`` or
 ``withdrawn`` set, are refused.
+
+Code pins (ruling R10.2c, optional, backwards compatible): a held-out entry may also pin
+``main_commit`` (the commit the run must be made from, with no local change to the tracked
+package code) and ``code_sha256`` ({repo path: sha256} of the code that decides a route; it must
+cover every file of ``ROUTE_CODE``). Either pin refuses the run on any mismatch.
+``python -m hydrophysics_analyst eval --print-pins`` prints both for the current checkout.
 """
 from __future__ import annotations
 
@@ -43,7 +49,9 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -67,6 +75,96 @@ PINS = ("page_sha256", "ledger_sha256", "arms", "repeats")    # a frozen held-ou
 CLOSED = ("spent", "withdrawn")
 ARMS = {"rules": None, "opus-low": "claude-opus-5-5", "opus-low-all": "claude-opus-5-5",
         "haiku-low": "claude-haiku-5-5"}
+
+
+# the code that decides a route or scores it (ruling R10.2c): a held-out entry may pin its sha256
+ROUTE_CODE = ("hydrophysics_analyst/router/__init__.py", "hydrophysics_analyst/router/guards.py",
+              "hydrophysics_analyst/router/rules.py", "hydrophysics_analyst/router/llm.py",
+              "hydrophysics_analyst/router/schemas.py", "hydrophysics_analyst/router/zh.py",
+              "hydrophysics_analyst/eval.py", "hydrophysics_analyst/ask.py",
+              "hydrophysics_analyst/llm/backend.py", "hydrophysics_analyst/binding.py",
+              "hydrophysics_analyst/presets.py", "hydrophysics_analyst/query.py",
+              "hydrophysics_analyst/validate.py", "hydrophysics_analyst/page.py",
+              # after the review (finding 6): the prompt's topics, the call cache, the package
+              # inits, the session and audit the router's caller uses, the answer strings and the
+              # ledger reader the scorer uses
+              "hydrophysics_analyst/rules_v1.json", "hydrophysics_analyst/strings.json",
+              "hydrophysics_analyst/llm/cache.py", "hydrophysics_analyst/llm/__init__.py",
+              "hydrophysics_analyst/__init__.py", "hydrophysics_analyst/session.py",
+              "hydrophysics_analyst/audit.py", "hydrophysics_analyst/render.py",
+              "hydrophysics/twin/claims.py")
+# environment switches that change routes or answers: a code-pinned run refuses them
+ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY",
+             # second review: the endpoint or model the backend talks to
+             "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL", "ANTHROPIC_BEDROCK_BASE_URL",
+             "ANTHROPIC_VERTEX_BASE_URL", "ANTHROPIC_VERTEX_PROJECT_ID", "CLAUDE_CODE_USE_BEDROCK",
+             "CLAUDE_CODE_USE_VERTEX", "ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_DEFAULT_OPUS_MODEL")
+FRESH_BYTECODE = ("python -B -E -s -X pycache_prefix=\"$(mktemp -d)\" -m hydrophysics_analyst eval ...")
+# functions whose code must come from the pinned files (third review: a patched function object
+# would keep its module's __file__)
+ROUTE_FUNCS = {"hydrophysics_analyst.router.guards": ("norm", "changhua_ref", "has_lever",
+                                                       "changhua_owns_a_lever", "pooled_row_ok",
+                                                       "yunlin_only_ok", "changhua_how_sure_ok",
+                                                       "how_sure_only", "subsidence_size",
+                                                       "beyond_horizon", "township_head",
+                                                       "unnamed_township"),
+               "hydrophysics_analyst.router.rules": ("hard_refusal", "parse_years"),
+               "hydrophysics_analyst.router": ("route", "routed_presets"),
+               "hydrophysics_analyst.router.zh": ("to_trad",),
+               "hydrophysics_analyst.router.llm": ("system_prompt",)}
+
+
+def clean_interpreter() -> list[str]:
+    """What makes this interpreter unfit for a code-pinned run (empty when fit): no -E (the
+    PYTHON* environment is read), no -s (the user site is on the path), or a sitecustomize /
+    usercustomize loaded from outside the interpreter's own library."""
+    out = []
+    if not sys.flags.ignore_environment:
+        out.append("-E")
+    if not sys.flags.no_user_site:
+        out.append("-s")
+    stock = Path(sys.base_prefix).resolve()
+    for name in ("sitecustomize", "usercustomize"):
+        mod = sys.modules.get(name)
+        f = getattr(mod, "__file__", None)
+        if mod is not None and (not f or not Path(f).resolve().is_relative_to(stock)):
+            out.append(f"{name} from {f}")
+    return out
+
+
+def route_functions_moved() -> list[str]:
+    """Route functions whose code is not in their module's own file (patched or replaced)."""
+    import importlib
+    bad = []
+    for modname, names in ROUTE_FUNCS.items():
+        mod = importlib.import_module(modname)
+        own = Path(mod.__file__).resolve()
+        for n in names:
+            fn = getattr(mod, n, None)
+            code = getattr(fn, "__code__", None)
+            if (code is None or Path(code.co_filename).resolve() != own
+                    or getattr(fn, "__module__", None) != modname):
+                bad.append(f"{modname}.{n}")
+    return bad
+
+
+def fresh_bytecode() -> bool:
+    """No cached byte-code can have been read for the route modules: Python runs with
+    ``-B`` (writes none) and a ``pycache_prefix`` outside the repo holding no .pyc (with a prefix
+    set, imports read byte-code from the prefix tree only, never from the package's
+    ``__pycache__``, so a planted .pyc there is ignored). Second review, finding 5."""
+    prefix = getattr(sys, "pycache_prefix", None)
+    if not prefix or not sys.flags.dont_write_bytecode:
+        return False
+    pre = Path(prefix).resolve()
+    try:
+        pre.relative_to(Path(REPO).resolve())
+        return False                                   # inside the repo: not fresh by design
+    except ValueError:
+        pass
+    return not any(pre.rglob("*.pyc"))
+CODE_PINS = ("main_commit", "code_sha256")
+_TRACKED = ("hydrophysics_analyst", "hydrophysics")     # no local change allowed under main_commit
 
 
 class EvalSetError(RuntimeError):
@@ -138,6 +236,108 @@ def check_pins(entry: dict, run: dict) -> None:
             want, got = list(want), list(got)
         if want != got:
             raise EvalSetError(f"{entry['name']} is pinned to {k} {want}, not {got}")
+    check_code_pins(entry, run)
+
+
+def code_pins(paths=ROUTE_CODE, repo: Path | None = None) -> dict:
+    """{repo path: sha256} of the route-deciding code in this checkout (None for a missing file)."""
+    root = Path(repo or REPO)
+    return {p: (file_sha256(root / p) if (root / p).is_file() else None) for p in paths}
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30)
+
+
+def head_commit(repo: Path | None = None) -> dict:
+    """The checkout's HEAD commit and whether its tracked package code has local changes;
+    ``commit`` is None when git cannot tell."""
+    repo = Path(repo or REPO)
+    try:
+        head = _git(repo, "rev-parse", "HEAD")
+        dirty = _git(repo, "diff", "--quiet", "HEAD", "--", *_TRACKED)
+        # untracked and ignored files too (an untracked router/zh/__init__.py would shadow zh.py);
+        # only byte-code caches are allowed
+        status = _git(repo, "status", "--porcelain", "--ignored", "--untracked-files=all", "--",
+                      *_TRACKED)
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": None, "dirty": None}
+    if head.returncode != 0 or status.returncode != 0:
+        return {"commit": None, "dirty": None}
+    extra = [ln for ln in status.stdout.splitlines()
+             if ln.strip() and "__pycache__/" not in ln and not ln.rstrip().endswith(".pyc")]
+    return {"commit": head.stdout.strip(), "dirty": dirty.returncode != 0 or bool(extra),
+            "extra": extra[:10]}
+
+
+def loaded_route_files(paths=ROUTE_CODE) -> dict:
+    """{repo path: the file actually loaded for it}: each route module's ``__file__`` (imported
+    here) and the data files binding / render read. A mismatch means something else shadows the
+    pinned file."""
+    import importlib
+
+    from . import binding, render
+    out = {}
+    for p in paths:
+        if p.endswith(".py"):
+            mod = p[:-3].replace("/", ".")
+            mod = mod[:-len(".__init__")] if mod.endswith(".__init__") else mod
+            out[p] = str(Path(importlib.import_module(mod).__file__).resolve())
+    out["hydrophysics_analyst/rules_v1.json"] = str(Path(binding.RULES).resolve())
+    out["hydrophysics_analyst/strings.json"] = str(Path(render.STRINGS).resolve())
+    return {p: f for p, f in out.items() if p in paths}
+
+
+def check_code_pins(entry: dict, run: dict) -> None:
+    """The optional code pins of a held-out entry (R10.2c). ``run`` may carry ``main_commit``
+    ({commit, dirty}) and ``code_sha256`` as measured; otherwise they are measured here."""
+    name = entry.get("name")
+    if entry.get("main_commit") is not None:
+        want = str(entry["main_commit"])
+        got = run.get("main_commit") or head_commit()
+        if len(want) < 7:
+            raise EvalSetError(f"{name} pins main_commit {want!r}: give at least 7 hex digits")
+        if not got.get("commit"):
+            raise EvalSetError(f"{name} is pinned to commit {want[:12]}, and git cannot tell this "
+                               f"checkout's commit")
+        if not got["commit"].startswith(want):
+            raise EvalSetError(f"{name} is pinned to main_commit {want[:12]}, not "
+                               f"{got['commit'][:12]}")
+        if got.get("dirty") is not False:
+            raise EvalSetError(f"{name} is pinned to main_commit {want[:12]}: the checkout has local "
+                               f"changes under {list(_TRACKED)} (run from a clean checkout)")
+    if entry.get("code_sha256") is not None:
+        want = dict(entry["code_sha256"])
+        missing = [p for p in ROUTE_CODE if p not in want]
+        if missing:
+            raise EvalSetError(f"{name} pins code_sha256 without {missing}: pin every route file")
+        got = run.get("code_sha256") or code_pins(tuple(want))
+        bad = sorted(p for p in want if got.get(p) != want[p])
+        if bad:
+            raise EvalSetError(f"{name} is pinned to other code: sha256 differs for {bad}")
+        loaded = run.get("loaded") or loaded_route_files()
+        shadow = sorted(p for p, f in loaded.items()
+                        if Path(f).resolve() != (Path(REPO) / p).resolve())
+        if shadow:
+            raise EvalSetError(f"{name}: route files load from elsewhere than the pinned paths: "
+                               f"{shadow}")
+    if entry.get("main_commit") is not None or entry.get("code_sha256") is not None:
+        fresh = run.get("bytecode_fresh")
+        if not (fresh if fresh is not None else fresh_bytecode()):
+            raise EvalSetError(f"{name} is code-pinned: run it without cached byte-code, as "
+                               f"{FRESH_BYTECODE}")
+        unfit = run.get("interpreter") if run.get("interpreter") is not None else clean_interpreter()
+        if unfit:
+            raise EvalSetError(f"{name} is code-pinned: the interpreter is not clean ({unfit}); "
+                               f"run it as {FRESH_BYTECODE}")
+        moved = run.get("moved") if run.get("moved") is not None else route_functions_moved()
+        if moved:
+            raise EvalSetError(f"{name} is code-pinned: route functions do not come from the "
+                               f"pinned files: {moved}")
+        env = run.get("env") if run.get("env") is not None else os.environ
+        set_ = [k for k in ROUTE_ENV if env.get(k)]
+        if set_:
+            raise EvalSetError(f"{name} is code-pinned: unset {set_} (they change routes or answers)")
 
 
 def repo_relative(out: Path) -> str:
@@ -447,7 +647,10 @@ def choose(summaries: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--page", type=Path, required=True)
+    ap.add_argument("--page", type=Path)
+    ap.add_argument("--print-pins", action="store_true",
+                    help="print main_commit and code_sha256 of this checkout (to freeze a held-out "
+                         "set) and exit")
     ap.add_argument("--ledger", type=Path)
     ap.add_argument("--questions", type=Path, default=QUESTIONS)
     ap.add_argument("--arms", default="rules,opus-low")
@@ -460,6 +663,12 @@ def main(argv=None) -> int:
     ap.add_argument("--retry-reason", default=None,
                     help="an engineering retry of an unfinished held-out attempt (logged)")
     a = ap.parse_args(argv)
+    if a.print_pins:
+        print(json.dumps({"main_commit": head_commit()["commit"], "dirty": head_commit()["dirty"],
+                          "code_sha256": code_pins()}, indent=1))
+        return 0
+    if a.page is None:
+        ap.error("--page is required")
     run = {"arms": a.arms.split(","), "repeats": a.repeats}
     try:
         entry = check_set(a.questions, a.manifest)
@@ -487,9 +696,10 @@ def main(argv=None) -> int:
             check_pins(entry, run | shas)
             out_rel = repo_relative(out)
             out = REPO / out_rel
+            pins = {k: entry[k] for k in CODE_PINS if entry.get(k) is not None}
             att = begin_attempt(entry, ATTEMPTS, retry_reason=a.retry_reason,
-                                info=shas | {"arms": a.arms, "repeats": a.repeats, "out": out_rel,
-                                      "n_questions": len(items)})
+                                info=shas | pins | {"arms": a.arms, "repeats": a.repeats,
+                                                    "out": out_rel, "n_questions": len(items)})
         else:
             begin_attempt(entry, a.attempts)
     except EvalSetError as e:

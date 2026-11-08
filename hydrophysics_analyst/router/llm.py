@@ -25,16 +25,44 @@ PRESET_DOCS = {
     "lever_rank": "Ranking of the water-use classes by head rise ('head') or by head rise per energy given up "
                   "('gwh'). Model internals.",
     "township_internals": "One township's model-internal subsidence row under a policy (labelled, size untested). "
-                          "Needs cuts, start, year and a township from the enum.",
+                          "Needs cuts, start, year and a township from the enum. One township referred to but "
+                          "not named ('that coastal township') -> clarify ambiguous_town. The pooled Changhua "
+                          "panel only when that row is asked for as a row (row, township row, 那一列, 'not yet "
+                          "split') under an explicitly Yunlin policy, as its labelled spillover; never "
+                          "Changhua's ground, land, elevation or how strongly Changhua is affected.",
     "rail_internals": "High-speed rail: the head answer plus the rail's model-internal distortion note. "
                       "Never a yes/no or a verdict.",
     "solved_compare": "The page's full-model runs side by side at a reporting year.",
     "cheapest_for_head": "Lowest-energy page lever setting that reaches a head target at the registered wells.",
-    "how_sure": "How far the result is tested and when the registered tests are scored (no parameters).",
+    "how_sure": "How far the result is tested and when the registered tests are scored (no parameters). "
+                "Includes whether the subsidence size was tested at all (checked against leveling, held up, "
+                "能不能當真) when no size, place, policy or comparison is asked, and how sure Changhua's "
+                "direction test is, asked as one question about the direction test itself (does pumping on "
+                "the Changhua side move heads the right way at wells the model was not tuned on) with no "
+                "condition, no lever, no Yunlin and no rise or fall asked.",
 }
+# reporting years (A5): "as of <year>", "by <year>", "in <year>" give the reporting year, not a start
+YEAR_NOTE = ("A year given as 'as of <year>', 'by <year>', 'in <year>' or 截至/到<year> is the reporting "
+             "year, not a start; only 'from / starting / beginning <year>' or <year>年開始/起 is a start. "
+             "A question that gives a reporting year but no start uses the first start: a missing start "
+             "is never a clarification.")
 REFUSAL_DOCS = {
-    "changhua_lever": "any question about Changhua levers or cuts",
-    "subsidence_size": "how much subsidence or how many centimetres are avoided, at fan or county scale",
+    "changhua_lever": "a lever, cut, head, subsidence or any value that is Changhua's (by name, its townships, "
+                      "north of the Choushui, the neighbouring county, both counties, the whole fan), and "
+                      "Changhua's direction asked as a value; also what a Yunlin cut does to Changhua (its ground, "
+                      "land, elevation, or how strongly it is affected) unless the pooled row is asked for as a "
+                      "row; and any later reference back to Changhua (there, the latter, next door, those / these "
+                      "farmers, the ones in question, 那頭, 前者, 那些, 這些); a lever includes well closures, "
+                      "fallowing, quotas, moratoria, buyouts and a switch to surface water (改用地面水, 配額). "
+                      "NOT refused: a Yunlin question that leaves Changhua out ('Changhua unchanged', 'nothing "
+                      "north of the river', 'the neighbouring county isn't in the model') -> route it as the "
+                      "Yunlin question; the pooled Changhua row asked as a row under a Yunlin policy -> "
+                      "township_internals; one how-sure question about whether Changhua's direction test was "
+                      "run, with no condition or lever -> how_sure",
+    "subsidence_size": "how much subsidence or how many centimetres are avoided, at fan or county scale, or any "
+                       "size, number or adjective of it, also inside a how-sure question ('how sure are you of "
+                       "the three centimetres'), or for Yunlin, the county, a policy, a place or against a limit. NOT "
+                       "refused: asking only whether the subsidence size was tested -> how_sure",
     "area": "area sinking faster than a threshold",
     "recommendation": "which policy to choose or recommend",
     "volumes_money": "pumping volumes, money, budgets",
@@ -64,8 +92,8 @@ clarification reason. Use only enum values. If the question continues the previo
 "same for the later start", "and irrigation?"), copy the unchanged parameters from "previous" and list
 them in "inherit". If a required parameter is missing and not in "previous", set clarify. If a cut is not
 on the five-percent grid, set clarify to out_of_grid. Default the reporting year to the page's last year
-and the start to the first start only when the question gives no year at all. answer_lang is the question's
-language (zh for Chinese).
+and the start to the first start only when the question gives no year at all. {YEAR_NOTE}
+answer_lang is the question's language (zh for Chinese).
 
 What each claim status allows: S, D, N may be answered; L only as labelled model internals; W never.
 Questions whose answer would be a W quantity must be refused with the matching reason.

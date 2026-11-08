@@ -24,6 +24,17 @@ is spent); nothing else from v3.
   offered): a township reference together with any head word, whatever else is asked.
 
 Each guard only ever returns a refusal decision; none routes.
+
+Round 10 (ruling R10.2a, docs/analyst/GUARDS_ROUND10.md) narrows them by five exemptions, each
+with must-refuse boundary twins in tests/test_analyst_guards_r10.py: A1 a Yunlin question that
+names Changhua only to leave it out (:func:`yunlin_only_ok`; the pooled row stays answerable only
+as a row, :func:`pooled_row_ok`); A2 whether the subsidence size was tested (:func:`how_sure_only`);
+A3 one how-sure question about Changhua's direction test (:func:`changhua_how_sure_ok`); A4 one
+unnamed township's internals row (:func:`unnamed_township`, clarified by the rules); A5 is in the
+rules stage. The round-10 builder used the spent held-out v3/v4 items as development material.
+The round-9 code is frozen in ``router.r9`` for the $0 replay (R10.3b). After the adversarial
+review of 42a859a the exemptions were narrowed again (tests/test_analyst_guards_r10_review.py): A3
+is a strict allow-list, the spillover-without-row exemption was dropped, A2 and A1 gained vetoes.
 """
 from __future__ import annotations
 
@@ -60,9 +71,27 @@ LEVER = [r"\bcut(?:s|ting)?\b", r"\breduc\w*", r"\bretir\w*", r"\bstop\w*", r"\b
          r"\bcurb\w*", r"\bban(?:s|ned|ning)?\b", r"phase[\s\-]*out", r"\beliminat\w*",
          r"\bpump\w*\s+less\b", r"\bless\s+pumping\b", r"\bscal\w*\s+back\b", r"\btrim\w*",
          r"\d+(?:\.\d+)?\s*(?:%|percent|per\s*cent)", r"\bdrop(?:s|ped|ping)?\s+(?:its|their)?\s*pumping",
-         "減", "停", "少抽", "退場", "禁", r"[一二三四五六七八九十\d]\s*成", "%", "降低抽", "降低用水", "槓桿"]
+         "減", "停", "少抽", "退場", "禁", r"[一二三四五六七八九十\d]\s*成", "%", "降低抽", "降低用水", "槓桿",
+         # round 10 fix (review 1): well closures, fallowing, curtailment, using or pumping less
+         r"\b(?:shut|shuts|shutting|close|closes|closed|closing|seal\w*|cap(?:s|ped|ping)?)\s+(?:\S+\s+){0,3}?"
+         r"wells?\b", r"\bwells?\s+(?:are\s+|being\s+)?(?:closed|shut|sealed|capped)\b",
+         r"\bwell\s+(?:closure|shut[\s\-]*down|sealing)s?\b", r"\bfallow\w*", r"\bcurtail\w*",
+         r"\b(?:use|uses|using|used)\s+less\s+water\b", r"\bless\s+water\b",
+         r"\bpump\w*\s+(?:fewer|less|lower)\b", r"\bfewer\s+(?:hours|wells|pumps|days)\b", r"\blowered\b",
+         r"\bcutback\w*", r"\bration\w*", r"\brestrict\w*",
+         # second review: a switch to surface or tap water, a moratorium, a freeze, quotas, buyouts
+         r"\b(?:switch\w*|convert\w*|replac\w*|substitut\w*|shift\w*|mov(?:e|es|ed|ing)|turn\w*)\s+(?:\S+\s+){0,4}?"
+         r"(?:to|with|by|onto)\s+(?:\S+\s+){0,2}?(?:surface|tap|river|reservoir|piped|canal|alternative)",
+         r"\bsurface[\s\-]+water\b", r"\btap[\s\-]+water\b", r"\bmoratori\w*", r"\bfreez\w*", r"\bfrozen\b",
+         r"\bquotas?\b", r"\bbuy[\s\-]?outs?\b", r"\bbuy(?:s|ing)?\s+(?:\S+\s+){0,2}?out\b",
+         r"\bwater[\s\-]+saving\b", r"\bsav(?:e|es|ing)\s+water\b", r"\bconserv\w*", r"\bcaps?\s+on\b",
+         "改用", "替代", "配額", "凍結", "節約用水", "節約", "收購", "地面水", "總量管制", "管制",
+         "少用水", "關井", "封井", "休耕", "停灌", "節水", "限水", "限抽", "少用"]
 PRONOUN = [r"\b(?:it|its|they|their|them|there|locally)\b", "也", "亦", "當地", "該縣", "他們", "它", "那邊",
-           "那裡", "那裏", "自己"]
+           "那裡", "那裏", "自己",
+           # round 10, second review: demonstratives ("those farmers", "the farmers in question", 那些農民)
+           r"\b(?:those|these|such|said)\b", r"\bin\s+question\b", r"\bconcerned\b",
+           "那些", "這些", "那個", r"(?<!應)該(?!不|會|是|怎)", r"(?<![因如從彼])此(?!外|時)", "彼"]
 CLAUSE = r"[。；;？?！!，,:：]|\band\b|\bwhile\b|\bbut\b|\bthen\b|並且|而且|以及|同時"
 
 
@@ -73,7 +102,11 @@ def _clauses(s: str) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 # Changhua
 # ---------------------------------------------------------------------------------------------
-CHANGHUA_WORD = r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰\s*化"
+CHANGHUA_WORD = (r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰\s*化"
+                 # third review: other names of Changhua's ground (Shoka, Changbin, Bagua, the Dadu)
+                 r"|\bshoka\b|\bchang[\s\-]?bin\b|彰濱|八卦山|\bba[\s\-]?gua(?:\s*(?:shan|mountain|plateau))?\b"
+                 r"|\bdadu\b|大肚溪|烏溪")
+_CH_T = r"(?:(?:chang|zhang)[\s\-_']*hua|changhwa|彰化)(?:'s)?(?:\s*county|縣)?"
 CHOUSHUI = (r"(?:choushui|chuoshui|zhuoshui|jhuoshuei|jhuoshui|choshui|cho[\s\-]shui|chou[\s\-]shui|"
             r"zhuo[\s\-]shui|jhuo[\s\-]shuei)(?:[\s\-]*(?:river|creek|hsi|xi))?")
 RIVER = rf"(?:the\s+)?(?:{CHOUSHUI}|river)"
@@ -87,6 +120,9 @@ GEO_EN = [rf"\bnorth(?:ern)?\s+(?:of|side\s+of|bank\s+of|banks\s+of|shore\s+of)\
           r"\bnorth(?:ern)?\s+county\b", r"\bcounty\s+(?:above|north\s+of|to\s+the\s+north\s+of)\s+yun",
           r"\b(?:above|north\s+of)\s+yun[\s\-]*lin\b", r"\byun[\s\-]*lin\s+and\s+(?:its|the)\s+neighbo(?:u)?r",
           r"\bits\s+neighbo(?:u)?r(?:ing)?\b",
+          # round 10: "the north bank" alone, but not a named Yunlin river's (Beigang, Huwei ...)
+          r"\b(?:north(?:ern)?|far)\s+(?:bank|shore)\b(?!\s+of\s+(?:the\s+)?(?:new\s+|xin[\s\-]?)?"
+          r"(?:beigang|peikang|huwei|hu[\s\-]wei|xinhuwei|hsinhuwei|yunlin|sanjie|pei[\s\-]kang|xin[\s\-]huwei)\b)",
           r"\bnorth(?:ern)?\s+(?:half|part|side|portion|end)\s+of\s+the\s+(?:alluvial\s+)?fan\b",
           r"\bfan'?s\s+north(?:ern)?\s+(?:half|part|side|portion)"]
 GEO_ZH = [r"濁水(?:溪)?(?:以|的)?北", r"濁水溪(?:的)?(?:對岸|兩岸|彼岸|另一邊|另一側)",
@@ -94,7 +130,9 @@ GEO_ZH = [r"濁水(?:溪)?(?:以|的)?北", r"濁水溪(?:的)?(?:對岸|兩岸|
           r"鄰縣|隔壁(?:的)?縣", r"北(?:邊|方|側)的縣", r"雲林(?:以北|北邊|北方|的北邊)", r"雲林(?:和|與|跟|及)(?:其)?鄰",
           r"(?:沖積扇|扇)(?:的)?北(?:半部|部|側|邊|段)"]
 # the whole fan, which includes Changhua: a Changhua lever only when a lever is asked
-WHOLE_FAN = [r"\b(?:whole|entire|full)\s+(?:of\s+the\s+)?(?:choushui\s+)?(?:alluvial\s+)?fan\b",
+WHOLE_FAN = [r"\b(?:choushui|zhuoshui)\s+plain\b", r"\bplain\b", r"\beverywhere\b(?!\s+in\s+yun)",
+             r"\b(?:up|down|along)\s+the\s+coast\b", "平原", "到處", "各地", "全區域",
+             r"\b(?:whole|entire|full)\s+(?:of\s+the\s+)?(?:choushui\s+)?(?:alluvial\s+)?fan\b",
              r"\b(?:across|throughout|over|all\s+of)\s+the\s+(?:whole\s+|entire\s+)?(?:choushui\s+)?alluvial\s+fan\b",
              r"\bfan[\s\-]*wide\b", "全扇區", "全扇", r"整個(?:濁水溪)?(?:沖積)?扇", "全沖積扇", "沖積扇全區", "扇區全部"]
 # Changhua County's townships (the page pools them into one row), in romanisations in use
@@ -117,7 +155,6 @@ _CH_TOWNS_EN_RE = re.compile(r"\b(?:" + "|".join(n.replace("-", r"[\s\-']?") for
 # Yunlin policy, asked as that row (township / row / 鄉鎮 / 列)
 POOLED_ROW = [r"\brows?\b", r"\bpanel\b", r"\btownships?\b", r"\btowns?\b", r"not\s+yet\s+split",
               "列", "鄉鎮", "未分"]
-
 
 def changhua_ref(s: str) -> frozenset[str]:
     """How the question reaches Changhua: ``word`` (the name itself), ``town`` (one of its
@@ -157,7 +194,13 @@ ALSO = [rf"{_CH}\s*,?\s+(?:too|as\s+well|also|likewise)\b", rf"\b(?:so|as)\s+(?:
         rf"{_CH}\s+(?:matches|matched|matching|follows\s+suit|joins\s+in|copies)\b",
         rf"\b(?:matched|matching|equal|equivalent|same|identical|parallel|similar)\s+(?:\S+\s+){{0,3}}?"
         rf"(?:in|for|by|across)\s+(?:the\s+)?{_CH}",
-        rf"{_CH}(?:也|亦|同樣|一樣|跟進|照做|比照|同步|跟著)", rf"(?:也|同樣|一樣|比照|跟進)[^，,。？?]{{0,4}}{_CH}"]
+        rf"{_CH}(?:也|亦|同樣|一樣|跟進|照做|比照|同步|跟著)", rf"(?:也|同樣|一樣|比照|跟進)[^，,。？?]{{0,4}}{_CH}",
+        # round 10 fix (review 2): Changhua follows, adopts, mirrors, copies or imitates it
+        rf"{_CH}\s+(?:\S+\s+){{0,2}}?(?:follow|follows|followed|adopt\w*|mirror\w*|cop(?:y|ies|ied|ying)|"
+        rf"imitat\w*|replicat\w*|emulat\w*|repeat\w*)\b",
+        rf"\b(?:followed|adopted|mirrored|copied|imitated|replicated|emulated|repeated|matched)\s+(?:also\s+)?"
+        rf"(?:by|in)\s+(?:the\s+)?{_CH}",
+        rf"{_CH}[^，,。？?；;]{{0,6}}(?:照著|照樣|仿照|仿效|效法|學雲林|跟雲林)"]
 _PREP_TO_COUNTY = re.compile(r"^\s*(?:\S+\s+){0,4}?(?:in|at|for|across|by|throughout|within|of|from|on|among|"
                              r"(?:appl\w*|extend\w*|imposed|introduced)\s+(?:also\s+)?(?:to|in|on))"
                              r"\s+(?:the\s+)?$|^\s*$", re.I)
@@ -165,6 +208,17 @@ _PREP_TO_COUNTY = re.compile(r"^\s*(?:\S+\s+){0,4}?(?:in|at|for|across|by|throug
 
 def _cjk(ch: str) -> bool:
     return "\u4e00" <= ch <= "\u9fff"
+
+
+def _yunlin_reflexive(cl: str, m) -> bool:
+    """Round 10 (A1): 自己 right after 雲林 (雲林縣自己的魚塭) is Yunlin's own, not a pronoun."""
+    return m.group(0) == "自己" and bool(re.search(r"雲林(?:縣)?(?:的)?\s*$", cl[:m.start()]))
+
+
+def _zh_target(cl: str, m) -> bool:
+    """Round 10 (A1): in Chinese a county after the lever and right after 對 / 影響(到) is the
+    lever's target (雲林灌溉減三成對彰化有什麼影響), not its owner."""
+    return bool(re.search(r"(?:對|影響到?)\s*$", cl[:m.start()]))
 
 
 def changhua_owns_a_lever(s: str) -> bool:
@@ -189,14 +243,16 @@ def changhua_owns_a_lever(s: str) -> bool:
         levs = [m for p in LEVER for m in re.finditer(p, cl, re.I)]
         cty = ([(m, "y") for p in YUNLIN for m in re.finditer(p, cl, re.I)]
                + [(m, "c") for m in re.finditer(CHANGHUA_WORD, cl, re.I)]
-               + [(m, "c") for p in PRONOUN for m in re.finditer(p, cl, re.I)])
+               + [(m, "c") for p in PRONOUN for m in re.finditer(p, cl, re.I)
+                  if not _yunlin_reflexive(cl, m)])
         for lv in levs:
             zh = _cjk(cl[lv.start()])
             near = []
             for m, k in cty:
                 if m.end() <= lv.start():                         # the county comes first
                     near.append((lv.start() - m.end(), k == "y", k))
-                elif m.start() >= lv.end() and (zh or _PREP_TO_COUNTY.match(cl[lv.end():m.start()])):
+                elif m.start() >= lv.end() and ((zh and not _zh_target(cl, m))
+                                                or _PREP_TO_COUNTY.match(cl[lv.end():m.start()])):
                     near.append((m.start() - lv.end(), k == "y", k))      # it comes after, as object
             if near and min(near)[2] != "y":
                 return True
@@ -250,7 +306,8 @@ SUBS_WORDS = [r"subsid\w*", r"\bsink\w*", r"\bsank\b", r"\bsunk\w*", r"\bsettl(?
               "下陷", "沉陷", "沉降", "下沉", "少沉", "多沉", "沉多少", "沉了", "會沉", "沉得",
               "地層", "地盤", "壓密", "塌陷", "地面變形", "地表變形", "地層變形"]
 SUBS_UNITS = [r"\bcm\b", r"centimet\w*", r"\bmm\b", r"millimet\w*", r"\binch(?:es)?\b",
-              "公分", "厘米", "釐米", "毫米", "公釐", "公厘"]
+              "公分", "厘米", "釐米", "毫米", "公釐", "公厘",
+              r"\d\s*(?:cm|mm)\b"]                  # round 10: "3cm" (no word boundary inside)
 # the ground surface (never "groundwater" / "ground water" / "surface water") moving down or back
 # up; "on the ground" (in practice) is removed before matching
 GROUND = (r"(?:\b(?:ground|terrain)\b(?!\s*-?\s*water)|\bland[\s\-]+(?:surface|level|elevation)\b|"
@@ -281,7 +338,13 @@ META = [r"how\s+(?:sure|confident|reliable|trustworthy|certain|well\s+tested|far
         r"\bwhy\s+(?:is|are|isn't|aren't|was|can't|cannot|won't|don't|do\s+you\s+not|no|not)\b",
         r"\bscored\b",
         "可信", "可靠", "多準", "信心", "驗證", "檢驗", "測試", "撤回", "為什麼", "為何", "證據", "支持", "不確定",
-        "評分", "登錄"]
+        "評分", "登錄",
+        # round 10 (A2): checked against the leveling, did it hold up, 能不能當真 ...
+        r"\bcheck(?:ed|s)?\b", r"\bcompared\s+(?:with|to|against)\b", r"\b(?:held|hold|holds)\s+up\b",
+        r"\bconfirm\w*", r"\bcorroborat\w*", r"\bbacked\s+up\b", r"\bground[\s\-]*truth\w*",
+        r"\blevel(?:l)?ing\b", r"\baccura\w*", r"\bevaluat\w*", r"\bassess\w*", r"\bprove[nd]?\b",
+        "檢查", "核對", "比對", "對照", "查證", "證實", "經得起", "當真", "準不準", "準確", "靠得住", "信得過",
+        "驗過", "測過", "檢核", "評估", "水準測量"]
 # where the size is asked: overrides the named-township and pooled-row exemptions, the rail
 # exemption and the how-sure exemption. Bare whole / entire / total / overall / 總 / 平均 / 整個 /
 # 整體 count only next to a county or fan word: "Tuku's total" is still Tuku's row.
@@ -298,7 +361,9 @@ SCOPE_AREA = [r"\bfan\b", r"\bfan[\s\-]*(?:average|wide|total|mean)\b", r"\ballu
 YESNO = [r"^\s*(?:please\s+)?(?:is|are|has|have|was|were|does|do|did|can|could|will|would|should|"
          r"how\s+(?:sure|confident|reliable|certain|well|far\s+(?:is|are|has))|why|when|"
          r"tell\s+(?:me|us)\s+(?:whether|if))\b",
-         r"[嗎][？?]?\s*$", "有沒有", "是否", "為什麼", "為何", "何時", "什麼時候"]
+         r"[嗎][？?]?\s*$", "有沒有", "是否", "為什麼", "為何", "何時", "什麼時候",
+         # round 10 (A2): whether ... anywhere, and the Chinese A-not-A question (能不能, 是不是)
+         r"\bwhether\b", r"\bwonder\w*\s+if\b", r"([一-鿿])[不沒]\1"]
 # ... that does not ask what the quantity is, or for it to be shown (tell keeps its whether / if)
 WHAT = [r"\bwhat(?:'s|\s+is|\s+are|\s+was|\s+were|\s+would\s+be|\s+will\s+be)\b"
         r"(?!\s+(?:the\s+)?(?:evidence|status|test|basis|reason))",
@@ -321,15 +386,75 @@ def area_scope(s: str) -> bool:
     return _has(SCOPE_AREA, norm(s))
 
 
+# round 10 (A2): "減少下陷量" / "subsidence reduction" names the avoided subsidence, not a lever;
+# taken out before the lever check of how_sure_only only (a real lever word anywhere still counts)
+SUBS_REDUCTION = [r"\breduc\w*\s+(?:in\s+|of\s+)?(?:the\s+)?(?:land\s+|ground\s+)?(?:subsid\w*|sinking|settlement)",
+                  r"\b(?:subsid\w*|sinking|settlement)\s+reduc\w*",
+                  r"減少(?:的)?(?:地層)?(?:下陷|沉陷|沉降|下沉)(?:量)?", r"(?:下陷|沉陷|沉降|下沉)(?:的)?減少(?:量)?"]
+# a bare number (not a year) or a number glued to cm / mm asks a size inside a how-sure form
+# a size asked by a sign, zero, a fraction or a multiple (round 10, inside a how-sure form)
+SIZE_WORDS_R10 = [r"\b(?:positive|negative|zero|non[\s\-]?zero|nil)\b",
+                  r"\b(?:half|halves|halved|halving|double\w*|twice|thirds?|quarters?|percent|fraction)\b",
+                  "一半", "減半", "倍", r"[一二兩三四五六七八九十]\s*成", "百分之", "正值", "負值", "為零", "是零", "零"]
+BARE_NUMBER = [r"(?<![A-Za-z0-9_.])(?!(?:19|20)\d\d(?!\d))\d+(?:\.\d+)?(?!\d)", r"\d\s*(?:cm|mm)\b",
+               r"[一二兩三四五六七八九十半]\s*(?:公分|厘米|釐米|毫米|公釐|公厘)"]
+
+
+# round 10 fix (review 3): what else ends the how-sure exemption. A place (Yunlin or the county as
+# the place of the size), a policy or scenario, a size adjective, a zero / stop verb, a comparison,
+# a request to work the number out, a spelled number, or a length unit
+WHAT_R10 = [r"\b(?:calculat\w*|comput\w*|summari[sz]\w*|quantif\w*|work\s+out)\b",
+            r"(?<!the\s)(?<!this\s)(?<!that\s)(?<!its\s)(?<!subsidence\s)\bestimate\b",
+            r"\b(?:say|need|needs|like|want|wants|please|state)\b",
+            # 算 as a request (算一下, 幫我算), not 模型算出來的 (what the model computed)
+            r"算一下", r"算算", r"(?:幫我|請|你|再)算", r"算給", r"計算一下", r"(?<![主重需只])要", "想知道", "說說",
+            "講一下"]
+HOW_SURE_VETO = (YUNLIN + [r"\bcount(?:y|ies)\b", "縣"]
+                 + [r"\bpolic(?:y|ies)\b", r"\bscenarios?\b", r"\bmeasures?\b", "政策", "方案", "情境", "措施"]
+                 + [r"\b(?:considerabl\w*|minor|noticeabl\w*|appreciabl\w*|modest|marginal|measurabl\w*|"
+                    r"slight\w*|major|dramatic\w*|notabl\w*|minimal|serious\w*|sever\w*|strong\w*|weak\w*|"
+                    r"great\w*|massive|enormous|little|lot|much|real)\b", "嚴重", "很多", "不少", "有限", "微小"]
+                 # second review: more size words, ordinal fractions, any digit, magnitude
+                 + [r"\b(?:trivial|insignificant|perceptibl\w*|imperceptibl\w*|pronounced|detectabl\w*|"
+                    r"undetectabl\w*|noise|noticeabl\w*|magnitude|enough|matter\w*|nothing|nearly|almost|"
+                    r"fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?)\b", r"\d",
+                    "算不算", "夠不夠", "忽略", "有感", "感覺", "數量級",
+                    # third review
+                    r"\b(?:moderate\w*|minuscule|miniscule|hefty|paltry|tiny|decimet\w*|coins?|thickness|"
+                    r"overestimat\w*|underestimat\w*|over-?stat\w*|under-?stat\w*|exaggerat\w*|range)\b",
+                    "偏大", "偏小", "微不足道", "輕微", "毫釐", "公寸", "高估", "低估", "誇大", "範圍", "壹", "貳", r"參(?!數|考|與|加|照)", "肆", "伍", "陸", "柒", "捌",
+                    "玖", "拾"]
+                 + [r"\bhalt\w*", r"\bends?\b", r"\bended\b", r"\bending\b", r"\bceas\w*", r"\bvanish\w*",
+                    r"\bdisappear\w*", r"\bgone\b", "不再", "消失", "結束", "停止"]
+                 + [r"\bthan\b", r"\bexceed\w*", r"\bsurpass\w*", r"\b(?:faster|slower|quicker)\b",
+                    r"\blimits?\b", r"\bthresholds?\b", r"\b(?:above|below|beyond|within)\s+(?:the\s+)?"
+                    r"(?:measurement\s+)?(?:error|noise)", "超過", "大於", "小於", "高於", "低於", "門檻", "上限", "比(?!對)"]
+                 + [r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|hundred)\b",
+                    r"[一二兩三四五六七八九十][點点]", r"[點点][一二兩三四五六七八九十]"]
+                 + [r"\bmet(?:er|re)s?\b", r"\bfeet\b", r"\bfoot\b", "公尺", "米", "寸", "英寸"]
+                 # any other place than the question as a whole: coast, inland, a zone, the rail
+                 + [r"\bcoast\w*", r"\binland\b", r"\bzones?\b", r"\bregions?\b", r"\bareas?\b",
+                    r"\balong\b", r"\bnear\b", r"\bnorth\w*", r"\bsouth\w*", r"\beast\w*", r"\bwest\w*"]
+                 + RAIL_WORDS + ["沿海", "海邊", "內陸", "地區", "區域", "沿線", "附近", "東部", "西部", "南部", "北部"]
+                 # a water-use class (a class lever's subsidence), a row or panel, a year
+                 + CLASS_ANY + [r"\brows?\b", r"\bpanel\b", "列", r"(?<!\d)(?:19|20)\d\d(?!\d)"])
+
+
 def how_sure_only(s: str) -> bool:
     """Asks how far the subsidence result is tested, not what it is: how-sure wording (META) in a
     yes/no or how-sure form (YESNO), with no 'what is', no give / show / print / list, no 多少
     (WHAT), no lever, no area-scope word, and no size asked except by the bare words size /
-    number (no size adjective, no decimal number either)."""
+    number (no size adjective, no decimal number either). Round 10 (A2): no bare number either,
+    and the avoided-subsidence noun (減少下陷量, subsidence reduction) is not read as a lever; after
+    the review, none of HOW_SURE_VETO (Yunlin or the county, a policy or scenario, size adjectives,
+    zero verbs, comparisons, spelled numbers, length units) and none of WHAT_R10 either."""
     s = norm(s)
-    asks = [p for p in MAGNITUDE if p != SIZE_WORD] + SIZE_ADJ
-    return (_has(META, s) and _has(YESNO, s) and not _has(WHAT, s) and not has_lever(s)
-            and not area_scope(s) and not _has(asks, s))
+    asks = [p for p in MAGNITUDE if p != SIZE_WORD] + SIZE_ADJ + BARE_NUMBER + SIZE_WORDS_R10
+    unlevered = s
+    for p in SUBS_REDUCTION:
+        unlevered = re.sub(p, " ", unlevered, flags=re.I)
+    return (_has(META, s) and _has(YESNO, s) and not _has(WHAT + WHAT_R10, s)
+            and not has_lever(unlevered) and not area_scope(s) and not _has(asks + HOW_SURE_VETO, s))
 
 
 def subsidence_size(s: str) -> bool:
@@ -541,3 +666,264 @@ def township_head(s: str, b: PageBundle) -> bool:
     """A township reference with any head word: refused whatever else the question asks."""
     s = norm(s)
     return township_ref(s, b) and _has(HEAD_WORDS, s)
+
+
+# ---------------------------------------------------------------------------------------------
+# round 10 (ruling R10.2a): the narrowed exemptions. Each one only lets a question past a refusal
+# (to the rules and the LLM); none routes. Every exemption has must-refuse boundary twins in
+# tests/test_analyst_guards_r10.py.
+# ---------------------------------------------------------------------------------------------
+# finer clauses than CLAUSE: also sentences, so / because / since / whereas / though, brackets
+_CLAUSE_X = (CLAUSE + r"|(?<!\d)\.(?!\d)|\bso\b|\bbecause\b|\bsince\b|\bwhereas\b|\b(?:al)?though\b|"
+             r"[()（）—–]")
+# words that add Changhua to a lever rather than leave it out: any of them ends the A1 exemption
+ADDITIVE = [r"\balso\b", r"\btoo\b", r"\bas\s+well\b", r"\bboth\b", r"\beither\b", r"\bneither\b", r"\bnor\b",
+            r"\blikewise\b", r"\bin\s+addition\b", r"\badditional\w*", r"\bbesides\b", r"\bplus\b",
+            r"\btogether\b", r"\bjointly\b", r"\balong\s+with\b",
+            r"(?<!\bstays\sthe\s)(?<!\bstay\sthe\s)(?<!\bremains\sthe\s)(?<!\bremain\sthe\s)(?<!\bkept\sthe\s)"
+            r"(?<!\bkeeps\sthe\s)(?<!\bkeep\sthe\s)\bsame\b", r"\bsimilar\w*", r"\bequal\w*",
+            r"\bmatch\w*", r"\bnot\s+(?:only|just)\b", r"\bfollow\w*\s+suit\b", r"\bapart\s+from\b",
+            r"\bother\s+than\b", r"\btwo\b", r"\bneighbo(?:u)?r\w*\s+and\b",
+            "也", "亦", "還", "都", "同樣", "一樣", "一起", "一併", "同時", "跟著", "跟進", "比照", "照做", "同步", "一并", "并且",
+            r"兩(?!成)", "雙", "共同", "連同", "以及", "不只", "不僅", "而且", "並且", "除了", "彰雲", "雲彰"]
+# the clause leaves Changhua out: each pattern carries its own negation
+EXCLUDE = [r"\bnothing\s+(?:on|in|for|from|across|at|north)\b",
+           r"\bnot\s+(?:on|in|for|from|at|across)\b", r"\bnot\s+(?:the\s+)?(?=" + _CH_T + r")",
+           r"\b(?:is|are|was|were)(?:n't|\s+not)\s+(?:in|part\s+of|included|includ\w*|modell?ed|covered|"
+           r"touched|changed|cutting|cut|reducing|pumping\s+less)\b",
+           r"\b(?:does|do|did|will|would)(?:n't|\s+not)\s+(?:cut|reduce|change|touch|curb|trim|stop|retire|"
+           r"pump\s+less|take\s+part|join)\b", r"\bwon't\s+(?:cut|reduce|change|touch)\b",
+           r"\bno\s+(?:cuts?|change|policy|lever)\s+(?:in|for|on|across)\b",
+           r"\b(?:excluding|excluded|exclude|except(?:\s+for)?|without|unlike|not\s+including|outside)\b",
+           r"\bleav\w*\s+(?:\S+\s+){0,6}?(?:out|alone|aside|as\s+(?:is|it\s+is))\b", r"\bleft\s+(?:out|alone|aside)\b",
+           r"\b(?:unchanged|untouched|unaffected|excluded)\b", r"\bas\s+(?:it\s+)?is\b",
+           # review finding 5: aside, not counting, ignore, does nothing, stays the same, no change in
+           r"\baside\b", r"\bnot\s+counting\b", r"\bignor(?:e|es|ed|ing)\b", r"\bdoes\s+nothing\b",
+           r"\b(?:stays?|remains?|kept|keeps?)\s+the\s+same\b", r"\bno\s+change\s+(?:in|for|on|at)\b",
+           "沒有動作", "沒動作", "沒有動", r"不在(?:模型|計算|討論)?的?範圍(?:內|之內)?",
+           r"\bout\s+of\s+(?:it|this|scope|the\s+(?:model|question|picture|policy|scope))\b",
+           r"\bnot\s+(?:in|part\s+of)\s+the\s+model\b",
+           r"(?:完全)?(?:不動|不變|不減(?:抽|少)?|不停(?:抽)?|不管|不算|不計|不列入|不包括|不含|不納入|不在模型)",
+           r"維持(?:原狀|現狀|不變)", "照舊", "除外", "排除", "不考慮", "不像", "沒有減", "沒減"]
+NEGATION = [r"\bnot?\b", r"n't\b", r"\bnever\b", r"\bnothing\b", r"\bnone\b", r"\bwithout\b", r"\bun\w+ed\b",
+            r"\bexcept\w*", r"\bexclud\w*", r"[不沒無非未別勿莫]",
+            # third review: non-Yunlin, 雲林以外 / 之外, beyond Yunlin's border
+            r"\bnon[\s\-]", "以外", "之外", "外的", r"\bbeyond\b", r"\bborder\w*"]
+# in the rest of an exclusion clause a comparative also turns "doesn't cut less" into a cut
+COMPARATIVE = [r"\bless\b", r"\bfewer\b", r"\bmore\b", r"\bfurther\b", r"\bextra\b", "少", "多", "更"]
+# outside the exclusion clauses of A1: no other place (a bank, side, river, county, neighbour,
+# the fan, 北 but 北港, 對岸 ...), and Yunlin not set aside
+_ELSEWHERE = [r"\b(?:taichung|chiayi|nantou|tainan|kaohsiung|pingtung|taipei|hsinchu|miaoli|taoyuan|"
+              r"keelung|yilan|hualien|taitung|penghu|kinmen|matsu)\b",
+              "台中", "嘉義", "南投", "台南", "高雄", "屏東", "台北", "新竹", "苗栗", "桃園", "基隆", "宜蘭", "花蓮",
+              "台東", "澎湖", "金門", "馬祖",
+              r"\bnorth\w*(?!\s+yun)", r"\bbanks?\b", r"\bsides?\b", r"\bacross\b", r"\brivers?\b",
+              r"(?<!yunlin\s)\bcount(?:y|ies)\b", r"\bneighbo\w*", r"\bfan\b", r"\bupstream\b", r"\bregion\w*",
+              r"北(?!港)", "對岸", "鄰", "扇", "另一邊", "其他縣", "外縣", "溪",
+              # "the other farmers", elsewhere, outside (not the class "other uses")
+              r"\bother\b(?!\s+(?:uses?|pumping|class\w*|water[\s\-]*uses?)\b)", r"\belsewhere\b",
+              r"\boutside\b", "別處", "其餘", "外面", "外地",
+              # third review: an upriver counterpart, up the coast
+              r"\bcounterpart\w*", r"\bup[\s\-]*(?:river|stream)\b", r"\bup\s+the\s+coast\b"]
+CONTRAST = [r"\b(?:but|however|yet|though|although|still|nevertheless|nonetheless|instead|whereas|while)\b",
+            "但", "可是", "不過", "然而", "卻", "仍", "反而", "而是",
+            # the review's broken exclusions (finding 4): except that, save, bar, until, for now,
+            # hardly, far from, not really ...
+            r"\bexcept\s+(?:that|when|if|where|for\s+(?:its|their|it|the\s+\w+\s+it))\b", r"\bsave\b",
+            r"\bexcept\s+(?:for\s+)?(?:a|an|the|some|one|any|its|their|new)\b", r"\bapart\s+from\b",
+            r"\bbar\b", r"\bbarring\b", r"\bbut\s+for\b", r"\buntil\b", r"\btill\b", r"\bfor\s+now\b",
+            r"\bhardly\b", r"\bscarcely\b", r"\bbarely\b", r"\bfar\s+from\b", r"\bnot\s+really\b",
+            r"\bnot\s+so\b", r"\btemporar\w*", r"\b(?:at\s+first|initially|for\s+the\s+(?:moment|time\s+being))\b",
+            r"\bunless\b", r"\bonly\b", r"\balmost\b", r"\bnearly\b", r"\bpartly\b", r"\bpartially\b",
+            "除非", "暫時", "目前", "先", "直到", "為止", "只到", "幾乎", "不完全", "並非", "未必", "部分"]
+_SET_ASIDE = [r"\bignor\w*", r"\bskip\w*", r"\bset\s+aside\b", r"\bforget\b", "忽略", "撇開", "不管", "不算"]
+# third-person words that could bring Changhua back into a later clause ("there" only as a place)
+_BACK_REF = [r"\b(?:those|these|such|said)\b", r"\bin\s+question\b", r"\bconcerned\b",
+             "那些", "這些", "那個", r"(?<!應)該(?!不|會|是|怎)", r"(?<![因如從彼])此(?!外|時)", "彼",
+             r"\b(?:the\s+)?(?:latter|former)\b", r"\bnext\s+door\b", r"\bover\s+there\b",
+             r"\bthat\s+(?:side|place|area|one|county|region|bank|part)\b", r"\bthe\s+excluded\b",
+             r"\bthe\s+other\s+(?:one|county|side|place)\b", r"\bthe\s+rest\b", r"\bthe\s+neighbo\w*",
+             "那一側", "那側", "對側", "另一側", "那頭", "那一頭", "對面", "隔壁", "前者", "後者", r"其(?!他|中|實|餘)", "該地", "此地", "該處", "那一邊",
+             "另一個縣", "另一縣", "別的縣", "鄰近",
+             r"\b(?:it|its|they|their|them|locally)\b", r"(?<!\bis\s)(?<!\bare\s)\bthere\b(?!\s+(?:is|are|was|were|will|'s))",
+             "當地", "該縣", "他們", "它", "那邊", "那裡", "那裏", "那里", "自己"]
+
+
+def _ch_hit(cl: str) -> bool:
+    return bool(re.search(CHANGHUA_WORD, cl, re.I)) or _has(GEO_EN + GEO_ZH, cl)
+
+
+def _excluded_clause(cl: str) -> bool:
+    """A Changhua clause that only leaves Changhua out: an exclusion pattern; once those words are
+    taken out, no other negation (no double negative), no lever, no head or subsidence word."""
+    if not _has(EXCLUDE, cl):
+        return False
+    # Yunlin named in the exclusion clause itself ("Changhua stays the same as Yunlin") ties the
+    # two counties together; Yunlin inside a geography phrase ("the county north of Yunlin") does not
+    keep = [True] * len(cl)
+    for p in GEO_EN + GEO_ZH:                      # every geography span, all read on the clause
+        for m in re.finditer(p, cl, re.I):
+            keep[m.start():m.end()] = [False] * (m.end() - m.start())
+    bare = "".join(ch if k else " " for ch, k in zip(cl, keep, strict=True))
+    if _has(YUNLIN, bare):
+        return False
+    rest = cl
+    for p in EXCLUDE:
+        rest = re.sub(p, " ", rest, flags=re.I)
+    return not (_has(NEGATION + COMPARATIVE, rest) or has_lever(rest) or _has(HEAD_WORDS, rest)
+                or subsidence_words(rest))
+
+
+def yunlin_only_ok(s: str) -> bool:
+    """A1 (R10.2a): a Yunlin question (a Yunlin lever, or Yunlin's levers ranked) that names
+    Changhua — by name or by geography (north of the Choushui, the neighbouring county) — only to
+    leave it out ("nothing on the north side of the river", 彰化那邊完全不動, "the neighbouring county
+    isn't in the model").
+
+    Every clause that reaches Changhua must be such an exclusion clause (:func:`_excluded_clause`);
+    Yunlin is named; no Changhua township and no whole-fan reference; no additive word (also, both,
+    too, 也, 都, 除了 ...); no third-person word after the first Changhua clause; and, with the
+    exclusion clauses taken out, no lever is Changhua's (:func:`changhua_owns_a_lever`)."""
+    s = norm(s)
+    ref = changhua_ref(s)
+    if not ref or not ref <= {"word", "geo"} or not _has(YUNLIN, s) or _has(ADDITIVE, s):
+        return False
+    # a contrast after Changhua is named ("..., Changhua unchanged, but more stop pumping") may
+    # give the next lever to Changhua: refuse
+    first = min([m.start() for m in re.finditer(CHANGHUA_WORD, s, re.I)]
+                + [m.start() for p in GEO_EN + GEO_ZH for m in re.finditer(p, s, re.I)])
+    if _has(CONTRAST, s[first:]):
+        return False
+    clauses = [c for c in re.split(_CLAUSE_X, s, flags=re.I) if c.strip()]
+    # both counties joined or Changhua following suit, read within clauses ("Unlike Changhua,
+    # Yunlin ..." is no list of the two counties)
+    if _has(BOTH + ALSO, " ; ".join(clauses)):
+        return False
+    # a Changhua reference that spans two clauses cannot be judged clause by clause: refuse
+    pieces = sum(len(re.findall(CHANGHUA_WORD, c, re.I)) for c in clauses)
+    if pieces != len(re.findall(CHANGHUA_WORD, s, re.I)) or (_has(GEO_EN + GEO_ZH, s)
+                                                              and not any(_has(GEO_EN + GEO_ZH, c) for c in clauses)):
+        return False
+    kept, seen_ch = [], False
+    for cl in clauses:
+        if _ch_hit(cl):
+            if not _excluded_clause(cl):
+                return False
+            seen_ch = True
+            continue
+        if seen_ch and _has(_BACK_REF, cl):
+            return False
+        # a later clause that negates something without naming Yunlin may be Changhua's (review 4)
+        if seen_ch and _has(NEGATION, cl) and not _has(YUNLIN, cl):
+            return False
+        # a lever after a Changhua clause must name Yunlin in its own clause (second review: the
+        # Yunlin-only scope exemption let "those farmers halve aquaculture" through; dropped)
+        if seen_ch and has_lever(cl) and not _has(YUNLIN, cl):
+            return False
+        # no other place than Yunlin outside the exclusion clauses, and Yunlin itself not left out
+        if _has(_ELSEWHERE, cl) or (_has(YUNLIN, cl) and _has(NEGATION + _SET_ASIDE, cl)):
+            return False
+        kept.append(cl)
+    return seen_ch and not changhua_owns_a_lever(" ; ".join(kept))
+
+
+# A3: how sure is Changhua's direction test (E25/E26: direction only, at wells not tuned on)
+CH_TEST = META + [r"\bsigns?\b", r"\bjudged\b", r"\bheld[\s\-]*out\b", r"\bout[\s\-]*of[\s\-]*sample\b",
+                  r"\b(?:never|not)\s+(?:been\s+)?(?:tuned|calibrated|fitted|trained)\b", r"\bindependent\b",
+                  "跡象", "沒調", "未調", "未校準", "沒校準", "獨立", "樣本外"]
+# after the review (finding 1) only direction nouns name the topic: the direction, the right /
+# wrong way, the response; a rise, fall or recovery is a value and is refused (A3_VETO)
+DIRECTION_TOPIC = [r"\bdirection\w*", r"\b(?:right|wrong|correct|expected)\s+way\b", r"\brespon\w*",
+                   r"\breact\w*", "方向", "正確", "反應", "回應"]
+# A3 is an allow-list: any of these refuses it (review finding 1)
+A3_VETO = (
+    # a condition or a scenario: if / when / once / after / under / as ..., 如果 / 時 / 後 ...
+    [r"\bif\b", r"\bwhen\b(?!\s+(?:is|will|was|are|does|do|did|would)\b)", r"\bwhenever\b", r"\bonce\b",
+     r"\bafter\b", r"\bunder\b", r"\bas\b", r"\bwhile\b", r"\bgiven\b", r"\bprovided\b", r"\bsuppos\w*",
+     r"\bassum\w*", r"\bunless\b", r"\bin\s+case\b", r"\bscenario\w*", r"\bpolic(?:y|ies)\b",
+     "如果", "若", "假如", "假設", "要是", "一旦", "時", "後", "的話", "當", "政策", "方案", "情境"]
+    # Yunlin, both counties or Changhua following suit, any lever or class
+    + YUNLIN + BOTH + ALSO + [r"\blevers?\b", "槓桿"] + CLASS_ANY
+    # the ground rather than the water level
+    + [r"\b(?:ground|land|soil|surface|elevation|terrain)\b", "地面", "地表", "土地", "高程", "地層", "地盤",
+       r"地(?!下水|區|方|點)"]
+    # a value of the direction: a rise, fall or recovery, more or less
+    + [r"\b(?:rise|rises|rising|rose|raise\w*|recover\w*|rebound\w*|go(?:es)?\s+up|went\s+up|come\s+back|"
+       r"fall|falls|falling|fell|drop\w*|declin\w*|decreas\w*|increas\w*|lower\w*|higher|less|fewer|more|"
+       r"improv\w*|worsen\w*|deplet\w*)\b",
+       "上升", "回升", "升高", "下降", "降低", "增加", "減少", "變高", "變低", "恢復", "回彈", "少", "多", "升", "降"]
+    # a place word that could be Changhua's own ("there", 那邊)
+    + [r"(?<!\bis\s)(?<!\bare\s)(?<!\bwas\s)\bthere\b(?!\s+(?:is|are|was|were|been|any|'s))", "那邊", "那裡",
+       "那裏", "當地", "該地", "那頭"]
+    # second review: upward / climb, a second subject or question joined by and / or / 和
+    + [r"\bupward\w*", r"\bdownward\w*", r"\bclimb\w*", r"\bascend\w*", r"\bdescend\w*", "上揚", "回漲", "漲", "跌",
+       r"\band\b", r"\bor\b", r"\bplus\b", "和", "與", "及", "跟", "以及", "或"]
+    # third review: the ground measured (leveling, vertical, InSAR, GNSS, benchmarks) and a
+    # programme, plan, crackdown, permit or regulation as the thing responded to
+    + [r"\blevel(?:l)?ing\b", r"\bvertical\w*", r"\binsar\b", r"\bgnss\b", r"\bgps\b", r"\bbenchmark\w*",
+       "水準", "垂直", "衛星",
+       r"\bprogram(?:me)?s?\b", r"\bplans?\b", r"\bschemes?\b", r"\bcrackdown\w*", r"\bpermit\w*",
+       r"\blicen[cs]\w*", r"\benforc\w*", r"\bregulat\w*", r"\billegal\b", r"\bown\b",
+       "計畫", "計劃", "取締", "許可", "執照", "法規", "違法", "非法"])
+# the direction asked as the answer itself
+DIRECTION_VALUE = [r"\bwhich\s+(?:way|direction)\b", r"\bup\s+or\s+down\b", r"\bdown\s+or\s+up\b",
+                   r"\b(?:rise|rises|go\s+up|goes\s+up|increase\w*)\s+or\s+(?:fall|falls|drop|drops|go\s+down|"
+                   r"goes\s+down|decrease\w*)\b", r"\b(?:fall|falls|drop|drops)\s+or\s+(?:rise|rises)\b",
+                   r"\bin\s+what\s+direction\b", r"\bwhat\s+direction\b",
+                   "哪個方向", "什麼方向", "往哪", "升還是降", "上升還是下降", "下降還是上升", "會升會降", "漲還是跌",
+                   "上升或下降", "升或降"]
+# a head size inside the A3 how-sure form ("by a meter")
+HEAD_SIZE = [r"\bdecimet\w*", "公寸", r"\bmet(?:er|re)s?\b", r"\b\d*\s*m\b", r"\bfeet\b", r"\bfoot\b",
+             r"\bby\s+(?:a|an|one|two|three|half|several|some|about|around|roughly)\b", "公尺", "米", "公分"]
+_SECOND_Q = r"\b(?:and|but|or)\s+(?:is|are|was|were|has|have|does|do|did|can|could|will|would|what|how)\b"
+
+
+def changhua_how_sure_ok(s: str, b: PageBundle | None = None) -> bool:
+    """A3 (R10.2a): one how-sure question about whether Changhua's direction test was run or held
+    ("is there any sign that pumping on the Changhua side moves water levels the right way, judged
+    at wells the model was never tuned on?").
+
+    Changhua by name or geography only (no Changhua township, no whole fan); one sentence with a
+    single question; test wording (CH_TEST) in a yes/no or how-sure form (YESNO); a direction word;
+    and no lever, no 'what is' / show (WHAT), no size or magnitude, no digit, no subsidence word, no
+    area scope, and no direction asked as the value (which way, up or down, 升還是降). After the
+    review it is a strict allow-list: also none of A3_VETO (a condition, Yunlin, both counties or
+    following suit, any lever, lever word or class, the ground, a rise / fall / recovery, a place
+    word), and the topic must be a direction noun (direction, the right way, the response)."""
+    s = norm(s)
+    ref = changhua_ref(s)
+    if not ref or not ref <= {"word", "geo"}:
+        return False
+    if b is not None and township_ref(s, b):       # a Yunlin township or the word township
+        return False
+    sentences = [x for x in re.split(r"[?？。!！;；]|(?<!\d)\.(?!\d)", s) if x.strip()]
+    return (len(sentences) == 1 and s.count("嗎") <= 1 and not re.search(_SECOND_Q, s, re.I)
+            and _has(CH_TEST, s) and _has(YESNO, s) and _has(DIRECTION_TOPIC, s)
+            and not has_lever(s)
+            and not _has(WHAT + WHAT_R10 + MAGNITUDE + SIZE_ADJ + DIRECTION_VALUE + HEAD_SIZE
+                         + SIZE_WORDS_R10 + A3_VETO, s)
+            and not re.search(r"\d", s) and not subsidence_words(s) and not area_scope(s)
+            and not _has(ADDITIVE, s))
+
+
+# A4: one township, not named ("that coastal township", 靠海那個鄉), under a policy: clarified
+UNNAMED_TOWN = [r"\b(?:a|one|that|this|the|some|my|our)\s+(?:[\w\-]+\s+){0,3}?(?:township|town(?!ship)|village)\b(?!s)",
+                r"(?:那個|這個|某個|一個|某一個|那一個|這一個)[^，,。？?；;、]{0,4}?[鄉鎮](?![鎮鄉])"]
+UNNAMED_VETO = [r"\b(?:townships|towns|villages)\b", r"\b(?:which|what|each|every|all|any|per|by|other)\s+"
+                r"(?:[\w\-]+\s+){0,2}?(?:township|town|village)\b",
+                r"\b(?:most|least|biggest|largest|smallest|worst|best|fastest|slowest|highest|lowest|more|less\s+than)\b",
+                r"\b(?:average|mean|typical|median|overall|total|rank\w*|compar\w*|differ\w*)\b",
+                "鄉鎮", "各", "每", "所有", "全部", "哪", "最", "平均", "典型", "總", "比較", "排名", "差異"]
+
+
+def unnamed_township(s: str, b: PageBundle) -> bool:
+    """A4 (R10.2a): one township referred to but not named, under a policy (a lever word): its
+    internals row is clarified (ambiguous_town), not refused. Not when a page township is named
+    (the named exemption covers it), and never for several, each, which, any, the average or the
+    most ... township (an area statistic), nor with an area-scope word."""
+    s = norm(s)
+    c = Q.ctx(b)
+    named = any(re.search(r"(?<![a-z])" + re.escape(n) + r"(?![a-z])", s, re.I)
+                for t in c.towns for n in (town_names(t) if not t.get("pooled") else []))
+    return (not named and _has(UNNAMED_TOWN, s) and not _has(UNNAMED_VETO, s) and has_lever(s)
+            and not area_scope(s) and not changhua_ref(s))

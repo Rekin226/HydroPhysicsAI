@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,196 @@ def test_pins_are_enforced(fixed):
         encoding="utf-8")
     with pytest.raises(EV.EvalSetError, match="pins no"):
         EV.check_pins(EV.check_set(qs2), ok)
+
+
+def _fake_code(fixed):
+    for rel in EV.ROUTE_CODE:                       # a fake checkout of the route code
+        (fixed / rel).parent.mkdir(parents=True, exist_ok=True)
+        (fixed / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    return EV.code_pins()
+
+
+def _code_entry(fixed, **pins):
+    _fake_code(fixed)
+    base = {"page_sha256": "a" * 64, "ledger_sha256": "b" * 64, "arms": ["rules"], "repeats": 1}
+    qs, _ = _tiny(fixed, **base, **pins)
+    # the route files as loaded (in the fake checkout) and a clean environment
+    run = base | {"loaded": {p: str(fixed / p) for p in EV.ROUTE_CODE}, "env": {},
+                  "bytecode_fresh": True, "interpreter": [], "moved": []}
+    return EV.check_set(qs), run
+
+
+def test_code_pins_are_enforced(fixed):
+    """R10.2c: an entry pinning main_commit and code_sha256 runs only on that commit, clean, with
+    those route files; every route file must be pinned."""
+    e, ok = _code_entry(fixed, main_commit="abc1234", code_sha256=_fake_code(fixed))
+    clean = {"commit": "abc1234" + "0" * 33, "dirty": False}
+    EV.check_pins(e, ok | {"main_commit": clean})                     # measured code: matches
+    with pytest.raises(EV.EvalSetError, match="pinned to main_commit"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": "def5678" + "0" * 33, "dirty": False}})
+    with pytest.raises(EV.EvalSetError, match="local"):
+        EV.check_pins(e, ok | {"main_commit": clean | {"dirty": True}})
+    with pytest.raises(EV.EvalSetError, match="git cannot tell"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": None, "dirty": None}})
+    (fixed / "hydrophysics_analyst/router/guards.py").write_text("# changed\n", encoding="utf-8")
+    with pytest.raises(EV.EvalSetError, match="router/guards.py"):
+        EV.check_pins(e, ok | {"main_commit": clean})
+
+
+def test_code_pins_refuse_shadowed_files_and_route_env(fixed):
+    """Review finding 6: a route module loaded from elsewhere (an untracked router/zh/ package
+    shadowing zh.py) and the environment switches that change routes refuse a code-pinned run."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    EV.check_pins(e, ok)
+    shadow = dict(ok["loaded"], **{"hydrophysics_analyst/router/zh.py":
+                                   str(fixed / "hydrophysics_analyst/router/zh/__init__.py")})
+    with pytest.raises(EV.EvalSetError, match="load from elsewhere"):
+        EV.check_pins(e, ok | {"loaded": shadow})
+    for k in EV.ROUTE_ENV:
+        with pytest.raises(EV.EvalSetError, match=k):
+            EV.check_pins(e, ok | {"env": {k: "1"}})
+    e2, ok2 = _code_entry(fixed, main_commit="abc1234")
+    with pytest.raises(EV.EvalSetError, match="ANALYST_ENABLE_CHEAPEST"):
+        EV.check_pins(e2, ok2 | {"main_commit": {"commit": "abc1234" + "0" * 33, "dirty": False},
+                                 "env": {"ANALYST_ENABLE_CHEAPEST": "1"}})
+
+
+def test_code_pins_refuse_cached_bytecode_and_endpoint_env(fixed):
+    """Second review: a planted __pycache__/zh.cpython-311.pyc matching zh.py's mtime and size
+    disabled the guards with dirty=False; a code-pinned run now needs -B and a fresh
+    pycache_prefix. The endpoint and model environment variables refuse it too."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    with pytest.raises(EV.EvalSetError, match="cached byte-code"):
+        EV.check_pins(e, ok | {"bytecode_fresh": False})
+    for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"):
+        with pytest.raises(EV.EvalSetError, match=k):
+            EV.check_pins(e, ok | {"env": {k: "x"}})
+
+
+def test_code_pins_need_a_clean_interpreter_and_unpatched_functions(fixed, monkeypatch):
+    """Third review: -E and -s, no foreign sitecustomize, and route functions from their files."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    with pytest.raises(EV.EvalSetError, match="not clean"):
+        EV.check_pins(e, ok | {"interpreter": ["-E"]})
+    with pytest.raises(EV.EvalSetError, match="do not come from"):
+        EV.check_pins(e, ok | {"moved": ["hydrophysics_analyst.router.guards.norm"]})
+    assert EV.route_functions_moved() == []
+    from hydrophysics_analyst.router import guards as G
+    monkeypatch.setattr(G, "norm", lambda s: s)              # a patched guard function
+    assert EV.route_functions_moved() == ["hydrophysics_analyst.router.guards.norm"]
+    import types
+    fake = types.ModuleType("sitecustomize")
+    fake.__file__ = str(fixed / "sitecustomize.py")
+    monkeypatch.setitem(sys.modules, "sitecustomize", fake)
+    assert any("sitecustomize" in x for x in EV.clean_interpreter())
+
+
+def test_clean_interpreter_reads_the_flags(tmp_path):
+    import os
+    import subprocess
+    code = "from hydrophysics_analyst import eval as E; print(E.clean_interpreter())"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+
+    def run(*flags):
+        out = subprocess.run([sys.executable, *flags, "-c", code], cwd=str(EV.REPO),
+                             capture_output=True, text=True, timeout=120, env=env)
+        return out.stdout.strip().splitlines()[-1]
+    got = run()
+    assert "-E" in got and "-s" in got
+    assert run("-E", "-s") == "[]"
+
+
+def test_fresh_bytecode_needs_dash_b_and_an_empty_prefix(tmp_path):
+    import os
+    import subprocess
+    import sys
+    code = "from hydrophysics_analyst import eval as E; print(E.fresh_bytecode())"
+    root = str(EV.REPO)
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX")}
+
+    def run(*flags):
+        out = subprocess.run([sys.executable, *flags, "-c", code], cwd=root, capture_output=True,
+                             text=True, timeout=120, env=env)
+        return out.stdout.strip().splitlines()[-1]
+    assert run() == "False"
+    assert run("-X", f"pycache_prefix={tmp_path / 'a'}") == "False"            # writes byte-code
+    assert run("-B", "-X", f"pycache_prefix={tmp_path / 'b'}") == "True"
+    (tmp_path / "c" / "x").mkdir(parents=True)
+    (tmp_path / "c" / "x" / "zh.cpython-311.pyc").write_bytes(b"")
+    assert run("-B", "-X", f"pycache_prefix={tmp_path / 'c'}") == "False"      # a .pyc in it
+
+
+def test_the_live_route_files_load_from_the_package():
+    loaded = EV.loaded_route_files()
+    assert {p for p in EV.ROUTE_CODE if p.endswith((".py", ".json"))} == set(loaded)
+    for p, f in loaded.items():
+        assert Path(f) == (EV.REPO / p).resolve(), p
+
+
+def test_an_untracked_file_makes_the_checkout_dirty(tmp_path):
+    """git diff ignores untracked files; head_commit also reads git status (untracked and ignored
+    files, byte-code caches excepted)."""
+    import subprocess
+    if shutil.which("git") is None:
+        pytest.skip("no git")
+    def git(*a):
+        subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (tmp_path / "hydrophysics_analyst" / "router").mkdir(parents=True)
+    (tmp_path / "hydrophysics_analyst" / "router" / "zh.py").write_text("x = 1\n")
+    (tmp_path / ".gitignore").write_text("__pycache__/\n*.local.py\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "c")
+    assert EV.head_commit(tmp_path)["dirty"] is False
+    (tmp_path / "hydrophysics_analyst" / "router" / "__pycache__").mkdir()
+    (tmp_path / "hydrophysics_analyst" / "router" / "__pycache__" / "zh.cpython-311.pyc").write_bytes(b"")
+    assert EV.head_commit(tmp_path)["dirty"] is False                # caches are allowed
+    shadow = tmp_path / "hydrophysics_analyst" / "router" / "zh"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text("x = 2\n")
+    got = EV.head_commit(tmp_path)
+    assert got["dirty"] is True and any("zh/__init__.py" in x for x in got["extra"])
+    (shadow / "__init__.py").unlink()
+    (tmp_path / "hydrophysics_analyst" / "router" / "x.local.py").write_text("x = 3\n")   # ignored
+    assert EV.head_commit(tmp_path)["dirty"] is True
+
+
+def test_code_pins_must_cover_every_route_file(fixed):
+    pins = _fake_code(fixed)
+    pins.pop("hydrophysics_analyst/router/llm.py")
+    e, ok = _code_entry(fixed, code_sha256=pins)
+    with pytest.raises(EV.EvalSetError, match="router/llm.py"):
+        EV.check_pins(e, ok)
+    e, ok = _code_entry(fixed, main_commit="abc")
+    with pytest.raises(EV.EvalSetError, match="7 hex"):
+        EV.check_pins(e, ok | {"main_commit": {"commit": "abc" + "0" * 37, "dirty": False}})
+
+
+def test_entries_without_code_pins_still_run(fixed):
+    """Backwards compatible: the spent entries pin no code, and a frozen entry without code pins
+    is checked on its four pins only."""
+    e, ok = _code_entry(fixed)
+    EV.check_pins(e, ok)
+    man = json.loads(EV.EVALSETS.joinpath("MANIFEST.json").read_text(encoding="utf-8"))
+    for name, ent in man["sets"].items():
+        if ent.get("role") == "heldout" and ent.get("status") in EV.CLOSED:
+            with pytest.raises(EV.EvalSetError, match="spent|withdrawn"):
+                EV.check_pins(dict(ent, name=name), {})
+
+
+def test_every_route_file_exists_in_the_package():
+    shas = EV.code_pins()
+    assert set(shas) == set(EV.ROUTE_CODE) and all(shas.values())
+
+
+def test_print_pins(capsys):
+    assert EV.main(["--print-pins"]) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert set(got["code_sha256"]) == set(EV.ROUTE_CODE) and "main_commit" in got
 
 
 def test_out_is_recorded_inside_the_repo(fixed):
