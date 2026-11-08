@@ -65,7 +65,9 @@ What comes from where:
 The official mapping is the map file's base (user rulings 2026-11-07, fourteenth set,
 R8.16a/b/c; fifteenth set, R8.17a-d; user ruling 2026-11-08, twenty-first set, R10.5: R9.4's
 decidability thresholds applied to the D-measured rows, so E22, C14f and E30 are D-unknown;
-twenty-second set, R10.5b: E20's canal-confounded power decides, so E20 is D-unknown too);
+twenty-second set, R10.5b: E20's canal-confounded power decides, so E20 is D-unknown too;
+twenty-third set, R10.5c: C01-w's confounded power 0.148 reads R9.4's 'weak', so C01-w is
+D-weak);
 ``--mapping default-v1`` lays the recount's first default over it for comparison, and
 ``--mapping pre-R10.5`` the official rule before R10.5 (the figures of evidence section 26).
 

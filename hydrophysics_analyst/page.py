@@ -1,6 +1,6 @@
 """Bind the analyst to one built decision page and one claims ledger.
 
-    bundle = PageBundle.load(Path("results/twin/twin_app_20261108b.html"))
+    bundle = PageBundle.load(Path("results/twin/twin_app_20261108c.html"))
 
 Binding checks (spec §4.1), all fatal:
 

@@ -456,10 +456,10 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
         assert g["cmpAlt"].endswith(col) and g["cmpMine"].endswith(col), (lang, g["cmpAlt"])
         # R10.6: this model's avoided sizes in caveat 9 carry the label (fast-response branch:
         # the late-start comparison; post-hoc split branch: per-policy totals and the lift)
-        cm = " cm" if lang == "en" else " 公分"
-        assert g["cv9"].count(cm) == 2 and g["cv9"].count(resp) == 1, (lang, g["cv9"])
+        cm = " cm" if lang == "en" else " 公分"                  # one label per cm figure
+        assert g["cv9"].count(cm) == 2 == g["cv9"].count(resp), (lang, g["cv9"])
         sp = g["cv9split"]
-        assert sp.count(cm) == 4 and sp.count(resp) == 3, (lang, sp)
+        assert sp.count(cm) == 4 == sp.count(resp), (lang, sp)
         for v in ("0.90", "0.20"):
             assert v in sp, (lang, v, sp)
 

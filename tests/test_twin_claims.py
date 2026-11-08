@@ -1211,10 +1211,13 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
     for k in ("hl_sz_irr", "def_tW", "rank_limit"):
         assert "×1.27" in en[k] and "×1.27" in zh[k], k
     assert "(S, design-time" in en["tW_r"] and "(N;" in en["tW_r"]
-    # R8.16c: C01-w is D with decidability unknown, and the range lines say so (R9.3 fix)
+    # R8.16c, then R10.5c: C01-w is D-weak (N2's rule weak for Yunlin under the canal
+    # confounder, power 0.15, X5.n2_reading.v1), and the range lines say so
     for k in ("tW_r", "tW_r_w30"):
-        assert "(D; decidability unknown: N2 is informative, not decisive)" in en[k], k
-        assert "（D；可判定性未知：N2 具資訊性但不具決定性）" in zh[k], k
+        assert ("(D; weak for Yunlin under the canal confounder, power 0.15: N2 is "
+                "informative, not decisive)") in en[k], k
+        assert "（D；含渠道干擾因子時對雲林為弱檢驗，檢定力 0.15：N2 具資訊性但不具決定性）" in zh[k], k
+        assert "decidability unknown" not in en[k] and "可判定性未知" not in zh[k], k
     assert "Size (N, model-only)" in en["def_tW"] and "(D):" in en["def_tW"]
     # C27: registered numbers; the 'other way' / 'constant rate' readings are gone
     assert "{syl}" in en["evc_pr_subs"] and "{scu}" in zh["evc_pr_subs"]
@@ -1840,12 +1843,13 @@ R10B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha25
 R10D_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08b.json (sha256 1e191cb9)."
 R10E_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08c.json (sha256 8f67973f)."
 R10F_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08d.json (sha256 7816a635)."
+R10G_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08e.json (sha256 f86b4a7e)."
 
 
 def test_round10_rulings_are_recorded():
     """Round 10: the eighteenth set's eight rulings, the nineteenth set's R10.1b, the
-    twentieth set's R10.2d, the twenty-first set's R10.5 and R10.6 and the twenty-second set's
-    R10.5b, each citing its file and sha256; the regrades carry their reading, P, null rate and
+    twentieth set's R10.2d, the twenty-first set's R10.5 and R10.6, the twenty-second set's
+    R10.5b and the twenty-third set's R10.5c, each citing its file and sha256; the regrades carry their reading, P, null rate and
     threshold on each row."""
     text = {r["id"]: r["text"] for r in L()["rulings"]}
     for rid in R10_IDS:
@@ -1883,11 +1887,24 @@ def test_round10_rulings_are_recorded():
         assert k in n, k
     assert "user ruling 2026-11-08 (twenty-second set) (R10.5b)" in cl["E20"]["ruling_also"]
     assert "E20 stays D-measured" not in L()["status_note"]
+    t = text["user ruling 2026-11-08 (twenty-third set) (R10.5c)"]    # C01-w: R9.4 'weak'
+    assert " Decision: Regrade to D-weak now" in t and " Applies to: C01-w, progress." in t, t
+    assert "0.148" in t and "0.202" in t and t.endswith(R10G_SRC), t
+    n = cl["C01-w"]["notes"]
+    for k in ("R10.5c", "f86b4a7e", "P = 0.148", "0.202", "power_k1_rho_m087", "D-weak"):
+        assert k in n, k
+    assert "user ruling 2026-11-08 (twenty-third set) (R10.5c)" in cl["C01-w"]["ruling_also"]
+    assert "R10.5c" in L()["status_note"] and "f86b4a7e" in L()["status_note"]
+    r6 = "user ruling 2026-11-08 (twenty-first set) (R10.6)"       # R10.6 applies to C03, C09
+    for cid in ("C03", "C09"):
+        assert r6 in cl[cid]["ruling_also"] and "R10.6" in cl[cid]["notes"], cid
+    assert "caveat 9 prints no baseline figure" in cl["C09"]["notes"].replace("Trust ", "")
     for rf, sha in (("user_rulings_2026-11-07e.json", "88260aab"),
                     ("user_rulings_2026-11-08.json", "81e8a61c"),
                     ("user_rulings_2026-11-08b.json", "1e191cb9"),
                     ("user_rulings_2026-11-08c.json", "8f67973f"),
-                    ("user_rulings_2026-11-08d.json", "7816a635")):
+                    ("user_rulings_2026-11-08d.json", "7816a635"),
+                    ("user_rulings_2026-11-08e.json", "f86b4a7e")):
         f = C.REPO / "results/dataprep/rulings" / rf
         if f.is_file():                                # a local record; absent on CI
             assert C.sha256(f).startswith(sha), rf
@@ -1987,7 +2004,13 @@ def test_caveat_9_avoided_sizes_carry_the_label():
                                    "(model internals, size untested).")
     assert zh["cv9_lift"].endswith("剩下 {left} 公分的效益（模型內部數值，大小未經檢驗）。")
     assert "{v0} cm in {n0} years from {s0} (model internals, size untested): " in en["fw_late"]
+    assert "{v1} cm by {H} in {n1} years (model internals, size untested), " in en["fw_late"]
     assert zh["fw_late"].endswith("{v0} 公分（{n0}年；模型內部數值，大小未經檢驗）。")
+    assert "{v1} 公分（{n1}年；模型內部數值，大小未經檢驗）" in zh["fw_late"]
+    # every cm figure carries its own label (review fix): one label per unit, EN and ZH
+    for lang, d, unit in (("en", en, " cm"), ("zh", zh, " 公分")):
+        for k in ("cv9_pol", "cv9_lift", "fw_late"):
+            assert d[k].count(unit) == d[k].count(lab[lang]) >= 1, (lang, k, d[k])
     # where they render: caveat 9 only (no key moved)
     assert {"cv9_pol", "cv9_lift"} <= C.function_keys("elasticCaveat")
     assert "fw_late" in C.function_keys("fastWords")

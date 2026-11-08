@@ -1,6 +1,6 @@
 """MCP stdio server exposing the analyst to Claude Code / Claude Desktop. TEAM-INTERNAL ONLY.
 
-    python -m hydrophysics_analyst mcp --page results/twin/twin_app_20261108b.html
+    python -m hydrophysics_analyst mcp --page results/twin/twin_app_20261108c.html
 
 Register in Claude Code, e.g. ``claude mcp add twin-analyst -- python -m hydrophysics_analyst mcp
 --page <page>``. Tools: ``ask_twin`` (a plain-language question: the rules may refuse or clarify,

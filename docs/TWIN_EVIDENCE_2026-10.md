@@ -1619,6 +1619,12 @@ Grade of a claim, by its status (`hydrophysics/twin/claims_v1.json`):
 | L | 0.25 |
 | W | 0.15 |
 
+Since user ruling R10.5 (2026-11-08, section 28) "measured" has a working definition: R9.4's
+pre-declared thresholds, applied to the reading that decides the row. Measured needs a power
+P >= 0.8 and a null pass rate <= 0.2; weak (0.5) follows from P < 0.5 or a null pass rate
+> 0.5; anything between is decidability unknown. Where a reading reports a power with and
+without the canal confounder, the confounded power decides (R10.5b, R10.5c).
+
 Weight of a claim: 2 for the page's answer rows (headline and answer tiles), 1 for evidence
 rows, 0.5 for rows shown only in the README or the model card; rows that only mirror another
 row (the analyst's mirror) and UI rows weigh 0. A part's score is the weighted mean grade of
@@ -1645,8 +1651,8 @@ appear together; none is shown alone, and none is averaged into another silently
   status. On the audited statuses it gives about **61-62 %** on the 6-part basis, and it is
   always shown beside the official figure (computed under rulings R8.16 and R8.17: 53.4 % at
   the audit state, 54.0 % on main 08a6aa7, section 26; the audit's own figure was 53.6 %; with
-  R9.4's decidability thresholds applied to the D-measured rows by user rulings R10.5 and
-  R10.5b, 52.9 % and 53.3 %, section 28) and
+  R9.4's decidability thresholds applied by user rulings R10.5, R10.5b and R10.5c, 52.9 % and
+  53.2 %, section 28) and
   beside the disclosure downgrades listed below, never alone.
 
 A D that can be decided only after 2030-01-15 counts as D-pending under this rubric (0.6, or
@@ -2207,7 +2213,7 @@ The rule:
   decidability reading the mapping names, with a real hash, and, where the reading ships
   inside the test's own registration, when the row's `cites.reports` lists the reading's
   report. The ruled readings: C01-w, E04 and C30-fc are D with decidability unknown (R8.16c,
-  R8.17b); E21 (E02c) is D weak by design on its coverage half (R8.16c); E25 and E26 are S
+  R8.17b; C01-w is D-weak since R10.5c, section 28); E21 (E02c) is D weak by design on its coverage half (R8.16c); E25 and E26 are S
   design-time, direction only, on a claim about a size (0.75, R8.16c). Until user ruling R10.5
   (2026-11-08, section 28) no ruling moved E30: it was D with decidability measured by its
   registered reading,
@@ -2217,8 +2223,9 @@ The rule:
   D with decidability measured by FV.ext.v1 (P 0.59), and E20 by X5.n2c_reading.v1. R10.5
   applies R9.4's thresholds (measured needs P >= 0.8 and a null pass rate <= 0.2) to them: E22,
   C14f and E30 are D with decidability unknown, and E20 too under R10.5b (its canal-confounded
-  power 0.60 decides). The figures of this section are those before R10.5 (`--mapping
-  pre-R10.5`); section 28 gives them under R10.5 and R10.5b. A reading may instead
+  power 0.60 decides); R10.5c grades C01-w D-weak (its canal-confounded power 0.148 is below
+  R9.4's 0.5). The figures of this section are those before R10.5 (`--mapping pre-R10.5`);
+  section 28 gives them under R10.5, R10.5b and R10.5c. A reading may instead
   pre-declare several outcomes (`reading_outcomes`, user ruling R9.4, sixteenth set,
   `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4): the row is then
   graded by the outcome it records, only once the ledger cites the registration with a real
@@ -2263,8 +2270,8 @@ The rule:
   with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
   offered. The 6-part rows use the audit's 95 at the audit state and section 21's estimate of
   98 at 08a6aa7, labelled so; the current input is 98.3 (audited 2026-11-07, R9.3; section
-  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5 and 53.4
-  (63.4) under R10.5 and R10.5b (section 28).
+  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5 and 53.3
+  (63.3) under R10.5, R10.5b and R10.5c (section 28).
 - **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
   mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
   for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
@@ -2278,7 +2285,7 @@ The audit state is main fd40796, the last main commit before the round-8 step-0 
 #70); its `claims_v1.json` is byte-identical to af97301's, the state the audit read. Today is
 main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, no status). The
 official columns are the rule before user ruling R10.5 (reproduced by `--mapping pre-R10.5`;
-under R10.5 and R10.5b the 6-part means are 52.9 and 53.3, section 28).
+under R10.5, R10.5b and R10.5c the 6-part means are 52.9 and 53.2, section 28).
 
 | | audited 2026-11-02 | **official, audit state (fd40796)** | **official, today (08a6aa7)** | default-v1, audit state | default-v1, today | section 22 estimate |
 |---|---|---|---|---|---|---|
@@ -2302,8 +2309,8 @@ science trust's +0.10). By part:
 
 - Head response, Yunlin, -1.5: before the split C01 (S+D) was graded by its S, design-time,
   direction only, on a size claim (0.75) at weight 2; today its three pieces share that weight
-  at 0.9 (C01, direction), 0.6 (C01-w, decidability unknown) and 0.5 (C01-sz, N), a mean of
-  0.67, below the parent's 0.75, so no uplift is removed.
+  at 0.9 (C01, direction), 0.6 (C01-w, decidability unknown; 0.5, D-weak, since R10.5c) and
+  0.5 (C01-sz, N), a mean of 0.67, below the parent's 0.75, so no uplift is removed.
 - Forecast start and validation, +1.3: the C30 split is held at C30's weight 2 and grade 0.5
   (its own uplift removed); E04 is D unknown in both states; E30 (D measured, 0.7, before R10.5)
   is new.
@@ -2410,7 +2417,8 @@ User rulings: eighteenth set, R10.1-R10.4 (`results/dataprep/rulings/user_ruling
 sha256 88260aab); nineteenth set, R10.1b (`user_rulings_2026-11-08.json`, sha256 81e8a61c);
 twentieth set, R10.2d (`user_rulings_2026-11-08b.json`, sha256 1e191cb9); twenty-first set,
 R10.5 and R10.6 (`user_rulings_2026-11-08c.json`, sha256 8f67973f); twenty-second set, R10.5b
-(`user_rulings_2026-11-08d.json`, sha256 7816a635). The ledger records each as
+(`user_rulings_2026-11-08d.json`, sha256 7816a635); twenty-third set, R10.5c
+(`user_rulings_2026-11-08e.json`, sha256 f86b4a7e). The ledger records each as
 `user ruling <date> (<set>) (<id>)`. R10.1 set the round's scope: items A, B and C, with an
 expected effect of 0 on the official figures. No status changed in the round.
 
@@ -2448,11 +2456,18 @@ expected effect of 0 on the official figures. No status changed in the round.
   | row | deciding reading (report sha256) | P | null pass rate | R9.4 outcome | grade |
   |---|---|---|---|---|---|
   | E22 | FV.ext.v1 (b29f6cfc), N3F's whole rule | 0.592 (`P.p`) | 0.0 (`null_world.false_pass.p`, K 500) | unchanged (P < 0.8) | D-measured -> D-unknown |
-  | C14f | FV.ext.v1 (b29f6cfc), the same rule (no reading of the coverage clause alone) | 0.592 | 0.0 | unchanged | D-measured -> D-unknown |
+  | C14f | FV.ext.v1 (b29f6cfc), the same rule (no reading of the coverage clause alone; the whole rule's P is a lower bound on the coverage clause's own) | 0.592 | 0.0 | unchanged | D-measured -> D-unknown |
   | E30 | E02z's registered decidability reading (0e5e83d3), per county and window | Yunlin 0.999 / 1.000; Changhua 0.688 / 0.683 (`readings.{B,C}.<county>.P`) | 0.0 in every cell (K 500) | Yunlin measured; Changhua unchanged (P < 0.8) | D-measured -> D-unknown |
   | E20 | X5.n2c_reading.v1 (d9afc45d) | 0.60 with the canal confounder (`reading.power_k1_rho_m083`, rho -0.83; decides by R10.5b); 0.93 without it (`reading.power_k1_rho0`) | 0.116 (`reading.false_pass_k0_rho_m083`); 0.000 at rho 0 | unchanged (P 0.60 < 0.8) | D-measured -> D-unknown (R10.5b) |
+  | C01-w | X5.n2_reading.v1 (80bba98e) | 0.148 with the canal confounder (`reading.power_k1_rho_m087`, rho -0.87; decides as in R10.5b); 0.948 without it (`reading.power_k1_rho0`) | 0.202 (`reading.false_pass_max_over_rho`) | weak (P 0.148 < 0.5) | D-unknown -> D-weak (R10.5c) |
 
-  No row reads "weak". R10.5 alone did not fix which of E20's two powers is P (the reading's own
+  C14f's P is that of N3F's whole rule (ratio and coverage both required), so it is a lower
+  bound on the coverage clause's own P; no reading of the clause alone exists, and the bound
+  does not reach 0.8. C01-w was D with decidability unknown (R8.16c), not D-measured, so it was
+  outside R10.5's literal scope; read the same way, it is the one row that reads "weak", and
+  R10.5c (twenty-third set) regraded it D-weak. Its page range lines (`tW_r`, `tW_r_w30`, EN and
+  ZH) now say "weak for Yunlin under the canal confounder, power 0.15" where they said
+  "decidability unknown"; `evc_n2_rd` keeps the registered wording. R10.5 alone did not fix which of E20's two powers is P (the reading's own
   power line is the unconfounded 0.93, while R8.16c graded C01-w on its confounded power), so
   E20 went back to the user: R10.5b (twenty-second set) ruled that the canal-confounded power
   0.60 decides, consistent with R8.16c, so E20 reads "unchanged" and is D with decidability
@@ -2463,32 +2478,40 @@ expected effect of 0 on the official figures. No status changed in the round.
   mapping keeps the earlier rule as `--mapping pre-R10.5` so section 26's figures stay
   reproducible.
 
-  | | before R10.5 | R10.5 (E22, C14f, E30) | **R10.5 and R10.5b (official)** | change |
-  |---|---|---|---|---|
-  | head response, Yunlin | 49.39 | 49.39 | 49.39 | 0 |
-  | forecast start and validation | 52.50 | 51.07 | 51.07 | -1.43 (E22, E30: 2 x 0.1 / 14) |
-  | uncertainty bands | 42.78 | 41.67 | 41.67 | -1.11 (C14f: 0.1 / 9) |
-  | subsidence and cut response | 35.57 | 35.57 | 35.57 | 0 |
-  | Changhua | 45.63 | 45.63 | 44.38 | -1.25 (E20: 0.1 / 8) |
-  | **science trust** (mean of 5) | **45.17** | 44.67 | **44.42** | -0.76 |
-  | claim honesty (audited 2026-11-07, R9.3) | 98.3 | 98.3 | 98.3 | 0 |
-  | **6-part mean** (headline) | **54.03** | 53.60 | **53.40** | -0.63 |
-  | intended-output variant (science) | 38.09 | 37.58 | 37.33 | -0.76 |
-  | end-goal convention, science / 6-part (bookkeeping only) | 57.20 / 64.05 | 56.69 / 63.63 | 56.44 / 63.42 | -0.76 / -0.63 |
+  | | before R10.5 | R10.5 (E22, C14f, E30) | + R10.5b (E20) | **+ R10.5c (C01-w; official)** | change |
+  |---|---|---|---|---|---|
+  | head response, Yunlin | 49.39 | 49.39 | 49.39 | 48.79 | -0.61 (C01-w: 2/3 x 0.1 / 11) |
+  | forecast start and validation | 52.50 | 51.07 | 51.07 | 51.07 | -1.43 (E22, E30: 2 x 0.1 / 14) |
+  | uncertainty bands | 42.78 | 41.67 | 41.67 | 41.67 | -1.11 (C14f: 0.1 / 9) |
+  | subsidence and cut response | 35.57 | 35.57 | 35.57 | 35.57 | 0 |
+  | Changhua | 45.63 | 45.63 | 44.38 | 44.38 | -1.25 (E20: 0.1 / 8) |
+  | **science trust** (mean of 5) | **45.17** | 44.67 | 44.42 | **44.29** | -0.88 |
+  | claim honesty (audited 2026-11-07, R9.3) | 98.3 | 98.3 | 98.3 | 98.3 | 0 |
+  | **6-part mean** (headline) | **54.03** | 53.60 | 53.40 | **53.29** | -0.73 |
+  | intended-output variant (science) | 38.09 | 37.58 | 37.33 | 37.21 | -0.88 |
+  | end-goal convention, science / 6-part (bookkeeping only) | 57.20 / 64.05 | 56.69 / 63.63 | 56.44 / 63.42 | 56.32 / 63.32 | -0.88 / -0.73 |
 
-  Ledger of this branch (the rulings change grades through the progress mapping, not statuses),
-  `python -m hydrophysics.twin.progress --honesty 98.3` with the official and the `pre-R10.5`
-  mappings; the middle column is the official mapping with E20 at its earlier qualifier. The
-  ruling's own estimate (about -0.30 headline, -0.37 science) counted E22 and C14f; E30's
-  Changhua windows and E20 fail the same threshold and add the rest. At the earlier pinned
-  states the official figures become 52.9 (fd40796, honesty 95) and 53.3 (08a6aa7, honesty 98),
-  science 44.4 at both (`tests/test_twin_progress.py`).
+  The round-10 ledger statuses (unchanged by these rulings, which change grades through the
+  progress mapping), `python -m hydrophysics.twin.progress --honesty 98.3` with the official and
+  the `pre-R10.5` mappings; the middle columns are the official mapping with the later rows at
+  their earlier qualifiers. C01-w's split leaves no uplift to remove (its pieces now average
+  0.63 against the parent's 0.75), so its 0.1 counts at its piece weight 2/3. The ruling's own
+  estimate (about -0.30 headline, -0.37 science) counted E22 and C14f; E30's Changhua windows,
+  E20 and C01-w add the rest. At the earlier pinned states the official figures become 52.9
+  (fd40796, honesty 95; C01 was not yet split, so R10.5c does not reach it) and 53.2 (08a6aa7,
+  honesty 98), science 44.4 and 44.3 (`tests/test_twin_progress.py`, which also pins the
+  round-10 ledger at commit f01c44a). No official grade rests on a measured_by qualifier any
+  more (map note `measured_by_note`, checked by a test).
 - **R10.6, caveat 9 labelled in place.** This model's avoided-subsidence sizes in Trust caveat 9
   carry the "model internals, size untested" label, EN and ZH, where they are printed: the
   post-hoc split's per-policy inelastic and total cm (`cv9_pol`), the cm left after a lifted
-  policy (`cv9_lift`) and the late-start comparison (`fw_late`); `fw_item` prints shares, not
-  sizes. Nothing moved; caveats 3, 7, 8, the caveat-12 baseline rate and the model-card rows are
+  policy (`cv9_lift`) and both figures of the late-start comparison (`fw_late`), one label per
+  cm figure (the review found the first late-start figure unlabelled; fixed in 20261108c);
+  `fw_item` prints shares, not sizes. These are C03's avoided subsidence (C03 notes); caveat 9
+  prints no baseline figure of C09 (C09 notes). Nothing moved; caveats 3, 7, 8, the caveat-12 baseline rate and the model-card rows are
   left for the next claim-honesty audit; 0 points, and claim honesty stays 98.3 until a
-  re-audit. Page `twin_app_20261108b` (sha256 9e48c5f7; template sha256 1ab89d5c), built with
-  20261108a's command (only `--out` changed); its payload differs from 20261108a's only in
-  `release.code_sha256`; promoted to `results/twin/twin_app.html`.
+  re-audit. Page `twin_app_20261108c` (sha256 9a9c40f3; template sha256 ed455d8f), with this
+  label fix and R10.5c's range lines, built with 20261108a's command (only `--out` changed); its
+  payload differs from 20261108b's and 20261108a's only in `release.code_sha256`; promoted to
+  `results/twin/twin_app.html`. The first R10.6 build, `twin_app_20261108b` (sha256 9e48c5f7),
+  was never merged.
