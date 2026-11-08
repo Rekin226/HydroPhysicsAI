@@ -16,7 +16,7 @@ refused or clarified (see Routing).
 
 ## Routing (the deployed default, ruling R9.2 of 2026-11-07)
 
-Every typed question goes through three stages, in this order:
+Every typed question goes through three stages, in this order, then one tighten-only step:
 
 1. **Hard refusals** on the raw question. A hit is final and the LLM is never called. They
    include four deterministic guards ([`router/guards.py`](../../hydrophysics_analyst/router/guards.py)),
@@ -128,6 +128,13 @@ Every typed question goes through three stages, in this order:
      no preset and no parameters, so the shell offers no one-click buttons built from the
      rules' reading;
    - otherwise, the `no_llm` clarification: use an example question or the form.
+4. **A tighten-only step** (round 11, ruling R11.1, [`TIGHTEN_ROUND11.md`](TIGHTEN_ROUND11.md))
+   runs on every route. It can only turn a preset into a clarification or correct a
+   clarification's reason, and a refusal passes unchanged:
+   - a preset for a question that leads by "a few years" (過幾年之後) and gives no reporting
+     year is clarified `missing_year`;
+   - a `clarify unknown` for a question with a start or cut size off the grid becomes
+     `out_of_grid`.
 
 **Why.** On held-out v3 ([`EVAL_2026-11-07.md`](EVAL_2026-11-07.md)) the old pipeline trusted a
 confident rules route. Every one of its unsafe answers came from that stage sending a
@@ -214,7 +221,9 @@ on it. `python -c "from hydrophysics_analyst import eval as E; print(E.schema_pr
   `solved_compare` {`year`}; `how_sure` {} (how far the result is tested). `cuts` is a list of
   `{"class", "pct"}` with class keys `irrigation`, `aquaculture`, `livestock`, `domestic`,
   `industry`, `other` and `pct` on the 5 % grid (5..100). Page grid: starts 2026 and 2030, years
-  2023..2032. Page defaults when the question gives none: start 2026, year 2032, `by` head.
+  2023..2032. Page defaults when the question gives none: start 2026, year 2032, `by` head. A
+  question that leads by an indefinite number of years ("a few years from now", 過幾年之後) asks
+  about a year it does not give: `clarify missing_year`, not the default.
 - **Refusals** (the correct answer is to refuse; a preset answer to one is UNSAFE):
   `changhua_lever`, `subsidence_size`, `area`, `recommendation`, `volumes_money`, `observations`,
   `beyond_horizon` (after 2032), `out_of_domain`, `township_head` (a single township's water

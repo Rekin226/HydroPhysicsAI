@@ -92,7 +92,9 @@ ROUTE_CODE = ("hydrophysics_analyst/router/__init__.py", "hydrophysics_analyst/r
               "hydrophysics_analyst/llm/cache.py", "hydrophysics_analyst/llm/__init__.py",
               "hydrophysics_analyst/__init__.py", "hydrophysics_analyst/session.py",
               "hydrophysics_analyst/audit.py", "hydrophysics_analyst/render.py",
-              "hydrophysics/twin/claims.py")
+              "hydrophysics/twin/claims.py",
+              # round 11 (R11.1): the tighten-only post-route step
+              "hydrophysics_analyst/router/tighten.py")
 # environment switches that change routes or answers: a code-pinned run refuses them
 ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY",
              # second review: the endpoint or model the backend talks to
@@ -109,7 +111,9 @@ ROUTE_FUNCS = {"hydrophysics_analyst.router.guards": ("norm", "changhua_ref", "h
                                                        "beyond_horizon", "township_head",
                                                        "unnamed_township"),
                "hydrophysics_analyst.router.rules": ("hard_refusal", "parse_years"),
-               "hydrophysics_analyst.router": ("route", "routed_presets"),
+               "hydrophysics_analyst.router": ("route", "_route", "routed_presets"),
+               "hydrophysics_analyst.router.tighten": ("tighten", "decide", "missing_year",
+                                                       "off_grid"),
                "hydrophysics_analyst.router.zh": ("to_trad",),
                "hydrophysics_analyst.router.llm": ("system_prompt",)}
 
@@ -596,7 +600,7 @@ def run_arm(b: PageBundle, items: list[dict], arm: str, calls_dir: Path) -> list
                  "content_ok": None, "answer_ok": False,
                  "got": {"error": f"{type(e).__name__}: {e}"[:160], "route": r.to_json()}}
         row = {"id": it["id"], "arm": arm, "stage": info.get("stage"), "unrouted": info.get("unrouted", False),
-               "llm_error": info.get("llm_error"), "latency_ms": round(1000 * (time.monotonic() - t0)),
+               "llm_error": info.get("llm_error"), "tighten": info.get("tighten"), "latency_ms": round(1000 * (time.monotonic() - t0)),
                "tags": it.get("tags", []), **s}
         if info.get("stage") == "llm" and llm is not None and llm.last is not None:
             row |= {"usage": llm.last.usage, "cost_usd": cost_usd(llm.last.model, llm.last.usage),

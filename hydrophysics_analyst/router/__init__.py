@@ -12,6 +12,11 @@ an enum-only :class:`Route`.
 Why (docs/analyst/EVAL_2026-11-07.md): on held-out v3 every unsafe answer of the deployed
 pipeline came from the rules stage routing a must-refuse question to a preset, which the
 pipeline then trusted; the arm in which the LLM routed every preset had none.
+
+Round 11 (ruling R11.1): every route then passes the tighten-only step of ``router.tighten``. It
+can only turn a preset into a clarification (``missing_year``: "a few years from now" with no
+reporting year) or correct a clarification's reason (``unknown`` -> ``out_of_grid``); a refusal
+passes unchanged. What it changed is logged as ``info["tighten"]``.
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ import os
 
 from ..page import PageBundle
 from . import guards as G
+from . import tighten as T
 from .rules import RulesRouter, detect_lang, hard_refusal
 from .schemas import Route
 
@@ -61,8 +67,18 @@ def bare_clarification(r: Route) -> Route:
 
 def route(b: PageBundle, question: str, prev: dict | None = None, *, llm=None,
           threshold: float = 0.9) -> tuple[Route, dict]:
-    """Returns (route, info) where info records which stage decided, the rules' hint and any
-    LLM error."""
+    """Returns (route, info) where info records which stage decided, the rules' hint, any LLM
+    error and what the round-11 tighten-only step changed (``tighten``)."""
+    r, info = _route(b, question, prev, llm=llm, threshold=threshold)
+    t, change = T.tighten(b, question, prev, r)
+    if change:
+        info["tighten"] = change
+    return t, info
+
+
+def _route(b: PageBundle, question: str, prev: dict | None = None, *, llm=None,
+           threshold: float = 0.9) -> tuple[Route, dict]:
+    """The three stages (hard refusals, rules, LLM), before the tighten-only step."""
     info: dict = {"stage": "hard_refusal"}
     ref = hard_refusal(question, b)
     if ref:
