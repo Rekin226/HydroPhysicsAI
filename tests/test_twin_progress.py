@@ -400,10 +400,12 @@ def test_the_default_mapping_is_the_ruled_one():
     assert cl["E25"]["grade"] == cl["E26"]["grade"] == {"S": {"S": "S-dt-dir-size"}}
     for c in ("E04", "C30-fc"):                                                     # R8.17b
         assert cl[c]["grade"] == {"D": {"D": "D-unknown"}}, c
-    for c in ("E22", "C14f", "E30"):                         # R10.5: R9.4's thresholds
+    for c in ("E22", "C14f", "E30", "E20"):                  # R10.5 (E20: R10.5b)
         assert cl[c]["grade"] == {"D": {"D": "D-unknown"}}, c
         assert "R10.5" in cl[c]["reason"] and "8f67973f" in cl[c]["reason"], c
+    assert "R10.5b" in cl["E20"]["reason"] and "7816a635" in cl["E20"]["reason"]
     assert "R10.5" in pmap["rule"] and "8f67973f" in pmap["rule"]
+    assert "R10.5b" in pmap["rule"] and "7816a635" in pmap["rule"]
     pre = P.with_mapping(pmap, "pre-R10.5")["claims"]       # the figures before R10.5
     e30 = pre["E30"]["grade"]["D"]["D"]
     assert e30["measured_by"] == "E02z.level_years23.v1" and e30["reading_sha256"] == "0e5e83d3"
@@ -412,7 +414,10 @@ def test_the_default_mapping_is_the_ruled_one():
     for c in ("E22", "C14f"):
         assert pre[c]["grade"] == {"D": {"D": {"measured_by": "FV.ext.v1",
                                                "otherwise": "D-unknown"}}}, c
-    assert P.with_mapping(pmap, "default-v1")["claims"]["E22"] == pre["E22"]
+    assert pre["E20"]["grade"] == {"D": {"D": {"measured_by": "X5.n2c_reading.v1",
+                                              "otherwise": "D-unknown"}}}
+    for c in ("E22", "E20"):
+        assert P.with_mapping(pmap, "default-v1")["claims"][c] == pre[c], c
     assert "weight" not in cl["C28"]                                                # R8.17c
     assert not any("plan" in e["reason"] for e in cl.values())
     assert P.with_mapping(pmap, None) is pmap and P.with_mapping(pmap, "official") is pmap
@@ -439,7 +444,8 @@ def _at(commit):
 
 
 # Official figures under rulings R8.16a-c and R8.17a-d, as published in evidence section 26
-# (mapping pre-R10.5), and under R10.5 (the official mapping since, evidence section 28).
+# (mapping pre-R10.5), and under R10.5 and R10.5b (the official mapping since, evidence
+# section 28).
 PINNED = {
     AUDIT_STATE: {"honesty": 95.0,
                   "parts": (50.9091, 51.1538, 41.875, 35.814, 45.625),
@@ -450,13 +456,13 @@ PINNED = {
             "science": (45.173, 38.0873, 57.2008), "six": (53.9775, 64.0006),
             "default_v1": (49.16, 57.30)},
 }
-PINNED_R10_5 = {
+PINNED_R10_5 = {                                     # R10.5 and R10.5b (E20)
     AUDIT_STATE: {"honesty": 95.0,
-                  "parts": (50.9091, 50.3846, 40.625, 35.814, 45.625),
-                  "science": (44.6715, 37.4397, 56.218), "six": (53.0596, 62.6817)},
+                  "parts": (50.9091, 50.3846, 40.625, 35.814, 44.375),
+                  "science": (44.4215, 37.1897, 55.968), "six": (52.8513, 62.4734)},
     TODAY: {"honesty": 98.0,
-            "parts": (49.3939, 51.0714, 41.6667, 35.5682, 45.625),
-            "science": (44.665, 37.5794, 56.6928), "six": (53.5542, 63.5774)},
+            "parts": (49.3939, 51.0714, 41.6667, 35.5682, 44.375),
+            "science": (44.415, 37.3294, 56.4428), "six": (53.3459, 63.369)},
 }
 
 
@@ -464,8 +470,8 @@ PINNED_R10_5 = {
 @pytest.mark.parametrize("mapping", ["pre-R10.5", "official"])
 def test_ruled_figures_are_reproduced(commit, mapping):
     """The figures at the 2026-11-02 audit state (main fd40796) and at main 08a6aa7, pinned
-    under the rule published in section 26 (mapping pre-R10.5) and under R10.5 (official), with
-    the earlier default (default-v1) beside them."""
+    under the rule published in section 26 (mapping pre-R10.5) and under R10.5 and R10.5b
+    (official), with the earlier default (default-v1) beside them."""
     ledger = _at(commit)
     pin = (PINNED if mapping == "pre-R10.5" else PINNED_R10_5)[commit]
     res = P.recount(ledger, P.with_mapping(P.load_map(), mapping), honesty=pin["honesty"])
@@ -479,6 +485,23 @@ def test_ruled_figures_are_reproduced(commit, mapping):
     old = P.recount(ledger, P.with_mapping(P.load_map(), "default-v1"), honesty=pin["honesty"])
     assert (old["science"]["official"], old["six_part"]["official"]) == pytest.approx(
         PINNED[commit]["default_v1"], abs=0.01)
+
+
+def test_current_figures_under_r10_5_and_r10_5b():
+    """The ledger of this checkout, claim honesty 98.3 (audited 2026-11-07, R9.3): the official
+    figures of evidence section 28 (R10.5 and R10.5b) beside the rule before them."""
+    ledger = _ledger()
+    res = P.recount(ledger, P.load_map(), honesty=98.3)
+    got = tuple(res["parts"][p]["official"] for p in PARTS)
+    assert got == pytest.approx((49.3939, 51.0714, 41.6667, 35.5682, 44.375), abs=1e-3)
+    assert (res["science"]["official"], res["six_part"]["official"]) == pytest.approx(
+        (44.415, 53.3959), abs=1e-3)
+    pre = P.recount(ledger, P.with_mapping(P.load_map(), "pre-R10.5"), honesty=98.3)
+    assert (pre["science"]["official"], pre["six_part"]["official"]) == pytest.approx(
+        (45.173, 54.0275), abs=1e-3)
+    for cid in ("E20", "E22", "C14f", "E30"):
+        assert _row(res, cid)["grade_key"] == "D-unknown", cid
+        assert _row(pre, cid)["grade_key"] == "D-measured", cid
 
 
 def test_every_main_state_from_the_audit_to_today_recounts():

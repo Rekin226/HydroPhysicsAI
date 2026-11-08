@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown; the earlier figures stay reproducible under mapping pre-R10.5",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown, and E20 by R10.5b, twenty-second set (results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635: the canal-confounded power decides); the earlier figures stay reproducible under mapping pre-R10.5",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -479,13 +479,10 @@
    "part": "changhua",
    "grade": {
     "D": {
-     "D": {
-      "measured_by": "X5.n2c_reading.v1",
-      "otherwise": "D-unknown"
-     }
+     "D": "D-unknown"
     }
    },
-   "reason": "N2C Changhua head response test; decidability measured by X5.n2c_reading.v1."
+   "reason": "N2C Changhua head response test. Graded D with decidability unknown by user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f; R9.4's thresholds: measured needs P >= 0.8 and a null pass rate <= 0.2; weak if P < 0.5 or the null pass rate > 0.5; otherwise unchanged, D unknown) with user ruling R10.5b (twenty-second set, results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635): the canal-confounded power decides, consistent with R8.16c on C01-w. X5.n2c_reading.v1 (results/dataprep/reports/X5.n2c_reading.v1/result.json, sha256 d9afc45d): power with the canal confounder 0.60 (reading.power_k1_rho_m083; 0.93 without it, reading.power_k1_rho0), false pass 0.116 (reading.false_pass_k0_rho_m083): P < 0.8, so not measured; P >= 0.5 and null <= 0.5, so not weak; unchanged. Until R10.5b it was measured_by X5.n2c_reading.v1 (mapping pre-R10.5)."
   },
   "E25": {
    "part": "changhua",
@@ -536,7 +533,7 @@
  },
  "mappings": {
   "default-v1": {
-   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights with no grade cap, the C28 weight override 2 -> 1, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E04 and C30-fc measured by FV.stat.v2; E30 measured by its own registration E02z.level_years23.v1; E22 and C14f measured by FV.ext.v1 (the base until R10.5); E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a and R8.17a-d.",
+   "description": "the recount's first default (commit 72d5ee9), kept for comparison only: highest-code composite rule, split pieces at their own display weights with no grade cap, the C28 weight override 2 -> 1, and the lenient qualifiers (C01-w and the pre-split C01's D measured by X5.n2_reading.v1; E21 measured by FV.decidability.v2 on its level rule; E04 and C30-fc measured by FV.stat.v2; E30 measured by its own registration E02z.level_years23.v1; E22 and C14f measured by FV.ext.v1 and E20 by X5.n2c_reading.v1 (the base until R10.5 and R10.5b); E25 and E26 S design-time 0.9). Superseded as the official rule by R8.16a and R8.17a-d.",
    "composite": "max",
    "split_weights": false,
    "claims": {
@@ -641,12 +638,22 @@
        }
       }
      }
+    },
+    "E20": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "X5.n2c_reading.v1",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
     }
    },
    "split_cap": false
   },
   "pre-R10.5": {
-   "description": "the official rule before user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), kept for comparison only, so that the figures published before it (evidence section 26) stay reproducible: E22 and C14f D measured by FV.ext.v1, E30 D measured by its registered decidability reading; everything else as the base.",
+   "description": "the official rule before user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), kept for comparison only, so that the figures published before it (evidence section 26) stay reproducible: E22 and C14f D measured by FV.ext.v1, E30 D measured by its registered decidability reading, E20 D measured by X5.n2c_reading.v1 (regraded by R10.5b, twenty-second set, sha256 7816a635); everything else as the base.",
    "claims": {
     "E22": {
      "grade": {
@@ -675,6 +682,16 @@
         "measured_by": "E02z.level_years23.v1",
         "reading_report": "results/dataprep/reports/E02z.level_years23.v1/decidability/report.json",
         "reading_sha256": "0e5e83d3",
+        "otherwise": "D-unknown"
+       }
+      }
+     }
+    },
+    "E20": {
+     "grade": {
+      "D": {
+       "D": {
+        "measured_by": "X5.n2c_reading.v1",
         "otherwise": "D-unknown"
        }
       }

@@ -1839,12 +1839,14 @@ R10_IDS = ("R10.1", "R10.2a", "R10.2b", "R10.2c", "R10.3a", "R10.3b", "R10.3c", 
 R10B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
 R10D_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08b.json (sha256 1e191cb9)."
 R10E_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08c.json (sha256 8f67973f)."
+R10F_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08d.json (sha256 7816a635)."
 
 
 def test_round10_rulings_are_recorded():
     """Round 10: the eighteenth set's eight rulings, the nineteenth set's R10.1b, the
-    twentieth set's R10.2d and the twenty-first set's R10.5 and R10.6, each citing its file and
-    sha256; R10.5's regrades carry their reading, P, null rate and threshold on each row."""
+    twentieth set's R10.2d, the twenty-first set's R10.5 and R10.6 and the twenty-second set's
+    R10.5b, each citing its file and sha256; the regrades carry their reading, P, null rate and
+    threshold on each row."""
     text = {r["id"]: r["text"] for r in L()["rulings"]}
     for rid in R10_IDS:
         t = text[f"user ruling 2026-11-07 (eighteenth set) ({rid})"]
@@ -1872,10 +1874,20 @@ def test_round10_rulings_are_recorded():
         assert "user ruling 2026-11-08 (twenty-first set) (R10.5)" in cl[cid]["ruling_also"], cid
     assert "P = 0.592" in cl["E22"]["notes"] and "P = 0.592" in cl["C14f"]["notes"]
     assert "0.688" in cl["E30"]["notes"] and "0.683" in cl["E30"]["notes"]
+    t = text["user ruling 2026-11-08 (twenty-second set) (R10.5b)"]   # E20: confounded power
+    assert " Decision: The canal-confounded power 0.60 decides" in t, t
+    assert " Applies to: E20, progress." in t and t.endswith(R10F_SRC), t
+    n = cl["E20"]["notes"]
+    for k in ("R10.5b", "7816a635", "P = 0.60", "0.116", "P >= 0.8", "<= 0.2",
+              "decidability unknown"):
+        assert k in n, k
+    assert "user ruling 2026-11-08 (twenty-second set) (R10.5b)" in cl["E20"]["ruling_also"]
+    assert "E20 stays D-measured" not in L()["status_note"]
     for rf, sha in (("user_rulings_2026-11-07e.json", "88260aab"),
                     ("user_rulings_2026-11-08.json", "81e8a61c"),
                     ("user_rulings_2026-11-08b.json", "1e191cb9"),
-                    ("user_rulings_2026-11-08c.json", "8f67973f")):
+                    ("user_rulings_2026-11-08c.json", "8f67973f"),
+                    ("user_rulings_2026-11-08d.json", "7816a635")):
         f = C.REPO / "results/dataprep/rulings" / rf
         if f.is_file():                                # a local record; absent on CI
             assert C.sha256(f).startswith(sha), rf
