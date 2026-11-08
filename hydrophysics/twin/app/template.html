@@ -969,7 +969,7 @@ en: {
   secaxis: "Fan axis", sechsr: "Along the rail", sechuwei: "West-east through Huwei", secdraw: "Draw on the map",
   cmp_empty: "No pinned policies yet. Set the levers and press “Pin this policy” (up to 4). Pins also travel in the share link.",
   cmp_avoided: "Model: avoided by {y} (cm, untested)", cmp_area: "Model: area >{t} cm/yr (km², untested)", cmp_rail: "Model: rail max gradient (untested)", cmp_head: "L2 head (m)", cmp_cut: "Cut (GWh/yr)", cmp_agree: "Parameter sets agree",
-  cmp_alt: "Other model (cm)", cmp_alt_km: "{km} km model (cm)", cmp_full: " (full model)", cmp_mini: "Small maps share the fixed ±{lim} cm scale (sinking avoided {a}–{b}, blue = less sinking).",
+  cmp_alt: "Other model (cm, untested)", cmp_alt_km: "{km} km model (cm, untested)", cmp_full: " (full model)", cmp_mini: "Small maps share the fixed ±{lim} cm scale (sinking avoided {a}–{b}, blue = less sinking).",
   trust_ttl_pts: "Leveling benchmarks: hindcast minus observed at the last survey, cm", trust_ttl_town: "Mean leveling bias per township (hindcast minus observed), cm",
   trust_cap: "orange = the model sinks too much; blue = too little.", trust_agg: " The public page carries township aggregates only, not the individual benchmarks.",
   trust_chain: "Full-chain hindcast against {n} leveling benchmarks: R² <b>{r2}</b>, RMSE {rmse} cm, bias {bias} cm.", trust_nolev: "Leveling not loaded.", trust_tbl: "Leveling skill per township",
@@ -1025,7 +1025,7 @@ en: {
   cv2_t: "The pumping-stress radius is not pinned down.",
   cv2_b: " The model spreads each area's metered pumping over a learned radius: {km} km in the full-record calibration{sk}{ak}. Why pumping would act kilometres away is not known (meter versus well location, or irrigation water moved between districts).{cmp} The ranges on this page cover this model's parameters only, not this difference in model structure.",
   cv2_sk: ", but {sk} km{cap} when the same model is fitted to the first {fy} years only (the held-out-years screen)", cv2_cap: " (its upper limit)", cv2_prev: "; the previous model sat at {ak} km",
-  alt_cmp: " By {w}, {a}, against {b} cm here.", alt_cmp_a: "{p} avoids {v} cm",
+  alt_cmp: " By {w}, {a}.", alt_cmp_a: "{p} avoids {v} cm ({mine} here; model internals, size untested)",
   cv3_t: "Slow clay creep is uncertain.", cv3_b: " The clay's creep time constant cannot be pinned down from {nyr} years of data{tau}. A longer constant gives more subsidence after {H} than this model shows.{rheo}",
   cv3_tau: " (a ceiling of {tau} gives different decadal creep)", cv3_rheo: " Concretely, {t}. This qualifies the baseline's total, not what a policy avoids.",
   cv4_t: "Some parameters sit at their limits.", cv4_b: " {n} of the {t} zonal parameters are at a bound, so they are held, not varied. The range therefore understates the uncertainty.",
@@ -1061,10 +1061,10 @@ en: {
   cv12_none_t: "When the benefit arrives is not loaded.", cv12_reb_t: "In this model a policy's benefit is a quick one-time rebound; the ongoing sinking is not slowed.",
   cv12_reb_b: " {tl}. Almost all of it comes within the first year, a quick rebound as heads rise, and then it stops growing. With or without the policy the fan keeps sinking at about {r} cm/yr over {span}: that rate is left over from past drawdown (the clays are still compacting), and in this model a policy does not slow it. So starting later changes little by {H}{later}.{alt}{test}",
   cv12_later: ": the same policy started in {late} reaches almost the same number, and the difference is only in the years before {late}",
-  cv12_slow_t: "In this model a policy slows the ongoing sinking, so its benefit grows.", cv12_slow_b: " {tl}; fan rate over {span}: {rates}.{alt}{test}",
-  cv12_alt_slows: " {Who} behaves differently: there a policy also slows the ongoing sinking (fan rate over {span}: {rates}), so the benefit keeps growing: {tl}.",
+  cv12_slow_t: "In this model a policy slows the ongoing sinking, so its benefit grows.", cv12_slow_b: " {tl}; fan rate over {span}: {rates} (model internals, size untested).{alt}{test}",
+  cv12_alt_slows: " {Who} behaves differently: there a policy also slows the ongoing sinking (fan rate over {span}: {rates}; model internals, size untested), so the benefit keeps growing: {tl}.",
   cv12_alt_rebound: " In {who} it is a one-time rebound instead: {tl}.", cv12_test: " The record has not tested which is right, and the 14 compaction rings argue against this column: their sinking rate responds to head level (+0.0059 per m per year, 95 % CI 0.0048-0.0071) while this column gives −0.0005, and a column with a delayed-drainage term fitted on the same leveling gives the same. Treat the timing as unresolved.",
-  tl_item: "{p} from {s} avoids {v} cm by Dec {y}", rl_item: "{a} → {b} cm/yr under {p}",
+  tl_item: "{p} from {s} avoids {v} cm by Dec {y} (model internals, size untested)", rl_item: "{a} → {b} cm/yr under {p}",
   // tests and the model card
   tt_new: "New observations {span}: frozen-forecast RMSE", tt_heldout: "Held-out years: error ratio after each well's offset (≤ {k} passes)", tt_shape: "Held-out years: shape R²",
   tt_heldout_rmse: "Held-out years (RMSE)", tt_unseen_change: "Unseen wells: head-change R²", tt_unseen_level: "Unseen wells: absolute-level R²", tt_column: "Leveling: column out of fold R²",
@@ -1369,7 +1369,7 @@ zh: {
   secaxis: "扇軸", sechsr: "沿高鐵", sechuwei: "經虎尾東西向", secdraw: "在地圖上繪製",
   cmp_empty: "尚未釘選政策。設定槓桿後按「釘選此政策」，最多4個；它們也會存在分享連結中。",
   cmp_avoided: "模型：{y}年前減少下陷（公分，未經檢驗）", cmp_area: "模型：面積>{t}（公里²，未經檢驗）", cmp_rail: "模型：高鐵最大梯度（未經檢驗）", cmp_head: "L2水頭 (公尺)", cmp_cut: "減抽 (GWh/年)", cmp_agree: "一致（參數組）",
-  cmp_alt: "另一模型 (公分)", cmp_alt_km: "{km} 公里模型 (公分)", cmp_full: "（完整模型）", cmp_mini: "小地圖使用相同的固定刻度 ±{lim} 公分（{a}–{b}減少的下陷，藍＝少下陷）。",
+  cmp_alt: "另一模型（公分，未經檢驗）", cmp_alt_km: "{km} 公里模型（公分，未經檢驗）", cmp_full: "（完整模型）", cmp_mini: "小地圖使用相同的固定刻度 ±{lim} 公分（{a}–{b}減少的下陷，藍＝少下陷）。",
   trust_ttl_pts: "水準點：回推減觀測（最後一次測量），公分", trust_ttl_town: "各鄉鎮水準點平均偏差（回推減觀測），公分",
   trust_cap: "橘色＝模型下陷過多；藍色＝模型下陷不足。", trust_agg: " 公開版只提供鄉鎮彙總，不含個別水準點。",
   trust_chain: "全鏈回推對 {n} 個水準點：R² <b>{r2}</b>，RMSE {rmse} 公分，偏差 {bias} 公分。", trust_nolev: "未載入水準資料。", trust_tbl: "各鄉鎮的水準測量技巧",
@@ -1418,7 +1418,7 @@ zh: {
   cv2_t: "抽水應力的分散半徑未被資料確定。",
   cv2_b: "模型把每個地區的電表抽水分散到一個學得的半徑：全紀錄擬合為 {km} 公里{sk}{ak}。抽水為何在數公里外起作用仍不清楚（電表位置與井位不同，或灌溉水在地區間移動）。{cmp}本頁的範圍只包含本模型的參數，不包含這種模型結構的差異。",
   cv2_sk: "，但只用前{fy}年擬合的同一模型（保留年份檢驗）得到 {sk} 公里{cap}", cv2_cap: "（達到上限）", cv2_prev: "；前一版模型為 {ak} 公里",
-  alt_cmp: "{w}：{a}。", alt_cmp_a: "「{p}」減少 {v} 公分（本模型 {mine}）",
+  alt_cmp: "{w}：{a}。", alt_cmp_a: "「{p}」減少 {v} 公分（本模型 {mine}；模型內部數值，大小未經檢驗）",
   cv3_t: "緩慢的黏土潛變不確定。", cv3_b: "{nyr}年資料無法確定黏土的潛變時間常數{tau}。較長的常數會讓{H}年以後的下陷比本模型多。{rheo}",
   cv3_tau: "（上限 {tau} 會給出不同的十年潛變）", cv3_rheo: "具體而言，{t}。這是對基準總量的說明，不影響政策減少的下陷。",
   cv4_t: "部分參數在邊界上。", cv4_b: "{n}個（共{t}個分區參數）位於邊界，因此固定而未抽樣，範圍低估了不確定性。",
@@ -1453,10 +1453,10 @@ zh: {
   cv12_none_t: "效益的時間變化未載入。", cv12_reb_t: "本模型中，政策的效益是一次性的快速回彈，持續的下陷並未減緩。",
   cv12_reb_b: "{tl}。幾乎所有效益在第一年內出現（水頭回升時地面回彈），之後就不再增加。無論有沒有政策，{span}年全扇仍以每年約 {r} 公分下陷：這是過去抽降留下的（黏土仍在壓密），本模型中政策不會減緩它。所以晚一點開始，到{H}年的差別很小{later}。{alt}{test}",
   cv12_later: "：同一政策自{late}年開始，到{H}年幾乎是同一個數字，差別只在{late}年以前的幾年",
-  cv12_slow_t: "本模型中，政策減緩了持續的下陷，效益逐年增加。", cv12_slow_b: "{tl}；{span}年全扇速率：{rates} 公分/年。{alt}{test}",
-  cv12_alt_slows: "{who}的行為不同：政策也減緩了持續的下陷（{span}年全扇速率：{rates} 公分/年），所以效益逐年增加：{tl}。",
+  cv12_slow_t: "本模型中，政策減緩了持續的下陷，效益逐年增加。", cv12_slow_b: "{tl}；{span}年全扇速率：{rates} 公分/年（模型內部數值，大小未經檢驗）。{alt}{test}",
+  cv12_alt_slows: "{who}的行為不同：政策也減緩了持續的下陷（{span}年全扇速率：{rates} 公分/年；模型內部數值，大小未經檢驗），所以效益逐年增加：{tl}。",
   cv12_alt_rebound: "{who}則是一次性回彈：{tl}。", cv12_test: "資料尚未檢驗哪一種才對，且 14 口壓密監測井與本壓密柱相左：其下陷速率隨水位改變（每公尺每年 +0.0059，95% 信賴區間 0.0048–0.0071），本壓密柱為 −0.0005，以同樣水準測量校正的延遲排水柱亦同。時間特性應視為未解決。",
-  tl_item: "{p}（自{s}年）到{yz}12月分別減少 {vz} 公分", rl_item: "{p} {a} → {b}",
+  tl_item: "{p}（自{s}年）到{yz}12月分別減少 {vz} 公分（模型內部數值，大小未經檢驗）", rl_item: "{p} {a} → {b}",
   tt_new: "新增觀測 {span}：凍結預報 RMSE", tt_heldout: "保留年份：去除各井偏差後誤差比（≤ {k} 通過）", tt_shape: "保留年份：變化形狀 R²",
   tt_heldout_rmse: "保留年份（RMSE）", tt_unseen_change: "未見過的井：水頭變化 R²", tt_unseen_level: "未見過的井：絕對水位 R²", tt_column: "水準測量：壓密柱跨折 R²",
   tt_chain: "水準測量：全鏈回推 R²（{n}點）", tt_rings: "壓密環（{n}個，未分層代理）R²", tt_policy: "政策方向合理性檢查（模型內部，非對照觀測的檢驗）",
@@ -2693,12 +2693,12 @@ function renderTrust() {
 }
 
 // ---------- the known limits (one source; shown in the Trust tab, one at a time in a dialog) ----
-function altCompare() {                // " The previous model answers ... against ... here."
+function altCompare() {                // " By the previous model, <policy> avoids v cm (mine here; labelled)." (R10.1b)
   if (!D.alt) return "";
   const pairs = D.solved.filter(x => x.members && D.alt.resp[x.name]).map(x => [policyPhrase(x.factors), D.alt.resp[x.name].subs_mean, mMean(x.members)]);
   if (!pairs.length) return "";
   const w = altWords();                 // avoided subsidence: minus the paired change, positive = benefit
-  return tr("alt_cmp", {w, a: pairs.map(q => tr("alt_cmp_a", {p: lc(q[0]), v: f2(-q[1]), mine: f2(-q[2])})).join(tr("list_and")), b: pairs.map(q => f2(-q[2])).join(tr("list_and"))});
+  return tr("alt_cmp", {w, a: pairs.map(q => tr("alt_cmp_a", {p: lc(q[0]), v: f2(-q[1]), mine: f2(-q[2])})).join(tr("list_and"))});
 }
 function lateRate(tim) { const t0 = tim || (TIMS()[0] || {}).timing; return t0 ? {r: t0.rate_base, y: t0.rate_years_span} : null; }
 function timingList(tims) {
@@ -2873,7 +2873,7 @@ function testTable() {
 }
 const andJoin = a => !a.length ? "–" : joinList(a);
 function prevLine() {                  // "Compared with the previous model: ..."
-  const mc = D.modelcard, pv = PREV(), a = D.alt; if (!pv) return "";
+  const mc = D.modelcard, pv = PREV(); if (!pv) return "";
   const fr = mc.temporal && mc.temporal.fair, pf = pv.temporal && pv.temporal.fair, gain = [], lose = [];
   const cmp = (mine, theirs, key, fmt = r3) => { if (mine == null || theirs == null) return; (mine > theirs ? gain : lose).push(tr("pl_" + key, {a: fmt(mine), b: fmt(theirs)})); };
   if (fr && pf) (fr.ratio < pf.ratio ? gain : lose).push(tr("pl_heldout", {a: fr.ratio.toFixed(2), b: pf.ratio.toFixed(2)}));

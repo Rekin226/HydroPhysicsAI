@@ -1836,23 +1836,33 @@ R10_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-07e.json (sha25
 R10_IDS = ("R10.1", "R10.2a", "R10.2b", "R10.2c", "R10.3a", "R10.3b", "R10.3c", "R10.4")
 
 
+R10B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08.json (sha256 81e8a61c)."
+
+
 def test_round10_rulings_are_recorded():
-    """The eighteenth set (round 10): eight rulings, each citing its file and sha256."""
+    """Round 10: the eighteenth set's eight rulings and the nineteenth set's R10.1b, each
+    citing its file and sha256."""
     text = {r["id"]: r["text"] for r in L()["rulings"]}
     for rid in R10_IDS:
         t = text[f"user ruling 2026-11-07 (eighteenth set) ({rid})"]
         assert " Decision: " in t and " Applies to: " in t and t.endswith(R10_SRC), rid
-    rf = C.REPO / "results/dataprep/rulings/user_rulings_2026-11-07e.json"
-    if rf.is_file():                                   # a local record; absent on CI
-        assert C.sha256(rf).startswith("88260aab")
+    t = text["user ruling 2026-11-08 (nineteenth set) (R10.1b)"]
+    assert " Decision: Label in place" in t and " Applies to: E15, E12, page." in t, t
+    assert t.endswith(R10B_SRC), t
+    for rf, sha in (("user_rulings_2026-11-07e.json", "88260aab"),
+                    ("user_rulings_2026-11-08.json", "81e8a61c")):
+        f = C.REPO / "results/dataprep/rulings" / rf
+        if f.is_file():                                # a local record; absent on CI
+            assert C.sha256(f).startswith(sha), rf
 
 
 def test_previous_model_size_clause_sits_under_model_internals_only():
-    """User ruling R10.1 (B): the model card's previous-model row (kv_prev, prevLine) keeps the
-    observation-scored comparisons only; the previous model's baseline and avoided subsidence,
-    with this model's figure beside them (pl_base, pl_resp), render only in the Model internals
-    block (prevSizeLine -> #miPrev inside #tilesMore), labelled, in EN and ZH. All of it stays
-    on E15, which stays N; no new claim id."""
+    """User ruling R10.1 (B), static: the card's previous-model row no longer carries the sizes
+    (pl has no {proj}; prevLine asks for none of pl_base, pl_resp, prev_mi); the pl_base/pl_resp
+    clause renders only under Model internals (only prevSizeLine asks for those keys, only
+    tileLabels calls it, into #miPrev built inside #tilesMore, and neither renderCard nor an
+    answer function reaches it); the keys carry their labels in EN and ZH; all of it maps to
+    E15, which stays N."""
     en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
     for d in (en, zh):
         assert "{proj}" not in d["pl"] and "{proj}" in d["prev_mi"]
@@ -1885,3 +1895,37 @@ def test_previous_model_size_clause_sits_under_model_internals_only():
     assert DM()["card_rows"]["kv_prev"] == ["E15"] and DM()["functions"]["prevLine"] == ["E15"]
     assert "i18n:prev_mi" in CL()["E15"]["text_keys"]
     assert "prev_mi" in L()["page_scoping"]["internals_labelled_keys"]
+
+
+def test_previous_model_sizes_left_in_place_carry_the_label():
+    """User ruling R10.1b: the previous model's avoided-subsidence sizes that stay outside Model
+    internals, and this model's beside them, are labelled in place in EN and ZH: caveat 2
+    (altCompare: alt_cmp_a), caveat 12 (timingCaveat: tl_item for every timing item,
+    cv12_alt_slows and cv12_slow_b for the policy fan rates) and the compare panel's
+    previous-model column header (cmp_alt_km, cmp_alt), which says "(cm, untested)" as this
+    model's column (cmp_avoided) does. Nothing moved; E15, E12 and C10 keep their statuses."""
+    en, zh = C.i18n(lang="en"), C.i18n(lang="zh")
+    lab = {"en": "model internals, size untested", "zh": "模型內部數值，大小未經檢驗"}
+    for lang, d in (("en", en), ("zh", zh)):
+        for k in ("alt_cmp_a", "tl_item", "cv12_alt_slows", "cv12_slow_b"):
+            assert lab[lang] in d[k], (lang, k, d[k])
+        assert "{mine}" in d["alt_cmp_a"], (lang, d["alt_cmp_a"])  # this model's figure beside
+        assert "{a}" in d["alt_cmp"] and "{b}" not in d["alt_cmp"], (lang, d["alt_cmp"])
+    assert en["alt_cmp_a"] == "{p} avoids {v} cm ({mine} here; model internals, size untested)"
+    assert zh["alt_cmp_a"] == "「{p}」減少 {v} 公分（本模型 {mine}；模型內部數值，大小未經檢驗）"
+    # the compare panel: the previous-model column header matches this model's column
+    assert en["cmp_avoided"].endswith("(cm, untested)")
+    assert zh["cmp_avoided"].endswith("（公分，未經檢驗）")
+    for k in ("cmp_alt_km", "cmp_alt"):
+        assert en[k].endswith(" model (cm, untested)"), (k, en[k])
+        assert zh[k].endswith("模型（公分，未經檢驗）"), (k, zh[k])
+    # where they render: caveat 2 and caveat 12 in caveats(), the header in renderCompare
+    assert {"alt_cmp", "alt_cmp_a"} <= C.function_keys("altCompare")
+    assert {"tl_item", "cv12_alt_slows", "cv12_slow_b"} <= C.function_keys(
+        "timingCaveat", follow=True)
+    assert {"cmp_alt_km", "cmp_alt", "cmp_avoided"} <= C.function_keys("renderCompare")
+    for k in ("alt_cmp_a", "cmp_alt_km"):
+        assert DM()["i18n"][k] == ["E15"], k
+    assert _st("E15") == {"N"} and _st("E12") == {"L"} and _st("C10") == {"L"}
+    assert "Model internals (previous model's sizes)" in CL()["E15"]["where"]
+    assert "R10.1b" in CL()["E15"]["notes"]

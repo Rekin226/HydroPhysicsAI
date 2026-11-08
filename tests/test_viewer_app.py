@@ -385,21 +385,28 @@ def test_rail_tile_and_alternative_model_in_the_payload(tmp_path, quiet):
     assert "D.hsr.mixed" in html and "structWeak" in html
 
 
-
 PREV_JS = """() => { const out = {}; out.none = (tileLabels(), $("miPrev").hidden);
   D.alt.prev = {name: "prev_synth"};
-  for (const l of ["en", "zh"]) { LANG = l; renderCard(); tileLabels();
-    const row = [...$("cardBody").querySelectorAll(".kv > div")].find(e => e.textContent === tr("kv_prev"));
-    out[l] = {row: row ? row.nextElementSibling.textContent : null, card: $("cardBody").textContent,
-      mi: $("miPrev").textContent, hidden: $("miPrev").hidden, box: $("miPrev").parentElement.id,
-      base: tr("pl_base", {a: "", b: "", v: "", mine: ""}).split("{")[0].slice(0, 6)}; }
+  const f = new Array(K).fill(1); f[0] = 0.7; S.pins = [{name: "pinA", f, start: M.starts[0]}];
+  for (const l of ["en", "zh"]) { LANG = l; renderCard(); tileLabels(); renderCompare();
+    const kv = [...$("cardBody").querySelectorAll(".kv > div")];
+    const row = kv.find(e => e.textContent === tr("kv_prev"));
+    const th = [...$("cmpWrap").querySelectorAll("thead th")].map(e => e.textContent);
+    const cv = caveats();
+    out[l] = {row: row ? row.nextElementSibling.textContent : null,
+      card: $("cardBody").textContent, mi: $("miPrev").textContent,
+      hidden: $("miPrev").hidden, box: $("miPrev").parentElement.id,
+      cv2: cv[1].join(""), cv12: cv[11].join(""), cmpAlt: th[th.length - 2],
+      cmpMine: th[1]}; }
   return out; }"""
 
 
 def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path, quiet):
-    """User ruling R10.1 (B): the card's previous-model row keeps the observation-scored
-    comparisons; the previous model's subsidence sizes (and this model's beside them) render
-    only in the Model internals block, labelled, in EN and ZH (synthetic page)."""
+    """User rulings R10.1 (B) and R10.1b, on a synthetic page in EN and ZH: the card's
+    previous-model row no longer carries the sizes (it keeps the observation-scored
+    comparisons); the pl_base/pl_resp clause renders only under Model internals (#miPrev in
+    #tilesMore); and where the previous model's sizes stay in place (caveat 2, caveat 12, the
+    compare panel's previous-model column header) they carry the size-untested label."""
     fw, _, _ = _write_inputs(tmp_path)
     import shutil
 
@@ -417,13 +424,15 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
         browser.close()
         pw.stop()
     assert got["none"] is True                       # no previous model: nothing in the block
-    for lang, row_head, mi_head, base, resp in (
+    for lang, row_head, mi_head, base, resp, col in (
             ("en", "Compared with the previous model (prev_synth)",
              "Model internals, previous model (prev_synth): it projects a ",
-             "model internals: its size is untested", "model internals, size untested"),
+             "model internals: its size is untested", "model internals, size untested",
+             "(cm, untested)"),
             ("zh", "與前一版模型（prev_synth）相比",
              "模型內部數值，前一版模型（prev_synth）的推估：基準情境",
-             "模型內部數值：其大小未經檢驗", "模型內部數值，大小未經檢驗")):
+             "模型內部數值：其大小未經檢驗", "模型內部數值，大小未經檢驗",
+             "（公分，未經檢驗）")):
         g = got[lang]
         assert g["row"] and g["row"].startswith(row_head), (lang, g["row"])
         assert " cm" not in g["row"] and "公分" not in g["row"], (lang, g["row"])
@@ -432,6 +441,12 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
         assert g["box"] == "tilesMore" and not g["hidden"], lang
         assert g["mi"].startswith(mi_head), (lang, g["mi"])
         assert base in g["mi"] and resp in g["mi"], (lang, g["mi"])
+        # R10.1b: labelled in place, outside Model internals
+        assert g["cv2"].count(resp) >= 1, (lang, g["cv2"])
+        cm = " cm (" if lang == "en" else " 公分（本模型 "
+        assert g["cv2"].count(cm) == g["cv2"].count(resp), (lang, g["cv2"])
+        assert g["cv12"].count(resp) >= 1, (lang, g["cv12"])
+        assert g["cmpAlt"].endswith(col) and g["cmpMine"].endswith(col), (lang, g["cmpAlt"])
 
 
 # data-prep units ---------------------------------------------------------------------------
