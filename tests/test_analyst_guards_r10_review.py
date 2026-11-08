@@ -182,8 +182,60 @@ A2_REVIEW2 = [
     "減少下陷量是壹公分嗎？有沒有驗證？",
 ]
 
+# third review of 1054ff1 (ruling R10.2d: patch and ship)
+A1_REVIEW3 = [
+    "Changhua unchanged; non-Yunlin farms halve aquaculture: head in 2030?",
+    "彰化不動；雲林以外的養殖減半，2030年水位？",
+    "彰化不動；雲林之外的魚塭減半，2030年水位？",
+    "Changhua unchanged; aquaculture beyond Yunlin's border halves: head in 2030?",
+    "Changhua unchanged; Yunlin's upriver counterpart halves aquaculture: head in 2030?",
+    "雲林養殖減半，彰化不變；那一側的水位？",
+    "Yunlin cuts irrigation 30% throughout the Choushui plain: head in 2030?",
+    "Yunlin cuts irrigation 30% everywhere: head in 2030?",
+    "Yunlin cuts irrigation 30%, mirrored up the coast: head in 2030?",
+    "Cut irrigation 30% across the Dadu-to-Choushui plain: head in 2030?",
+    "What if Shoka cut irrigation 30%?",
+    "Changbin cuts aquaculture 20%: head in 2030?",
+    "彰濱的養殖減半，水位會怎樣？",
+    "八卦山以西的灌溉減三成，水位？",
+    # the new exclusion phrase 不在範圍 keeps its inversions refused
+    "雲林灌溉減三成，彰化不在範圍內，但彰化養殖減半，水位？",
+    "彰化不在範圍內；那些魚塭減半，2030年水位？",
+    # a demonstrative before a policy noun stays a back-reference (the optional sparing was skipped)
+    "Changhua unchanged; those cuts in Changhua halve aquaculture: head?",
+]
+A3_REVIEW3 = [
+    "Is the direction of Changhua's leveling response tested?",
+    "Is the direction of Changhua's vertical response tested at held-out wells?",
+    "Is the direction of Changhua's InSAR response tested?",
+    "Is the direction of Changhua's response validated to within a decimetre?",
+    "Is the direction of Changhua's response to the pumping programme validated?",
+    "Is the direction of Changhua's response to the illegal-well crackdown validated?",
+    "Is the direction of Changhua's response to new pumping permits validated?",
+    "彰化對抽水計畫的反應方向有沒有驗證過？",
+    "彰化對違法水井取締的反應方向有驗證嗎？",
+    "Has Changhua's response direction to its own all-class programme been validated?",
+]
+A2_REVIEW3 = [
+    "Was it checked against leveling whether the avoided subsidence is moderate?",
+    "減少下陷量是否偏大，有驗證嗎？",
+    "减少下陷量是否偏大，有验证吗？",
+    "減少下陷量是不是微不足道，有驗證嗎？",
+    "減少下陷量是否輕微，經過檢驗嗎？",
+    "減少下陷量是否只有毫釐，有驗證嗎？",
+    "Was it checked whether the avoided subsidence is minuscule?",
+    "Has it been verified whether the avoided subsidence is hefty?",
+    "Is it tested whether the avoided subsidence is paltry?",
+    "Was it checked whether the avoided subsidence is in the decimetre range?",
+    "Was it checked whether the avoided subsidence is the thickness of a coin?",
+    "Was it checked whether the avoided subsidence is overestimated?",
+    "減少下陷量是否高估，有驗證嗎？",
+]
 
-REFUSE = ([("A3", q) for q in A3_REVIEW + A3_REVIEW2] + [("A1", q) for q in A1_REVIEW2]
+
+REFUSE = ([("A3", q) for q in A3_REVIEW3] + [("A1", q) for q in A1_REVIEW3]
+          + [("A2", q) for q in A2_REVIEW3]
+          + [("A3", q) for q in A3_REVIEW + A3_REVIEW2] + [("A1", q) for q in A1_REVIEW2]
           + [("A2", q) for q in A2_REVIEW2] + [("A3", q) for q in A3_REVIEW] + [("spill", q) for q in SPILL_REVIEW]
           + [("A2", q) for q in A2_REVIEW] + [("A1", q) for q in A1_REVIEW])
 
@@ -196,12 +248,13 @@ def test_review_must_refuse_questions_are_refused_before_the_llm(b, cls, q):
     assert info["stage"] == "hard_refusal" and r.preset == "refuse", (cls, q)
 
 
-@pytest.mark.parametrize("q", A3_REVIEW + SPILL_REVIEW[:12] + A1_REVIEW + A1_REVIEW2 + A3_REVIEW2)
+@pytest.mark.parametrize("q", A3_REVIEW + SPILL_REVIEW[:12] + A1_REVIEW + A1_REVIEW2 + A3_REVIEW2
+                         + A1_REVIEW3 + A3_REVIEW3)
 def test_review_changhua_questions_are_changhua_refusals(b, q):
     assert hard_refusal(q, b) == "changhua_lever", q
 
 
-@pytest.mark.parametrize("q", A2_REVIEW + A2_REVIEW2)
+@pytest.mark.parametrize("q", A2_REVIEW + A2_REVIEW2 + A2_REVIEW3)
 def test_review_subsidence_questions_are_size_refusals(b, q):
     assert hard_refusal(q, b) == "subsidence_size", q
 
@@ -234,6 +287,8 @@ MUST_PASS = [
     "at wells the model was never tuned on?",
     "How sure are you that Changhua's water levels respond in the right direction?",
     "彰化抽水對水位的影響方向，有沒有在沒調參的井上驗證過？",
+    # the new exclusion phrase (third review)
+    "雲林灌溉減三成，彰化不在範圍內，2030年水位？",
 ]
 
 

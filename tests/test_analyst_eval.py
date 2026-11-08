@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -228,7 +229,7 @@ def _code_entry(fixed, **pins):
     qs, _ = _tiny(fixed, **base, **pins)
     # the route files as loaded (in the fake checkout) and a clean environment
     run = base | {"loaded": {p: str(fixed / p) for p in EV.ROUTE_CODE}, "env": {},
-                  "bytecode_fresh": True}
+                  "bytecode_fresh": True, "interpreter": [], "moved": []}
     return EV.check_set(qs), run
 
 
@@ -277,6 +278,39 @@ def test_code_pins_refuse_cached_bytecode_and_endpoint_env(fixed):
     for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"):
         with pytest.raises(EV.EvalSetError, match=k):
             EV.check_pins(e, ok | {"env": {k: "x"}})
+
+
+def test_code_pins_need_a_clean_interpreter_and_unpatched_functions(fixed, monkeypatch):
+    """Third review: -E and -s, no foreign sitecustomize, and route functions from their files."""
+    e, ok = _code_entry(fixed, code_sha256=_fake_code(fixed))
+    with pytest.raises(EV.EvalSetError, match="not clean"):
+        EV.check_pins(e, ok | {"interpreter": ["-E"]})
+    with pytest.raises(EV.EvalSetError, match="do not come from"):
+        EV.check_pins(e, ok | {"moved": ["hydrophysics_analyst.router.guards.norm"]})
+    assert EV.route_functions_moved() == []
+    from hydrophysics_analyst.router import guards as G
+    monkeypatch.setattr(G, "norm", lambda s: s)              # a patched guard function
+    assert EV.route_functions_moved() == ["hydrophysics_analyst.router.guards.norm"]
+    import types
+    fake = types.ModuleType("sitecustomize")
+    fake.__file__ = str(fixed / "sitecustomize.py")
+    monkeypatch.setitem(sys.modules, "sitecustomize", fake)
+    assert any("sitecustomize" in x for x in EV.clean_interpreter())
+
+
+def test_clean_interpreter_reads_the_flags(tmp_path):
+    import os
+    import subprocess
+    code = "from hydrophysics_analyst import eval as E; print(E.clean_interpreter())"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+
+    def run(*flags):
+        out = subprocess.run([sys.executable, *flags, "-c", code], cwd=str(EV.REPO),
+                             capture_output=True, text=True, timeout=120, env=env)
+        return out.stdout.strip().splitlines()[-1]
+    got = run()
+    assert "-E" in got and "-s" in got
+    assert run("-E", "-s") == "[]"
 
 
 def test_fresh_bytecode_needs_dash_b_and_an_empty_prefix(tmp_path):

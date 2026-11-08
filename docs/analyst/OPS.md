@@ -244,8 +244,11 @@ on it. `python -c "from hydrophysics_analyst import eval as E; print(E.schema_pr
   both for the current checkout. With either pin the run is refused unless it is made from that
   commit, with no local change and no untracked or ignored file (byte-code caches excepted)
   under `hydrophysics_analyst/` or `hydrophysics/`, with those route files loaded from those
-  paths, and with `ANALYST_ENABLE_CHEAPEST` and `ANALYST_TODAY` unset. Entries without code pins
-  (v1-v4) are checked as before.
+  paths, with `ANALYST_ENABLE_CHEAPEST`, `ANALYST_TODAY` and the endpoint / model variables
+  (`eval.ROUTE_ENV`) unset, and from a clean interpreter with no cached byte-code:
+  `python -B -E -s -X pycache_prefix="$(mktemp -d)" -m hydrophysics_analyst eval ...` (every
+  route function must also come from its pinned file). Entries without code pins (v1-v4) are
+  checked as before.
 - **Round-9 replay** (R10.3b, $0, after the run): `python -m hydrophysics_analyst replay-r9
   --page <page> --questions <set> --rows <out>/opus-low.jsonl --out <out>/replay_r9`. Items
   the frozen round-9 `hard_refusal` (`router/r9/`, fc7b996) would refuse get that refusal;

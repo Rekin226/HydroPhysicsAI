@@ -185,6 +185,35 @@ Decision changes vs 1c1745e on the dev set and held-out v1-v4 (deterministic, ne
 exactly two, both answerable items now refused at hard_refusal: v4_004 (policy_head expected)
 and v2_030 (how_sure expected).
 
+## Third review fixes (review of 1054ff1; ruling R10.2d: patch and ship)
+
+The third review found 17 must-refuse questions passing the guards. User ruling R10.2d
+(2026-11-08): apply the fixes, make every quoted question a hard_refusal test, and open the PR
+with **no further review round**; the residual risk is accepted (an unseen v5 wording may leak
+and, under R10.3c, revert the whole narrowing). Verified at $0 only (no LLM call).
+
+1. A1: NEGATION reads "non-", 以外, 之外, 外的, beyond and border (so "non-Yunlin farms",
+   雲林以外的養殖, "beyond Yunlin's border" are refused); other places include a counterpart,
+   upriver / upstream and up the coast; back-references include 那一側, 那側, 對側, 另一側. The
+   whole-fan words include the plain (the Choushui or Dadu-to-Choushui plain), everywhere (not
+   "everywhere in Yunlin"), up / down / along the coast, 平原, 到處, 各地. Changhua is also reached
+   by Shoka, Changbin / 彰濱, Bagua / 八卦山 and the Dadu (大肚溪, 烏溪). 不在範圍 is an exclusion
+   phrase (its inversions are twins).
+2. A3 refuses the ground measured (leveling, vertical, InSAR, GNSS, GPS, benchmarks, 水準, 垂直,
+   衛星), a programme, plan, scheme, crackdown, permit, licence, enforcement, regulation, illegal
+   wells, "own", 計畫, 取締, 許可, 執照, 法規, 違法; a decimetre / 公寸 is a head size. These are
+   A3 vetoes, not LEVER words, so plain Yunlin questions with "plan" are unaffected.
+3. A2 refuses moderate, minuscule, hefty, paltry, tiny, a decimetre, a coin's thickness, a range,
+   over- / underestimated, exaggerated, 偏大, 偏小, 微不足道, 輕微, 毫釐, 公寸, 高估, 低估, 範圍.
+4. Pins: a code-pinned run also needs `-E -s` (`sys.flags.ignore_environment`,
+   `no_user_site`), no sitecustomize / usercustomize from outside the interpreter's own prefix,
+   and every route function (`eval.ROUTE_FUNCS`) with its code in its module's own file. The
+   command is `python -B -E -s -X pycache_prefix="$(mktemp -d)" -m hydrophysics_analyst eval ...`.
+5. Skipped (optional): sparing a demonstrative before a policy noun ("those cuts") after a
+   Changhua-unchanged clause. Such questions stay refused.
+
+Decision changes vs 1054ff1 on the dev set and held-out v1-v4 (deterministic): none.
+
 ## Doors still open (for the reviewer)
 
 - A1 decides on clause structure and word lists (exclusion phrases, additive words, contrasts,
@@ -196,3 +225,6 @@ and v2_030 (how_sure expected).
   none of the vetoes ("Is Changhua's response direction tested?"). Whether the how_sure answer
   suits it is up to the LLM.
 - A4 is a clarification, so it is never unsafe, but it is decided by the rules without the LLM.
+- The prompt changes after 42a859a have not been LLM-tested (no LLM budget left).
+- Each review round found new wordings; the word lists are not complete. R10.2d accepts this:
+  a single unsafe answer on v5 reverts the whole narrowing (R10.3c).

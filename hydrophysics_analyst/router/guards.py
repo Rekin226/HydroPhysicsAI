@@ -102,7 +102,10 @@ def _clauses(s: str) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 # Changhua
 # ---------------------------------------------------------------------------------------------
-CHANGHUA_WORD = r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰\s*化"
+CHANGHUA_WORD = (r"\b(?:chang|zhang)[\s\-_']*hua\b|\bchanghwa\b|\bchang[\s\-]*hwa\b|彰\s*化"
+                 # third review: other names of Changhua's ground (Shoka, Changbin, Bagua, the Dadu)
+                 r"|\bshoka\b|\bchang[\s\-]?bin\b|彰濱|八卦山|\bba[\s\-]?gua(?:\s*(?:shan|mountain|plateau))?\b"
+                 r"|\bdadu\b|大肚溪|烏溪")
 _CH_T = r"(?:(?:chang|zhang)[\s\-_']*hua|changhwa|彰化)(?:'s)?(?:\s*county|縣)?"
 CHOUSHUI = (r"(?:choushui|chuoshui|zhuoshui|jhuoshuei|jhuoshui|choshui|cho[\s\-]shui|chou[\s\-]shui|"
             r"zhuo[\s\-]shui|jhuo[\s\-]shuei)(?:[\s\-]*(?:river|creek|hsi|xi))?")
@@ -127,7 +130,9 @@ GEO_ZH = [r"濁水(?:溪)?(?:以|的)?北", r"濁水溪(?:的)?(?:對岸|兩岸|
           r"鄰縣|隔壁(?:的)?縣", r"北(?:邊|方|側)的縣", r"雲林(?:以北|北邊|北方|的北邊)", r"雲林(?:和|與|跟|及)(?:其)?鄰",
           r"(?:沖積扇|扇)(?:的)?北(?:半部|部|側|邊|段)"]
 # the whole fan, which includes Changhua: a Changhua lever only when a lever is asked
-WHOLE_FAN = [r"\b(?:whole|entire|full)\s+(?:of\s+the\s+)?(?:choushui\s+)?(?:alluvial\s+)?fan\b",
+WHOLE_FAN = [r"\b(?:choushui|zhuoshui)\s+plain\b", r"\bplain\b", r"\beverywhere\b(?!\s+in\s+yun)",
+             r"\b(?:up|down|along)\s+the\s+coast\b", "平原", "到處", "各地", "全區域",
+             r"\b(?:whole|entire|full)\s+(?:of\s+the\s+)?(?:choushui\s+)?(?:alluvial\s+)?fan\b",
              r"\b(?:across|throughout|over|all\s+of)\s+the\s+(?:whole\s+|entire\s+)?(?:choushui\s+)?alluvial\s+fan\b",
              r"\bfan[\s\-]*wide\b", "全扇區", "全扇", r"整個(?:濁水溪)?(?:沖積)?扇", "全沖積扇", "沖積扇全區", "扇區全部"]
 # Changhua County's townships (the page pools them into one row), in romanisations in use
@@ -413,7 +418,11 @@ HOW_SURE_VETO = (YUNLIN + [r"\bcount(?:y|ies)\b", "縣"]
                  + [r"\b(?:trivial|insignificant|perceptibl\w*|imperceptibl\w*|pronounced|detectabl\w*|"
                     r"undetectabl\w*|noise|noticeabl\w*|magnitude|enough|matter\w*|nothing|nearly|almost|"
                     r"fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?)\b", r"\d",
-                    "算不算", "夠不夠", "忽略", "有感", "感覺", "數量級", "壹", "貳", r"參(?!數|考|與|加|照)", "肆", "伍", "陸", "柒", "捌",
+                    "算不算", "夠不夠", "忽略", "有感", "感覺", "數量級",
+                    # third review
+                    r"\b(?:moderate\w*|minuscule|miniscule|hefty|paltry|tiny|decimet\w*|coins?|thickness|"
+                    r"overestimat\w*|underestimat\w*|over-?stat\w*|under-?stat\w*|exaggerat\w*|range)\b",
+                    "偏大", "偏小", "微不足道", "輕微", "毫釐", "公寸", "高估", "低估", "誇大", "範圍", "壹", "貳", r"參(?!數|考|與|加|照)", "肆", "伍", "陸", "柒", "捌",
                     "玖", "拾"]
                  + [r"\bhalt\w*", r"\bends?\b", r"\bended\b", r"\bending\b", r"\bceas\w*", r"\bvanish\w*",
                     r"\bdisappear\w*", r"\bgone\b", "不再", "消失", "結束", "停止"]
@@ -691,13 +700,15 @@ EXCLUDE = [r"\bnothing\s+(?:on|in|for|from|across|at|north)\b",
            # review finding 5: aside, not counting, ignore, does nothing, stays the same, no change in
            r"\baside\b", r"\bnot\s+counting\b", r"\bignor(?:e|es|ed|ing)\b", r"\bdoes\s+nothing\b",
            r"\b(?:stays?|remains?|kept|keeps?)\s+the\s+same\b", r"\bno\s+change\s+(?:in|for|on|at)\b",
-           "沒有動作", "沒動作", "沒有動",
+           "沒有動作", "沒動作", "沒有動", r"不在(?:模型|計算|討論)?的?範圍(?:內|之內)?",
            r"\bout\s+of\s+(?:it|this|scope|the\s+(?:model|question|picture|policy|scope))\b",
            r"\bnot\s+(?:in|part\s+of)\s+the\s+model\b",
            r"(?:完全)?(?:不動|不變|不減(?:抽|少)?|不停(?:抽)?|不管|不算|不計|不列入|不包括|不含|不納入|不在模型)",
            r"維持(?:原狀|現狀|不變)", "照舊", "除外", "排除", "不考慮", "不像", "沒有減", "沒減"]
 NEGATION = [r"\bnot?\b", r"n't\b", r"\bnever\b", r"\bnothing\b", r"\bnone\b", r"\bwithout\b", r"\bun\w+ed\b",
-            r"\bexcept\w*", r"\bexclud\w*", r"[不沒無非未別勿莫]"]
+            r"\bexcept\w*", r"\bexclud\w*", r"[不沒無非未別勿莫]",
+            # third review: non-Yunlin, 雲林以外 / 之外, beyond Yunlin's border
+            r"\bnon[\s\-]", "以外", "之外", "外的", r"\bbeyond\b", r"\bborder\w*"]
 # in the rest of an exclusion clause a comparative also turns "doesn't cut less" into a cut
 COMPARATIVE = [r"\bless\b", r"\bfewer\b", r"\bmore\b", r"\bfurther\b", r"\bextra\b", "少", "多", "更"]
 # outside the exclusion clauses of A1: no other place (a bank, side, river, county, neighbour,
@@ -711,7 +722,9 @@ _ELSEWHERE = [r"\b(?:taichung|chiayi|nantou|tainan|kaohsiung|pingtung|taipei|hsi
               r"北(?!港)", "對岸", "鄰", "扇", "另一邊", "其他縣", "外縣", "溪",
               # "the other farmers", elsewhere, outside (not the class "other uses")
               r"\bother\b(?!\s+(?:uses?|pumping|class\w*|water[\s\-]*uses?)\b)", r"\belsewhere\b",
-              r"\boutside\b", "別處", "其餘", "外面", "外地"]
+              r"\boutside\b", "別處", "其餘", "外面", "外地",
+              # third review: an upriver counterpart, up the coast
+              r"\bcounterpart\w*", r"\bup[\s\-]*(?:river|stream)\b", r"\bup\s+the\s+coast\b"]
 CONTRAST = [r"\b(?:but|however|yet|though|although|still|nevertheless|nonetheless|instead|whereas|while)\b",
             "但", "可是", "不過", "然而", "卻", "仍", "反而", "而是",
             # the review's broken exclusions (finding 4): except that, save, bar, until, for now,
@@ -730,7 +743,7 @@ _BACK_REF = [r"\b(?:those|these|such|said)\b", r"\bin\s+question\b", r"\bconcern
              r"\b(?:the\s+)?(?:latter|former)\b", r"\bnext\s+door\b", r"\bover\s+there\b",
              r"\bthat\s+(?:side|place|area|one|county|region|bank|part)\b", r"\bthe\s+excluded\b",
              r"\bthe\s+other\s+(?:one|county|side|place)\b", r"\bthe\s+rest\b", r"\bthe\s+neighbo\w*",
-             "那頭", "那一頭", "對面", "隔壁", "前者", "後者", r"其(?!他|中|實|餘)", "該地", "此地", "該處", "那一邊",
+             "那一側", "那側", "對側", "另一側", "那頭", "那一頭", "對面", "隔壁", "前者", "後者", r"其(?!他|中|實|餘)", "該地", "此地", "該處", "那一邊",
              "另一個縣", "另一縣", "別的縣", "鄰近",
              r"\b(?:it|its|they|their|them|locally)\b", r"(?<!\bis\s)(?<!\bare\s)\bthere\b(?!\s+(?:is|are|was|were|will|'s))",
              "當地", "該縣", "他們", "它", "那邊", "那裡", "那裏", "那里", "自己"]
@@ -844,7 +857,14 @@ A3_VETO = (
        "那裏", "當地", "該地", "那頭"]
     # second review: upward / climb, a second subject or question joined by and / or / 和
     + [r"\bupward\w*", r"\bdownward\w*", r"\bclimb\w*", r"\bascend\w*", r"\bdescend\w*", "上揚", "回漲", "漲", "跌",
-       r"\band\b", r"\bor\b", r"\bplus\b", "和", "與", "及", "跟", "以及", "或"])
+       r"\band\b", r"\bor\b", r"\bplus\b", "和", "與", "及", "跟", "以及", "或"]
+    # third review: the ground measured (leveling, vertical, InSAR, GNSS, benchmarks) and a
+    # programme, plan, crackdown, permit or regulation as the thing responded to
+    + [r"\blevel(?:l)?ing\b", r"\bvertical\w*", r"\binsar\b", r"\bgnss\b", r"\bgps\b", r"\bbenchmark\w*",
+       "水準", "垂直", "衛星",
+       r"\bprogram(?:me)?s?\b", r"\bplans?\b", r"\bschemes?\b", r"\bcrackdown\w*", r"\bpermit\w*",
+       r"\blicen[cs]\w*", r"\benforc\w*", r"\bregulat\w*", r"\billegal\b", r"\bown\b",
+       "計畫", "計劃", "取締", "許可", "執照", "法規", "違法", "非法"])
 # the direction asked as the answer itself
 DIRECTION_VALUE = [r"\bwhich\s+(?:way|direction)\b", r"\bup\s+or\s+down\b", r"\bdown\s+or\s+up\b",
                    r"\b(?:rise|rises|go\s+up|goes\s+up|increase\w*)\s+or\s+(?:fall|falls|drop|drops|go\s+down|"
@@ -853,7 +873,7 @@ DIRECTION_VALUE = [r"\bwhich\s+(?:way|direction)\b", r"\bup\s+or\s+down\b", r"\b
                    "哪個方向", "什麼方向", "往哪", "升還是降", "上升還是下降", "下降還是上升", "會升會降", "漲還是跌",
                    "上升或下降", "升或降"]
 # a head size inside the A3 how-sure form ("by a meter")
-HEAD_SIZE = [r"\bmet(?:er|re)s?\b", r"\b\d*\s*m\b", r"\bfeet\b", r"\bfoot\b",
+HEAD_SIZE = [r"\bdecimet\w*", "公寸", r"\bmet(?:er|re)s?\b", r"\b\d*\s*m\b", r"\bfeet\b", r"\bfoot\b",
              r"\bby\s+(?:a|an|one|two|three|half|several|some|about|around|roughly)\b", "公尺", "米", "公分"]
 _SECOND_Q = r"\b(?:and|but|or)\s+(?:is|are|was|were|has|have|does|do|did|can|could|will|would|what|how)\b"
 

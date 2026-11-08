@@ -99,7 +99,53 @@ ROUTE_ENV = ("ANALYST_ENABLE_CHEAPEST", "ANALYST_TODAY",
              "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL", "ANTHROPIC_BEDROCK_BASE_URL",
              "ANTHROPIC_VERTEX_BASE_URL", "ANTHROPIC_VERTEX_PROJECT_ID", "CLAUDE_CODE_USE_BEDROCK",
              "CLAUDE_CODE_USE_VERTEX", "ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_DEFAULT_OPUS_MODEL")
-FRESH_BYTECODE = ("python -B -X pycache_prefix=\"$(mktemp -d)\" -m hydrophysics_analyst eval ...")
+FRESH_BYTECODE = ("python -B -E -s -X pycache_prefix=\"$(mktemp -d)\" -m hydrophysics_analyst eval ...")
+# functions whose code must come from the pinned files (third review: a patched function object
+# would keep its module's __file__)
+ROUTE_FUNCS = {"hydrophysics_analyst.router.guards": ("norm", "changhua_ref", "has_lever",
+                                                       "changhua_owns_a_lever", "pooled_row_ok",
+                                                       "yunlin_only_ok", "changhua_how_sure_ok",
+                                                       "how_sure_only", "subsidence_size",
+                                                       "beyond_horizon", "township_head",
+                                                       "unnamed_township"),
+               "hydrophysics_analyst.router.rules": ("hard_refusal", "parse_years"),
+               "hydrophysics_analyst.router": ("route", "routed_presets"),
+               "hydrophysics_analyst.router.zh": ("to_trad",),
+               "hydrophysics_analyst.router.llm": ("system_prompt",)}
+
+
+def clean_interpreter() -> list[str]:
+    """What makes this interpreter unfit for a code-pinned run (empty when fit): no -E (the
+    PYTHON* environment is read), no -s (the user site is on the path), or a sitecustomize /
+    usercustomize loaded from outside the interpreter's own library."""
+    out = []
+    if not sys.flags.ignore_environment:
+        out.append("-E")
+    if not sys.flags.no_user_site:
+        out.append("-s")
+    stock = Path(sys.base_prefix).resolve()
+    for name in ("sitecustomize", "usercustomize"):
+        mod = sys.modules.get(name)
+        f = getattr(mod, "__file__", None)
+        if mod is not None and (not f or not Path(f).resolve().is_relative_to(stock)):
+            out.append(f"{name} from {f}")
+    return out
+
+
+def route_functions_moved() -> list[str]:
+    """Route functions whose code is not in their module's own file (patched or replaced)."""
+    import importlib
+    bad = []
+    for modname, names in ROUTE_FUNCS.items():
+        mod = importlib.import_module(modname)
+        own = Path(mod.__file__).resolve()
+        for n in names:
+            fn = getattr(mod, n, None)
+            code = getattr(fn, "__code__", None)
+            if (code is None or Path(code.co_filename).resolve() != own
+                    or getattr(fn, "__module__", None) != modname):
+                bad.append(f"{modname}.{n}")
+    return bad
 
 
 def fresh_bytecode() -> bool:
@@ -280,6 +326,14 @@ def check_code_pins(entry: dict, run: dict) -> None:
         if not (fresh if fresh is not None else fresh_bytecode()):
             raise EvalSetError(f"{name} is code-pinned: run it without cached byte-code, as "
                                f"{FRESH_BYTECODE}")
+        unfit = run.get("interpreter") if run.get("interpreter") is not None else clean_interpreter()
+        if unfit:
+            raise EvalSetError(f"{name} is code-pinned: the interpreter is not clean ({unfit}); "
+                               f"run it as {FRESH_BYTECODE}")
+        moved = run.get("moved") if run.get("moved") is not None else route_functions_moved()
+        if moved:
+            raise EvalSetError(f"{name} is code-pinned: route functions do not come from the "
+                               f"pinned files: {moved}")
         env = run.get("env") if run.get("env") is not None else os.environ
         set_ = [k for k in ROUTE_ENV if env.get(k)]
         if set_:
