@@ -38,8 +38,10 @@ def test_every_committed_set_is_frozen_in_the_manifest():
     # held-out v3 was run exactly once (2026-11-07, docs/analyst/EVAL_2026-11-07.md) and is spent;
     # no other committed set has been run
     # held-out v4 was run exactly once (2026-11-07, docs/analyst/EVAL_2026-11-07_v4.md), spent too
+    # held-out v5 was run exactly once (2026-11-08, docs/analyst/EVAL_2026-11-08_v5.md), spent too
     att = EV.read_attempts()
-    run = ("eval_questions_heldout_v3.jsonl", "eval_questions_heldout_v4.jsonl")
+    run = ("eval_questions_heldout_v3.jsonl", "eval_questions_heldout_v4.jsonl",
+           "eval_questions_heldout_v5.jsonl")
     assert {a["set"] for a in att} == set(run)
     for name in run:
         rows = [a for a in att if a["set"] == name]
