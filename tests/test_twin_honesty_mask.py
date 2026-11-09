@@ -9,6 +9,7 @@ is absent (CI).
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import itertools
 import json
@@ -40,17 +41,28 @@ def mask(text: str) -> str:
     ("Progress figures (6-part 52.71 with claim honesty 96.4, science trust 44.0, head part 48.8).",
      ["52.71", "96.4"], ["44.0", "48.8"]),
     ("The official science trust (44.9) and 6-part mean (52.2) are within 0.3 of the audit's.",
-     ["52.2", "0.3"], ["44.9"]),
+     ["52.2"], ["44.9", "0.3"]),
     ("| **6-part mean** (headline) | 51.6 | **52.4** | 52.0-52.2 |", ["51.6", "52.4", "52.0"], []),
     ("| end-goal convention, science / 6-part | 55.6 / 62.0 |", ["55.6", "62.0"], []),
     ("It gives about **60-61 %** on the 6-part basis.", ["60-61"], []),
     ("Expected about -0.21 to +0.12 headline; science -0.30.", ["-0.21", "+0.12"], ["-0.30"]),
     ("The headline 52.7 stands.", ["52.7"], []),
     ("the primary graders give 97.7 and the second grader 96.2, so read it as about +-0.5",
-     ["97.7", "96.2", "+-0.5"], []),
+     ["97.7", "96.2"], ["+-0.5"]),
+    ("science 41.42 -> 41.3, headline 50.4 -> 50.3", ["50.4", "50.3"], ["41.42", "41.3"]),
+    ("progress: 50.4 → 50.3", ["50.4", "50.3"], []),
+    ("總分 50.4 → 50.3", ["50.4", "50.3"], []),
+    ("the headline is now at about 50.3", ["50.3"], []),
+    ("the headline figure, 50.3 %", ["50.3"], []),
+    ("Official figures: 50.3 overall and 41.3 science", ["50.3"], ["41.3"]),
+    ("official figures become 52.9 (abc1234) and 53.2, science 44.4 and 44.3",
+     ["52.9", "53.2"], ["44.4", "44.3"]),
+    ("the 6-part mean rises 0.58 and science 0.10; 66 findings on 65 statements",
+     ["0.58"], ["0.10", "66 findings", "65 statements"]),
+    ("re-audit central 96.3-96.6, 80 % range 94.8-97.3", ["96.3", "94.8"], ["80 % range"]),
     ("聲明誠實度為 96.4%，六部分平均 52.7，科學可信度 44.0。", ["96.4", "52.7"], ["44.0"]),
     ("Official figures: 6-part 52.6 -> 52.1, science trust 44.6 -> 44.2 (from 53.0, 45.1 "
-     "before the ruling).", ["52.6", "52.1", "53.0"], ["44.6", "44.2", "45.1"]),
+     "before the ruling).", ["52.6", "52.1", "53.0"], ["44.6", "44.2"]),
 ])
 def test_figures_in_context_are_masked(text, gone, kept):
     out = mask(text)
@@ -63,11 +75,9 @@ def test_figures_in_context_are_masked(text, gone, kept):
 
 @pytest.mark.parametrize("text", [
     "The run-spread band covered 96.4 % of 2023-26 observations at a nominal 90 %.",
-    "Coverage 98.3 % of the window's well-months (model-only).",
+    "Coverage 77.7 % of the window's well-months (model-only).",
     "Yunlin: 75 wells, RMSE 1.38 against 2.21 m; KGE 0.59.",
     "The headline lever cuts all pumping 30% (all30), 1.2 m by Dec 2030.",
-    "The township leader of the earlier headline (no township is named), leads in 83 % of 36 "
-    "runs.",
     "honesty = 100 x (1 - sum(w s) / (3 sum(w))), contradiction 3, overclaim 2, none 0",
     "Audited on 2026-11-07 under R9.3 (evidence section 27, sha256 a4907c37).",
     "the head part 46.9 at the audit state and science trust 44.2",
@@ -113,15 +123,18 @@ def test_rules_are_hashed_and_deterministic():
     assert len(M.rules_sha256()) == 64
     text = "The audited figure is 96.4 (6-part 52.7, science 44.0)."
     assert mask(text) == mask(text)
-    assert set(M.rules()["terms"]) == {"H", "S", "K", "A", "O", "Q"}
+    assert set(M.rules()["terms"]) == {"H", "S", "K", "A", "P", "O", "Q"}
+    assert M.rules()["rule"] == M.RULE_TEXT                 # a constant: python -OO keeps it
+    for real in ("98.3", "53.29", "44.29", "54.03", "45.17", "52.9", "44.2", "45.6"):
+        assert real not in M.RULE_TEXT, real
 
 
 def test_a_quoted_six_key_masks_only_honesty_range_figures_of_its_block():
     pinned = ('PIN = {"honesty": 93.0, "parts": (48.1, 51.2), "science": (44.18, 37.2),\n'
               '       "six": (52.88, 62.4)}')
     out = mask(pinned)
-    assert "93.0" not in out and "52.88" not in out and "62.4" not in out and "51.2" not in out
-    assert "44.18" in out and "48.1" in out
+    assert "93.0" not in out and "52.88" not in out and "62.4" not in out
+    assert "44.18" in out and "48.1" in out and "51.2" in out     # parts stay with their term
     words = 'NUM = {"five": 5, "six": 6, "seven": 7, "ten": 10, "twenty": 20}'
     assert mask(words) == words
 
@@ -199,7 +212,7 @@ README = """# Project
 The model shows a head response of 1.2 m in Yunlin (C01).
 
 - **Headline: the 6-part mean**, the five parts and claim honesty, as reported.
-  Audited it is **52.6 %** (shown beside the official figure).
+  Audited it is **52.6 %** (shown beside the science figure).
 """
 EVIDENCE = """# Evidence
 
@@ -241,17 +254,20 @@ def test_grader_view_masks_by_rule_and_keeps_everything_else(tmp_path):
     assert view["schema"] == H.VIEW_SCHEMA and view["sha256"] == inv["sha256"]
     assert view["mask_rules_sha256"] == M.rules_sha256() == H.sha_of(view["mask_rules"])
     assert view["view_sha256"] == H.sha_of(view["records"]) != inv["sha256"]
-    assert [r["id"] for r in view["records"]] == [r["id"] for r in inv["records"]]
+    ids = H.view_ids(inv)
+    assert [r["id"] for r in view["records"]] == [ids[r["id"]] for r in inv["records"]]
+    assert all(re.fullmatch(r"S\d{4}", r["id"]) for r in view["records"])
     for a, b in zip(inv["records"], view["records"], strict=True):
-        assert {k: v for k, v in a.items() if k != "text"} == \
-            {k: v for k, v in b.items() if k != "text"}
+        assert {k: v for k, v in a.items() if k not in ("text", "id")} == \
+            {k: v for k, v in b.items() if k not in ("text", "id")}
+    assert "bias_disclosure" in view and view["masked"]["weight"] > 0
     text = json.dumps([r["text"] for r in view["records"]], ensure_ascii=False)
     for fig in ("96.4", "97.0", "95.9", "52.9", "52.6"):
         assert fig not in text, fig
     assert "44.2" in text and "75 wells" in text and "1.2 m" in text and "0.59" in text
     by = view["masked"]["by_source"]
-    assert by["page"] == ["page:hon"] and len(by["evidence"]) == 2
-    assert len(by["readme"]) == 1 and by["ledger"] == ["ledger:status_note:0"]
+    assert by["page"] == [ids["page:hon"]] and len(by["evidence"]) == 2
+    assert len(by["readme"]) == 1 and by["ledger"] == [ids["ledger:status_note:0"]]
     # the README's second sentence is masked only through its list item's context
     alone = H.grader_view(inv)
     assert alone["masked"]["by_source"]["readme"] == []
@@ -298,53 +314,153 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
     _tree(repo)
     _write(repo / ".gitignore", "*.local.md\nresults/\n")
     _write(repo / "docs" / "analyst" / "EVAL_2026-01-01.md", "analyst eval 98 %\n")
-    _write(repo / "tests" / "test_x.py", "def test():\n    honesty = 96.4\n"
-                                         "    six_part = (52.9, 44.2)\n")
+    _write(repo / "hydrophysics_analyst" / "guards.py", "NUM = {'ten': 10}\n")
+    _write(repo / "tests" / "test_x.py", "def test():\n    honesty = 96.4\n")
+    rulings = repo / "results" / "dataprep" / "rulings"
+    _write(rulings / "user_rulings_2001-01-01.json", json.dumps({
+        "context": "after one independent audit", "rulings": [
+            {"id": "R1", "decision": "re-audit central 96.4-96.9.",
+             "applies_to": ["claim honesty"]},
+            {"id": "R2", "decision": "Label caveat 3.", "applies_to": ["page"]}]}))
+    _write(rulings / "user_rulings_2999-01-01.json", json.dumps({"rulings": []}))
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "synthetic")
-    # untracked, gitignored: local notes, the record, earlier audit outputs
+    # untracked, gitignored: local notes, the record, earlier audit outputs, older pages
     _write(repo / "PLAN.local.md", "audited 96.4\n")
     _write(repo / "docs" / "ROUND_PLAN.local.md", "plan\n")
     _write(repo / "results" / "twin" / "page.html", PAGE)
-    _write(repo / "results" / "dataprep" / "rulings" / "r.json",
-           json.dumps({"rulings": [{"id": "R1", "decision": "re-audit central 96.4-96.9."}]}))
+    _write(repo / "results" / "twin" / "page_old.html", PAGE)
     _write(repo / "results" / "dataprep" / "reports" / "rep.json",
            json.dumps({"six_part": {"official": 52.9}, "science": {"official": 44.2}}))
+    rep_hash = hashlib.sha256((repo / "results/dataprep/reports/rep.json").read_bytes())
+    _write(repo / "results" / "dataprep" / "reports" / "cites.md",
+           f"The report rep.json (sha256 {rep_hash.hexdigest()[:8]}) is recorded.\n")
     _write(repo / "results" / "dataprep" / "reports" / "HONESTY.round9" / "score.json", "{}")
     _write(repo / "results" / "dataprep" / "reports" / "x" / "honesty_findings_a.json", "{}")
     _write(repo / "results" / "analyst" / "answers.json", "{}")
     inv = _inventory(repo, repo / "results" / "twin" / "page.html")
     ip = tmp_path / "inv.json"
     ip.write_text(json.dumps(inv), encoding="utf-8")
-    recs = ("results/dataprep/rulings", "results/dataprep/reports", "results/twin",
-            "results/analyst", "results/missing")
+    sp = tmp_path / "sample.json"
+    sp.write_text(json.dumps({"sample": [inv["records"][0]["id"]]}), encoding="utf-8")
+    recs = ("results/dataprep/rulings", "results/dataprep/reports", "results/missing")
 
     with pytest.raises(W.WorkspaceError, match="outside the repository"):
-        W.make_workspace(ip, repo / "ws", repo, records=recs)
+        W.make_workspace(ip, repo / "ws", repo, records=recs, literals=("96.4",))
+    with pytest.raises(W.WorkspaceError, match="literal gate"):
+        W.make_workspace(ip, tmp_path / "ws0", repo, records=recs)
     dest = tmp_path / "ws"
-    res = W.make_workspace(ip, dest, repo, records=recs, check_literals=("96.4",))
+    res = W.make_workspace(ip, dest, repo, records=recs, sample=sp, literals=("96.4", "52.9"))
 
     files = sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file())
     top = sorted(p.name for p in dest.iterdir())
-    assert top == ["GRADER_BRIEF.md", "inventory.json", "repo"]
+    assert top == ["GRADER_BRIEF.md", "MASKED_FILES.txt", "inventory.json", "repo",
+                   "sample.json"]
     assert not any(".git" in f.split("/") or f.endswith(".local.md") or "HONESTY" in f
-                   or "honesty_findings" in f or "analyst" in f for f in files), files
-    assert "repo/results/dataprep/rulings/r.json" in files
+                   or "honesty_findings" in f or "analyst" in f or f.startswith("repo/tests")
+                   for f in files), files
     assert "repo/results/twin/page.html" in files and "repo/README.md" in files
+    assert "repo/results/twin/page_old.html" not in files           # only the pinned page
+    assert "repo/results/dataprep/rulings/user_rulings_2999-01-01.json" not in files
+    assert res["after_pin"] == ["results/dataprep/rulings/user_rulings_2999-01-01.json"]
     assert res["records"]["results/missing"] == "missing"
     assert (dest / "GRADER_BRIEF.md").read_bytes() == BRIEF.encode()
     view = json.loads((dest / "inventory.json").read_text(encoding="utf-8"))
     assert view["schema"] == H.VIEW_SCHEMA and view["sha256"] == inv["sha256"]
     assert view["mask_rules_sha256"] == res["mask_rules_sha256"] == M.rules_sha256()
-    assert res["literal_hits"]["96.4"] == {}, res["literal_hits"]
+    assert json.loads((dest / "sample.json").read_text())["sample"] == ["S0001"]
+    assert res["view_ids"]["S0001"] == inv["records"][0]["id"]
+    assert res["gates"]["passed"], res["gates"]
     rep = json.loads((dest / "repo/results/dataprep/reports/rep.json").read_text())
     assert rep == {"six_part": {"official": SIX}, "science": {"official": 44.2}}
-    assert "52.9" not in (dest / "repo/tests/test_x.py").read_text()
-    assert "repo/README.md" not in res["masked_files"]          # paths are relative to repo/
+    # the printed hash prefix of a masked file is masked too, and the file is listed
+    cites = (dest / "repo/results/dataprep/reports/cites.md").read_text()
+    assert rep_hash.hexdigest()[:8] not in cites and M.PLACEHOLDERS["hash"] in cites
+    listed = (dest / "MASKED_FILES.txt").read_text()
+    assert "repo/results/dataprep/reports/rep.json" in listed
+    assert "repo/results/dataprep/reports/cites.md" in listed
+    # a ruling on the audit itself is redacted; others are kept
+    rul = json.loads((dest / "repo/results/dataprep/rulings/user_rulings_2001-01-01.json")
+                     .read_text())
+    assert rul["context"] == W.REDACTED and rul["rulings"][0]["decision"] == W.REDACTED
+    assert rul["rulings"][0]["applies_to"] == ["claim honesty"]
+    assert rul["rulings"][1]["decision"] == "Label caveat 3."
     assert {"README.md", H.EVIDENCE, H.LEDGER_PATH} <= set(res["masked_files"])
     with pytest.raises(W.WorkspaceError, match="not empty"):
-        W.make_workspace(ip, dest, repo, records=recs)
+        W.make_workspace(ip, dest, repo, records=recs, literals=("96.4",))
+
+
+def test_literal_variants_and_gate():
+    W = _script()
+    v = W.literal_variants(["96.4", "52.71"])
+    assert {"96.4", "96.35", "96.45", "52.71", "52.705", "52.715", "52.7"} <= set(v)
+    assert "96" not in v
+    assert W._literal_hits("claim honesty is 96.42 now", v)
+    assert not W._literal_hits("coverage 96.42 of wells", ["96.42"])
+    assert M.derivable_pairs("the headline 52.88 beside science 44.18") == [(52.88, 44.18, 96.38)]
+    assert M.derivable_pairs("the run 52.88 beside 44.18") == []          # no term in the unit
+
+
+def test_view_ids_resist_brute_force_and_map_back(tmp_path, capsys):
+    _tree(tmp_path)
+    _write(tmp_path / "page.html", PAGE)
+    inv = _inventory(tmp_path, tmp_path / "page.html")
+    view = H.grader_view(inv, tmp_path)
+    # the inventory's doc ids are sha1 prefixes of the unmasked text: brute force finds the
+    # figure from them; the view's ids carry nothing of the text
+    rec = next(r for r in inv["records"] if r["source"] == "evidence"
+               and "96.4" in r["text"]["en"] and r["text"]["en"].count("96.4") == 1)
+    vrec = next(r for r in view["records"] if r["location"] == rec["location"])
+    tmpl = vrec["text"]["en"]
+    ph = re.compile(r"\[masked: [^\]]*\]")
+    assert len(ph.findall(tmpl)) >= 1
+    tries = [f"{i / 10:.1f}" for i in range(0, 1001)]
+
+    def found(rid):
+        pid = rid.split(":", 1)[-1]
+        return [c for c in tries if len(ph.findall(tmpl)) == 1 and
+                hashlib.sha1(ph.sub(c, tmpl).encode()).hexdigest()[:10] == pid]
+
+    if len(ph.findall(tmpl)) == 1:
+        assert found(rec["id"]) == ["96.4"]             # the attack works on inventory ids
+    assert found(vrec["id"]) == []                      # and not on view ids
+    # findings written against the view score against the inventory
+    f = {"schema": H.FINDINGS_SCHEMA, "inventory_sha256": inv["sha256"], "grader": "g",
+         "findings": [{"id": "F1", "statement": vrec["id"], "grade": 1,
+                       "category": "stale_or_missing_disclosure", "evidence": "x"}]}
+    back = H.from_view_ids(f, inv)
+    assert back["findings"][0]["statement"] == rec["id"]
+    with pytest.raises(H.FindingsError, match="unknown view statement id"):
+        H.from_view_ids(dict(f, findings=[dict(f["findings"][0], statement=rec["id"])]), inv)
+    ip, fp = tmp_path / "inv.json", tmp_path / "f.json"
+    ip.write_text(json.dumps(inv), encoding="utf-8")
+    fp.write_text(json.dumps(f), encoding="utf-8")
+    assert H.main(["score", "--inventory", str(ip), "--findings", str(fp), "--view-ids",
+                   "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["graded"][0]["statement"] == rec["id"]
+
+
+def test_markup_masks_strings_text_and_payload_but_not_code():
+    page = ('<p title="headline 50.7">The headline 50.7 now</p>'
+            '<script id="payload" type="application/json">{"six_part": 50.7, '
+            '"pts": [[40.84, 28.9]], "s": "headline 50.7"}</script>'
+            '<script>const T = {en: {a: "6-part 50.7, science 41.1"}}; '
+            'var colours = [109, 205, 57, 50.5];</script>')
+    out, n = M.mask_file_text("page.html", page)
+    assert n == 5 and "50.7" not in out and "41.1" in out
+    assert "[[40.84, 28.9]]" in out and "[109, 205, 57, 50.5]" in out      # data and code kept
+    json.loads(out.split('application/json">')[1].split("</script>")[0])   # payload still JSON
+    assert M.mask_file_text("x.py", "honesty = 96.4") is None                # code: gated only
+    assert M.units("x.py", "honesty = 96.4\n\nscience = 44.1") == ["honesty = 96.4",
+                                                                     "science = 44.1"]
+
+
+def test_mask_hashes():
+    d = M.digests(b"content")
+    text = f"sha256 {d[0][:8]}, sha1 {d[1][:12]}, other abcdef12, short {d[0][:6]}"
+    out, n = M.mask_hashes(text, d)
+    assert n == 2 and "abcdef12" in out and d[0][:6] in out
 
 
 # ---- the real inventory (local only) --------------------------------------------------------
