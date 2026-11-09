@@ -1,0 +1,36 @@
+name: Decision page feedback
+description: Comments on the live twin decision page (rekin226.github.io/HydroPhysicsAI)
+labels: ["page-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reviewing the page. The date you viewed it lets us match your comment to
+        the exact build (and numbers) you saw.
+  - type: input
+    id: viewed
+    attributes:
+      label: Date viewed
+      placeholder: 2026-11-10
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the page?
+      options:
+        - Headline / answer
+        - Map
+        - Time series
+        - Trust / tests / caveats
+        - Model internals
+        - 3D view
+        - Language (EN / ZH)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: comment
+    attributes:
+      label: Comment
+      description: What is unclear, wrong, missing, or overstated? Screenshots help.
+    validations:
+      required: true
