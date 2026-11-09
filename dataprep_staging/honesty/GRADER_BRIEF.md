@@ -179,7 +179,13 @@ python -m hydrophysics.twin.honesty score --inventory <the inventory> \
   reported. The build exits 1 when a gate finds a pair of unmasked figures giving a
   claim-honesty figure (6a - 5b in [90, 100]) near an honesty, 6-part or headline term, a
   current or earlier figure near such a term, or a quoted inventory id; the workspace is then
-  not handed out. Term-free pairs (6a - 5b in [94.6, 99.5]) are listed for review.
+  not handed out. Term-free pairs (6a - 5b in a window the operator sets with `--free-window`,
+  default [90, 100]) are listed for review. The build also stops unless `repo/` holds exactly
+  the tracked files at the pinned commit and the pin manifest's files, less the exclusions
+  (no stray bytecode or other file), and the pin step refuses any record file modified after
+  the pinned commit's time; the summary records the pin manifest's sha256 for the audit
+  report. Raw text layers of public tables (`*/text_layer/*`) are left unmasked, like CSV
+  tables, and only the literal gate reads them.
 - The summary stays outside the workspace: copied, left out, masked and redacted files,
   gates, the view-id map, and the disclosures the audit report must carry (R11.4a: the paths
   left out against the brief's wording; R11.4b: the earlier pages copied, so the page history

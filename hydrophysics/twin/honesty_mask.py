@@ -120,8 +120,8 @@ series of 5 or more numbers joined only by commas, brackets or space; a not kept
 term, so not a science or part figure) with a in [40, 80], b in
 [30, 75], |a - b| <= 15 and 6a - 5b in [90, 100]: the workspace builder stops on any such
 pair. It also stops on any statement id left (STATEMENT_ID). Without the term condition, pairs
-within 300 characters of each other with 6a - 5b in [94.6, 99.5] are listed for the operator
-to review (free_pairs); they do not stop the build.
+within 300 characters of each other with 6a - 5b in a window the operator chooses (default
+[90, 100]) are listed for the operator to review (free_pairs); they do not stop the build.
 """
 
 RULING = "R11.4 (results/dataprep/rulings/user_rulings_2026-11-08f.json)"
@@ -138,7 +138,7 @@ REACH = 80
 BAND_WIDTH = 5
 GAP_MAX = (12, 16)
 GATE = {"a": (40.0, 80.0), "b": (30.0, 75.0), "max_diff": 15.0, "honesty": (90.0, 100.0),
-        "window": 300, "series": 5, "free_honesty": (94.6, 99.5)}
+        "window": 300, "series": 5}
 
 _NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 _SIGN = r"\+/-|\+-|±|[+\-−]"
@@ -737,11 +737,12 @@ def _gate_figures(unit: str) -> list[re.Match]:
             and len(m.group("num").partition(".")[2]) <= 2]
 
 
-def free_pairs(unit: str) -> list[tuple[float, float, float]]:
+def free_pairs(unit: str, window: tuple[float, float] = GATE["honesty"]
+               ) -> list[tuple[float, float, float]]:
     """Term-free review list (reported, not a gate): pairs of unmasked figures within
-    GATE["window"] characters of each other with 6a - 5b in GATE["free_honesty"]."""
+    GATE["window"] characters of each other with 6a - 5b in ``window`` (the operator's)."""
     figs = _gate_figures(unit)
-    ga, gb, gh = GATE["a"], GATE["b"], GATE["free_honesty"]
+    ga, gb, gh = GATE["a"], GATE["b"], window
     pos = [m.start() for m in figs]
     out = set()
     for x in figs:

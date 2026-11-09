@@ -30,9 +30,17 @@ check statements against records, not code; tests pin figures and name fixes), t
 (code, eval sets, eval reports and answers), and the progress recount (its module and map turn
 a figure into another).
 
+The pin manifest (``--write-pin-manifest``) refuses record files modified after the pinned
+commit's commit time; the build records the manifest's sha256 in its summary. The progress
+recount runs without writing bytecode, and ``__pycache__`` / ``*.pyc`` are never copied; a gate
+checks that DEST/repo holds exactly the tracked files at the commit and the manifest's files,
+less the exclusions.
+
 Then, in DEST/repo:
 
-1. every text file passes through the committed mask (``honesty_mask.mask_file_text``);
+1. every text file passes through the committed mask (``honesty_mask.mask_file_text``), except
+   raw text layers of public tables (``DATA_LAYERS``), which are read like CSV tables (only
+   the literal gate runs on them);
 2. a ruling on the claim-honesty audit itself (``applies_to`` names claim honesty, or its text
    names the audit report or expected or round-9 findings) keeps its id and ``applies_to`` and
    has its other text replaced by ``REDACTED``; a file-level ``context`` naming the audit, a
@@ -90,7 +98,8 @@ DEFAULT_RECORDS = ("results/dataprep/preregistration", "results/dataprep/reports
                    "results/dataprep/rulings", "results/dataprep/validation_units")
 RULINGS = "results/dataprep/rulings"
 EXCLUDE_NAMES = ("*.local.md", "HONESTY*", "honesty_findings*", "grader_view*",
-                 "second_grader*", ".git")
+                 "second_grader*", ".git", "__pycache__", "*.pyc", "*.pyo")
+DATA_LAYERS = ("*/text_layer/*",)      # raw text layers of public tables: tables, not prose
 EXCLUDE_PATHS = ("tests", "tests/*", "hydrophysics_analyst", "hydrophysics_analyst/*",
                  "dataprep_staging/honesty", "dataprep_staging/honesty/*",
                  "docs/analyst", "docs/analyst/*", "results/analyst", "results/analyst/*",
@@ -312,11 +321,23 @@ def grader_brief(raw: str) -> str:
     return raw if i < 0 else raw[:i]
 
 
+def _commit_time(repo: Path, commit: str) -> int:
+    return int(subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%ct", commit],
+                              check=True, capture_output=True, text=True).stdout.strip())
+
+
+def data_layer(rel: str) -> bool:
+    return any(fnmatch.fnmatchcase(rel, pat) for pat in DATA_LAYERS)
+
+
 def pin_manifest(inv: dict, repo: Path, commit: str, records: tuple[str, ...] = DEFAULT_RECORDS,
                  max_mb: float = 64.0) -> dict:
     """The record files (path and sha256) the workspace may hold, listed at pin time: run it
-    right after pinning, keep the file outside the repository, build from it."""
+    right after pinning, keep the file outside the repository, build from it. A record file
+    modified after the pinned commit's commit time is refused (WorkspaceError lists them)."""
     repo = Path(repo).resolve()
+    t_pin = _commit_time(repo, commit)
+    late: list[str] = []
     files: dict[str, str] = {}
     log: dict = {"excluded": [], "too_large": [], "after_pin": []}
     max_bytes = int(max_mb * 1e6)
@@ -335,7 +356,14 @@ def pin_manifest(inv: dict, repo: Path, commit: str, records: tuple[str, ...] = 
             elif q.stat().st_size > max_bytes:
                 log["too_large"].append(r)
             else:
+                if q.stat().st_mtime > t_pin:
+                    late.append(r)
                 files[r] = C.sha256(q)
+    if late:
+        raise WorkspaceError(f"{len(late)} record files were modified after the pinned "
+                             f"commit {commit[:12]}: " + ", ".join(late[:10])
+                             + ("..." if len(late) > 10 else "")
+                             + "; pin again after the record settles")
     return {"schema": PIN_SCHEMA, "commit": commit, "inventory_sha256": inv["sha256"],
             "files": dict(sorted(files.items())), "excluded": sorted(set(log["excluded"])),
             "after_pin": log["after_pin"], "too_large": log["too_large"]}
@@ -350,8 +378,10 @@ def progress_figures(tree: Path, repo: Path, commit: str, honesty: float,
         fh.write(led)
         tmp = Path(fh.name)
     try:
-        out = subprocess.run([sys.executable, "-c", _PROGRESS, str(tmp), str(honesty), mapping],
-                             cwd=tree, env={"PYTHONPATH": str(tree), "PATH": "/usr/bin:/bin"},
+        out = subprocess.run([sys.executable, "-B", "-c", _PROGRESS, str(tmp), str(honesty),
+                              mapping],
+                             cwd=tree, env={"PYTHONPATH": str(tree), "PATH": "/usr/bin:/bin",
+                                            "PYTHONDONTWRITEBYTECODE": "1"},
                              capture_output=True, text=True)
     finally:
         tmp.unlink()
@@ -406,12 +436,26 @@ def pinned_figures(tree: Path, repo: Path, commit: str, honesty_input: dict,
         "visible": len(vis) - len(shared), "shared_not_gated": len(shared)}
 
 
+def tree_mismatch(repo: Path, commit: str, tree: Path, pin: dict) -> dict:
+    """The shipped tree against (tracked files at the commit + the pin manifest's files) minus
+    the declared exclusions, file for file: {'extra': [...], 'missing': [...]}."""
+    tracked = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "--name-only", commit],
+                             check=True, capture_output=True, text=True).stdout.splitlines()
+    want = {r for r in set(tracked) | set(pin["files"])
+            if not excluded(r) and not any(excluded(a.as_posix()) for a in Path(r).parents
+                                           if a.parts)}
+    have = {p.relative_to(tree).as_posix() for p in tree.rglob("*")
+            if p.is_file() or p.is_symlink()}
+    return {"extra": sorted(have - want), "missing": sorted(want - have)}
+
+
 def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str | None = None,
                    records: tuple[str, ...] = DEFAULT_RECORDS, sample: Path | None = None,
                    max_mb: float = 64.0, literals: tuple[str, ...] = (),
                    visible: tuple[str, ...] = (), allow: tuple[dict, ...] = (),
                    pin: dict | None = None, honesty_input: dict | None = None,
-                   score_summary: dict | None = None) -> dict:
+                   score_summary: dict | None = None, pin_sha256: str | None = None,
+                   free_window: tuple[float, float] = (90.0, 100.0)) -> dict:
     repo, dest = Path(repo).resolve(), Path(dest).resolve()
     if not literals and honesty_input is None:
         raise WorkspaceError("the literal gate needs the current figures (--honesty-input, "
@@ -479,7 +523,7 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
     digs: list[str] = []
     for rel, p, raw in _text_files(tree, max_bytes, {BRIEF}):
         new = raw
-        res = M.mask_file_text(p.name, raw)
+        res = None if data_layer(rel) else M.mask_file_text(p.name, raw)
         if res is not None and res[1]:
             new = res[0]
             log["masked_files"][rel] = res[1]
@@ -539,11 +583,12 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
 
     for rel, p, raw in _text_files(dest, max_bytes, {"inventory.json"}):
         units = M.units(p.name, raw) if p.suffix.lower() in M.JSON_SUFFIXES else [raw]
-        for u in M.units(p.name, raw):
+        for u in ([] if data_layer(rel.removeprefix("repo/")) else M.units(p.name, raw)):
             for a, b, h in M.derivable_pairs(u):
                 line = f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}"
                 (allowed if allowed_by(rel, "derivable") else derivable).append(line)
-            free += [f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in M.free_pairs(u)]
+            free += [f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in
+                     M.free_pairs(u, free_window)]
         ids_left += [f"{rel}: {m.group(0)}" for m in M._ID.finditer(raw)]
         for u in units:
             for h in _literal_hits(u, lits):
@@ -557,8 +602,10 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
                           M.derivable_pairs(t)]
             literal_hits += [f"{where}: {h}" for h in _literal_hits(t, lits)]
             visible_hits += [f"{where}: {h}" for h in _literal_hits(t, vis)]
-            free += [f"{where}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in M.free_pairs(t)]
+            free += [f"{where}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in
+                     M.free_pairs(t, free_window)]
             ids_left += [f"{where}: {m.group(0)}" for m in M._ID.finditer(t)]
+    tree_diff = tree_mismatch(repo, commit, tree, pin) if pin is not None else None
     pages = sorted(r for r in (log["records"] if pin is None else pin["files"])
                    if re.fullmatch(r"results/twin/twin_app_\w+\.html", r)
                    and r not in inv["inputs"])
@@ -566,7 +613,8 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
             "inventory_sha256": inv["sha256"], "view_sha256": view["view_sha256"],
             "mask_rules_sha256": view["mask_rules_sha256"], "masked_statements": view["masked"],
             "unverifiable": view["unverifiable"], "bias_disclosure": view["bias_disclosure"],
-            "pinned": pin is not None, "figures": fig_counts, "records": log["records"],
+            "pinned": pin is not None, "pin_manifest_sha256": pin_sha256,
+            "figures": fig_counts, "records": log["records"],
             "disclosures": {
                 "R11.4a": "Left out of the workspace, against the brief's wording 'the "
                           "repository at the pinned commit' (user ruling R11.4a): "
@@ -581,8 +629,10 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
             "gates": {"literals_checked": len(lits), "derivable": derivable,
                       "literal_hits": literal_hits, "visible_literal_hits": visible_hits,
                       "allowed_literal_hits": allowed, "statement_ids_left": ids_left,
-                      "term_free_pairs": free,
-                      "passed": not derivable and not literal_hits and not ids_left},
+                      "term_free_pairs": free, "free_window": list(free_window),
+                      "tree_mismatch": tree_diff,
+                      "passed": not derivable and not literal_hits and not ids_left
+                      and not (tree_diff and (tree_diff["extra"] or tree_diff["missing"]))},
             "view_ids": {v: k for k, v in ids.items()}}
 
 
@@ -614,6 +664,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--figures", type=Path, default=None,
                     help='extra figures: a JSON list, or {"hidden": [...], "visible": [...]}')
     ap.add_argument("--check-literal", action="append", default=[])
+    ap.add_argument("--free-window", type=float, nargs=2, default=(90.0, 100.0),
+                    metavar=("LO", "HI"), help="6a - 5b window of the term-free review list")
     ap.add_argument("--allow", type=Path, default=None,
                     help="JSON list of reviewed gate hits to accept: {file (under repo/ or the "
                          "workspace root), literal (a value) or derivable (true), reason}; keep "
@@ -658,9 +710,11 @@ def main(argv: list[str] | None = None) -> int:
                                   ("honesty_on_sample_auditor", "honesty_on_sample_second")}}
         del full
     pin = json.loads(a.pin_manifest.read_text(encoding="utf-8")) if a.pin_manifest else None
+    pin_sha = C.sha256(a.pin_manifest) if a.pin_manifest else None
     allow = tuple(json.loads(a.allow.read_text(encoding="utf-8"))) if a.allow else ()
     res = make_workspace(a.inventory, a.dest, a.repo, a.commit, records, a.sample, a.max_mb,
-                         tuple(lits), tuple(vis), allow, pin, hon, score)
+                         tuple(lits), tuple(vis), allow, pin, hon, score, pin_sha,
+                         tuple(a.free_window))
     if a.manifest is not None:
         a.manifest.parent.mkdir(parents=True, exist_ok=True)
         a.manifest.write_text(json.dumps(res, ensure_ascii=False, indent=1) + "\n",
@@ -672,7 +726,10 @@ def main(argv: list[str] | None = None) -> int:
           f"{len(g['statement_ids_left'])} statement ids; {len(g['term_free_pairs'])} "
           "term-free pairs to review)" + (f"; summary {a.manifest}" if a.manifest else ""))
     if not g["passed"]:
-        for line in (g["derivable"] + g["literal_hits"] + g["statement_ids_left"])[:60]:
+        td = g["tree_mismatch"] or {"extra": [], "missing": []}
+        for line in (g["derivable"] + g["literal_hits"] + g["statement_ids_left"]
+                     + [f"extra file {x}" for x in td["extra"]]
+                     + [f"missing file {x}" for x in td["missing"]])[:60]:
             print("  GATE", line[:300])
         return 1
     return 0

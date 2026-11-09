@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import itertools
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -403,13 +404,23 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
     with pytest.raises(W.WorkspaceError, match="literal gate"):
         W.make_workspace(ip, tmp_path / "ws0", repo, records=recs)
     dest = tmp_path / "ws"
+    _write(repo / "results" / "dataprep" / "reports" / "x" / "__pycache__" / "m.cpython-311.pyc",
+           "bytecode")
+    with pytest.raises(W.WorkspaceError, match="modified after the pinned commit"):
+        W.pin_manifest(inv, repo, inv["commit"], recs)
+    t_pin = W._commit_time(repo, inv["commit"])
+    for q in (repo / "results").rglob("*"):
+        os.utime(q, (t_pin - 60, t_pin - 60))                   # the record as it was at the pin
     pin = W.pin_manifest(inv, repo, inv["commit"], recs)
     assert "results/twin/page.html" in pin["files"]
+    assert not any("__pycache__" in f or f.endswith(".pyc") for f in pin["files"])
     assert not any("HONESTY" in f or "analyst" in f for f in pin["files"])
     _write(repo / "results" / "dataprep" / "reports" / "late.json", "{}")     # after the pin
     res = W.make_workspace(ip, dest, repo, records=recs, sample=sp, literals=("96.4", "52.9"),
                            pin=pin)
     assert res["pinned"] and not (dest / "repo/results/dataprep/reports/late.json").exists()
+    assert res["gates"]["tree_mismatch"] == {"extra": [], "missing": []}
+    assert res["gates"]["free_window"] == [90.0, 100.0]
     assert "R11.4a" in res["disclosures"] and "tests" in res["disclosures"]["R11.4a"]
     unv = res["unverifiable"]
     assert set(unv) >= {"masked", "hash_masked", "cites_excluded", "union_statements",
@@ -468,16 +479,40 @@ def test_grader_brief_drops_the_operator_section():
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_tree_mismatch_names_extra_and_missing_files(tmp_path):
+    W = _script()
+    repo = tmp_path / "repo"
+    _write(repo / "a.md", "a\n")
+    _write(repo / "tests" / "t.py", "x\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "s")
+    tree = tmp_path / "tree"
+    _write(tree / "a.md", "a (masked)\n")
+    _write(tree / "results" / "r.json", "{}")
+    pin = {"files": {"results/r.json": "x", "results/gone.json": "y"}}
+    assert W.tree_mismatch(repo, "HEAD", tree, pin) == {"extra": [],
+                                                        "missing": ["results/gone.json"]}
+    _write(tree / "hydrophysics" / "__pycache__" / "progress.cpython-311.pyc", "b")
+    assert W.tree_mismatch(repo, "HEAD", tree, pin)["extra"] == [
+        "hydrophysics/__pycache__/progress.cpython-311.pyc"]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 def test_figures_come_from_the_progress_recount(tmp_path):
     W = _script()
+    tree = tmp_path / "tree"
+    shutil.copytree(C.REPO / "hydrophysics", tree / "hydrophysics",
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     try:
-        fig = W.progress_figures(C.REPO, C.REPO, "HEAD", 90.0, "official")
+        fig = W.progress_figures(tree, C.REPO, "HEAD", 90.0, "official")
     except (W.WorkspaceError, subprocess.CalledProcessError) as e:
         pytest.skip(f"no ledger at HEAD here: {e}")
     sci, six = fig["science"][0], fig["six"][0]
     assert six == pytest.approx((5 * sci + 90.0) / 6, abs=1e-6)
     lits = W.figure_literals([six])
     assert f"{six:.2f}" in lits and f"{six:.1f}" in lits
+    assert not list(tree.rglob("*.pyc"))                     # the recount writes no bytecode
 
 
 def test_literal_variants_and_gate():
