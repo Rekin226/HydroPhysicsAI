@@ -178,7 +178,10 @@ def test_the_outcomes_follow_r9_4_on_integer_counts(ns, n0, hp, hp0, want):
 
 def test_the_float_mean_would_have_misread_the_boundary():
     ns = (150, 151, 250, 249)
-    fmean = sum(n / 250 for n in ns) / 4
+    acc = 0.0                      # naive left-to-right float sum (Python >= 3.12's sum() is
+    for n in ns:                   # compensated and would hide the rounding this test shows)
+        acc += n / 250
+    fmean = acc / 4
     assert fmean == 0.7999999999999999 and fmean < 0.8
     assert R.exact_p(list(ns), 250) == R.Fraction(4, 5) == R.P_MEASURED
     assert R.outcome_of(list(ns), 250, 0, 500, 0.02, 0.0) == "measured"
