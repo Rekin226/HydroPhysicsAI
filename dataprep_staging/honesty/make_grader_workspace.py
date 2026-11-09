@@ -46,7 +46,7 @@ every view statement) and the literal gate: the operator's current figures (``--
 JSON file kept outside the repository: a list, or ``{"hidden": [...], "visible": [...]}``; or
 ``--check-literal``; hidden figures are required), each with its rounding neighbours, must not
 occur within ``LITERAL_WINDOW`` characters of an honesty, 6-part, headline, overall, audit or
-grader term in any text file or view statement, unless a physical unit follows (``53.6
+grader term in any text file or view statement, unless a physical unit follows (``71.1
 cm/yr``). Visible figures (science trust, which the mask leaves by design) are only reported;
 a hit the operator has reviewed (``--allow``: file, literal and reason, e.g. the same digits
 as a well-disposal rate) is reported as allowed.
