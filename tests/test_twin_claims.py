@@ -2022,3 +2022,70 @@ def test_caveat_9_avoided_sizes_carry_the_label():
     assert _st("C15") == {"L"} and _st("C10") == {"L"}
     for cid in ("C15", "C10"):
         assert "R10.6" in CL()[cid]["notes"] and "8f67973f" in CL()[cid]["notes"], cid
+
+
+R11F_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha256 656d778b)."
+R11_9_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09.json (sha256 7c7219b8)."
+R11_9B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09b.json (sha256 b39cbaa1)."
+R11_9C_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09c.json (sha256 adf5de63)."
+R11_IDS = {                    # ledger id suffix -> (set, source line, first words of decision)
+    "R11.1": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "L + H + analyst tighten"),
+    "R11.2": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "Sections 21-27"),
+    "R11.3": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "A 25 % sample"),
+    "R11.4": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "Adopt all"),
+    "R11.5": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "Full list plus sweep"),
+    "R11.6": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "The user merges it"),
+    "R11.7": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "Yes, exploratory"),
+    "R11.7a": ("2026-11-09 (twenty-fifth set)", R11_9_SRC, "Run once"),
+    "R11.7b": ("2026-11-09 (twenty-fifth set)", R11_9_SRC, "FV.ext.v1's own worlds"),
+    "R11.7c": ("2026-11-09 (twenty-fifth set)", R11_9_SRC, "FV.ext.v1's own null"),
+    "R11.7d": ("2026-11-09 (twenty-fifth set)", R11_9_SRC, "No new look entry"),
+    "R11.6b": ("2026-11-09 (twenty-sixth set)", R11_9B_SRC, "The user (or the peer session)"),
+    "R11.7e": ("2026-11-09 (twenty-seventh set)", R11_9C_SRC, "Accept: regrade C14f to D-weak"),
+}
+
+
+def test_round11_rulings_are_recorded():
+    """Round 11 so far: the twenty-fourth set's R11.1-R11.7, the twenty-fifth set's R11.7a-d,
+    the twenty-sixth set's R11.6b and the twenty-seventh set's R11.7e, each citing its file and
+    sha256. R11.7e regrades C14f D-weak on C14f.coverage_clause.v1 (P 0.683, null pass rate
+    0.950 under FV.ext.v1's null; R9.4's weak branch) with the reading, P, null rate and
+    thresholds on the row, the registration and report cited, and no status change."""
+    text = {r["id"]: r["text"] for r in L()["rulings"]}
+    for rid, (sset, src, dec) in R11_IDS.items():
+        t = text[f"user ruling {sset} ({rid})"]
+        assert f" Decision: {dec}" in t and " Applies to: " in t and t.endswith(src), rid
+    t = text["user ruling 2026-11-09 (twenty-seventh set) (R11.7e)"]
+    assert " Applies to: C14f, progress." in t, t
+    for k in ("683/1000", "475/500 = 0.950", "0.150", "471923b6", "3b6da4f7", "post-failure",
+              "41.67 -> 40.56", "44.29 -> 44.07", "53.29 -> 53.11", "No status change"):
+        assert k in t, k
+    assert "88.9 %" in text["user ruling 2026-11-08 (twenty-fourth set) (R11.1)"]
+    f = CL()["C14f"]
+    assert _st("C14f") == {"D"} and f["status_current"] == "D"
+    n = f["notes"]
+    for k in ("R11.7e", "adf5de63", "471923b6", "3b6da4f7", "P = 683/1000 = 0.683",
+              "475/500 = 0.950", "0.150", "P >= 0.8", "<= 0.2", "> 0.5", "'weak'", "D-weak",
+              "post-failure", "model-only", "optimistic", "E22"):
+        assert k in n, k
+    assert "C14f.coverage_clause.v1" in f["cites"]["registrations"]
+    assert ("results/dataprep/reports/C14f.coverage_clause.v1/report.json"
+            in f["cites"]["reports"])
+    assert L()["registry_hashes"]["C14f.coverage_clause.v1"].startswith("471923b6")
+    for rid in ("R11.7", "R11.7a", "R11.7b", "R11.7c", "R11.7d", "R11.7e"):
+        sset = R11_IDS[rid][0]
+        assert f"user ruling {sset} ({rid})" in f["ruling_also"], rid
+    sn = L()["status_note"]
+    assert "R11.7e" in sn and "adf5de63" in sn and "section 29" in sn
+    # C14f's page line states no decidability, so R11.7e changes no page string
+    assert f["text_keys"] == ["i18n:evc_pro_ext"]
+    for lang in ("en", "zh"):
+        line = C.i18n(lang=lang)["evc_pro_ext"]
+        assert "decidab" not in line and "可判定" not in line and "weak" not in line, line
+    for rf, sha in (("user_rulings_2026-11-08f.json", "656d778b"),
+                    ("user_rulings_2026-11-09.json", "7c7219b8"),
+                    ("user_rulings_2026-11-09b.json", "b39cbaa1"),
+                    ("user_rulings_2026-11-09c.json", "adf5de63")):
+        f = C.REPO / "results/dataprep/rulings" / rf
+        if f.is_file():                                # a local record; absent on CI
+            assert C.sha256(f).startswith(sha), rf

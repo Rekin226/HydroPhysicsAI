@@ -1652,7 +1652,7 @@ appear together; none is shown alone, and none is averaged into another silently
   always shown beside the official figure (computed under rulings R8.16 and R8.17: 53.4 % at
   the audit state, 54.0 % on main 08a6aa7, section 26; the audit's own figure was 53.6 %; with
   R9.4's decidability thresholds applied by user rulings R10.5, R10.5b and R10.5c, 52.9 % and
-  53.2 %, section 28) and
+  53.2 %, section 28; with R11.7e too, 52.6 % and 53.1 %, section 29) and
   beside the disclosure downgrades listed below, never alone.
 
 A D that can be decided only after 2030-01-15 counts as D-pending under this rubric (0.6, or
@@ -2224,8 +2224,10 @@ The rule:
   applies R9.4's thresholds (measured needs P >= 0.8 and a null pass rate <= 0.2) to them: E22,
   C14f and E30 are D with decidability unknown, and E20 too under R10.5b (its canal-confounded
   power 0.60 decides); R10.5c grades C01-w D-weak (its canal-confounded power 0.148 is below
-  R9.4's 0.5). The figures of this section are those before R10.5 (`--mapping pre-R10.5`);
-  section 28 gives them under R10.5, R10.5b and R10.5c. A reading may instead
+  R9.4's 0.5); R11.7e (2026-11-09) grades C14f D-weak on a reading of its coverage clause
+  alone (null pass rate 0.950 > 0.5, section 29). The figures of this section are those before
+  R10.5 (`--mapping pre-R10.5`); section 28 gives them under R10.5, R10.5b and R10.5c, and
+  section 29 with R11.7e too. A reading may instead
   pre-declare several outcomes (`reading_outcomes`, user ruling R9.4, sixteenth set,
   `results/dataprep/rulings/user_rulings_2026-11-07c.json`, sha256 338f2de4): the row is then
   graded by the outcome it records, only once the ledger cites the registration with a real
@@ -2270,8 +2272,9 @@ The rule:
   with the record, which the ledger alone cannot measure, and no ledger-derived proxy is
   offered. The 6-part rows use the audit's 95 at the audit state and section 21's estimate of
   98 at 08a6aa7, labelled so; the current input is 98.3 (audited 2026-11-07, R9.3; section
-  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5 and 53.3
-  (63.3) under R10.5, R10.5b and R10.5c (section 28).
+  27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5, 53.3
+  (63.3) under R10.5, R10.5b and R10.5c (section 28) and 53.1 (63.1) with R11.7e too (section
+  29).
 - **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
   mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
   for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
@@ -2285,7 +2288,8 @@ The audit state is main fd40796, the last main commit before the round-8 step-0 
 #70); its `claims_v1.json` is byte-identical to af97301's, the state the audit read. Today is
 main 08a6aa7 (the ledger of this change adds only the R8.16 and R8.17 rulings, no status). The
 official columns are the rule before user ruling R10.5 (reproduced by `--mapping pre-R10.5`;
-under R10.5, R10.5b and R10.5c the 6-part means are 52.9 and 53.2, section 28).
+under R10.5, R10.5b and R10.5c the 6-part means are 52.9 and 53.2, section 28; with R11.7e
+too, 52.6 and 53.1, section 29).
 
 | | audited 2026-11-02 | **official, audit state (fd40796)** | **official, today (08a6aa7)** | default-v1, audit state | default-v1, today | section 22 estimate |
 |---|---|---|---|---|---|---|
@@ -2463,7 +2467,9 @@ expected effect of 0 on the official figures. No status changed in the round.
 
   C14f's P is that of N3F's whole rule (ratio and coverage both required), so it is a lower
   bound on the coverage clause's own P; no reading of the clause alone exists, and the bound
-  does not reach 0.8. C01-w was D with decidability unknown (R8.16c), not D-measured, so it was
+  does not reach 0.8. (Round 11: a reading of the clause alone, C14f.coverage_clause.v1, has
+  since run; it reads "weak", and R11.7e grades C14f D-weak, section 29.) C01-w was D with
+  decidability unknown (R8.16c), not D-measured, so it was
   outside R10.5's literal scope; read the same way, it is the one row that reads "weak", and
   R10.5c (twenty-third set) regraded it D-weak. Its page range lines (`tW_r`, `tW_r_w30`, EN and
   ZH) now say "weak for Yunlin under the canal confounder, power 0.15" where they said
@@ -2478,7 +2484,7 @@ expected effect of 0 on the official figures. No status changed in the round.
   mapping keeps the earlier rule as `--mapping pre-R10.5` so section 26's figures stay
   reproducible.
 
-  | | before R10.5 | R10.5 (E22, C14f, E30) | + R10.5b (E20) | **+ R10.5c (C01-w; official)** | change |
+  | | before R10.5 | R10.5 (E22, C14f, E30) | + R10.5b (E20) | **+ R10.5c (C01-w; official at round 10's close)** | change |
   |---|---|---|---|---|---|
   | head response, Yunlin | 49.39 | 49.39 | 49.39 | 48.79 | -0.61 (C01-w: 2/3 x 0.1 / 11) |
   | forecast start and validation | 52.50 | 51.07 | 51.07 | 51.07 | -1.43 (E22, E30: 2 x 0.1 / 14) |
@@ -2501,7 +2507,9 @@ expected effect of 0 on the official figures. No status changed in the round.
   (fd40796, honesty 95; C01 was not yet split, so R10.5c does not reach it) and 53.2 (08a6aa7,
   honesty 98), science 44.4 and 44.3 (`tests/test_twin_progress.py`, which also pins the
   round-10 ledger at commit f01c44a). No official grade rests on a measured_by qualifier any
-  more (map note `measured_by_note`, checked by a test).
+  more (map note `measured_by_note`, checked by a test). These were the official figures at
+  round 10's close; since R11.7e (section 29) the official figures are 53.11 (6-part), 44.07
+  (science) and 40.56 (uncertainty bands), and 52.6 and 53.1 at fd40796 and 08a6aa7.
 - **R10.6, caveat 9 labelled in place.** This model's avoided-subsidence sizes in Trust caveat 9
   carry the "model internals, size untested" label, EN and ZH, where they are printed: the
   post-hoc split's per-policy inelastic and total cm (`cv9_pol`), the cm left after a lifted
@@ -2515,3 +2523,131 @@ expected effect of 0 on the official figures. No status changed in the round.
   payload differs from 20261108b's and 20261108a's only in `release.code_sha256`; promoted to
   `results/twin/twin_app.html`. The first R10.6 build, `twin_app_20261108b` (sha256 9e48c5f7),
   was never merged.
+
+## 29. Round 11 (in progress)
+
+User rulings: twenty-fourth set, R11.1-R11.7 (`results/dataprep/rulings/user_rulings_2026-11-08f.json`,
+sha256 656d778b); twenty-fifth set, R11.7a-d (`user_rulings_2026-11-09.json`, sha256 7c7219b8);
+twenty-sixth set, R11.6b (`user_rulings_2026-11-09b.json`, sha256 b39cbaa1); twenty-seventh set,
+R11.7e (`user_rulings_2026-11-09c.json`, sha256 adf5de63). The ledger records each as
+`user ruling <date> (<set>) (<id>)`. No status has changed so far. The label pass (L) and the
+claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 2026-11-07, R9.3).
+
+- **R11.1, scope.** A label pass (L), then a claim-honesty re-audit by the R9.3 method (H), plus
+  tighten-only analyst fixes for the v5 LLM routing errors (development only, unscored).
+  Expected effect on the headline: about 0 (re-audit central 98.3-98.6, 80 % range 96.8-99.3,
+  about -0.25 to +0.17); science 0. L comes before H, and the audit report will disclose that
+  L targeted expected findings.
+- **R11.2, re-audit scope.** Sections 21-27, inventoried by the committed tool
+  (`hydrophysics/twin/honesty.py`, `EVIDENCE_SECTIONS`) with no change of method. Section 28 is
+  not graded, and this section lies outside the same range.
+- **R11.3, second grader.** A second independent grader grades a 25 % sample (about 340
+  statements). The report will give both graders' sample honesty, exact agreement, linear and
+  quadratic kappa, a per-source breakdown and a bootstrap interval. It will also state that a
+  change smaller than about 1.5 from 98.3 cannot be told apart from grader variance.
+- **R11.4, blindness and one run.** All adopted:
+  - a committed mechanical masking rule (98.3, the per-source figures, and the 6-part figures
+    beside the science figures);
+  - graders work in a fresh clone with no `*.local.md` and no HONESTY files, and do not read
+    the honesty-fix git history or PRs;
+  - `GRADER_BRIEF.md` is used word for word, and the exact prompts are published;
+  - the primary auditors are split as in round 9;
+  - one run: the audited figure stands even if it is lower, and there is no re-audit this
+    round.
+- **R11.5, label-pass list.** The full list plus a sweep:
+  - caveats 3, 7 and 8, and caveat 12's baseline rate;
+  - the model-card rows for rheology, superposition and artefacts;
+  - the ZH caveat-9 "13%.。" bug;
+  - README's "1.5 cm per metre of head" (the record says 2.15);
+  - the main-map layers `ly_abs`, `ly_fwd` and `ly_rate`;
+  - the README and MODEL_CARD copies of the caveat sizes;
+  - a grep sweep of all five audit sources for the text of every round-9 finding.
+
+  Ledger notes that quote changed strings are updated, and the analyst bundle and parity are
+  rerun. The audit report discloses all of this as targeting expected findings.
+- **R11.6 and R11.6b, the peer work in the shared checkout.** R11.6: the user merges the peer
+  branch `twin/analyst-fv-fs` (or has the peer session merge it) before L and H start, and the
+  lead builds on top. That branch's only commit (29fbe98) has been in main since PR #60.
+  R11.6b covers the uncommitted peer edits left in the shared checkout: the user or the peer
+  session commits them on a branch and opens a PR against current main. The lead reviews that
+  PR like any change (adversarial review, 4 green CI jobs) and builds L and H on top after it
+  merges. Under both rulings the lead never touches the shared checkout.
+- **Analyst tighten step (R11.1; PR #109; unscored).** A tighten-only post-route step
+  (`hydrophysics_analyst/router/tighten.py`, `docs/analyst/TIGHTEN_ROUND11.md`) can only turn a
+  preset into a clarification or correct a clarification's reason; a refusal passes
+  unchanged. It fixes two of v5's four LLM routing errors:
+  - v5_034: a preset for a question that leads by "a few years" and gives no reporting year
+    becomes `clarify missing_year`;
+  - v5_061: a `clarify unknown` for a start or cut size off the grid becomes `out_of_grid`.
+
+  Replayed on the recorded opus-low rows with no new LLM call, held-out v5 goes from 86.7 % to
+  88.9 % and v3 from 76.7 % to 78.3 %; v4 stays at 85.6 %. The unsafe counts are unchanged
+  (v5 0). These are development figures, not a score: the step was tuned on spent sets after
+  reading v5's errors. A fair score needs a new, independently written held-out set. The 97 %
+  bar is still not met.
+- **C14f's coverage clause read alone (R11.7, R11.7a-d).**
+  - *Why.* After R10.5, C14f's only reading was FV.ext.v1, which reads N3F's whole rule (RMSE
+    ratio and coverage) and gives P 0.592 (section 28). The coverage clause had never been read
+    on its own. FV.ext.v1 kept no per-world clause outcomes, so the clause's own P was known
+    only to lie in [0.592, 1].
+  - *Registration.* `C14f.coverage_clause.v1`, a synthetic reading of N3F's pooled central 90 %
+    coverage clause ([0.85, 0.95], at least 30 wells with at least 6 window months) at the 66
+    never-calibrated external wells, was registered as post-failure exploratory under the retry
+    rule (declaration sha256 471923b6). It is the one follow-up after R10.5, it is model-only,
+    and it is never validation. Its code (`dataprep_staging/c14f_clause`, PR #110) was
+    committed before it ran.
+  - *Worlds and null.* It uses FV.ext.v1's own worlds (R11.7b): seed 20261101, streams
+    21/22/23, 4 truths x 250 worlds and 500 null worlds. An identity gate checks the run
+    against FV.ext.v1's stored report (sha256 b29f6cfc). FV.ext.v1's own null decides P0
+    (truth at the registered climatology plus noise; R11.7c). The midpoint null is report-only.
+  - *Look.* No new look was logged (R11.7d). The record cites FV.ext.v1's look
+    `FV:ext_preorigin_derived_N3Fwells`, and no head file of the test window was opened.
+  - *Run.* It ran once on 2026-11-09 (attempt 1). Report:
+    `results/dataprep/reports/C14f.coverage_clause.v1/report.json`, sha256 3b6da4f7.
+
+  | quantity | value |
+  |---|---|
+  | P (right-kind worlds pass the clause; `P.p`) | 683/1000 = 0.683 (MC SE 0.014) |
+  | P by truth | Q0 0.600, R0 0.576, R1c 0.716, X5R1 0.840 |
+  | P0 (FV.ext.v1's null passes the clause; `P0.p`; decides) | 475/500 = 0.950 (MC SE 0.010) |
+  | midpoint null (report-only) | 75/500 = 0.150 |
+  | outcome by R9.4's rule | **weak** (P0 > 0.5) |
+
+  - *Outcome.* R9.4's rule says "measured" if P >= 0.8 and P0 <= 0.2; otherwise "weak" if
+    P < 0.5 or P0 > 0.5; otherwise "unchanged". Point estimates decide, compared as exact
+    fractions of the integer pass counts. P is below 0.8, so the clause is not measured. P0 is
+    above 0.5, so the reading is "weak": a truth at the registered climatology meets the
+    coverage band in 95 % of null worlds. A 2028 coverage pass would therefore not show that
+    the interval is right.
+  - *Consistency.* As expected, P (0.683) is at least the whole rule's 0.592.
+  - *Limits.* The reading is optimistic (rain at climatology, noise independent between wells,
+    every month observed), not a strict bound, and says nothing about the aquifer. E22 (N3F's
+    whole rule) is not re-read: FV.ext.v1's reading of it stands.
+- **R11.7e, C14f D-weak.** The user accepted the reading for C14f's grade: C14f goes from D with
+  decidability unknown (0.6) to D-weak (0.5) and keeps the reading's post-failure exploratory
+  label. This is implemented in `hydrophysics/twin/progress_map_v1.json` and in C14f's notes,
+  cites and `ruling_also`. C14f's status stays D. No page, README or MODEL_CARD text states
+  C14f's decidability: `evc_pro_ext` says "registered; decided not before 2028-01-15", and
+  `evc_fvext_nsw` reads the whole rule (E22). So no page string changes and the page is not
+  rebuilt; the page of record stays `twin_app_20261108c` (sha256 9a9c40f3). Mappings `pre-R10.5`
+  and `default-v1` keep C14f measured by FV.ext.v1 and reproduce their earlier figures.
+
+  | | round 10's close (R10.5, R10.5b, R10.5c) | **+ R11.7e (C14f; official)** | change |
+  |---|---|---|---|
+  | head response, Yunlin | 48.79 | 48.79 | 0 |
+  | forecast start and validation | 51.07 | 51.07 | 0 |
+  | uncertainty bands | 41.67 | 40.56 | -1.11 (C14f: 0.1 / 9) |
+  | subsidence and cut response | 35.57 | 35.57 | 0 |
+  | Changhua | 44.38 | 44.38 | 0 |
+  | **science trust** (mean of 5) | **44.29** | **44.07** | -0.22 |
+  | claim honesty (audited 2026-11-07, R9.3) | 98.3 | 98.3 | 0 |
+  | **6-part mean** (headline) | **53.29** | **53.11** | -0.19 |
+  | intended-output variant (science) | 37.21 | 36.99 | -0.22 |
+  | end-goal convention, science / 6-part (bookkeeping only) | 56.32 / 63.32 | 56.10 / 63.13 | -0.22 / -0.19 |
+
+  Source: `python -m hydrophysics.twin.progress --honesty 98.3` on the round-11 ledger. In the
+  full table only C14f's row changes (0.60 D-unknown -> 0.50 D-weak). The round-10 column is
+  the official mapping with C14f at its round-10 qualifier. At the earlier pinned states the
+  official 6-part figures become 52.6 (fd40796, honesty 95) and 53.1 (08a6aa7, honesty 98).
+  `tests/test_twin_progress.py` pins the round-11 figures at main b8118ca, round 11's base,
+  whose ledger statuses this ruling leaves unchanged.
