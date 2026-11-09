@@ -53,10 +53,12 @@ PLACEHOLDERS["id"].
 
 TERMS (EN and ZH, case-insensitive; TERMS):
 * H, honesty: honesty (claim honesty, claim-honesty, claim_honesty), audit or audited figure,
-  re-audit, grader(s), an audit, auditor or grader (auditor-1...) that gave or scored, CH (upper
-  case, a word); 誠實, 評分者, 複核.
-* R, audit source: page, README, MODEL_CARD (model card), evidence, ledger: owns a figure in
-  SOURCE_RANGE [90, 100] right beside it (a per-source audit figure: page 71.1 stands for one).
+  re-audit, grader(s), an audit, auditor or grader (auditor-1...) that gave or scored; 誠實,
+  評分者, 複核.
+* R, audit source or abbreviation: page, README, MODEL_CARD (model card), evidence, ledger, CH
+  (upper case, a word; in this project also Changhua): owns a figure in SOURCE_RANGE [90, 100]
+  right after it (SOURCE_GAP: at most 4 spaces, colons, =, * or opening parentheses between;
+  a per-source audit figure, or "CH 9x.x"), and nothing else.
 * S, 6-part: 6-part, six-part, six_part, 6 part; 六部分, 六項.
 * K: a quoted key "six": (counts for the unit rule only).
 * A, headline: headline (not the headline's interface parts: headline lever, head lever, row,
@@ -90,8 +92,9 @@ DECISION, per figure, left to right:
    (22.2) and 6-part (71.1) ... (22.4, 71.4)": 22.4 stays, 71.4 is masked). A misreading of
    the order is caught by the derivation gate.
 3. Scope. The nearest S, A, P, O or Q term before the figure is an S term and the figure is
-   signed, at least 10 or a decimal after a change word; or it is an A (P) term at most REACH
-   (80) characters before the figure and the figure is 6-part-sized (a decimal in [40, 80]).
+   signed, at least 10 or a decimal after a change word; or it is an A term at most REACH (80)
+   characters before the figure and the figure is 6-part-sized (P terms own figures only
+   right beside them, step 1).
    Honesty scope: the nearest H or O term before it is an H term and the figure is signed or
    lies in [50, 100).
 4. Unit. The unit holds an H, S or K term and the figure lies in [50, 100), or it holds an A
@@ -164,9 +167,9 @@ TERMS = {
     "H": [r"(?<![A-Za-z])honesty", r"audit(?:ed)?\s+figures?", r"re-?audit(?:ed|s|ing)?",
           r"(?<![A-Za-z])(?:audit(?:or)?s?|graders?)(?:-\d+)?\s+(?:gave|gives|scored|scores)"
           r"(?![A-Za-z])",
-          r"(?<![A-Za-z])graders?(?![A-Za-z])", r"(?<![A-Za-z0-9_-])(?-i:CH)(?![A-Za-z0-9_-])",
-          r"誠實", r"評分者", r"複核"],
-    "R": [r"(?<![A-Za-z_])(?:page|readme|model[_ ]card|evidence|ledger)(?![A-Za-z_])"],
+          r"(?<![A-Za-z])graders?(?![A-Za-z])", r"誠實", r"評分者", r"複核"],
+    "R": [r"(?<![A-Za-z_])(?:page|readme|model[_ ]card|evidence|ledger)(?![A-Za-z_])",
+          r"(?<![A-Za-z0-9_-])(?-i:CH)(?![A-Za-z0-9_-])"],
     "S": [r"(?<![A-Za-z0-9])(?:6|six)[-_ ]parts?(?![A-Za-z])", r"六部分", r"六項"],
     "K": [r"(?<=[\"'])six(?=[\"']\s*:)"],
     "A": [r"(?<![A-Za-z0-9_])headline(?![A-Za-z0-9_])(?!'s\s+(?:Yunlin|Changhua)|\s+(?:head\s+)?"
@@ -190,6 +193,7 @@ TRAILING_GAP = r"[^\d;,.|()\[\]{}。；，、]{0,12}"
 LEADING_GAP = r"[^\d;,.|。；，、]{0,16}"
 TRAILING_BREAK = r"(?<![A-Za-z])(?:and|or|with|vs|but|while)(?![A-Za-z])|和|與|及"
 CHAIN = r"[\s*%]*(?:->|→|=>|to|/|,|and|or|vs\.?)?[\s*%]*"
+SOURCE_GAP = r"[\s:=*(]{0,4}"
 BLOCK = r"\n\s*\n|\n(?=\s*(?:[-*|]|\d+\.)\s)"
 HASH_RUN = r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{7,64}(?![0-9A-Fa-f])"
 LINE_SUFFIXES = (".log",)
@@ -212,6 +216,7 @@ _CHAIN = re.compile(CHAIN, re.I)
 _BLOCK = re.compile(BLOCK)
 _HASH = re.compile(HASH_RUN)
 _SERIES = re.compile(r"[\s,;\[\]]*")
+_SOURCE_GAP = re.compile(SOURCE_GAP)
 _MARKUP = re.compile(MARKUP_UNIT)
 _SCRIPT = re.compile(SCRIPT, re.S | re.I)
 _ANCHORS = ("honest", "audit", "grader", "part", "six", "headline", "progress", "official",
@@ -244,6 +249,7 @@ def rules() -> dict:
         "unit_words": list(UNIT_WORDS), "statement_id": STATEMENT_ID,
         "change_words": list(CHANGE_WORDS), "terms": TERMS, "trailing_gap": TRAILING_GAP,
         "leading_gap": LEADING_GAP, "trailing_break": TRAILING_BREAK, "chain": CHAIN,
+        "source_gap": SOURCE_GAP,
         "block": BLOCK, "hash_run": HASH_RUN,
         "line_suffixes": list(LINE_SUFFIXES), "markup_suffixes": list(MARKUP_SUFFIXES),
         "code_suffixes": list(CODE_SUFFIXES),
@@ -324,10 +330,11 @@ def _adjacent(m: re.Match, text: str, terms: _Terms) -> str | None:
     t, best = terms.t, (None, 10**9)
     nb = bisect.bisect_right(terms.ends, a)
     if nb and t[nb - 1][2] != "K" and a - t[nb - 1][1] <= GAP_MAX[1] and \
-            _LEAD.fullmatch(text[t[nb - 1][1]:a]):
+            _LEAD.fullmatch(text[t[nb - 1][1]:a]) and (
+                t[nb - 1][2] != "R" or _SOURCE_GAP.fullmatch(text[t[nb - 1][1]:a])):
         best = (t[nb - 1][2], a - t[nb - 1][1])
     na = bisect.bisect_left(terms.starts, b)
-    if na < len(t) and t[na][2] != "K" and t[na][0] - b <= GAP_MAX[0] and \
+    if na < len(t) and t[na][2] not in "KR" and t[na][0] - b <= GAP_MAX[0] and \
             _TRAIL.fullmatch(text[b:t[na][0]]) and not _BREAK.search(text[b:t[na][0]]) and \
             t[na][0] - b < best[1]:
         best = (t[na][2], t[na][0] - b)
@@ -380,8 +387,7 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None,
     k = t[i][2] if i >= 0 else None
     level = decimal and in_six
     six = (k == "S" and (signed or any(v >= SMALL_INTEGER for v in vals) or change)) or (
-        k in ("A", "P") and a - t[i][1] <= REACH and (
-            level or (k == "A" and (signed or change))))
+        k == "A" and a - t[i][1] <= REACH and (level or signed or change))
     i = terms.last["HO"][nb]
     hon = i >= 0 and t[i][2] == "H" and (signed or in_range)
     if six and hon:
@@ -478,7 +484,7 @@ def mask_blocks(text: str, lines: bool = False) -> tuple[str, int]:
 
 # ---- JSON, formatting kept ------------------------------------------------------------------
 _JTOK = re.compile(r'(?P<s>"(?:[^"\\]|\\.)*")|(?P<n>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)'
-                   r'|(?P<p>[{}\[\]:,])|(?P<w>\s+)|(?P<l>true|false|null)')
+                   r'|(?P<p>[{}\[\]:,])|(?P<w>\s+)|(?P<l>true|false|null|NaN|-?Infinity)')
 
 
 def _key_kind(key: str) -> str | None:

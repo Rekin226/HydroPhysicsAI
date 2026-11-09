@@ -102,6 +102,8 @@ def test_figures_in_context_are_masked(text, gone, kept):
     "head response Yunlin about 49.4 -> 48.8, science 41.42 -> 41.3",
     "total pumping 45.3 Mm3/yr",
     "CH-J hook at 45.2",
+    "stable if >= 90% of the page's runs AND >= 90% of the A2 zone draws",
+    "matched-lead backcast shares: CH 61.2 %, YL 38.8 %",
     "經檢討本方案執行進度、下陷情勢並依據 95 年 5 月 30 日會議決議",
     "the graders' rule: grade 0-3, an audit figure needs evidence",
 ])
@@ -541,6 +543,12 @@ def test_markup_masks_strings_text_and_payload_but_not_code():
     assert M.mask_file_text("x.py", "honesty = 96.4") is None                # code: gated only
     assert M.units("x.py", "honesty = 96.4\n\nscience = 44.1") == ["honesty = 96.4",
                                                                      "science = 44.1"]
+
+
+def test_json_with_nan_keeps_its_structure_and_ch_keys_are_counties():
+    raw = '{"by_county": {"YL": 61, "CH": 55}, "x": NaN, "six_part": {"official": 52.1}}'
+    out, n = M.mask_json_text(raw)
+    assert n == 1 and '"YL": 61' in out and '"CH": 55' in out and "NaN" in out
 
 
 def test_mask_hashes():
