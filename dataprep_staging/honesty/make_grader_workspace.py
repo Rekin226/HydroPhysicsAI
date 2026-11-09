@@ -385,8 +385,8 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
             derivable += [f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in
                           M.derivable_pairs(u)]
         for h in _literal_hits(raw, lits):
-            ok = any(x.get("file") == rel and h.startswith(str(x.get("literal")) + ":")
-                     for x in allow)
+            ok = any(x.get("file") in (rel, rel.removeprefix("repo/"))
+                     and h.startswith(str(x.get("literal")) + ":") for x in allow)
             (allowed if ok else literal_hits).append(f"{rel}: {h}")
         visible_hits += [f"{rel}: {h}" for h in _literal_hits(raw, vis)]
     for r in view["records"]:

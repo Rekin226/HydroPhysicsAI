@@ -49,9 +49,11 @@ TERMS (EN and ZH, case-insensitive; TERMS):
   re-audit, grader(s); 誠實, 評分者, 複核.
 * S, 6-part: 6-part, six-part, six_part, 6 part; 六部分, 六項.
 * K: a quoted key "six": (counts for the unit rule only).
-* A, headline: headline (not "headline lever" or "headline head lever"), official figure(s);
-  總分, 頭條 (not 頭條槓桿).
-* P, progress: progress as a word (not the progress module or progress_map), overall; 進度.
+* A, headline: headline (not the headline's interface parts: headline lever, head lever, row,
+  tile(s), function, sentence, text, key, string, wording, "headline and tiles", "headline's
+  Yunlin/Changhua"), official figure(s), progress as a word (not the progress module or
+  progress_map); 總分, 頭條 (not 頭條槓桿), 進度.
+* P: overall.
 * O, other quantity: science, science trust, a bare part(s), coverage; 科學, 涵蓋.
 * Q, statistic: kappa, agreement; 一致.
 
@@ -65,15 +67,16 @@ DECISION, per figure, left to right:
    it within LEADING_GAP (at most 16 characters, no digit, none of ;,.| and no CJK stop or
    comma). An H owner masks the figure when it is signed (+, -, −; not ±) or lies in
    HONESTY_RANGE [50, 100); an S owner when it is signed, has a decimal point or is at least
-   SMALL_INTEGER (10); an A or P owner when it is 6-part-sized; an O or Q owner keeps it
-   (science 22.2 stays).
+   SMALL_INTEGER (10); an A owner when it is 6-part-sized; a P owner when it is a decimal in
+   [40, 80]; an O or Q owner keeps it (science 22.2 stays).
 2. Chain. A figure joined to the figure before it only by a connector (CHAIN: ->, →, =>, to,
    /, a comma, and, or, vs) takes that figure's decision when it has no adjacent owner of its
    own (22.2 -> 22.4 stays with science; 71.1 -> 71.4 is masked with the 6-part figure).
 3. Scope. The nearest S, A, P, O or Q term before the figure is an S term and the figure is
-   signed, at least 10 or a decimal after a change word; or it is an A or P term at most REACH
-   (80) characters before the figure and the figure is 6-part-sized. Honesty scope: the
-   nearest H or O term before it is an H term and the figure is signed or lies in [50, 100).
+   signed, at least 10 or a decimal after a change word; or it is an A (P) term at most REACH
+   (80) characters before the figure and the figure is 6-part-sized (a decimal in [40, 80]).
+   Honesty scope: the nearest H or O term before it is an H term and the figure is signed or
+   lies in [50, 100).
 4. Unit. The unit holds an H, S or K term and the figure lies in [50, 100), or it holds an A
    term and the figure is a decimal in [40, 80]: it is masked unless an O or Q term owns it
    (step 1) or its chain. A list such as "from 71.1, 22.2 and 33.3" names its 6-part figure
@@ -135,10 +138,13 @@ TERMS = {
           r"(?<![A-Za-z])graders?(?![A-Za-z])", r"誠實", r"評分者", r"複核"],
     "S": [r"(?<![A-Za-z0-9])(?:6|six)[-_ ]parts?(?![A-Za-z])", r"六部分", r"六項"],
     "K": [r"(?<=[\"'])six(?=[\"']\s*:)"],
-    "A": [r"(?<![A-Za-z0-9_])headline(?![A-Za-z0-9_])(?!\s+(?:head\s+)?levers?)",
-          r"(?<![A-Za-z])official\s+figures?(?![A-Za-z])", r"總分", r"頭條(?!槓桿)"],
-    "P": [r"(?<![A-Za-z0-9_./-])progress(?![A-Za-z0-9_]|\.[A-Za-z]|-\w)",
-          r"(?<![A-Za-z0-9_])overall(?![A-Za-z0-9_])", r"進度"],
+    "A": [r"(?<![A-Za-z0-9_])headline(?![A-Za-z0-9_])(?!'s\s+(?:Yunlin|Changhua)|\s+(?:head\s+)?"
+          r"(?:levers?|rows?|tiles?|functions?|sentences?|text|keys?|strings?|wording)"
+          r"|\s+and\s+(?:the\s+)?tiles?)",
+          r"(?<![A-Za-z])official\s+figures?(?![A-Za-z])",
+          r"(?<![A-Za-z0-9_./-])progress(?![A-Za-z0-9_]|\.[A-Za-z]|-\w)",
+          r"總分", r"頭條(?!槓桿)", r"進度"],
+    "P": [r"(?<![A-Za-z0-9_])overall(?![A-Za-z0-9_])"],
     "O": [r"(?<![A-Za-z])science(?:[-_ ]trust)?(?![A-Za-z])",
           r"(?<![-_A-Za-z0-9])parts?(?![-A-Za-z0-9])", r"(?<![A-Za-z])coverage(?![A-Za-z])",
           r"科學", r"涵蓋"],
@@ -296,13 +302,14 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | No
     change = decimal and _CHANGE.search(text[max(0, a - 20):a]) is not None
     big = signed or decimal or any(v >= SMALL_INTEGER for v in vals)
     near = signed or (decimal and in_six) or change
+    level = decimal and in_six
     kind = _adjacent(m, text, terms)
     if kind == "H":
         return "honesty" if signed or in_range else None
     if kind == "S":
         return "six_part" if big else None
     if kind in ("A", "P"):
-        return "six_part" if near else None
+        return "six_part" if (near if kind == "A" else level) else None
     if kind in ("O", "Q"):
         return "keep"
     if prev is not None:
@@ -314,7 +321,7 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | No
     i = terms.last["SAPOQ"][nb]
     k = t[i][2] if i >= 0 else None
     six = (k == "S" and (signed or any(v >= SMALL_INTEGER for v in vals) or change)) or (
-        k in ("A", "P") and a - t[i][1] <= REACH and near)
+        k in ("A", "P") and a - t[i][1] <= REACH and (near if k == "A" else level))
     i = terms.last["HO"][nb]
     hon = i >= 0 and t[i][2] == "H" and (signed or in_range)
     if six and hon:

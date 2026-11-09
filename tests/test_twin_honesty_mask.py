@@ -51,6 +51,7 @@ def mask(text: str) -> str:
      ["97.7", "96.2"], ["+-0.5"]),
     ("science 41.42 -> 41.3, headline 50.4 -> 50.3", ["50.4", "50.3"], ["41.42", "41.3"]),
     ("progress: 50.4 → 50.3", ["50.4", "50.3"], []),
+    ("progress +0.58 since the audit", ["+0.58"], []),
     ("總分 50.4 → 50.3", ["50.4", "50.3"], []),
     ("the headline is now at about 50.3", ["50.3"], []),
     ("the headline figure, 50.3 %", ["50.3"], []),
@@ -83,6 +84,9 @@ def test_figures_in_context_are_masked(text, gone, kept):
     "the head part 46.9 at the audit state and science trust 44.2",
     "the 6-part headline and the intended-output variant (W and L graded 0), divided by 6",
     "this._startedAt=0,this._progress=0,this._connected=!1",
+    "(Spearman +0.35 overall, +0.45 in aquifer 2)",
+    "the headline and tiles above the fold; the map for irrigation -30 % is non-uniform",
+    "the N headline row C04 pulls it down about 1.8; head response 50.9 against 60",
     "經檢討本方案執行進度、下陷情勢並依據 95 年 5 月 30 日會議決議",
     "the graders' rule: grade 0-3, an audit figure needs evidence",
 ])
