@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown, and E20 by R10.5b, twenty-second set (results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635: the canal-confounded power decides); C01-w D-weak by R10.5c, twenty-third set (results/dataprep/rulings/user_rulings_2026-11-08e.json, sha256 f86b4a7e: R9.4's weak branch, confounded power 0.148); the earlier figures stay reproducible under mapping pre-R10.5",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown, and E20 by R10.5b, twenty-second set (results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635: the canal-confounded power decides); C01-w D-weak by R10.5c, twenty-third set (results/dataprep/rulings/user_rulings_2026-11-08e.json, sha256 f86b4a7e: R9.4's weak branch, confounded power 0.148); C14f D-weak by R11.7e, twenty-seventh set (results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63: R9.4's weak branch on C14f.coverage_clause.v1, the post-failure exploratory reading of its coverage clause alone, null pass rate 0.950 > 0.5); the earlier figures stay reproducible under mappings pre-R10.5 (before R10.5) and pre-R11.7e (round 10's close)",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -310,10 +310,10 @@
    "part": "uncertainty_bands",
    "grade": {
     "D": {
-     "D": "D-unknown"
+     "D": "D-weak"
     }
    },
-   "reason": "Frozen per-well interval at N3F's 66 external wells, decided by N3F's coverage clause; FV.ext.v1 reads the whole rule 'not shown weak'. Graded D with decidability unknown by user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), applying R9.4's thresholds (measured needs P >= 0.8 and a null pass rate <= 0.2; weak if P < 0.5 or the null pass rate > 0.5; otherwise unchanged, D unknown) to FV.ext.v1, the reading the row was measured by (it reads N3F's whole rule, ratio and coverage; no separate reading of the coverage clause exists): P = 0.592, null false pass 0.0 (report sha256 b29f6cfc): P < 0.8, unchanged. Until R10.5 it was measured_by FV.ext.v1 (mapping pre-R10.5)."
+   "reason": "Frozen per-well interval at N3F's 66 external wells, decided by N3F's coverage clause; FV.ext.v1 reads the whole rule 'not shown weak'. Graded D with decidability unknown by user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), applying R9.4's thresholds (measured needs P >= 0.8 and a null pass rate <= 0.2; weak if P < 0.5 or the null pass rate > 0.5; otherwise unchanged, D unknown) to FV.ext.v1, the reading the row was measured by (it reads N3F's whole rule, ratio and coverage; no separate reading of the coverage clause exists): P = 0.592, null false pass 0.0 (report sha256 b29f6cfc): P < 0.8, unchanged. Graded D-weak by user ruling R11.7e (twenty-seventh set, results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63), applying R9.4's thresholds (user ruling R10.5, twenty-first set, sha256 8f67973f: measured needs P >= 0.8 and a null pass rate <= 0.2; weak if P < 0.5 or the null pass rate > 0.5; otherwise unchanged) to C14f.coverage_clause.v1 (registered sha256 471923b6; report results/dataprep/reports/C14f.coverage_clause.v1/report.json, sha256 3b6da4f7; post-failure exploratory after R10.5, model-only; run once 2026-11-09, attempt 1), the reading of N3F's coverage clause alone on FV.ext.v1's own worlds (user rulings R11.7 and R11.7a-d): P = 683/1000 = 0.683 (P.p; Q0 0.600, R0 0.576, R1c 0.716, X5R1 0.840), null pass rate 475/500 = 0.950 under FV.ext.v1's null (P0.p; decides by R11.7c; the midpoint null 0.150 is report-only): P0 > 0.5, so 'weak'. Until R10.5 it was measured_by FV.ext.v1 (mapping pre-R10.5); from R10.5 to R11.7e it was D-unknown."
   },
   "C14f-r": {
    "part": "uncertainty_bands",
@@ -653,7 +653,7 @@
    "split_cap": false
   },
   "pre-R10.5": {
-   "description": "the official rule before user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), kept for comparison only, so that the figures published before it (evidence section 26) stay reproducible: E22 and C14f D measured by FV.ext.v1, E30 D measured by its registered decidability reading, E20 D measured by X5.n2c_reading.v1 (regraded by R10.5b, twenty-second set, sha256 7816a635), C01-w D unknown (R8.16c; regraded D-weak by R10.5c, twenty-third set, sha256 f86b4a7e); everything else as the base.",
+   "description": "the official rule before user ruling R10.5 (twenty-first set, results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f), kept for comparison only, so that the figures published before it (evidence section 26) stay reproducible: E22 and C14f D measured by FV.ext.v1 (C14f regraded D-unknown by R10.5 and D-weak by R11.7e, twenty-seventh set, sha256 adf5de63), E30 D measured by its registered decidability reading, E20 D measured by X5.n2c_reading.v1 (regraded by R10.5b, twenty-second set, sha256 7816a635), C01-w D unknown (R8.16c; regraded D-weak by R10.5c, twenty-third set, sha256 f86b4a7e); everything else as the base.",
    "claims": {
     "E22": {
      "grade": {
@@ -705,8 +705,20 @@
      }
     }
    }
+  },
+  "pre-R11.7e": {
+   "description": "the official rule at round 10's close, before user ruling R11.7e (twenty-seventh set, results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63), kept for comparison only, so that the round-10 figures published in evidence section 28 stay reproducible: C14f D with decidability unknown (R10.5, on FV.ext.v1's whole-rule P 0.592), before R11.7e graded it D-weak on C14f.coverage_clause.v1 (post-failure exploratory, model-only); everything else as the base.",
+   "claims": {
+    "C14f": {
+     "grade": {
+      "D": {
+       "D": "D-unknown"
+      }
+     }
+    }
+   }
   }
  },
  "split_cap": true,
- "measured_by_note": "Since user rulings R10.5, R10.5b and R10.5c (2026-11-08) no grade the official mapping gives at the current ledger is a conditional measured_by: every D-measured grade must first be read by R9.4's thresholds (P >= 0.8 and a null pass rate <= 0.2). The measured_by qualifiers left in the base map do not grade any row now: C14a-r and C14b (U1.decomp_power.v1) qualify the trailing D of their N+D status, which the composite-first rule (R8.16a) grades by its N, and the retired C30 (FV.decidability.v2_postfailure) is graded only at ledger states before its split. tests/test_twin_progress.py checks that the official recount of the current ledger grades no row by a measured_by qualifier."
+ "measured_by_note": "Since user rulings R10.5, R10.5b and R10.5c (2026-11-08) and R11.7e (2026-11-09) no grade the official mapping gives at the current ledger is a conditional measured_by: every D-measured grade must first be read by R9.4's thresholds (P >= 0.8 and a null pass rate <= 0.2). The measured_by qualifiers left in the base map do not grade any row now: C14a-r and C14b (U1.decomp_power.v1) qualify the trailing D of their N+D status, which the composite-first rule (R8.16a) grades by its N, and the retired C30 (FV.decidability.v2_postfailure) is graded only at ledger states before its split. tests/test_twin_progress.py checks that the official recount of the current ledger grades no row by a measured_by qualifier."
 }
