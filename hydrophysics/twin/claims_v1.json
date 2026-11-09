@@ -355,7 +355,7 @@
   },
   {
    "id": "user ruling 2026-11-08 (twenty-fourth set) (R11.1)",
-   "text": "Round-11 scope? Decision: L + H + analyst tighten: a label pass (L), then a claim-honesty re-audit by the R9.3 method (H), plus tighten-only analyst fixes for the v5 LLM routing errors (changes that can only add clarifications or correct a clarify reason; development only, unscored). Expected effect about 0 on the headline (re-audit central 98.3-98.6, 80 % range 96.8-99.3, about -0.25 to +0.17 headline); science 0. L precedes H, and the audit report discloses that L targeted expected findings. Applies to: page, claim honesty, analyst. The analyst tighten step is implemented in PR #109 (hydrophysics_analyst/router/tighten.py, docs/analyst/TIGHTEN_ROUND11.md: v5_034 and v5_061; recorded-row figures, tuned on spent sets and not a score, v5 86.7 -> 88.9 %, 0 unsafe); L and H are recorded here and not yet run; no status change. Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha256 656d778b)."
+   "text": "Round-11 scope? Decision: L + H + analyst tighten: a label pass (L), then a claim-honesty re-audit by the R9.3 method (H), plus tighten-only analyst fixes for the v5 LLM routing errors (changes that can only add clarifications or correct a clarify reason; development only, unscored). Expected effect about 0 on the headline (re-audit central 98.3-98.6, 80 % range 96.8-99.3, about -0.25 to +0.17 headline); science 0. L precedes H and the audit report discloses that L targeted expected findings. Applies to: page, claim honesty, analyst. The analyst tighten step is implemented in PR #109 (hydrophysics_analyst/router/tighten.py, docs/analyst/TIGHTEN_ROUND11.md: v5_034 and v5_061; recorded-row figures, tuned on spent sets and not a score, v5 86.7 -> 88.9 %, 0 unsafe); L and H are recorded here and not yet run; no status change. Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha256 656d778b)."
   },
   {
    "id": "user ruling 2026-11-08 (twenty-fourth set) (R11.2)",
@@ -367,7 +367,7 @@
   },
   {
    "id": "user ruling 2026-11-08 (twenty-fourth set) (R11.4)",
-   "text": "Audit blindness and one-run rule? Decision: Adopt all: a committed mechanical masking rule (98.3, the per-source figures and the 6-part figures beside science figures); graders in a fresh clone with no *.local.md and no HONESTY files; no reading of the honesty-fix git history or PRs; GRADER_BRIEF.md word for word with the exact prompts published; split primary auditors as in round 9; one run, and the audited figure stands even if lower; no re-audit this round. Applies to: claim honesty. Recorded here; implemented separately, not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha256 656d778b)."
+   "text": "Audit blindness and one-run rule? Decision: Adopt all: a committed mechanical masking rule (98.3, the per-source figures and the 6-part figures beside science figures); graders in a fresh clone with no *.local.md and no HONESTY files; no reading of the honesty-fix git history or PRs; GRADER_BRIEF.md word for word with the exact prompts published; split primary auditors as in round 9; one run, the audited figure stands even if lower; no re-audit this round. Applies to: claim honesty. Recorded here; implemented separately, not in this change. Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha256 656d778b)."
   },
   {
    "id": "user ruling 2026-11-08 (twenty-fourth set) (R11.5)",
@@ -391,7 +391,7 @@
   },
   {
    "id": "user ruling 2026-11-09 (twenty-fifth set) (R11.7c)",
-   "text": "Which null decides P0? Decision: FV.ext.v1's own null (truth = registered climatology + noise) decides; the midpoint null is report-only. Applies to: C14f. Implemented in C14f.coverage_clause.v1's design: P0 0.950 (475/500) under FV.ext.v1's null decides; the midpoint null 0.150 is reported only. Source: results/dataprep/rulings/user_rulings_2026-11-09.json (sha256 7c7219b8)."
+   "text": "Which null decides P0? Decision: FV.ext.v1's own null (truth = registered climatology + noise) decides; the midpoint null is report-only. Applies to: C14f. Implemented in C14f.coverage_clause.v1's design (post-failure exploratory, model-only): P0 0.950 (475/500) under FV.ext.v1's null decides; the midpoint null 0.150 is reported only. Source: results/dataprep/rulings/user_rulings_2026-11-09.json (sha256 7c7219b8)."
   },
   {
    "id": "user ruling 2026-11-09 (twenty-fifth set) (R11.7d)",

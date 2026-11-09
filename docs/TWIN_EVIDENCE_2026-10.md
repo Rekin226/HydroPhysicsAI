@@ -2224,8 +2224,8 @@ The rule:
   applies R9.4's thresholds (measured needs P >= 0.8 and a null pass rate <= 0.2) to them: E22,
   C14f and E30 are D with decidability unknown, and E20 too under R10.5b (its canal-confounded
   power 0.60 decides); R10.5c grades C01-w D-weak (its canal-confounded power 0.148 is below
-  R9.4's 0.5); R11.7e (2026-11-09) grades C14f D-weak on a reading of its coverage clause
-  alone (null pass rate 0.950 > 0.5, section 29). The figures of this section are those before
+  R9.4's 0.5); R11.7e (2026-11-09) grades C14f D-weak on a post-failure exploratory,
+  model-only reading of its coverage clause alone (null pass rate 0.950 > 0.5, section 29). The figures of this section are those before
   R10.5 (`--mapping pre-R10.5`); section 28 gives them under R10.5, R10.5b and R10.5c, and
   section 29 with R11.7e too. A reading may instead
   pre-declare several outcomes (`reading_outcomes`, user ruling R9.4, sixteenth set,
@@ -2467,8 +2467,9 @@ expected effect of 0 on the official figures. No status changed in the round.
 
   C14f's P is that of N3F's whole rule (ratio and coverage both required), so it is a lower
   bound on the coverage clause's own P; no reading of the clause alone exists, and the bound
-  does not reach 0.8. (Round 11: a reading of the clause alone, C14f.coverage_clause.v1, has
-  since run; it reads "weak", and R11.7e grades C14f D-weak, section 29.) C01-w was D with
+  does not reach 0.8. (Round 11: a post-failure exploratory, model-only reading of the clause
+  alone, C14f.coverage_clause.v1, has since run; it reads "weak", and R11.7e grades C14f
+  D-weak, section 29.) C01-w was D with
   decidability unknown (R8.16c), not D-measured, so it was
   outside R10.5's literal scope; read the same way, it is the one row that reads "weak", and
   R10.5c (twenty-third set) regraded it D-weak. Its page range lines (`tW_r`, `tW_r_w30`, EN and
@@ -2508,8 +2509,9 @@ expected effect of 0 on the official figures. No status changed in the round.
   honesty 98), science 44.4 and 44.3 (`tests/test_twin_progress.py`, which also pins the
   round-10 ledger at commit f01c44a). No official grade rests on a measured_by qualifier any
   more (map note `measured_by_note`, checked by a test). These were the official figures at
-  round 10's close; since R11.7e (section 29) the official figures are 53.11 (6-part), 44.07
-  (science) and 40.56 (uncertainty bands), and 52.6 and 53.1 at fd40796 and 08a6aa7.
+  round 10's close (reproduced by `--mapping pre-R11.7e`); since R11.7e (section 29) the
+  official figures are 53.11 (6-part), 44.07 (science) and 40.56 (uncertainty bands), and 52.6
+  and 53.1 at fd40796 and 08a6aa7.
 - **R10.6, caveat 9 labelled in place.** This model's avoided-subsidence sizes in Trust caveat 9
   carry the "model internals, size untested" label, EN and ZH, where they are printed: the
   post-hoc split's per-policy inelastic and total cm (`cv9_pol`), the cm left after a lifted
@@ -2630,7 +2632,9 @@ claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 20
   C14f's decidability: `evc_pro_ext` says "registered; decided not before 2028-01-15", and
   `evc_fvext_nsw` reads the whole rule (E22). So no page string changes and the page is not
   rebuilt; the page of record stays `twin_app_20261108c` (sha256 9a9c40f3). Mappings `pre-R10.5`
-  and `default-v1` keep C14f measured by FV.ext.v1 and reproduce their earlier figures.
+  and `default-v1` keep C14f measured by FV.ext.v1 and reproduce their earlier figures; the new
+  comparison mapping `pre-R11.7e` (C14f D with decidability unknown) reproduces round 10's
+  official figures (section 28).
 
   | | round 10's close (R10.5, R10.5b, R10.5c) | **+ R11.7e (C14f; official)** | change |
   |---|---|---|---|
@@ -2647,7 +2651,12 @@ claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 20
 
   Source: `python -m hydrophysics.twin.progress --honesty 98.3` on the round-11 ledger. In the
   full table only C14f's row changes (0.60 D-unknown -> 0.50 D-weak). The round-10 column is
-  the official mapping with C14f at its round-10 qualifier. At the earlier pinned states the
-  official 6-part figures become 52.6 (fd40796, honesty 95) and 53.1 (08a6aa7, honesty 98).
+  `--mapping pre-R11.7e`, the official mapping with C14f at its round-10 qualifier. At the
+  earlier pinned states the official 6-part figures become 52.6 (fd40796, honesty 95) and 53.1
+  (08a6aa7, honesty 98).
   `tests/test_twin_progress.py` pins the round-11 figures at main b8118ca, round 11's base,
   whose ledger statuses this ruling leaves unchanged.
+- **Disclosure for the re-audit (H).** The R11.7e statements this change adds to sections 21
+  and 26, and the C14f notes, rulings entries and status note it adds to the ledger, fall
+  inside H's inventory (R11.2). They were written before H, after the round-9 audit, so they
+  will be disclosed with the label pass (L) as changes made before the re-audit.

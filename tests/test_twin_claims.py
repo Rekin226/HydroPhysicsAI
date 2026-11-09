@@ -2089,3 +2089,7 @@ def test_round11_rulings_are_recorded():
         f = C.REPO / "results/dataprep/rulings" / rf
         if f.is_file():                                # a local record; absent on CI
             assert C.sha256(f).startswith(sha), rf
+            for r in json.loads(f.read_text(encoding="utf-8"))["rulings"]:   # verbatim
+                t = text[f"user ruling {R11_IDS[r['id']][0]} ({r['id']})"]
+                assert t.startswith(r["question"] + " Decision: " + r["decision"]
+                                    + " Applies to: " + ", ".join(r["applies_to"]) + "."), r["id"]

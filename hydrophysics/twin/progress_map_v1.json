@@ -1,6 +1,6 @@
 {
  "schema": "twin-progress-map/1",
- "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown, and E20 by R10.5b, twenty-second set (results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635: the canal-confounded power decides); C01-w D-weak by R10.5c, twenty-third set (results/dataprep/rulings/user_rulings_2026-11-08e.json, sha256 f86b4a7e: R9.4's weak branch, confounded power 0.148); C14f D-weak by R11.7e, twenty-seventh set (results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63: R9.4's weak branch on C14f.coverage_clause.v1, the post-failure exploratory reading of its coverage clause alone, null pass rate 0.950 > 0.5); the earlier figures stay reproducible under mapping pre-R10.5",
+ "rule": "docs/TWIN_EVIDENCE_2026-10.md sections 21 and 26; official mapping by user rulings 2026-11-07, fourteenth set R8.16a/b/c (results/dataprep/rulings/user_rulings_2026-11-07.json, sha256 c0886864) and fifteenth set R8.17a-d (results/dataprep/rulings/user_rulings_2026-11-07b.json, sha256 7602157b); three-outcome decidability readings (reading_outcomes) by user ruling R9.4, sixteenth set (results/dataprep/rulings/user_rulings_2026-11-07c.json, sha256 338f2de4), unused for E02 by R9.4b, seventeenth set (results/dataprep/rulings/user_rulings_2026-11-07d.json, sha256 bfeed6d6); R9.4's decidability thresholds applied to the D-measured rows by user ruling R10.5, twenty-first set (results/dataprep/rulings/user_rulings_2026-11-08c.json, sha256 8f67973f): E22, C14f and E30 D-unknown, and E20 by R10.5b, twenty-second set (results/dataprep/rulings/user_rulings_2026-11-08d.json, sha256 7816a635: the canal-confounded power decides); C01-w D-weak by R10.5c, twenty-third set (results/dataprep/rulings/user_rulings_2026-11-08e.json, sha256 f86b4a7e: R9.4's weak branch, confounded power 0.148); C14f D-weak by R11.7e, twenty-seventh set (results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63: R9.4's weak branch on C14f.coverage_clause.v1, the post-failure exploratory reading of its coverage clause alone, null pass rate 0.950 > 0.5); the earlier figures stay reproducible under mappings pre-R10.5 (before R10.5) and pre-R11.7e (round 10's close)",
  "parts": [
   "head_response_yunlin",
   "forecast_start_validation",
@@ -698,6 +698,18 @@
      }
     },
     "C01-w": {
+     "grade": {
+      "D": {
+       "D": "D-unknown"
+      }
+     }
+    }
+   }
+  },
+  "pre-R11.7e": {
+   "description": "the official rule at round 10's close, before user ruling R11.7e (twenty-seventh set, results/dataprep/rulings/user_rulings_2026-11-09c.json, sha256 adf5de63), kept for comparison only, so that the round-10 figures published in evidence section 28 stay reproducible: C14f D with decidability unknown (R10.5, on FV.ext.v1's whole-rule P 0.592), before R11.7e graded it D-weak on C14f.coverage_clause.v1 (post-failure exploratory, model-only); everything else as the base.",
+   "claims": {
+    "C14f": {
      "grade": {
       "D": {
        "D": "D-unknown"

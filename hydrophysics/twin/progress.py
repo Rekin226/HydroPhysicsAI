@@ -68,10 +68,12 @@ decidability thresholds applied to the D-measured rows, so E22, C14f and E30 are
 twenty-second set, R10.5b: E20's canal-confounded power decides, so E20 is D-unknown too;
 twenty-third set, R10.5c: C01-w's confounded power 0.148 reads R9.4's 'weak', so C01-w is
 D-weak; user ruling 2026-11-09, twenty-seventh set, R11.7e: C14f.coverage_clause.v1, the
-post-failure exploratory reading of C14f's coverage clause alone, reads R9.4's 'weak' (null
-pass rate 0.950 > 0.5), so C14f is D-weak);
-``--mapping default-v1`` lays the recount's first default over it for comparison, and
-``--mapping pre-R10.5`` the official rule before R10.5 (the figures of evidence section 26).
+post-failure exploratory, model-only reading of C14f's coverage clause alone, reads R9.4's
+'weak' (null pass rate 0.950 > 0.5), so C14f is D-weak);
+``--mapping default-v1`` lays the recount's first default over it for comparison,
+``--mapping pre-R10.5`` the official rule before R10.5 (the figures of evidence section 26),
+and ``--mapping pre-R11.7e`` the official rule at round 10's close, C14f D-unknown before
+R11.7e (the official figures of evidence section 28).
 
 Which ledger states can be recounted: a state refuses (``MappingError``) when a claim id has no
 mapping entry, or when a claim's status carries an S or D code the mapping gives no qualifier

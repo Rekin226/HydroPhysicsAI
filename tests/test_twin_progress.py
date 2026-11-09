@@ -422,6 +422,10 @@ def test_the_default_mapping_is_the_ruled_one():
     assert pre["E20"]["grade"] == {"D": {"D": {"measured_by": "X5.n2c_reading.v1",
                                               "otherwise": "D-unknown"}}}
     assert pre["C01-w"]["grade"] == {"D": {"D": "D-unknown"}}               # R8.16c, pre-R10.5c
+    r10 = P.with_mapping(pmap, "pre-R11.7e")                # round 10's close, before R11.7e
+    assert r10["claims"]["C14f"]["grade"] == {"D": {"D": "D-unknown"}}
+    assert {c for c in r10["claims"] if r10["claims"][c] != cl[c]} == {"C14f"}
+    assert "adf5de63" in pmap["mappings"]["pre-R11.7e"]["description"]
     dv = P.with_mapping(pmap, "default-v1")["claims"]
     for c in ("E22", "E20", "C14f"):          # default-v1 keeps the then-base qualifier
         assert dv[c] == pre[c], c
@@ -457,8 +461,9 @@ def _at(commit):
 
 
 # Official figures under rulings R8.16a-c and R8.17a-d, as published in evidence section 26
-# (mapping pre-R10.5), and under R10.5, R10.5b, R10.5c (evidence section 28) and R11.7e (C14f
-# D-weak, evidence section 29): the official mapping since.
+# (mapping pre-R10.5); under R10.5, R10.5b and R10.5c, as published in evidence section 28
+# (mapping pre-R11.7e, round 10's close); and with R11.7e too (C14f D-weak, evidence section
+# 29): the official mapping since.
 PINNED = {
     AUDIT_STATE: {"honesty": 95.0,
                   "parts": (50.9091, 51.1538, 41.875, 35.814, 45.625),
@@ -469,7 +474,15 @@ PINNED = {
             "science": (45.173, 38.0873, 57.2008), "six": (53.9775, 64.0006),
             "default_v1": (49.16, 57.30)},
 }
-PINNED_R10_5 = {     # R10.5, R10.5b (E20), R10.5c (C01-w, after its split) and R11.7e (C14f)
+PINNED_PRE_R11_7E = {          # R10.5, R10.5b (E20) and R10.5c (C01-w, after its split)
+    AUDIT_STATE: {"honesty": 95.0,
+                  "parts": (50.9091, 50.3846, 40.625, 35.814, 44.375),
+                  "science": (44.4215, 37.1897, 55.968), "six": (52.8513, 62.4734)},
+    TODAY: {"honesty": 98.0,
+            "parts": (48.7879, 51.0714, 41.6667, 35.5682, 44.375),
+            "science": (44.2938, 37.2082, 56.3216), "six": (53.2449, 63.268)},
+}
+PINNED_OFFICIAL = {            # the above and R11.7e (C14f D-weak): the official mapping
     AUDIT_STATE: {"honesty": 95.0,
                   "parts": (50.9091, 50.3846, 39.375, 35.814, 44.375),
                   "science": (44.1715, 36.9397, 55.718), "six": (52.6429, 62.265)},
@@ -480,13 +493,15 @@ PINNED_R10_5 = {     # R10.5, R10.5b (E20), R10.5c (C01-w, after its split) and 
 
 
 @pytest.mark.parametrize("commit", [AUDIT_STATE, TODAY])
-@pytest.mark.parametrize("mapping", ["pre-R10.5", "official"])
+@pytest.mark.parametrize("mapping", ["pre-R10.5", "pre-R11.7e", "official"])
 def test_ruled_figures_are_reproduced(commit, mapping):
     """The figures at the 2026-11-02 audit state (main fd40796) and at main 08a6aa7, pinned
-    under the rule published in section 26 (mapping pre-R10.5) and under R10.5, R10.5b, R10.5c
-    and R11.7e (official), with the earlier default (default-v1) beside them."""
+    under the rule published in section 26 (mapping pre-R10.5), under R10.5, R10.5b and R10.5c
+    (mapping pre-R11.7e, section 28) and with R11.7e too (official), with the earlier default
+    (default-v1) beside them."""
     ledger = _at(commit)
-    pin = (PINNED if mapping == "pre-R10.5" else PINNED_R10_5)[commit]
+    pin = {"pre-R10.5": PINNED, "pre-R11.7e": PINNED_PRE_R11_7E,
+           "official": PINNED_OFFICIAL}[mapping][commit]
     res = P.recount(ledger, P.with_mapping(P.load_map(), mapping), honesty=pin["honesty"])
     for p, v in zip(PARTS, pin["parts"], strict=True):
         assert res["parts"][p]["official"] == pytest.approx(v, abs=1e-3), p
@@ -505,18 +520,15 @@ ROUND11_LEDGER = "b8118ca"       # round 11's base (main after PR #110); fixed, 
 
 
 def _round10_rule():
-    """The official mapping as it stood at round 10's close (R10.5, R10.5b, R10.5c): C14f D
-    with decidability unknown, before R11.7e."""
-    pmap = copy.deepcopy(P.load_map())
-    pmap["claims"]["C14f"]["grade"] = {"D": {"D": "D-unknown"}}
-    return pmap
+    """The official mapping as it stood at round 10's close (R10.5, R10.5b, R10.5c): mapping
+    pre-R11.7e, C14f D with decidability unknown, before R11.7e."""
+    return P.with_mapping(P.load_map(), "pre-R11.7e")
 
 
 def test_round10_figures_under_r10_5_r10_5b_r10_5c():
     """The round-10 ledger at a fixed commit (statuses unchanged since), claim honesty 98.3
     (audited 2026-11-07, R9.3): the official figures of evidence section 28 (R10.5, R10.5b and
-    R10.5c; the official mapping with C14f at its round-10 qualifier) beside the rule before
-    them."""
+    R10.5c; mapping pre-R11.7e, C14f at its round-10 qualifier) beside the rule before them."""
     ledger = _at(ROUND10_LEDGER)
     res = P.recount(ledger, _round10_rule(), honesty=98.3)
     got = tuple(res["parts"][p]["official"] for p in PARTS)
@@ -582,7 +594,7 @@ def test_every_main_state_from_the_audit_to_today_recounts():
     assert len(revs) >= 2
     for rev in revs:
         ledger = P.load_ledger(at=rev)[0]
-        for name in (None, "default-v1", "pre-R10.5"):
+        for name in (None, "default-v1", "pre-R10.5", "pre-R11.7e"):
             P.recount(ledger, P.with_mapping(P.load_map(), name))
 
 
