@@ -42,7 +42,7 @@ TOO_LATE = dt.datetime(2027, 11, 1, tzinfo=dt.timezone.utc)
 
 #: the code history this declaration binds (frozen_code pins the bytes)
 CODE_NOTE = ("Code 51d7908 (rebased onto origin/main 0941ba6 as a65b190, content identical) "
-             "plus review fixes REVIEW_FIX_SHA; worlds, seed, streams, K, nulls and thresholds "
+             "plus review fixes b6145ae; worlds, seed, streams, K, nulls and thresholds "
              "unchanged (the fixes: outcome decided on integer pass counts as exact fractions, "
              "R11.7a-d cited and hashed, registration-path note, design-time look recorded, "
              "3-decimal wording, weak-pair provenance, versions and atomic report write).")
