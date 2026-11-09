@@ -1,4 +1,14 @@
-"""Public launcher for the twin analyst on a Hugging Face Space (chat + decision page).
+"""Public launcher for the twin analyst (chat + decision page): a container on this server.
+
+Run locally from the same image (no Hugging Face needed; HF Docker Spaces now require PRO):
+
+    docker build --build-arg REPO_SHA=<commit> -t twin-analyst deploy/twin_space
+    docker run -d --name twin-analyst --restart unless-stopped -e ANTHROPIC_API_KEY \
+        -p 127.0.0.1:7860:7860 twin-analyst
+    cloudflared tunnel --no-autoupdate --url http://127.0.0.1:7860   # public trycloudflare link
+
+The quick tunnel's URL is random and changes whenever it restarts. ``deploy.py`` pushes the
+same files to a Hugging Face Space instead, for an account with PRO.
 
 Runs the analyst web shell (``hydrophysics_analyst.server``) bound to the promoted page
 ``results/twin/twin_app.html`` and the claims ledger of the same commit, strictly
