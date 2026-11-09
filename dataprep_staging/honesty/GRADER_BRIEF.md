@@ -120,3 +120,73 @@ finding.
 - Grade the state at the pinned commit. A later fix does not change a grade.
 - Do not edit the repository, the inventory or the record. Write only your findings file
   where the lead tells you.
+
+## Operator section (user ruling R11.4; how the lead prepares a grader's workspace)
+
+This section tells the lead how the material above is put in front of a grader; it adds no
+grading instruction and is not copied into the workspace (the workspace's `GRADER_BRIEF.md` is
+the text above this heading, byte for byte). Each grader gets a separate workspace, made
+outside the repository. The order matters: pin, list the record at once, then build.
+
+```bash
+# 1. pin: build and hash the inventory at the pinned commit
+python -m hydrophysics.twin.honesty inventory --page results/twin/twin_app_<pin>.html \
+    --out results/dataprep/reports/HONESTY.round<N>/inventory.json
+# 2. at once: list the record files (path and sha256) the workspace may hold
+python dataprep_staging/honesty/make_grader_workspace.py \
+    --inventory results/dataprep/reports/HONESTY.round<N>/inventory.json \
+    --write-pin-manifest <pin manifest outside the repository>
+# 3. build each grader's workspace from that list
+python dataprep_staging/honesty/make_grader_workspace.py \
+    --inventory results/dataprep/reports/HONESTY.round<N>/inventory.json \
+    --pin-manifest <pin manifest> --dest <new directory outside the repository> \
+    --honesty-input <JSON: the current input and earlier pinned states, outside the repo> \
+    --score-summary results/dataprep/reports/HONESTY.round<M>/score.json \
+    [--allow <reviewed literal hits>] [--sample <second grader's ids>.json] \
+    --manifest <summary path outside the workspace>
+# 4. score
+python -m hydrophysics.twin.honesty score --inventory <the inventory> \
+    --findings <a grader's findings> --view-ids [--sample-check <second grader's findings>]
+```
+
+- `inventory.json` in the workspace is the masked grader view (`honesty.grader_view`, schema
+  `twin-honesty-grader-view/1`): every statement keeps its source, location, weight, claim
+  ids and `check_against`; its id is opaque (`S0001`... in inventory order; the inventory's
+  doc ids hash the unmasked text), so findings are scored with `--view-ids`; claim-honesty
+  figures, 6-part figures and quoted inventory ids in its text are replaced by fixed
+  placeholders under the committed rule of `hydrophysics/twin/honesty_mask.py` (patterns with
+  context, not a list of statements; hashed as `mask_rules_sha256`). Its top-level `sha256`
+  is the hashed inventory's, which the findings carry and which the lead gives the grader
+  separately. `unverifiable` and `bias_disclosure` count the statements the graders cannot
+  fully check (masked figures, masked hash prefixes, citations of records left out) and how
+  far grades on them can move the figure.
+- `MASKED_FILES.txt` lists the files of `repo/` the mask changed, with a note that their
+  hashes no longer match a printed hash (the mismatch comes from the mask, not the record).
+- `repo/` is the record: the tracked tree at the pinned commit from `git archive` (no `.git`)
+  and the record files of the pin manifest, each checked against its sha256 (the build stops
+  on a file changed or removed since). The manifest lists registrations, reports, rulings up
+  to the pinned commit's date, validation units, the pinned page and the `results/` paths the
+  statements cite. Left out: `*.local.md`, every `HONESTY*` path and stray findings, view or
+  sample files, `tests/`, the analyst (`hydrophysics_analyst/`, `docs/analyst/`, its
+  results), the progress recount (`hydrophysics/twin/progress.py` and its map) and
+  `dataprep_staging/honesty/`. In `repo/` the same mask is applied to the text files (code is
+  only gated), rulings on the claim-honesty audit itself are redacted, and printed hash
+  prefixes of changed files are masked.
+- The literal gate's figures are built at the pin: the honesty input, the per-source and
+  sample figures of the earlier audit (only the numeric summary of its `score.json` is read)
+  and every 6-part figure the progress recount gives for the pinned ledger and each earlier
+  pinned state under each mapping, with their roundings; science and part figures are only
+  reported. The build exits 1 when a gate finds a pair of unmasked figures giving a
+  claim-honesty figure (6a - 5b in [90, 100]) near an honesty, 6-part or headline term, a
+  current or earlier figure near such a term, or a quoted inventory id; the workspace is then
+  not handed out. Term-free pairs (6a - 5b in a window the operator sets with `--free-window`,
+  default [90, 100]) are listed for review. The build also stops unless `repo/` holds exactly
+  the tracked files at the pinned commit and the pin manifest's files, less the exclusions
+  (no stray bytecode or other file), and the pin step refuses any record file modified after
+  the pinned commit's time; the summary records the pin manifest's sha256 for the audit
+  report. Raw text layers of public tables (`*/text_layer/*`) are left unmasked, like CSV
+  tables, and only the literal gate reads them.
+- The summary stays outside the workspace: copied, left out, masked and redacted files,
+  gates, the view-id map, and the disclosures the audit report must carry (R11.4a: the paths
+  left out against the brief's wording; R11.4b: the earlier pages copied, so the page history
+  including round-9 fixes was visible).

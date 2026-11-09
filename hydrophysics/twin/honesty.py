@@ -7,7 +7,13 @@ the pinned rendered page (EN/ZH counted as pairs), the README, the model card, t
 update (sections 21-27: section 27 exists since round 9 and is included) and the ledger's own
 wording and notes; it is hashed before grading. Grading is done by a blind, independent auditor
 and a second grader on a sample; analyst answers are not statements of the inventory. This
-module builds the inventory and scores findings. It grades nothing.
+module builds the inventory, the masked grader view and scores findings. It grades nothing.
+
+Round 11: user ruling R11.2 (user rulings 2026-11-08, twenty-fourth set) keeps the method:
+``EVIDENCE_SECTIONS`` stays (21, 27) and section 28 is not graded. User ruling R11.4 adds the
+committed, mechanical mask of the grader view (``view``; the rule is
+``hydrophysics/twin/honesty_mask.py``, hashed as ``mask_rules_sha256``): round 9's mask was ad
+hoc (not committed), so it could not be checked or repeated.
 
 INVENTORY (``inventory``): one record per statement.
 
@@ -73,11 +79,29 @@ and every graded statement. With ``--sample-check`` (the second grader's finding
 must list its ``sample`` of statement ids): exact agreement and linear and quadratic weighted
 Cohen's kappa between the two graders' worst grades on the sampled ids, and every disagreement.
 
+GRADER VIEW (``view``, user ruling R11.4): what the graders receive instead of the inventory.
+Every record keeps its source, location, weight, claim ids, markers and check_against; its id
+becomes an opaque ``S0001``... in inventory order (doc ids hash the unmasked text, so they
+would give masked figures away; ``score --view-ids`` maps findings back); its text (EN and ZH)
+passes through the committed mask (``honesty_mask``), which replaces claim-honesty figures and
+6-part figures by fixed placeholders by patterns with context, never by a list of ids. A doc
+statement is masked with the rest of its block (paragraph, list item or table row) of the
+pinned file as context, so the files at ``--root`` must hash to the
+inventory's inputs; page strings and ledger paragraphs are masked alone. The view's ``sha256``
+is the inventory's (the findings carry it); ``view_sha256`` hashes the masked record list;
+``mask_rules_sha256`` hashes the mask rule; ``masked`` lists the masked statement ids by source
+and their weight; ``bias_disclosure`` states how far grades on masked statements can move the
+figure.
+Same inventory and files, same view. The workspace the graders read is made by
+``dataprep_staging/honesty/make_grader_workspace.py`` (operator section of GRADER_BRIEF.md).
+
 CLI::
 
     python -m hydrophysics.twin.honesty inventory --page PAGE.html --out INVENTORY.json
+    python -m hydrophysics.twin.honesty view --inventory INVENTORY.json --out VIEW.json \
+        [--root PINNED_TREE]
     python -m hydrophysics.twin.honesty score --inventory INVENTORY.json --findings F.json \
-        [--sample-check SECOND.json] [--json]
+        [--view-ids] [--sample-check SECOND.json] [--json]
 """
 from __future__ import annotations
 
@@ -90,9 +114,11 @@ import sys
 from pathlib import Path
 
 from hydrophysics.twin import claims as C
+from hydrophysics.twin import honesty_mask as M
 from hydrophysics.twin import progress as P
 
 SCHEMA = "twin-honesty-inventory/1"
+VIEW_SCHEMA = "twin-honesty-grader-view/1"
 FINDINGS_SCHEMA = "twin-honesty-findings/1"
 README = "README.md"
 MODEL_CARD = "MODEL_CARD.md"
@@ -511,6 +537,125 @@ def load_inventory(path: Path) -> dict:
     return inv
 
 
+# ---- the grader view (R11.4) ----------------------------------------------------------------
+def _block_context(text: str, line: int, stmt: str) -> tuple[str, str]:
+    """(the text of ``stmt``'s block before it, after it), white space collapsed; ("", "") when
+    the statement is not found in the block that holds its line."""
+    pos = 0
+    for _ in range(line - 1):
+        pos = text.index("\n", pos) + 1
+    prev = ""
+    for a, b in M.blocks(text):
+        if b > pos:
+            blk = " ".join(text[a:b].split())
+            i = blk.find(stmt)
+            if i < 0:
+                return "", ""
+            before = blk[:i] if M._LETTER.search(blk) else prev + "\n" + blk[:i]
+            return before, blk[i + len(stmt):]
+        prev = " ".join(text[a:b].split())
+    return "", ""
+
+
+def view_ids(inv: dict) -> dict[str, str]:
+    """inventory id -> opaque view id (``S0001``... in inventory order). Doc ids hash their
+    unmasked text, so the view must not show them; the map follows from the inventory alone,
+    which the graders do not receive."""
+    w = max(4, len(str(len(inv["records"]))))
+    return {r["id"]: f"S{i:0{w}d}" for i, r in enumerate(inv["records"], 1)}
+
+
+def grader_view(inv: dict, root: Path | None = None, post=None, excluded=None) -> dict:
+    """The masked grader view of ``inv`` (see GRADER VIEW). With ``root``, doc statements are
+    masked with their block of the file at ``root`` as context; the file must hash to the
+    inventory's input. Without ``root``, every statement is masked alone. ``post`` (text ->
+    (text, n)) runs after the mask on every text (the workspace's hash mask); ``excluded``
+    (path -> bool) names the records the graders do not receive."""
+    docs = {}
+    if root is not None:
+        for rel in (README, MODEL_CARD, EVIDENCE):
+            p = Path(root) / rel
+            if not p.is_file() or C.sha256(p) != inv["inputs"].get(rel):
+                raise InventoryError(f"{p}: not the inventory's input {rel} (sha256 differs); "
+                                     "pass the pinned tree as root")
+            docs[rel] = _strip_fences(p.read_text(encoding="utf-8"))
+    ids = view_ids(inv)
+    recs, masked, figures, hashes = [], {s: [] for s in SOURCES}, 0, 0
+    cats: dict[str, list[str]] = {"masked": [], "hash_masked": [], "cites_excluded": []}
+    for r in inv["records"]:
+        text = dict(r["text"])
+        n = 0
+        for lang in ("en", "zh"):
+            if not text.get(lang):
+                continue
+            before = after = ""
+            rel, line = r["location"].get("file"), r["location"].get("line")
+            if lang == "en" and rel in docs and line:
+                before, after = _block_context(docs[rel], line, text[lang])
+            text[lang], k = M.mask_text(text[lang], before, after)
+            n += k
+            if post is not None:
+                text[lang], k2 = post(text[lang])
+                hashes += k2
+                if k2 and ids[r["id"]] not in cats["hash_masked"]:
+                    cats["hash_masked"].append(ids[r["id"]])
+        if n:
+            masked[r["source"]].append(ids[r["id"]])
+            cats["masked"].append(ids[r["id"]])
+            figures += n
+        if excluded is not None and any(excluded(p) for p in r["check_against"]["reports"]):
+            cats["cites_excluded"].append(ids[r["id"]])
+        recs.append(dict(r, id=ids[r["id"]], text=text))
+    mr = M.rules()
+    wsum = sum(r["weight"] for r in recs)
+    weight = {r["id"]: r["weight"] for r in recs}
+    union = sorted(set().union(*cats.values()))
+    mw = sum(weight[i] for i in union)
+    pts = 100 * mw / wsum if wsum else 0.0
+    parts = "; ".join(f"{k.replace('_', ' ')} {len(v)} (weight {sum(weight[i] for i in v):g})"
+                      for k, v in cats.items())
+    return {"schema": VIEW_SCHEMA, "sha256": inv["sha256"], "inventory_sha256": inv["sha256"],
+            "view_sha256": sha_of(recs), "commit": inv.get("commit"),
+            "summary": inv.get("summary"), "rules": inv.get("rules"),
+            "rules_sha256": inv.get("rules_sha256"),
+            "mask_rules": mr, "mask_rules_sha256": sha_of(mr),
+            "masked": {"statements": sum(len(v) for v in masked.values()), "figures": figures,
+                       "weight": sum(weight[i] for i in cats["masked"]),
+                       "hash_prefixes": hashes, "by_source": masked},
+            "unverifiable": dict(cats, union_statements=len(union), union_weight=mw,
+                                 max_points=round(pts, 2)),
+            "bias_disclosure": f"Statements the graders cannot fully check: {parts}; together "
+                               f"{len(union)} statements, weight {mw:g} of {wsum:g} "
+                               f"({pts:.1f} %): grades on them can move the figure by at most "
+                               f"{pts:.2f} honesty points in all.",
+            "id_scheme": "Statement ids are opaque (S0001... in inventory order); the scorer "
+                         "maps them back to the inventory (honesty score --view-ids).",
+            "note": "The graders' view of the hashed inventory (user ruling R11.4): statement "
+                    "texts pass through the committed mask (mask_rules); sources, locations, "
+                    "weights and check_against are the inventory's. sha256 is the inventory's "
+                    "hash (the unmasked record list), which findings carry; view_sha256 is this "
+                    "masked record list's.",
+            "records": recs}
+
+
+def from_view_ids(findings: dict, inv: dict) -> dict:
+    """A findings file written against the view's opaque ids, with every statement id (and
+    sample id) mapped back to the inventory's; an id the view does not have is refused."""
+    back = {v: k for k, v in view_ids(inv).items()}
+    out = dict(findings)
+
+    def to_inv(sid):
+        if sid not in back:
+            raise FindingsError(f"unknown view statement id {sid!r}")
+        return back[sid]
+
+    out["findings"] = [dict(x, statement=to_inv(x.get("statement")))
+                       for x in findings.get("findings", [])]
+    if "sample" in findings:
+        out["sample"] = [to_inv(s) for s in findings["sample"]]
+    return out
+
+
 # ---- the scorer -----------------------------------------------------------------------------
 def load_findings(path_or_obj, inv: dict) -> dict:
     """The findings file, checked against the inventory (see the docstring's refusals)."""
@@ -684,9 +829,16 @@ def main(argv: list[str] | None = None) -> int:
     a1.add_argument("--root", type=Path, default=C.REPO, help="repository root (docs)")
     a1.add_argument("--ledger", type=Path, default=None)
     a1.add_argument("--map", type=Path, default=P.MAP)
+    a3 = sub.add_parser("view", help="build the masked grader view of an inventory (R11.4)")
+    a3.add_argument("--inventory", type=Path, required=True)
+    a3.add_argument("--out", type=Path, required=True)
+    a3.add_argument("--root", type=Path, default=C.REPO,
+                    help="the pinned tree whose docs give each doc statement its block context")
     a2 = sub.add_parser("score", help="score findings against an inventory")
     a2.add_argument("--inventory", type=Path, required=True)
     a2.add_argument("--findings", type=Path, required=True)
+    a2.add_argument("--view-ids", action="store_true",
+                    help="the findings use the grader view's opaque ids (R11.4)")
     a2.add_argument("--sample-check", type=Path, default=None,
                     help="the second grader's findings file (with its 'sample' list)")
     a2.add_argument("--json", action="store_true")
@@ -701,8 +853,22 @@ def main(argv: list[str] | None = None) -> int:
                   f"(zero-weight {v['zero_weight']})")
         return 0
     inv = load_inventory(a.inventory)
-    first = load_findings(a.findings, inv)
-    second = load_findings(a.sample_check, inv) if a.sample_check else None
+    if a.cmd == "view":
+        view = grader_view(inv, a.root)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(view, ensure_ascii=False, indent=1) + "\n",
+                         encoding="utf-8")
+        print(f"grader view {a.out}: inventory {view['sha256']}, view {view['view_sha256']}, "
+              f"mask rules {view['mask_rules_sha256']}")
+        for src, ids in view["masked"]["by_source"].items():
+            print(f"  {src:11s} masked statements {len(ids):4d}")
+        return 0
+    def read(path):
+        f = json.loads(Path(path).read_text(encoding="utf-8"))
+        return from_view_ids(f, inv) if a.view_ids else f
+
+    first = load_findings(read(a.findings), inv)
+    second = load_findings(read(a.sample_check), inv) if a.sample_check else None
     if second is not None and "sample" not in second:
         raise FindingsError("the second grader's file must list its sample of statement ids")
     res = score(inv, first, second)
