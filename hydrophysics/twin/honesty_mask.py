@@ -113,7 +113,7 @@ unmasked content of a masked file is replaced by PLACEHOLDERS["hash"] (mask_hash
 
 GATE (derivable_pairs). After masking, no unit may hold, within 300 characters of an H, S or A
 term, two unmasked figures a and b (at most two decimals, not both integers, not in a data
-series of 5 or more numbers joined only by commas, brackets or space; a not owned by an O or Q
+series of 5 or more numbers joined only by commas, brackets or space; a not kept for an O or Q
 term, so not a science or part figure) with a in [40, 80], b in
 [30, 75], |a - b| <= 15 and 6a - 5b in [90, 100]: the workspace builder stops on any such
 pair. It also stops on any statement id left (STATEMENT_ID). Without the term condition, pairs
@@ -677,9 +677,12 @@ def units(name: str, raw: str) -> list[str]:
 
 
 def _owned_by_science(unit: str, figs: list[re.Match]) -> set[int]:
-    """Start offsets of the figures an O or Q term owns (adjacent: a science or part figure)."""
-    terms = _Terms(unit)
-    return {m.start() for m in figs if _adjacent(m, unit, terms) in ("O", "Q")}
+    """Start offsets of the figures an O or Q term owns, directly or through a chain or a
+    parallel list (a science or part figure; the mask's own decision 'keep')."""
+    every = [m for m in _FIG.finditer(unit) if _is_figure(m, unit)]
+    keep = {m.start() for m, d in zip(every, _decisions(unit, every), strict=True)
+            if d == "keep"}
+    return {m.start() for m in figs} & keep
 
 
 def derivable_pairs(unit: str) -> list[tuple[float, float, float]]:
