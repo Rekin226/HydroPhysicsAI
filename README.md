@@ -7,7 +7,55 @@
 [![Stack](https://img.shields.io/badge/stack-PyTorch%20%7C%20PhysicsNeMo%20%7C%20CUDA-76b900.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
+[Project state](docs/superpowers/STATE.md) · [Evidence update, Oct 2026](docs/TWIN_EVIDENCE_2026-10.md) · [Data](docs/DATA_FORMAT.md) · [Technical writeup](docs/TECHNICAL_WRITEUP.md) · [Model card](MODEL_CARD.md) · [Validation](docs/TWIN_RELEASE.md) · [Updates](docs/TWIN_ASSIMILATION.md) · [Analyst](docs/analyst/OPS.md) · [Papers](docs/papers/README.md) · [Earlier phase](docs/EARLIER_PHASE.md)
+
+### ▶ [Open the live twin](https://rekin226.github.io/HydroPhysicsAI/)
+
+One self-contained page that runs in the browser, offline once loaded, in English or 中文. There is
+nothing to install.
+
+[![The twin's 3D context view: the fan's terrain with the orthophoto draped on top, and the four aquifers with the clay aquitards between them pulled apart below](docs/assets/twin-3d-view.jpg)](https://rekin226.github.io/HydroPhysicsAI/)
+
+<sub>The 3D context view on the live page. The terrain comes from elevation data and the
+orthophoto is draped on top. Below it, the four aquifers and the clay aquitards between them are
+pulled apart, with 25× vertical exaggeration. The underground geometry is schematic: the view is for
+orientation, and the page reads no values from it.</sub>
+
+## What is on main
+
+- **The decision page, live.** `.github/workflows/pages.yml` republishes the promoted
+  `results/twin/twin_app.html` to GitHub Pages whenever `main` changes it. Set a pumping cut per
+  water-use class and a start year, then read the modelled head response at N2's Yunlin
+  monitoring wells. The page also has a 2D map, a time series, township views, the high-speed-rail
+  profile, a cross-section and pinned-policy comparisons ([details](#the-application)).
+- **A 3D view of the aquifer system.** Four aquifers and their clay aquitards sit under the
+  draped terrain. You can separate the layers, cut along the section line, change the vertical
+  exaggeration, click a cell to link it to the map and chart, and play the "How pumping sinks
+  the ground" walkthrough. The renderer is bundled, so the view also works offline.
+- **A claims ledger behind every number.** `hydrophysics/twin/claims_v1.json` gives each number
+  the page shows its claim ID and its test status. Numbers whose size is not supported are moved
+  to a labelled "Model internals" section. `tests/test_twin_claims.py` keeps the page, this
+  README and the model card consistent with the ledger.
+- **The twin analyst** (`hydrophysics_analyst/`). You can ask the page a question in plain
+  English or Chinese, for example "停止養殖抽水對2032年水位影響？". The answer quotes the page's own
+  numbers and sentences, with their claim IDs and a link that opens the page in that state. The
+  language model (Claude API) only routes the question to a preset or a refusal. It never writes
+  a number, and the presets work without it. Fixed guards refuse questions the ledger does not
+  support. The latest held-out evaluation met the safety goal but not the accuracy bar, so the
+  analyst is not deployed yet ([evaluation](docs/analyst/EVAL_2026-11-08_v5.md),
+  [operations](docs/analyst/OPS.md)).
+- **An honesty audit and progress from the ledger.** `hydrophysics/twin/honesty.py` builds the
+  statement inventory (page, README, model card, evidence update) that a blind auditor grades.
+  `honesty_mask.py` is the committed rule for masking the grader's view.
+  `hydrophysics/twin/progress.py` recomputes the project's progress figures from the ledger alone,
+  using the rule in [evidence section 21](docs/TWIN_EVIDENCE_2026-10.md).
+- **Tests registered before their data exist.** N2 decides the within-window response of the
+  Yunlin heads to recorded pumping anomalies. `N3.piles_prospective.v1` was registered
+  level-only and decides status-quo compaction at the Yunlin deep piles. Both are scored no
+  earlier than 2028-01-15. The Changhua head lever is untested (N2C registered, scored not
+  before 2028-01-15). The details follow below and in [Limits](#limits).
+
+## Status
 
 **Current status (October 2026):** see [the October evidence update](docs/TWIN_EVIDENCE_2026-10.md): the corrected observation update leaves the subsidence numbers unchanged, the page's run-spread band covered 75 % of 2023-26 observations at a nominal 90 %, a prospective head test is registered for November 2026 to October 2027, the first out-of-sample subsidence score (2023-25 rings and GNSS; an after-the-fact score of the frozen model, since every post-2022 subsidence series had been looked at before) is recorded, and the policy-timing mechanism is contradicted by the ring record and left unresolved. A statistical layer (climatology plus the decayed last-observed anomaly) beats climatology by 10 % over 2023-26 and 21 % in the first year where the physics alone does not, in a retrospective, after-the-fact score (not a prospective validation), and is registered prospectively beside the physics for the same window; the physics' value for the heads is the scenario difference, not the level. The deep benchmarks printed in the WRA monthly reports, transcribed with the Claude API and verified, extend the subsidence evidence to January 2026: on the three piles anchored below 200 m the frozen column's two-year compaction is within 0.8 cm of the agency's numbers (RMSE 0.5 cm against 1.3 cm for continuing the previous year), while the 70 m pile is over-predicted because the column is total depth. These pile scores are report-only since 2026-10-21 (ruling U7): they were used to choose between columns, so they are not independent skill. The calibration rainfall turned out to be zero-filled where a gauge had closed; the 26 gauges were rebuilt from the CWA archive to October 2026 and the deliverable recalibrated on them, which left every score within noise of the registered model (section 11), so the page keeps the registered model. Registered policy-response tests (section 13, masked 2016-18 refits on a design-time window) support the head response to a pumping change in Yunlin, scored on a masked refit of the R0 recipe (`stage3_datum_gate_m1618`; R0 = `stage3_datum_gate_cwa`, the page model's recipe recalibrated on the rebuilt CWA rainfall), and in Changhua only on the census model R1c, which failed its own rung (I1.R1c) and is not the page model. The page displays `stage3_datum_gate` (`datum_gate_innov`), which carries no Changhua pumping; section 11 found it within noise of R0 on every earlier test, and a post-hoc, model-only comparison (not a test) puts their policy responses within 2-4 % of each other fan-wide. The R0 recipe scored on Changhua heads (a declared secondary) is marginal. In Yunlin the modelled head response is smaller than observed. The 1-3-year size of the subsidence response is not supported (two tests disagree in direction). Changhua class-specific and subsidence levers are withdrawn under every outcome, and the Changhua head lever is untested (N2C registered, scored not before 2028-01-15). In this model the avoided subsidence is an elastic response that arrives within about a year; its 1-3-year size is not supported by the registered tests, and whether a cut changes long-run sinking is untested. The promoted decision page `results/twin/twin_app.html` (byte-identical to the round-10 build `results/twin/twin_app_20261108c.html`, sha256 9a9c40f3) carries these labels. Since 2026-10-29 (user ruling) the page is scoped by a claims ledger (`hydrophysics/twin/claims_v1.json`, checked by `tests/test_twin_claims.py`): its answer is the Yunlin head response; the avoided-subsidence, area and rail numbers and the fan-wide baseline total are withdrawn to a labelled "model internals" section, because their size is not supported (on the promoted page, `results/twin/twin_app.html` = `twin_app_20261108c.html`). The page model is `datum_gate_innov` (theta `stage3_datum_gate`), N2's registered primary model; R0 (`stage3_datum_gate_cwa`) and Q0 are ladder baselines, and the N1 verdicts reach the page model only through a post-hoc, model-only comparison. Inferring the missing quantities from the data already held did not close the open claims (section 14). An identifiability audit shows the calibration data do not pin the size of the head response or the Changhua aquifer properties. A storage-capped column failed its synthetic recovery check. Adding the measured public-supply abstraction improved Changhua head timing but failed the leveling and plausibility gates. The within-window anomaly response of the Yunlin heads is decided prospectively by `N2.policy_response.prospective_2026-11.v1`, registered before its November 2026 to October 2027 window and scored not before 2028-01-15; N2 is informative but not decisive for Yunlin (`X5.n2_reading.v1`; under the canal confounder its power is 0.15, so the test is weak for Yunlin: D-weak, user rulings R8.16c and R10.5c). The direction rests on the design-time step C test, and no N2 verdict decides the size. The subsidence size needs new data (section 14 lists the requests); the Changhua head lever is untested (N2C registered, scored not before 2028-01-15), and the class-specific and subsidence Changhua levers are withdrawn under every outcome (section 17). The September status follows.
 
@@ -234,6 +282,8 @@ To view the committed page locally without calibration or data downloads:
 python -m http.server 8000 --bind localhost --directory results/twin
 ```
 
+[![The decision page under the headline lever (all pumping cut 30 % from 2026): the generated headline, the head-change tile at N2's Yunlin wells with its test status, and the pumping-energy tile](docs/assets/twin-decision-page.jpg)](https://rekin226.github.io/HydroPhysicsAI/)
+
 Open [the local twin](http://localhost:8000/twin_app.html). Rebuilding the page requires
 the local model artifacts:
 
@@ -296,6 +346,24 @@ See [release and validation workflow](docs/TWIN_RELEASE.md) for data ingestion, 
 MODFLOW checks, browser acceptance, and atomic local releases.
 
 The older Plotly viewer (`explorer3d`) still builds if you want a quick figure.
+
+### The analyst
+
+`hydrophysics_analyst` answers plain-language questions about one built page, using only that
+page's numbers and sentences. It needs no torch and no GPU. The language model is optional.
+
+```bash
+pip install -e ".[analyst]"
+python -m hydrophysics_analyst ask "停止養殖抽水對2032年水位影響？" --page results/twin/twin_app.html
+python -m hydrophysics_analyst preset policy_head --cut aquaculture=30 --start 2030 --year 2032 \
+    --page results/twin/twin_app.html
+python -m hydrophysics_analyst serve --page results/twin/twin_app.html   # chat beside the page
+```
+
+[docs/analyst/OPS.md](docs/analyst/OPS.md) covers routing, the checks a page must pass before
+use (parity and the held-out evaluation), the MCP server and a private deployment.
+[docs/analyst/DATA_GOVERNANCE.md](docs/analyst/DATA_GOVERNANCE.md) lists what is and is not sent
+to the model.
 
 ## How it works
 
@@ -639,8 +707,11 @@ comparison with a baseline scored elsewhere.
 hydrophysics/twin/       the twin: grid, boundaries, flow, pumping, compaction, calibration,
                          forward, uncertainty, surrogate, scoring (kfold_scores, drift_diag),
                          validation and updates (challenge, assimilation, update_experiment),
-                         the decision page (viewer_app, app/), fetch_amp
+                         the decision page (viewer_app, app/), fetch_amp, the claims ledger
+                         (claims, claims_v1.json), honesty and progress
+hydrophysics_analyst/    the twin analyst: router, guards, presets, eval sets, web/MCP server
 hydrophysics/            earlier-phase models, baselines, metrics, forecaster, explorer
+docs/analyst/            analyst operations, data governance and evaluations
 docs/superpowers/        design specs, plans and the state ledger
 docs/papers/             planned papers: target venues, evidence and gaps
 results/twin/            published gate results and the rendered viewer
