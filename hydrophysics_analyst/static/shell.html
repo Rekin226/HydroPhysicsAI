@@ -7,18 +7,43 @@
 <link rel="stylesheet" href="/static/shell.css">
 </head>
 <body>
-<main id="app">
+<main id="app" class="fresh" data-tab="chat">
+  <nav id="tabs" aria-label="View">
+    <button id="tabChat" type="button" aria-pressed="true">Chat</button>
+    <button id="tabPage" type="button" aria-pressed="false">Page</button>
+  </nav>
   <section id="chat" aria-label="Analyst">
     <header>
-      <h1 id="title">Twin analyst</h1>
+      <div class="brand">
+        <h1 id="title">Twin analyst</h1>
+        <span id="beta" class="beta">Research beta</span>
+      </div>
       <div class="hdr-r">
+        <button id="newBtn" type="button">New chat</button>
         <button id="langBtn" type="button" aria-label="Language">中文</button>
       </div>
     </header>
-    <p id="note" class="note"></p>
-    <section id="chipBox" aria-label="Example questions"><div id="chips"></div></section>
-    <ol id="log" aria-live="polite"></ol>
+    <p id="note" class="note" hidden></p>
+    <div id="scroll">
+      <section id="intro" aria-labelledby="lead">
+        <p id="lead" class="lead"></p>
+        <details id="howto">
+          <summary id="howtoSum">How to read an answer</summary>
+          <p id="howtoText"></p>
+          <ul id="legend"></ul>
+        </details>
+      </section>
+      <section id="library" aria-labelledby="libTitle">
+        <div class="libhead">
+          <h2 id="libTitle">Questions to try</h2>
+          <button id="libToggle" type="button" aria-expanded="true" aria-controls="chips"></button>
+        </div>
+        <div id="chips"></div>
+      </section>
+      <ol id="log" aria-live="polite"></ol>
+    </div>
     <form id="ask" autocomplete="off">
+      <button id="exBtn" type="button" aria-controls="library">Examples</button>
       <label class="sr" for="q">Question</label>
       <textarea id="q" rows="2" maxlength="600"></textarea>
       <button id="send" type="submit">Ask</button>

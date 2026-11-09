@@ -9,15 +9,27 @@ const UI = {
        lang: "中文", agree: "page agrees", disagree: "page differs", open: "Open in page", wait: "…",
        err: "Could not get an answer:", slow: "The page is still loading. If it never appears, open it directly:",
        examples: "Try a question", year: "Year", value: "Value",
-       metaerr: "Cannot reach the analyst server. Is it still running?"},
+       metaerr: "Cannot reach the analyst server. Is it still running?",
+       beta: "Research beta", newchat: "New chat", tabChat: "Chat", tabPage: "Page",
+       lead: "Ask what a pumping policy does to groundwater in Yunlin. Answers use only the decision page's own numbers and sentences, and say how far each one is tested.",
+       howto: "How to read an answer",
+       howtoText: "Each answer lists the claims it rests on. The letter after a claim says how well the record supports it:",
+       lib: "Questions to try", libShow: "Show examples", libHide: "Hide examples",
+       working: "Working", sending: "Answering…", exBtn: "Examples"},
   zh: {title: "雙生模型分析助理", send: "提問", ph: "例如：2030年起停止養殖抽水，2032年水位？",
        note: "答案為頁面本身的數值與文字，並附主張編號。可修改解讀以更正。",
        lang: "English", agree: "與頁面一致", disagree: "與頁面不同", open: "在頁面中開啟", wait: "…",
        err: "無法取得答案：", slow: "頁面仍在載入。若一直沒有出現，請直接開啟：",
        examples: "試試這些問題", year: "年份", value: "數值",
-       metaerr: "無法連線到分析伺服器，請確認它仍在執行。"}};
+       metaerr: "無法連線到分析伺服器，請確認它仍在執行。",
+       beta: "研究測試版", newchat: "新對話", tabChat: "對話", tabPage: "頁面",
+       lead: "詢問抽水政策對雲林地下水的影響。答案只使用決策頁面本身的數值與文字，並說明每一項經過多少檢驗。",
+       howto: "如何閱讀答案",
+       howtoText: "每個答案都列出所依據的主張。主張後的字母表示紀錄支持的程度：",
+       lib: "試試這些問題", libShow: "顯示範例", libHide: "隱藏範例",
+       working: "處理中", sending: "回答中…", exBtn: "範例"}};
 let META = null, LANG = (navigator.language || "en").startsWith("zh") ? "zh" : "en", NONCE = 0;
-const SESSION = Math.random().toString(36).slice(2);
+let SESSION = Math.random().toString(36).slice(2), BUSY = false;
 const t = k => UI[LANG][k];
 const S = k => (META.strings[LANG] || META.strings.en)[k] || k;
 
@@ -31,16 +43,16 @@ async function post(url, body) {
   } finally { clearTimeout(to); }
 }
 function fail(li, e) {                     // never leave an answer spinning: say what went wrong
-  const body = li.querySelector(".body"); body.textContent = "";
+  li.classList.remove("busy"); const body = li.querySelector(".body"); body.textContent = "";
   body.appendChild(el("div", "blk refusal", t("err") + " " + (e && e.message ? e.message : e)));
 }
 function watchPage() {                     // the page is large; say so if it has not finished loading
   const t0 = Date.now(), tick = () => {
     let ok = false;
     try { const d = $("page").contentDocument; ok = !!(d && d.body && d.body.dataset.ready === "1"); } catch (e) {}
-    if (ok) { $("note").textContent = t("note"); return; }
+    if (ok) { setNote(""); return; }
     if (Date.now() - t0 > 45000) {
-      $("note").textContent = t("slow") + " ";
+      setNote(t("slow") + " ");
       const a = el("a", "", META.page); a.href = META.page; a.target = "_blank"; a.rel = "noopener"; $("note").appendChild(a);
       return;
     }
@@ -48,46 +60,96 @@ function watchPage() {                     // the page is large; say so if it ha
   };
   tick();
 }
+function setNote(msg) { const n = $("note"); n.textContent = msg; n.hidden = !msg; }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
 function setLang(l) {
   LANG = l; document.documentElement.lang = l === "zh" ? "zh-Hant" : "en";
   $("title").textContent = t("title"); $("send").textContent = t("send"); $("q").placeholder = t("ph");
-  $("note").textContent = t("note"); $("langBtn").textContent = t("lang");
-  if (META) { $("presetsSum").textContent = S("frame_presets"); renderPresets(); }
+  $("langBtn").textContent = t("lang"); $("beta").textContent = t("beta"); $("newBtn").textContent = t("newchat");
+  $("tabChat").textContent = t("tabChat"); $("tabPage").textContent = t("tabPage");
+  $("lead").textContent = t("lead"); $("howtoSum").textContent = t("howto"); $("howtoText").textContent = t("howtoText");
+  $("libTitle").textContent = t("lib"); $("exBtn").textContent = t("exBtn"); libToggleText();
+  if (META) { $("presetsSum").textContent = S("frame_presets"); renderPresets(); renderLegend(); }
 }
 function renderPresets() {
   const ul = $("presetList"); ul.textContent = "";
   for (const p of META.presets) ul.appendChild(el("li", "", S("preset_" + p)));
   renderChips();
 }
-// ---- example questions: a click answers a preset directly (no LLM) ------------------------
+// ---- the question library: a click answers a preset directly (no LLM) ---------------------
+// Groups come from META.library (order, descriptions); preset examples answer through
+// /api/answer, the try-a-refusal questions go through /api/ask like a typed question (the fixed
+// rules refuse them before any LLM call).
+function statusText(code) {
+  const st = ((META && META.library && META.library.statuses) || []).find(x => x.code === code);
+  return st ? (st[LANG] || st.en) : "";
+}
+function renderLegend() {
+  const ul = $("legend"); ul.textContent = "";
+  for (const st of (META.library && META.library.statuses) || []) {
+    const li = el("li"); li.appendChild(el("span", "cite " + st.code, st.code)); li.appendChild(el("span", "", st[LANG] || st.en));
+    ul.appendChild(li);
+  }
+}
+function libToggleText() {
+  const open = !$("library").classList.contains("collapsed");
+  $("libToggle").textContent = t(open ? "libHide" : "libShow"); $("libToggle").setAttribute("aria-expanded", String(open));
+}
+function setLibrary(open) { $("library").classList.toggle("collapsed", !open); libToggleText(); }
 function renderChips() {
   const box = $("chips"); box.textContent = "";
   box.setAttribute("aria-label", t("examples"));
-  const groups = new Map();
+  const lib = META.library || {groups: []};
+  const groups = new Map(lib.groups.map(g => [g.id, {g, items: []}]));
   for (const ex of META.examples || []) {
-    const g = ex.group[LANG] || ex.group.en;
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(ex);
+    const id = ex.gid || (ex.group[LANG] || ex.group.en);
+    if (!groups.has(id)) groups.set(id, {g: {id, title: ex.group, desc: null}, items: []});
+    groups.get(id).items.push({kind: "preset", ex});
   }
-  for (const [g, exs] of groups) {
-    const d = el("div", "cgroup"); d.appendChild(el("h2", "", g));
-    for (const ex of exs) {
-      const btn = el("button", "chipq", ex.label[LANG] || ex.label.en); btn.type = "button";
-      btn.onclick = () => askPreset(ex.preset, ex.params, btn.textContent);
-      d.appendChild(btn);
+  for (const r of lib.refusals || []) if (groups.has(r.gid)) groups.get(r.gid).items.push({kind: "ask", ex: r});
+  let n = 0;
+  for (const {g, items} of groups.values()) {
+    if (!items.length) continue;
+    const d = el("details", "cgroup " + g.id); d.open = n++ < 2;
+    const sm = el("summary", "", g.title[LANG] || g.title.en); sm.appendChild(el("span", "n", String(items.length)));
+    d.appendChild(sm);
+    if (g.desc) d.appendChild(el("p", "desc", g.desc[LANG] || g.desc.en));
+    const qs = el("div", "qs");
+    for (const it of items) {
+      const text = it.kind === "ask" ? (it.ex.question[LANG] || it.ex.question.en) : (it.ex.label[LANG] || it.ex.label.en);
+      const btn = el("button", "chipq", text); btn.type = "button";
+      btn.onclick = () => it.kind === "ask" ? ask(text) : askPreset(it.ex.preset, it.ex.params, text);
+      qs.appendChild(btn);
     }
-    box.appendChild(d);
+    d.appendChild(qs); box.appendChild(d);
   }
 }
-async function askPreset(preset, params, label) {
+// one turn at a time: the first question retires the welcome, the library tucks away
+function beginTurn(label) {
+  if (BUSY) return null;
+  BUSY = true; $("send").disabled = true; $("send").textContent = t("sending");
+  $("app").classList.remove("fresh"); setLibrary(false);
   const log = $("log"); log.appendChild(el("li", "q", label));
   const li = $("tplAnswer").content.firstElementChild.cloneNode(true); log.appendChild(li);
-  li.querySelector(".body").textContent = t("wait");
-  try { await show(await post("/api/answer", {preset, params, lang: LANG, session: SESSION}), li); }
-  catch (e) { fail(li, e); }
+  li.classList.add("busy"); li.querySelector(".body").textContent = t("working");
   li.scrollIntoView({block: "end"});
+  return li;
+}
+function endTurn(li) {
+  BUSY = false; $("send").disabled = false; $("send").textContent = t("send");
+  if (li) { li.classList.remove("busy"); li.scrollIntoView({block: "nearest"}); }
+}
+function newChat() {
+  if (BUSY) return;
+  $("log").textContent = ""; SESSION = Math.random().toString(36).slice(2);
+  $("app").classList.add("fresh"); setLibrary(true); renderChips(); $("scroll").scrollTop = 0; $("q").focus();
+}
+async function askPreset(preset, params, label) {
+  const li = beginTurn(label); if (!li) return;
+  try { const v = await post("/api/answer", {preset, params, lang: LANG, session: SESSION}); li.classList.remove("busy"); await show(v, li); }
+  catch (e) { fail(li, e); }
+  endTurn(li);
 }
 
 // ---- charts: drawn from the answer's own values (each point carries its page text) --------
@@ -274,11 +336,14 @@ async function show(view, li) {
   const tb = li.querySelector("table.rank"); tb.textContent = ""; tb.hidden = !view.table.length;
   view.table.forEach((row, i) => { const tr = el("tr"); row.forEach(c => tr.appendChild(el(i ? "td" : "th", "", c))); tb.appendChild(tr); });
   const ci = li.querySelector(".cites"); ci.textContent = "";
-  for (const c of view.citations) { const s = el("span", "cite " + c.status.split("+")[0], `${c.id} ${c.status}`); s.title = c.topic; ci.appendChild(s); }
+  for (const c of view.citations) {
+    const code = c.status.split("+")[0], s = el("span", "cite " + code, `${c.id} ${c.status}`);
+    s.title = [c.topic, code + ": " + statusText(code)].filter(Boolean).join("\n"); s.tabIndex = 0; ci.appendChild(s);
+  }
   li.querySelector(".aid").textContent = view.audit_id || "";
   const op = li.querySelector(".open"), ag = li.querySelector(".agree");
   op.hidden = !view.deep_link; op.textContent = t("open");
-  op.onclick = () => syncPage(view.deep_link).catch(() => {});
+  op.onclick = () => { setTab("page"); syncPage(view.deep_link).catch(() => {}); };
   ag.hidden = true;
   if (view.deep_link) {
     try { await syncPage(view.deep_link); const ok = pageAgrees(view);
@@ -287,24 +352,30 @@ async function show(view, li) {
   }
 }
 async function ask(q) {
-  const log = $("log"), qi = el("li", "q", q); log.appendChild(qi);
-  const li = $("tplAnswer").content.firstElementChild.cloneNode(true); log.appendChild(li);
-  li.querySelector(".body").textContent = t("wait");
-  let view;
-  try { view = await post("/api/ask", {question: q, session: SESSION, lang: null}); }
-  catch (e) { fail(li, e); return; }
-  if (view.lang && view.lang !== LANG) setLang(view.lang);
-  await show(view, li);
-  li.scrollIntoView({block: "end"});
+  const li = beginTurn(q); if (!li) return;
+  try {
+    const view = await post("/api/ask", {question: q, session: SESSION, lang: null});
+    if (view.lang && view.lang !== LANG) setLang(view.lang);
+    li.classList.remove("busy"); await show(view, li);
+  } catch (e) { fail(li, e); }
+  endTurn(li);
+}
+function setTab(tab) {
+  $("app").dataset.tab = tab;
+  $("tabChat").setAttribute("aria-pressed", String(tab === "chat")); $("tabPage").setAttribute("aria-pressed", String(tab === "page"));
 }
 
 (async () => {
   try { const r = await fetch("/api/meta"); if (!r.ok) throw new Error("HTTP " + r.status); META = await r.json(); }
-  catch (e) { setLang(LANG); $("note").textContent = t("metaerr"); return; }
+  catch (e) { setLang(LANG); setNote(t("metaerr")); return; }
   $("page").src = META.page;
   setLang(LANG);
   watchPage();
   $("langBtn").onclick = () => setLang(LANG === "zh" ? "en" : "zh");
-  $("ask").onsubmit = e => { e.preventDefault(); const q = $("q").value.trim(); if (q) { $("q").value = ""; ask(q); } };
+  $("ask").onsubmit = e => { e.preventDefault(); const q = $("q").value.trim(); if (q && !BUSY) { $("q").value = ""; ask(q); } };
+  $("newBtn").onclick = newChat;
+  $("libToggle").onclick = () => setLibrary($("library").classList.contains("collapsed"));
+  $("exBtn").onclick = () => { setLibrary(true); $("scroll").scrollTo({top: 0}); };
+  $("tabChat").onclick = () => setTab("chat"); $("tabPage").onclick = () => setTab("page");
   $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("ask").requestSubmit(); } });
 })();
