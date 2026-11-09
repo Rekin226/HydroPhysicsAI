@@ -1,8 +1,10 @@
 """C14f.coverage_clause.v1 (round 11, user ruling R11.7; post-failure, exploratory; model-only,
 CPU): how often does N3F's COVERAGE CLAUSE ALONE pass in FV.ext.v1's own synthetic worlds?
 
-STATUS: phase 1 (design and code). Not registered; nothing has been scored. ``run`` refuses
-until the declaration (prereg_c14f.py) is in the registry.
+STATUS: design and code (code 51d7908 plus review fixes; user rulings R11.7a-d: run once, on
+FV.ext.v1's worlds, FV.ext.v1's null decides, no new look). Not registered; nothing has been
+scored. ``run`` refuses until the declaration (prereg_c14f.py) is in the registry; register
+and run from the same build checkout (see prereg_c14f.py).
 
 Why. C14f (claims ledger) is "the frozen forecast's per-well 90 % head interval ... at N3F's 66
 never-calibrated external wells, 2026-11..2027-10", decided by the coverage clause of N3F's
@@ -40,7 +42,8 @@ equal on its report-only call (registered baseline).
        250 worlds in which the clause passes;
   P0 = the share of FV.ext.v1's 500 null worlds in which the clause passes.
 
-Outcome (R9.4's rule as R10.5 applied it; point estimates decide; applied once):
+Outcome (R9.4's rule as R10.5 applied it; point estimates decide, compared as EXACT fractions
+of integer pass counts, never float means; applied once):
 'measured' if P >= 0.8 and P0 <= 0.2; otherwise 'weak' if P < 0.5 or P0 > 0.5; otherwise
 'unchanged'. A failed Monte Carlo check (1.645 SE <= 0.07; non-binding at this K) or a
 non-finite estimate gives 'not_evaluable', mapped as 'unchanged'. The outcome is a PROPOSAL for
@@ -67,7 +70,7 @@ anomaly inputs. CPU only; no forward, no twin solver, no GPU.
 CLI (repository root, hydro env):
   run_c14f.py smoke --out <new dir outside results/>   synthetic end to end
   run_c14f.py verify                                   registrations, code and worlds intact
-  run_c14f.py run                                      once, after registration; report mode 'x'
+  run_c14f.py run                                      once, after registration; report written once
 """
 from __future__ import annotations
 
@@ -76,8 +79,11 @@ import contextlib
 import json
 import math
 import os
+import platform
 import sys
+import tempfile
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -158,10 +164,14 @@ STREAMS = {"truth_noise": XF.STREAM_NOISE, "null": XF.STREAM_NULL,
            "selfcheck": XF.STREAM_SELFCHECK}          # 21, 22, 23 (FV.ext.v1's)
 QUANTILES = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)
 
-P_MEASURED = 0.8
-P0_MEASURED = 0.2
-P_WEAK = 0.5
-P0_WEAK = 0.5
+#: thresholds as exact fractions: the outcome is decided on integer pass counts (sum of the
+#: four truths' counts over 4 x K_TRUTH, and the null count over K_NULL), never on a float
+#: mean (150 + 151 + 250 + 249 = 800 of 1000 is exactly 0.8, though its float mean is
+#: 0.7999999999999999); floats are for display only
+P_MEASURED = Fraction(4, 5)
+P0_MEASURED = Fraction(1, 5)
+P_WEAK = Fraction(1, 2)
+P0_WEAK = Fraction(1, 2)
 MC_HALF_WIDTH = V2.MC_HALF_WIDTH     # 0.07
 Z_MC = V2.Z_MC
 OUTCOMES = ("measured", "weak", "unchanged")
@@ -175,7 +185,9 @@ OUTCOME_RULE = ("'measured' if P >= 0.8 and P0 <= 0.2; otherwise 'weak' if P < 0
                 "pre-declared thresholds, as R10.5 applied them to C14f). P = equal-weight mean "
                 "over FV.ext.v1's four truths of the share of their worlds in which N3F's "
                 "coverage clause passes; P0 = the share of FV.ext.v1's null worlds in which it "
-                "passes. Point estimates decide (applied once); a 1.645 SE > 0.07 Monte Carlo "
+                "passes. Point estimates decide (applied once), compared as exact fractions of "
+                "integer pass counts (P = total clause passes over 4 x 250 worlds; P0 = passes "
+                "over 500), never as floats; a 1.645 SE > 0.07 Monte Carlo "
                 "half-width on P or P0, or a non-finite estimate, gives 'not_evaluable', mapped "
                 "as 'unchanged'")
 
@@ -191,18 +203,21 @@ RULINGS = {
              "338f2de4cfdbf3811c9a871d3bf4972d18c88f8f9da41000f73d287385d7223f"),
     "R9.4b": ("results/dataprep/rulings/user_rulings_2026-11-07d.json",
               "bfeed6d628a6ca96b289711a722fe03c778438384ffbf3a14562fbcbc47c16bc"),
+    **{rid: ("results/dataprep/rulings/user_rulings_2026-11-09.json",
+             "7c7219b85ef5ee83d7e1fd88b391367272c81f72b9edb985f2bd325052dc05d1")
+       for rid in ("R11.7a", "R11.7b", "R11.7c", "R11.7d")},
 }
 
 _HEAD = {
     "en": "Synthetic reading of C14f's coverage clause alone ({id}, post-failure exploratory, "
           "model-only; FV.ext.v1's worlds): a model of the right kind meets N3F's pooled 90 % "
           "coverage clause ([0.85, 0.95]) at the 66 never-calibrated external wells with "
-          "probability {p:.2f}, and FV.ext.v1's null (truth at the registered climatology) "
-          "meets it with probability {p0:.2f}; ",
+          "probability {p:.3f}, and FV.ext.v1's null (truth at the registered climatology) "
+          "meets it with probability {p0:.3f}; ",
     "zh": "僅就 C14f 之涵蓋率條款的合成解讀（{id}，失敗後探索性，純模型；沿用 FV.ext.v1 的"
           "世界）：正確類型的模型在 66 口未參與率定的外部井達到 N3F 合併 90 % 區間涵蓋率條款"
-          "（[0.85, 0.95]）的機率為 {p:.2f}，而 FV.ext.v1 的虛無世界（真值為登錄之氣候值）"
-          "達到的機率為 {p0:.2f}；"}
+          "（[0.85, 0.95]）的機率為 {p:.3f}，而 FV.ext.v1 的虛無世界（真值為登錄之氣候值）"
+          "達到的機率為 {p0:.3f}；"}
 _TAIL = {
     "en": " Optimistic (rain at climatology, noise independent between wells, every month "
           "observed); not a strict bound; not validation. C14f's grade changes only if a later "
@@ -264,10 +279,30 @@ def weak_why(p: float, p0: float, lang: str) -> str:
     return sep.join(WEAK_WHY[k][lang] for k in keys)
 
 
-def outcome_of(p, p0, half_p, half_p0) -> str:
-    """The pre-declared outcome of point estimates P and P0 (see :data:`OUTCOME_RULE`)."""
-    vals = (p, p0, half_p, half_p0)
-    if any(v is None or not np.isfinite(v) for v in vals):
+def _count(n, k) -> Fraction:
+    if isinstance(n, bool) or isinstance(k, bool) or not isinstance(n, (int, np.integer)) \
+            or not isinstance(k, (int, np.integer)) or k <= 0 or not 0 <= n <= k:
+        raise EngineeringFailure(f"a pass count must be an int in [0, k], k > 0: {n!r}/{k!r}")
+    return Fraction(int(n), int(k))
+
+
+def exact_p(n_by_truth, k_truth: int) -> Fraction:
+    """P as an exact fraction: the equal-weight mean over the truths of n_T / K equals
+    sum(n_T) / (len x K) because every truth has the same K."""
+    ns = [int(_count(n, k_truth) * k_truth) for n in n_by_truth]
+    if len(ns) != len(TAGS):
+        raise EngineeringFailure(f"{len(ns)} truth counts, expected {len(TAGS)}")
+    return Fraction(sum(ns), len(ns) * int(k_truth))
+
+
+def outcome_of(n_by_truth, k_truth: int, n0: int, k_null: int, half_p, half_p0) -> str:
+    """The pre-declared outcome (see :data:`OUTCOME_RULE`), decided on integer pass counts as
+    exact fractions; the Monte Carlo half-widths (floats) only gate 'not_evaluable'."""
+    try:
+        p, p0 = exact_p(n_by_truth, k_truth), _count(n0, k_null)
+    except (EngineeringFailure, TypeError, ValueError):
+        return NOT_EVALUABLE
+    if any(v is None or not np.isfinite(v) for v in (half_p, half_p0)):
         return NOT_EVALUABLE
     if half_p > MC_HALF_WIDTH or half_p0 > MC_HALF_WIDTH:
         return NOT_EVALUABLE
@@ -284,7 +319,8 @@ def wording_for(outcome: str, *, p=None, p0=None, why: str = "") -> dict:
         return {k: v.format(id=ID, why=why) for k, v in WORDING[NOT_EVALUABLE].items()}
     if outcome not in OUTCOMES:
         raise EngineeringFailure(f"no declared wording for outcome {outcome!r}")
-    return {k: v.format(id=ID, p=p, p0=p0, why=weak_why(p, p0, k) if outcome == "weak" else "")
+    return {k: v.format(id=ID, p=float(p), p0=float(p0),
+                        why=weak_why(p, p0, k) if outcome == "weak" else "")
             for k, v in WORDING[outcome].items()}
 
 
@@ -292,8 +328,9 @@ def design() -> dict:
     return {"worlds": f"{FVEXT_ID}'s, through its frozen scorer ext_fv.score_ext",
             "seed": SEED, "K_TRUTH": K_TRUTH, "K_NULL": K_NULL, "batch": PLAN.batch,
             "truth_order": list(TAGS), "streams": dict(STREAMS),
-            "thresholds": {"P_measured": P_MEASURED, "P0_measured": P0_MEASURED,
-                           "P_weak": P_WEAK, "P0_weak": P0_WEAK,
+            "thresholds": {"P_measured": str(P_MEASURED), "P0_measured": str(P0_MEASURED),
+                           "P_weak": str(P_WEAK), "P0_weak": str(P0_WEAK),
+                           "compared_as": "exact fractions of integer pass counts",
                            "mc_half_width_90": MC_HALF_WIDTH},
             "clause": dict(N3F_RULE), "quantiles": list(QUANTILES)}
 
@@ -428,20 +465,28 @@ def _sides(cov) -> dict:
 
 
 def summarise(cov: list[float], ok: bool) -> dict:
-    return {"clause_passed": O._rate([clause_pass(c, ok) for c in cov]),
+    """Clause pass count (int, decides) and rate (float, display); coverage quantiles and the
+    fail-side shares are report-only and never change the outcome or the proposal."""
+    passes = [clause_pass(c, ok) for c in cov]
+    return {"clause_passed": {**O._rate(passes), "n": int(sum(passes))},
             "coverage_quantiles": _quantiles(cov), "fail_side_share": _sides(cov)}
 
 
-def pooled(per: dict) -> dict:
+def pooled(per: dict, k_truth: int) -> dict:
     ps = [(per[t]["clause_passed"]["p"], per[t]["clause_passed"]["mc_se"]) for t in TAGS]
+    ns = [per[t]["clause_passed"]["n"] for t in TAGS]
+    exact = exact_p(ns, k_truth)
     se = math.sqrt(sum(s ** 2 for _, s in ps)) / len(ps)
-    return {"p": float(np.mean([p for p, _ in ps])), "mc_se": se, "mc_half_width_90": Z_MC * se,
+    return {"p": float(exact), "exact": f"{exact.numerator}/{exact.denominator}",
+            "n_by_truth": dict(zip(TAGS, ns, strict=True)), "n_total": int(sum(ns)),
+            "k_total": len(ns) * int(k_truth),
+            "mc_se": se, "mc_half_width_90": Z_MC * se,
             "by_truth": {t: p for t, (p, _) in zip(TAGS, ps, strict=True)},
             "min_over_truths": float(min(p for p, _ in ps))}
 
 
 def _in_se(v: float, thr: float, se: float) -> float | None:
-    return (v - thr) / se if se > 0 else None
+    return (float(v) - float(thr)) / se if se > 0 else None
 
 
 def midpoint_null(ctx: dict, k_null: int) -> list[float]:
@@ -477,6 +522,8 @@ def _score(P: ClausePaths, *, smoke: bool = False, plan: V2.Plan | None = None,
     plan = PLAN if plan is None else plan
     k_null = K_NULL if k_null is None else k_null
     decl = dsha = fv_doc = fv_sha = None
+    look = {"unit": XF.EXT_LOOK_UNIT, "new_look_logged": False, "ruling": "R11.7d",
+            "logged_look": None}
     if smoke:
         if any(_under_results(p) for p in P.all_paths()):
             raise EngineeringFailure("a smoke runs on synthetic worlds outside results/ only")
@@ -493,6 +540,10 @@ def _score(P: ClausePaths, *, smoke: bool = False, plan: V2.Plan | None = None,
         if O.sha256(O.rp(P.fvext_report)) != FVEXT_REPORT_SHA:
             raise EngineeringFailure(f"{FVEXT_ID}'s report is not the one at {FVEXT_REPORT_SHA}")
         reference = json.loads(O.rp(P.fvext_report).read_text(encoding="utf-8"))
+        look["logged_look"] = XF.look_logged(prereg_dir, P.ext.ext_dir)
+        if look["logged_look"] is None:
+            raise EngineeringFailure(f"{XF.EXT_LOOK_UNIT} is not logged for these export files: "
+                                     "R11.7d cites it and allows no new look")
         V2.check_attempts(O.rp(P.ext.v2.attempts), {
             (t, b): O.rp(p) for t, ps in P.ext.v2.batches.items() for b, p in enumerate(ps)})
     bad = reused_code_problems()
@@ -521,8 +572,10 @@ def _score(P: ClausePaths, *, smoke: bool = False, plan: V2.Plan | None = None,
     for t in TAGS:
         per[t]["whole_rule_passed_fvext"] = rep_fv["truth_worlds"][t]["passed"]
     null = summarise([c["coverage"] for c in parts["null"]], ok)
-    P1 = pooled(per)
-    P0 = {"p": null["clause_passed"]["p"], "mc_se": null["clause_passed"]["mc_se"],
+    P1 = pooled(per, plan.k_truth)
+    n0 = null["clause_passed"]["n"]
+    P0 = {"p": float(_count(n0, k_null)), "exact": f"{n0}/{k_null}", "n": n0, "k": k_null,
+          "mc_se": null["clause_passed"]["mc_se"],
           "mc_half_width_90": Z_MC * null["clause_passed"]["mc_se"]}
     mid = summarise(midpoint_null(ctx, k_null), ok)
     rep: dict = {
@@ -552,15 +605,23 @@ def _score(P: ClausePaths, *, smoke: bool = False, plan: V2.Plan | None = None,
                     "P": P1["mc_half_width_90"] <= MC_HALF_WIDTH,
                     "P0": P0["mc_half_width_90"] <= MC_HALF_WIDTH,
                     "note": V2.mc_note(len(TAGS), plan.k_truth)},
+        "design_time_look": look,
+        "report_only_note": "coverage quantiles, fail_side_share and the midpoint null never "
+                            "change the outcome or the proposal",
         "engineering": {"fvext_engineering": rep_fv["engineering"],
-                        "rule_calls": len(calls), "reused_code": dict(REUSED)}}
-    out = outcome_of(P1["p"], P0["p"], P1["mc_half_width_90"], P0["mc_half_width_90"])
+                        "rule_calls": len(calls), "reused_code": dict(REUSED),
+                        "versions": versions()}}
+    out = outcome_of([P1["n_by_truth"][t] for t in TAGS], plan.k_truth, n0, k_null,
+                     P1["mc_half_width_90"], P0["mc_half_width_90"])
     if out == NOT_EVALUABLE:
         why = "Monte Carlo half-width above 0.07 or a non-finite estimate"
         rep.update(status=NOT_EVALUABLE, outcome=out, why=why,
                    wording=wording_for(out, why=why))
     else:
-        rep.update(status="scored", outcome=out, wording=wording_for(out, p=P1["p"], p0=P0["p"]))
+        rep.update(status="scored", outcome=out,
+                   wording=wording_for(out, p=exact_p(list(P1["n_by_truth"].values()),
+                                                      plan.k_truth),
+                                       p0=_count(n0, k_null)))
     rep.update(rule_applied=OUTCOME_RULE,
                ledger_mapping={"outcome": LEDGER_MAPPING[out],
                                "proposed_grade_key": PROPOSED_GRADE[out],
@@ -569,6 +630,28 @@ def _score(P: ClausePaths, *, smoke: bool = False, plan: V2.Plan | None = None,
     if decl is not None:
         rep["frozen_code"] = decl["frozen_code"]
     return rep
+
+
+def versions() -> dict:
+    import pandas as pd
+
+    return {"python": platform.python_version(), "numpy": np.__version__,
+            "pandas": pd.__version__}
+
+
+def write_once_atomic(path: Path, obj: dict) -> None:
+    """Write ``path`` once: a temporary file in the same directory, then a no-clobber link
+    into place (fails if ``path`` exists), so a crash never leaves a partial report."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, indent=1, ensure_ascii=False, sort_keys=True, default=O._jsonable)
+            f.write("\n")
+        os.link(tmp, path)
+    finally:
+        os.unlink(tmp)
 
 
 # ----------------------------------------------------------------------------- registration
@@ -637,8 +720,8 @@ def _attempt_no(path: Path) -> int:
 def run(P: ClausePaths | None = None, *, prereg_dir=None, rows_dir=None, log=print) -> dict:
     """Score once. Refuses (nothing logged, nothing read) unless registered and intact; then
     logs 'start' and 'engineering_failure', 'error' or 'success' (with the report sha256) to
-    attempts.jsonl beside the report, and writes report.json once (mode 'x'). No statistic is
-    logged; a failed attempt writes no clause number anywhere."""
+    attempts.jsonl beside the report, and writes report.json once (temp file + no-clobber
+    link). No statistic is logged; a failed attempt writes no clause number anywhere."""
     P = P or ClausePaths()
     load_registered(ID, prereg_dir, rows_dir)          # before anything is logged or read
     outp = O.rp(P.report)
@@ -651,7 +734,7 @@ def run(P: ClausePaths | None = None, *, prereg_dir=None, rows_dir=None, log=pri
     try:
         rep = _score(P, prereg_dir=prereg_dir, rows_dir=rows_dir, log=log)
         rep["attempt"] = n
-        O._write_json_once(outp, rep)
+        write_once_atomic(outp, rep)
     except EngineeringFailure as err:
         _log_attempt(ap, {"event": "engineering_failure", "attempt": n, "message": str(err)})
         raise

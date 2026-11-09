@@ -1,10 +1,15 @@
 """Draft declaration of C14f.coverage_clause.v1 (harness.prereg3 schema, kind 'declaration'),
 built in code because dataprep_staging/ ignores *.json. Nothing here writes to the registry.
 
-STATUS: draft, phase 1 (user ruling R11.7). The lead registers it (harness.prereg3.write_prereg,
-from the checkout whose results/ is a real directory) only after this file and run_c14f.py are
-committed as-is; ``readiness`` lists what is still open. No statistic is computed here: the only
-things read are code sha256s, FV.ext.v1's declaration (frozen_code) and report (sha256 only),
+STATUS: draft (user rulings R11.7, R11.7a-d). The lead registers it with
+harness.prereg3.write_prereg and runs it from the SAME build checkout at merged main (r7, which
+links results/twin/prospective_2026-11_ext, or r7b after that symlink is added), only after this
+file and run_c14f.py are merged as-is, using the precedent rel_to_repo wrapper: patch only
+harness.prereg3.rel_to_repo to a non-resolving version, so the INDEX path, units_registry and
+ledger source are repo-relative while inputs under symlinked results/* stay absolute (as for
+E02z, PB and FW); DATAPREP_REPO is not set. ``readiness`` lists what is still open.
+No statistic is computed here: the only things read are code sha256s, FV.ext.v1's
+declaration (frozen_code) and report (sha256 only),
 the rulings files (the cited rulings) and the export protocol (rule fields).
 
   prereg_c14f.py [--quiet] [--write PATH]   prints the draft, its sha256, validate_prereg and
@@ -35,6 +40,12 @@ MISSING = "MISSING"
 #: window data, but a reading registered after N3F is scored would be after the fact
 TOO_LATE = dt.datetime(2027, 11, 1, tzinfo=dt.timezone.utc)
 
+#: the code history this declaration binds (frozen_code pins the bytes)
+CODE_NOTE = ("Code 51d7908 (rebased onto origin/main 0941ba6 as a65b190, content identical) "
+             "plus review fixes REVIEW_FIX_SHA; worlds, seed, streams, K, nulls and thresholds "
+             "unchanged (the fixes: outcome decided on integer pass counts as exact fractions, "
+             "R11.7a-d cited and hashed, registration-path note, design-time look recorded, "
+             "3-decimal wording, weak-pair provenance, versions and atomic report write).")
 PRIORS = (
     "Known before this design, disclosure only (nothing here chose K, the seed, the worlds, "
     "the null, the thresholds or the wording; all are FV.ext.v1's or R9.4's): FV.ext.v1's "
@@ -73,9 +84,14 @@ BUILDER = (
     "no predictions.csv or wells.csv row and no observation, and ran the reading only on "
     "synthetic worlds (ext_fv.build_synthetic).")
 THRESHOLD_NOTE = [
-    "R9.4's rule (E02.decidability.v1's pre-declared outcomes), which R10.5 applied to C14f on "
-    "FV.ext.v1's whole-rule reading: 'measured' needs P >= 0.8 AND P0 <= 0.2; 'weak' if P < 0.5 "
-    "or P0 > 0.5; otherwise 'unchanged'. Point estimates decide; MC SE reported beside them.",
+    "'measured' needs P >= 0.8 AND P0 <= 0.2: the pair R10.5 applied to C14f on FV.ext.v1's "
+    "whole-rule reading (R10.5's text states only this 'measured' pair).",
+    "The 'weak' pair (P < 0.5 or P0 > 0.5; otherwise 'unchanged') comes from R9.4's "
+    "pre-declared rule in the unregistered dataprep_staging/e02_decid/run_e02d1.py "
+    "(E02.decidability.v1, never registered by R9.4b); this declaration is the first "
+    "registered statement of the weak pair.",
+    "Point estimates decide, compared as exact fractions of integer pass counts (P = total "
+    "clause passes / (4 x 250), P0 = null passes / 500); floats and the MC SE are display only.",
     "P is pooled exactly as FV.ext.v1 pools its P (equal-weight mean over the four truths), so "
     "the clause's P is comparable with the 0.592 R10.5 graded.",
     "P0 uses FV.ext.v1's own null world (the one R10.5 read as 'null pass rate 0.0'); the "
@@ -141,8 +157,8 @@ def draft_prereg(prereg_dir=None, P: R.ClausePaths | None = None) -> dict:
                  "worlds (P0) at the 66 never-calibrated external wells; R9.4's three outcomes; "
                  "post-failure exploratory, model-only",
         "label": R.LABEL,
-        "status_note": "Draft (phase 1). C14f's grade moves only if a later user ruling "
-                       "accepts this reading (R11.7).",
+        "status_note": f"Draft. {CODE_NOTE} C14f's grade moves only if a later user ruling "
+                       "accepts this reading (R11.7, R11.7a).",
         "claim": {"id": "C14f", "ledger": "hydrophysics/twin/claims_v1.json",
                   "claim": "The frozen forecast's per-well 90 % head interval (combined spread, "
                            "datum and residual sd from each well's own pre-origin record) at "
@@ -183,9 +199,9 @@ def draft_prereg(prereg_dir=None, P: R.ClausePaths | None = None) -> dict:
                       f"every key except {list(R.IDENTITY_SKIP)} (floats within "
                       f"{R.IDENTITY_TOL}); otherwise engineering failure, nothing written",
             "fresh": "nothing fresh: same forwards, same noise draws as FV.ext.v1 (by design: "
-                     "the clause is read on the very worlds R10.5 graded)"},
+                     "the clause is read on the very worlds R10.5 graded; user ruling R11.7b)"},
         "null": {"primary": "FV.ext.v1's null: obs0 = registered baseline + e_k (stream 22, "
-                            "500 worlds)",
+                            "500 worlds); decides (user ruling R11.7c)",
                  "report_only": "midpoint null obs = (ZR_ext + registered baseline) / 2 + e_k on "
                                 "the same draws (E02.decidability.v1's equal-skill form); "
                                 "reported, never decides"},
@@ -208,11 +224,16 @@ def draft_prereg(prereg_dir=None, P: R.ClausePaths | None = None) -> dict:
         "ledger_mapping": {**R.LEDGER_MAPPING, "proposed_grade_keys": dict(R.PROPOSED_GRADE),
                            "page": "none"},
         "outputs": {
-            "report": f"{R.REPORT} (written once, mode 'x')",
+            "report": f"{R.REPORT} (written once: temporary file, then a no-clobber link)",
             "attempts": f"{R.REPORT_DIR}/{R.ATTEMPTS_NAME} (start / engineering_failure / "
                         "error / success; no statistic)",
-            "report_keys": ["status", "outcome", "P (p, mc_se, mc_half_width_90, by_truth, "
-                            "min_over_truths)", "P0 (p, mc_se, mc_half_width_90)",
+            "report_only_note": "coverage quantiles, fail_side_share and the midpoint null "
+                                "never change the outcome or the proposal",
+            "report_keys": ["status", "outcome", "P (n_by_truth, n_total, k_total, exact, p, "
+                            "mc_se, mc_half_width_90, by_truth, min_over_truths)",
+                            "P0 (n, k, exact, p, mc_se, mc_half_width_90)",
+                            "design_time_look (unit, new_look_logged False, ruling R11.7d, "
+                            "logged_look)", "engineering.versions (python, numpy, pandas)",
                             "truth_worlds[T] (clause_passed, coverage_quantiles, "
                             "fail_side_share, whole_rule_passed_fvext)",
                             "null_world (clause_passed, coverage_quantiles, fail_side_share)",
@@ -240,7 +261,9 @@ def draft_prereg(prereg_dir=None, P: R.ClausePaths | None = None) -> dict:
                      "follow-up after R10.5's regrade of C14f; never validation",
             "engineering_retries": "free while gate E or I fails, before any clause statistic "
                                    "leaves memory; each attempt logged in attempts.jsonl",
-            "scored_runs": "one (report.json, mode 'x'); the outcome stands as computed",
+            "scored_runs": "one (user ruling R11.7a; report.json written once through a "
+                           "temporary file and a no-clobber link); the outcome stands as "
+                           "computed",
             "failures": "reported (every attempt in attempts.jsonl and in the report's attempt "
                         "number)",
             "exploratory_followups_max": 0, "thresholds_frozen": True},
@@ -263,10 +286,19 @@ def draft_prereg(prereg_dir=None, P: R.ClausePaths | None = None) -> dict:
             "design_time_look": "the run re-reads N3F's export values derived from pre-origin "
                                 "heads (residual_sd_m, datum_m, baseline_m), FV.ext.v1's "
                                 "logged look FV:ext_preorigin_derived_N3Fwells (2012-22, "
-                                "design_time_evidence); spent months, no fresh unit",
-            "registration_paths": "write_prereg hashes inputs through common.paths."
-                                  "rel_to_repo; register from the checkout whose results/ is a "
-                                  "real directory",
+                                "design_time_evidence); spent months, no fresh unit; no new "
+                                "look entry (R11.7d): the run checks that look is logged for "
+                                "the export's files (ext_fv.look_logged) and records it in "
+                                "report.design_time_look",
+            "code": CODE_NOTE,
+            "registration_paths": "register and run from the same build checkout at merged "
+                                  "main (r7, which links results/twin/prospective_2026-11_ext, "
+                                  "or r7b after adding that symlink), with the precedent "
+                                  "rel_to_repo wrapper: only harness.prereg3.rel_to_repo is "
+                                  "patched to a non-resolving version, so the INDEX path, "
+                                  "units_registry and ledger source are repo-relative and "
+                                  "inputs under symlinked results/* stay absolute (as for "
+                                  "E02z, PB and FW); DATAPREP_REPO is not set",
             "tests": {"path": R.TESTS, "sha256_at_declaration": _sha(R.TESTS),
                       "binding": "disclosure only, not an input"}},
         "primary_model": {"forecast": "N3F's registered external predictions (forward "

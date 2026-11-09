@@ -157,20 +157,32 @@ def test_design_is_fvext_seed_k_and_streams():
 
 
 # ---- outcomes and wording ---------------------------------------------------------------------
-@pytest.mark.parametrize("p, p0, hp, hp0, want", [
-    (0.592, 0.0, 0.025, 0.0, "unchanged"),        # FV.ext.v1's whole rule, as R10.5 graded
-    (0.85, 0.0, 0.025, 0.0, "measured"),
-    (0.8, 0.2, 0.025, 0.03, "measured"),          # both bounds inclusive
-    (0.79999, 0.0, 0.025, 0.0, "unchanged"),
-    (0.95, 0.21, 0.025, 0.03, "unchanged"),
-    (0.95, 0.51, 0.025, 0.03, "weak"),            # the null meets the band too often
-    (0.49, 0.0, 0.025, 0.0, "weak"),
-    (0.5, 0.5, 0.025, 0.03, "unchanged"),
-    (0.9, 0.0, 0.08, 0.0, "not_evaluable"),
-    (float("nan"), 0.0, 0.02, 0.0, "not_evaluable"),
+@pytest.mark.parametrize("ns, n0, hp, hp0, want", [
+    ((142, 136, 155, 159), 0, 0.025, 0.0, "unchanged"),   # FV.ext.v1's whole rule (0.592)
+    ((150, 151, 250, 249), 0, 0.025, 0.0, "measured"),    # float mean 0.7999999999999999
+    ((150, 151, 250, 249), 100, 0.025, 0.03, "measured"),  # P0 exactly 1/5: inclusive
+    ((150, 151, 250, 248), 0, 0.025, 0.0, "unchanged"),   # 799/1000
+    ((250, 250, 250, 250), 101, 0.025, 0.03, "unchanged"),
+    ((250, 250, 250, 250), 251, 0.025, 0.03, "weak"),     # the null meets the band too often
+    ((125, 125, 125, 124), 0, 0.025, 0.0, "weak"),        # 499/1000
+    ((125, 125, 125, 125), 250, 0.025, 0.03, "unchanged"),  # exactly 1/2 on both sides
+    ((225, 225, 225, 225), 0, 0.08, 0.0, "not_evaluable"),
+    ((225, 225, 225, 225), 0, float("nan"), 0.0, "not_evaluable"),
+    ((225, 225, 225, 251), 0, 0.02, 0.0, "not_evaluable"),  # a count above K
+    ((225, 225, 225, 22.5), 0, 0.02, 0.0, "not_evaluable"),  # not an integer count
+    ((225, 225, 225), 0, 0.02, 0.0, "not_evaluable"),        # a truth missing
 ])
-def test_the_outcomes_follow_r9_4(p, p0, hp, hp0, want):
-    assert R.outcome_of(p, p0, hp, hp0) == want
+def test_the_outcomes_follow_r9_4_on_integer_counts(ns, n0, hp, hp0, want):
+    assert R.outcome_of(list(ns), 250, n0, 500, hp, hp0) == want
+
+
+def test_the_float_mean_would_have_misread_the_boundary():
+    ns = (150, 151, 250, 249)
+    fmean = sum(n / 250 for n in ns) / 4
+    assert fmean == 0.7999999999999999 and fmean < 0.8
+    assert R.exact_p(list(ns), 250) == R.Fraction(4, 5) == R.P_MEASURED
+    assert R.outcome_of(list(ns), 250, 0, 500, 0.02, 0.0) == "measured"
+    assert isinstance(R.P_MEASURED, R.Fraction) and isinstance(R.P0_WEAK, R.Fraction)
 
 
 def test_every_outcome_has_prewritten_wording_en_zh():
@@ -179,9 +191,11 @@ def test_every_outcome_has_prewritten_wording_en_zh():
                           else 0.05)
         assert set(w) == {"en", "zh"}
         assert "{" not in w["en"] + w["zh"]
-        assert "0.85" in w["en"] or "0.45" in w["en"]
+        assert "0.850" in w["en"] or "0.450" in w["en"]
         assert "R11.7" in w["en"] and "R11.7" in w["zh"]
         assert "validation" in w["en"]
+    w = R.wording_for("measured", p=R.Fraction(4, 5), p0=R.Fraction(0, 500))
+    assert "0.800" in w["en"] and "0.000" in w["en"] and "0.800" in w["zh"]
     w = R.wording_for(R.NOT_EVALUABLE, why="x")
     assert "x" in w["en"] and "x" in w["zh"]
     assert set(R.PROPOSED_GRADE) == {*R.OUTCOMES, R.NOT_EVALUABLE}
@@ -246,8 +260,17 @@ def test_synthetic_end_to_end(synth, reference):
         s = tw["fail_side_share"]
         assert abs(1 - s["below_0.85"] - s["above_0.95"] - tw["clause_passed"]["p"]) < 1e-12
     assert rep["P0"]["p"] == rep["null_world"]["clause_passed"]["p"]
+    assert rep["P0"]["n"] == rep["null_world"]["clause_passed"]["n"]
+    assert rep["P"]["n_total"] == sum(rep["truth_worlds"][t]["clause_passed"]["n"]
+                                      for t in R.TAGS)
+    assert rep["P"]["k_total"] == len(R.TAGS) * R.SYNTH_PLAN.k_truth
+    assert rep["design_time_look"] == {"unit": XF.EXT_LOOK_UNIT, "new_look_logged": False,
+                                       "ruling": "R11.7d", "logged_look": None}   # smoke
+    assert set(rep["engineering"]["versions"]) == {"python", "numpy", "pandas"}
+    assert "never change the outcome" in rep["report_only_note"]
     assert rep["report_only"]["midpoint_null"]["clause_passed"]["k"] == K_NULL
-    assert rep["outcome"] == R.outcome_of(rep["P"]["p"], rep["P0"]["p"],
+    assert rep["outcome"] == R.outcome_of([rep["P"]["n_by_truth"][t] for t in R.TAGS],
+                                          R.SYNTH_PLAN.k_truth, rep["P0"]["n"], K_NULL,
                                           rep["P"]["mc_half_width_90"],
                                           rep["P0"]["mc_half_width_90"])
     assert rep["ledger_mapping"]["proposed_grade_key"] == R.PROPOSED_GRADE[rep["outcome"]]
@@ -338,8 +361,30 @@ def test_draft_declaration_key_fields(tmp_path, synth):
     assert "C14f's status (D)" in d["cannot_change"]
     assert d["fresh_units"] == {"not_applicable": "no observation is scored"}
     assert set(d["frozen_code"]) == set(R.FROZEN)
-    assert set(d["rulings"]) == {"R11.7", "R10.5", "R9.4", "R9.4b"}
+    assert set(d["rulings"]) == {"R11.7", "R11.7a", "R11.7b", "R11.7c", "R11.7d", "R10.5",
+                                 "R9.4", "R9.4b"}
+    assert R.RULINGS["R11.7d"] == (
+        "results/dataprep/rulings/user_rulings_2026-11-09.json",
+        "7c7219b85ef5ee83d7e1fd88b391367272c81f72b9edb985f2bd325052dc05d1")
+    assert any(p.endswith("rulings_R11.7a.json") for p in d["inputs"])
+    note = " ".join(d["readings"]["threshold_note"])
+    assert "unregistered dataprep_staging/e02_decid/run_e02d1.py" in note
+    assert "first registered statement of the weak pair" in note
+    assert "51d7908" in d["status_note"] and "51d7908" in d["disclosures"]["code"]
+    assert "same build checkout" in d["disclosures"]["registration_paths"]
+    assert "DATAPREP_REPO is not set" in d["disclosures"]["registration_paths"]
+    assert "R11.7d" in d["disclosures"]["design_time_look"]
     assert "0.592" in d["priors"]
     assert not any("/" + "home/" in p for p in d["inputs"])
     rd = PR.readiness(d, P=synth, prereg_dir=tmp_path)
     assert any("FV.ext.v1" in x for x in rd)            # synthetic: no FV.ext.v1 at its sha
+
+
+def test_the_report_is_written_once_atomically(tmp_path):
+    p = tmp_path / "r" / "report.json"
+    R.write_once_atomic(p, {"a": 1})
+    assert json.loads(p.read_text()) == {"a": 1}
+    with pytest.raises(FileExistsError):
+        R.write_once_atomic(p, {"a": 2})
+    assert json.loads(p.read_text()) == {"a": 1}
+    assert sorted(x.name for x in p.parent.iterdir()) == ["report.json"]   # no temp left
