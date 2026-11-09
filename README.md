@@ -223,10 +223,14 @@ python -m hydrophysics.twin.forward --theta results/twin_runs/my_run/stage3_thet
 
 ### The application
 
-**Live page: <https://rekin226.github.io/HydroPhysicsAI/>** is the promoted
-`results/twin/twin_app.html`, republished by `.github/workflows/pages.yml` whenever `main`
-changes it (public build only; the workflow refuses a `--private` page). Feedback on the page
-is welcome as a [GitHub issue](https://github.com/Rekin226/HydroPhysicsAI/issues/new/choose).
+**Live: <https://rekin226.github.io/HydroPhysicsAI/>** opens the twin analyst (a Hugging Face
+Space, [`deploy/twin_space/`](deploy/twin_space/)): the promoted `results/twin/twin_app.html`
+with the analyst chat beside it, bound to the claims ledger of the same commit. The page alone
+is at [`/page/`](https://rekin226.github.io/HydroPhysicsAI/page/), republished by
+`.github/workflows/pages.yml` whenever `main` changes it (public build only; the workflow
+refuses a `--private` page). The Space is pushed with `python deploy/twin_space/deploy.py`
+after a page is promoted. Feedback is welcome as a
+[GitHub issue](https://github.com/Rekin226/HydroPhysicsAI/issues/new/choose).
 
 To view the committed page locally without calibration or data downloads:
 
