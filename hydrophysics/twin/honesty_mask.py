@@ -111,9 +111,10 @@ hash prefix of a short file would let the masked figure be found by trying value
 workspace every hexadecimal run of 7 or more characters that starts the sha256 or sha1 of the
 unmasked content of a masked file is replaced by PLACEHOLDERS["hash"] (mask_hashes).
 
-GATE (derivable_pairs). After masking, no unit may hold, within 300 characters of an H, S, A
-or P term, two unmasked figures a and b (at most two decimals, not both integers, not in a data
-series of 5 or more numbers joined only by commas, brackets or space) with a in [40, 80], b in
+GATE (derivable_pairs). After masking, no unit may hold, within 300 characters of an H, S or A
+term, two unmasked figures a and b (at most two decimals, not both integers, not in a data
+series of 5 or more numbers joined only by commas, brackets or space; a not owned by an O or Q
+term, so not a science or part figure) with a in [40, 80], b in
 [30, 75], |a - b| <= 15 and 6a - 5b in [90, 100]: the workspace builder stops on any such
 pair. It also stops on any statement id left (STATEMENT_ID). Without the term condition, pairs
 within 300 characters of each other with 6a - 5b in [94.6, 99.5] are listed for the operator
@@ -675,32 +676,31 @@ def units(name: str, raw: str) -> list[str]:
     return []
 
 
+def _owned_by_science(unit: str, figs: list[re.Match]) -> set[int]:
+    """Start offsets of the figures an O or Q term owns (adjacent: a science or part figure)."""
+    terms = _Terms(unit)
+    return {m.start() for m in figs if _adjacent(m, unit, terms) in ("O", "Q")}
+
+
 def derivable_pairs(unit: str) -> list[tuple[float, float, float]]:
-    """(a, b, 6a - 5b) for every pair of unmasked figures near an H, S or T term of a unit
-    that could be a 6-part figure a beside a science figure b (GATE)."""
+    """(a, b, 6a - 5b) for every pair of unmasked figures near an H, S or A term of a unit
+    that could be a 6-part figure a beside a science figure b (GATE); a figure a science or
+    part term owns is not taken for a."""
     low = unit.lower()
     if not any(w in low for w in _ANCHORS):
         return []
-    anchors = [t for t in _terms(unit) if t[2] in "HSAP"]
+    anchors = [t for t in _terms(unit) if t[2] in "HSA"]
     if not anchors:
         return []
-    figs = [m for m in _FIG.finditer(unit) if _is_figure(m, unit) and not m.group("num2")]
-    data, run = set(), []                      # figures in a run of GATE["series"]+ numbers
-    for m in figs:
-        if run and not _SERIES.fullmatch(unit[run[-1].end():m.start()]):
-            if len(run) >= GATE["series"]:
-                data.update(x.start() for x in run)
-            run = []
-        run.append(m)
-    if len(run) >= GATE["series"]:
-        data.update(x.start() for x in run)
     w = GATE["window"]
-    vals = sorted({_value(m.group("num")) for m in figs if m.start() not in data
-                   and len(m.group("num").partition(".")[2]) <= 2
-                   and any(t[0] - w <= m.start() <= t[1] + w for t in anchors)})
+    figs = [m for m in _gate_figures(unit)
+            if any(t[0] - w <= m.start() <= t[1] + w for t in anchors)]
+    sci = _owned_by_science(unit, figs)
+    a_vals = sorted({_value(m.group("num")) for m in figs if m.start() not in sci})
+    vals = sorted({_value(m.group("num")) for m in figs})
     ga, gb, gh = GATE["a"], GATE["b"], GATE["honesty"]
     out = []
-    for a in vals:
+    for a in a_vals:
         if not ga[0] <= a <= ga[1]:
             continue
         for b in vals:
@@ -733,14 +733,17 @@ def free_pairs(unit: str) -> list[tuple[float, float, float]]:
     GATE["window"] characters of each other with 6a - 5b in GATE["free_honesty"]."""
     figs = _gate_figures(unit)
     ga, gb, gh = GATE["a"], GATE["b"], GATE["free_honesty"]
+    pos = [m.start() for m in figs]
     out = set()
     for x in figs:
         a = _value(x.group("num"))
         if not ga[0] <= a <= ga[1]:
             continue
-        for y in figs:
+        lo = bisect.bisect_left(pos, x.start() - GATE["window"])
+        hi = bisect.bisect_right(pos, x.start() + GATE["window"])
+        for y in figs[lo:hi]:
             b = _value(y.group("num"))
-            if y is x or abs(y.start() - x.start()) > GATE["window"] or not gb[0] <= b <= gb[1]:
+            if y is x or not gb[0] <= b <= gb[1]:
                 continue
             h = 6 * a - 5 * b
             if abs(a - b) <= GATE["max_diff"] and gh[0] <= h <= gh[1] and \

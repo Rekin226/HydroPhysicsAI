@@ -47,9 +47,11 @@ JSON file kept outside the repository: a list, or ``{"hidden": [...], "visible":
 ``--check-literal``; hidden figures are required), each with its rounding neighbours, must not
 occur within ``LITERAL_WINDOW`` characters of an honesty, 6-part, headline, overall, audit or
 grader term in any text file or view statement, unless a physical unit follows (``71.1
-cm/yr``). Visible figures (science trust, which the mask leaves by design) are only reported;
-a hit the operator has reviewed (``--allow``: file, literal and reason, e.g. the same digits
-as a well-disposal rate) is reported as allowed.
+cm/yr``); in JSON only string values are searched (a number is masked by its key path).
+Visible figures (science trust and parts, which the mask leaves by design) are only reported,
+and a hidden figure with the same digits as a visible one is not gated (counted). A hit the
+operator has reviewed (``--allow``: file, ``literal`` value or ``derivable: true``, and a
+reason, e.g. the same digits as a well-disposal rate) is reported as allowed.
 
 Before masking, the inventory's input files must hash to the inventory's ``inputs`` (the
 pinned commit plus the copied record reproduce the inventory). The operator's summary (copied,
@@ -63,6 +65,7 @@ left out, masked and redacted files, gates, and the view-id map) is printed, or 
 from __future__ import annotations
 
 import argparse
+import bisect
 import fnmatch
 import json
 import re
@@ -279,18 +282,27 @@ def literal_variants(lits) -> list[str]:
     return sorted(out)
 
 
-def _literal_hits(text: str, lits: list[str]) -> list[str]:
+_NUMBER = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d])")
+
+
+def _literal_hits(text: str, lits) -> list[str]:
+    """The literals found within LITERAL_WINDOW characters of a term (no physical unit)."""
+    lits = set(lits)
     if not lits:
         return []
-    rx = re.compile(r"(?<![\d.])(?:" + "|".join(
-        re.escape(x) for x in sorted(lits, key=len, reverse=True)) + r")(?![\d])")
+    terms = [m.start() for m in LITERAL_TERMS.finditer(text)]
+    if not terms:
+        return []
     hits = []
-    for m in rx.finditer(text):
+    for m in _NUMBER.finditer(text):
+        if m.group(0) not in lits:
+            continue
+        k = bisect.bisect_left(terms, m.start() - LITERAL_WINDOW)
+        if k >= len(terms) or terms[k] > m.end() + LITERAL_WINDOW:
+            continue
         if PHYSICAL_UNIT.match(text, m.end()):
             continue
-        win = text[max(0, m.start() - LITERAL_WINDOW):m.end() + LITERAL_WINDOW]
-        if LITERAL_TERMS.search(win):
-            hits.append(f"{m.group(0)}: ...{text[max(0, m.start() - 60):m.end() + 30]}...")
+        hits.append(f"{m.group(0)}: ...{text[max(0, m.start() - 60):m.end() + 30]}...")
     return hits
 
 
@@ -387,10 +399,11 @@ def pinned_figures(tree: Path, repo: Path, commit: str, honesty_input: dict,
             hidden += fig["six"]
             visible += fig["science"] + fig["parts"]
             runs += 1
-    hid = figure_literals(hidden)
-    vis = [v for v in figure_literals(visible) if v not in set(hid)]
-    return hid, vis, {"states": len(states), "recounts": runs, "hidden": len(hid),
-                      "visible": len(vis)}
+    hid, vis = figure_literals(hidden), figure_literals(visible)
+    shared = set(hid) & set(vis)              # the same digits as a science or part figure
+    return [h for h in hid if h not in shared], [v for v in vis if v not in shared], {
+        "states": len(states), "recounts": runs, "hidden": len(hid) - len(shared),
+        "visible": len(vis) - len(shared), "shared_not_gated": len(shared)}
 
 
 def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str | None = None,
@@ -452,10 +465,10 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
         raise WorkspaceError(f"{BRIEF} is not in the tree at {commit}")
     (dest / "GRADER_BRIEF.md").write_bytes(
         grader_brief((tree / BRIEF).read_text(encoding="utf-8")).encode("utf-8"))
-    fig_counts = None
-    if honesty_input is not None:
-        hid, vis, fig_counts = pinned_figures(tree, repo, commit, honesty_input, score_summary)
-        literals, visible = tuple(literals) + tuple(hid), tuple(visible) + tuple(vis)
+    fig_counts, pin_hid, pin_vis = None, [], []
+    if honesty_input is not None:       # already with their roundings: not expanded again
+        pin_hid, pin_vis, fig_counts = pinned_figures(tree, repo, commit, honesty_input,
+                                                      score_summary)
     ctx = dest / ".view_ctx"
     for rel in (H.README, H.MODEL_CARD, H.EVIDENCE):
         (ctx / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -516,19 +529,27 @@ def make_workspace(inventory: Path, dest: Path, repo: Path = REPO, commit: str |
                                           encoding="utf-8")
 
     # gates
-    lits, vis = literal_variants(literals), literal_variants(visible)
+    lits = sorted(set(literal_variants(literals)) | set(pin_hid))
+    vis = sorted((set(literal_variants(visible)) | set(pin_vis)) - set(lits))
     derivable, literal_hits, visible_hits, allowed, free, ids_left = [], [], [], [], [], []
+    def allowed_by(rel: str, key: str, value: str = "") -> bool:
+        return any(x.get("file") in (rel, rel.removeprefix("repo/")) and (
+            x.get(key) is True or (value and value.startswith(str(x.get(key)) + ":")))
+            for x in allow)
+
     for rel, p, raw in _text_files(dest, max_bytes, {"inventory.json"}):
+        units = M.units(p.name, raw) if p.suffix.lower() in M.JSON_SUFFIXES else [raw]
         for u in M.units(p.name, raw):
-            derivable += [f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in
-                          M.derivable_pairs(u)]
+            for a, b, h in M.derivable_pairs(u):
+                line = f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}"
+                (allowed if allowed_by(rel, "derivable") else derivable).append(line)
             free += [f"{rel}: 6x{a:g} - 5x{b:g} = {h:g}" for a, b, h in M.free_pairs(u)]
         ids_left += [f"{rel}: {m.group(0)}" for m in M._ID.finditer(raw)]
-        for h in _literal_hits(raw, lits):
-            ok = any(x.get("file") in (rel, rel.removeprefix("repo/"))
-                     and h.startswith(str(x.get("literal")) + ":") for x in allow)
-            (allowed if ok else literal_hits).append(f"{rel}: {h}")
-        visible_hits += [f"{rel}: {h}" for h in _literal_hits(raw, vis)]
+        for u in units:
+            for h in _literal_hits(u, lits):
+                (allowed if allowed_by(rel, "literal", h) else literal_hits).append(
+                    f"{rel}: {h}")
+            visible_hits += [f"{rel}: {h}" for h in _literal_hits(u, vis)]
     for r in view["records"]:
         for t in filter(None, r["text"].values()):
             where = f"inventory.json:{r['id']}"
@@ -594,8 +615,9 @@ def main(argv: list[str] | None = None) -> int:
                     help='extra figures: a JSON list, or {"hidden": [...], "visible": [...]}')
     ap.add_argument("--check-literal", action="append", default=[])
     ap.add_argument("--allow", type=Path, default=None,
-                    help="JSON list of reviewed literal hits to accept: {file (under repo/ or "
-                         "the workspace root), literal, reason}; keep it outside the repository")
+                    help="JSON list of reviewed gate hits to accept: {file (under repo/ or the "
+                         "workspace root), literal (a value) or derivable (true), reason}; keep "
+                         "it outside the repository")
     ap.add_argument("--manifest", type=Path, default=None,
                     help="write the operator summary here (outside the workspace)")
     a = ap.parse_args(argv)
