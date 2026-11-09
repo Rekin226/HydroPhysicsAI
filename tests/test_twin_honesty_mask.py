@@ -52,6 +52,16 @@ def mask(text: str) -> str:
     ("science 41.42 -> 41.3, headline 50.4 -> 50.3", ["50.4", "50.3"], ["41.42", "41.3"]),
     ("progress: 50.4 → 50.3", ["50.4", "50.3"], []),
     ("progress +0.58 since the audit", ["+0.58"], []),
+    ("the audit gave 96.4", ["96.4"], []),
+    ("auditor-1 scored 96.4 on the sample", ["96.4"], []),
+    ("claim honesty 96.4/100", ["96.4"], []),
+    ("CH 96.4 (round 9)", ["96.4"], ["round 9"]),
+    ("(page 97.0, README 95.9, MODEL_CARD 96.1, evidence 97.2, ledger 91.8; 66 findings)",
+     ["97.0", "95.9", "96.1", "97.2", "91.8"], ["66 findings"]),
+    ("total 50.29 -> 50.11", ["50.29", "50.11"], []),
+    ("composite 50.3", ["50.3"], []),
+    ("mean of the six 50.3", ["50.3"], []),
+    ("整體 50.3", ["50.3"], []),
     ("總分 50.4 → 50.3", ["50.4", "50.3"], []),
     ("the headline is now at about 50.3", ["50.3"], []),
     ("the headline figure, 50.3 %", ["50.3"], []),
@@ -87,11 +97,45 @@ def test_figures_in_context_are_masked(text, gone, kept):
     "(Spearman +0.35 overall, +0.45 in aquifer 2)",
     "the headline and tiles above the fold; the map for irrigation -30 % is non-uniform",
     "the N headline row C04 pulls it down about 1.8; head response 50.9 against 60",
+    "- **Science trust**, always beside the headline: the mean of the five science parts, "
+    "**41.3** audited.",
+    "head response Yunlin about 49.4 -> 48.8, science 41.42 -> 41.3",
+    "total pumping 45.3 Mm3/yr",
+    "CH-J hook at 45.2",
     "經檢討本方案執行進度、下陷情勢並依據 95 年 5 月 30 日會議決議",
     "the graders' rule: grade 0-3, an audit figure needs evidence",
 ])
 def test_unrelated_numbers_are_left(text):
     assert mask(text) == text
+
+
+def test_a_figure_alone_in_a_block_takes_the_block_before():
+    out, n = M.mask_blocks("## Claim honesty\n\n**96.4**\n\nCoverage\n\n96.4")
+    assert n == 1 and out.endswith("Coverage\n\n96.4") and HON in out
+
+
+def test_statement_ids_are_masked_everywhere():
+    sid = "evidence:" + hashlib.sha1(b"x").hexdigest()[:10]
+    out, n = M.mask_text(f"one statement leaked ({sid}, and page:0123456789-2)")
+    assert sid not in out and "page:0123456789" not in out and n == 2
+    assert M.mask_text("page:hl_w30 and ledger:C01:notes:0 stay")[1] == 0
+    raw = json.dumps({"note": f"see {sid}"})
+    assert sid not in M.mask_file_text("x.json", raw)[0]
+
+
+def test_a_parallel_list_takes_the_owners_in_order_and_the_gate_catches_a_misreading():
+    good = "science trust (41.1) and 6-part (50.4) are near the audit's (41.3, 50.6)."
+    out = mask(good)
+    assert "41.3" in out and "50.6" not in out and "41.1" in out
+    pin = 'PIN = {"honesty": 93.0, "parts": (48.1, 51.2), "science": (44.18, 37.2)}'
+    assert "93.0" not in mask(pin)                     # two keeping owners: no parallel list
+    bad = "the headline: science (44.18) and 6-part (52.9); at the audit (52.88, 44.18)"
+    assert M.derivable_pairs(mask(bad)) == [(52.88, 44.18, 96.38)]   # the gate stops it
+
+
+def test_free_pairs_are_listed_without_a_term():
+    assert M.free_pairs("the run gave 52.88 against 44.18 here") == [(52.88, 44.18, 96.38)]
+    assert M.free_pairs("52.88 " + "x" * 400 + " 44.18") == []
 
 
 def test_placeholder_names_the_owning_term():
@@ -127,7 +171,7 @@ def test_rules_are_hashed_and_deterministic():
     assert len(M.rules_sha256()) == 64
     text = "The audited figure is 96.4 (6-part 52.7, science 44.0)."
     assert mask(text) == mask(text)
-    assert set(M.rules()["terms"]) == {"H", "S", "K", "A", "P", "O", "Q"}
+    assert set(M.rules()["terms"]) == {"H", "R", "S", "K", "A", "P", "O", "Q"}
     assert M.rules()["rule"] == M.RULE_TEXT                 # a constant: python -OO keeps it
     for real in ("98.3", "53.29", "44.29", "54.03", "45.17", "52.9", "44.2", "45.6"):
         assert real not in M.RULE_TEXT, real
@@ -234,7 +278,8 @@ LEDGER = {"status_note": "Claim-honesty audit: audited 96.4 on 2026-11-07.\n\nKG
                       "notes": "", "doc_anchors": {},
                       "cites": {"registrations": [], "tests": [], "reports": []}}],
           "display_map": {"i18n": {"hon": ["C01"]}}, "registry_hashes": {}}
-BRIEF = "# Brief\n\nGrade 0-3; stay blind to any claim-honesty figure.\n"
+BRIEF_GRADER = "# Brief\n\nGrade 0-3; stay blind to any claim-honesty figure.\n"
+BRIEF = BRIEF_GRADER + "\n## Operator section (for the lead)\n\nBuild the workspace.\n"
 
 
 def _tree(root: Path) -> None:
@@ -327,6 +372,7 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
              "applies_to": ["claim honesty"]},
             {"id": "R2", "decision": "Label caveat 3.", "applies_to": ["page"]}]}))
     _write(rulings / "user_rulings_2999-01-01.json", json.dumps({"rulings": []}))
+    _write(repo / "docs" / "notes.md", "The 6-part rows are pinned in tests/test_x.py.\n")
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "synthetic")
@@ -355,7 +401,19 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
     with pytest.raises(W.WorkspaceError, match="literal gate"):
         W.make_workspace(ip, tmp_path / "ws0", repo, records=recs)
     dest = tmp_path / "ws"
-    res = W.make_workspace(ip, dest, repo, records=recs, sample=sp, literals=("96.4", "52.9"))
+    pin = W.pin_manifest(inv, repo, inv["commit"], recs)
+    assert "results/twin/page.html" in pin["files"]
+    assert not any("HONESTY" in f or "analyst" in f for f in pin["files"])
+    _write(repo / "results" / "dataprep" / "reports" / "late.json", "{}")     # after the pin
+    res = W.make_workspace(ip, dest, repo, records=recs, sample=sp, literals=("96.4", "52.9"),
+                           pin=pin)
+    assert res["pinned"] and not (dest / "repo/results/dataprep/reports/late.json").exists()
+    assert "R11.4a" in res["disclosures"] and "tests" in res["disclosures"]["R11.4a"]
+    unv = res["unverifiable"]
+    assert set(unv) >= {"masked", "hash_masked", "cites_excluded", "union_statements",
+                        "union_weight", "max_points"}
+    assert unv["union_statements"] == len(set(unv["masked"]) | set(unv["hash_masked"])
+                                           | set(unv["cites_excluded"]))
 
     files = sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file())
     top = sorted(p.name for p in dest.iterdir())
@@ -368,8 +426,9 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
     assert "repo/results/twin/page_old.html" not in files           # only the pinned page
     assert "repo/results/dataprep/rulings/user_rulings_2999-01-01.json" not in files
     assert res["after_pin"] == ["results/dataprep/rulings/user_rulings_2999-01-01.json"]
-    assert res["records"]["results/missing"] == "missing"
-    assert (dest / "GRADER_BRIEF.md").read_bytes() == BRIEF.encode()
+    assert res["records"] == {"pinned files": len(pin["files"])}
+    assert (dest / "GRADER_BRIEF.md").read_bytes() == BRIEF_GRADER.encode()   # no operator part
+    assert not (dest / "repo/dataprep_staging/honesty").exists()
     view = json.loads((dest / "inventory.json").read_text(encoding="utf-8"))
     assert view["schema"] == H.VIEW_SCHEMA and view["sha256"] == inv["sha256"]
     assert view["mask_rules_sha256"] == res["mask_rules_sha256"] == M.rules_sha256()
@@ -393,6 +452,30 @@ def test_workspace_holds_the_view_brief_and_record_only(tmp_path):
     assert {"README.md", H.EVIDENCE, H.LEDGER_PATH} <= set(res["masked_files"])
     with pytest.raises(W.WorkspaceError, match="not empty"):
         W.make_workspace(ip, dest, repo, records=recs, literals=("96.4",))
+    _write(repo / "results" / "dataprep" / "reports" / "rep.json", "{}")       # changed after
+    with pytest.raises(W.WorkspaceError, match="changed or gone since the pin"):
+        W.make_workspace(ip, tmp_path / "ws2", repo, records=recs, literals=("96.4",), pin=pin)
+
+
+def test_grader_brief_drops_the_operator_section():
+    W = _script()
+    assert W.grader_brief(BRIEF) == BRIEF_GRADER
+    real = (C.REPO / W.BRIEF).read_text(encoding="utf-8")
+    assert "## Operator section" not in W.grader_brief(real)
+    assert real.startswith(W.grader_brief(real))
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_figures_come_from_the_progress_recount(tmp_path):
+    W = _script()
+    try:
+        fig = W.progress_figures(C.REPO, C.REPO, "HEAD", 90.0, "official")
+    except (W.WorkspaceError, subprocess.CalledProcessError) as e:
+        pytest.skip(f"no ledger at HEAD here: {e}")
+    sci, six = fig["science"][0], fig["six"][0]
+    assert six == pytest.approx((5 * sci + 90.0) / 6, abs=1e-6)
+    lits = W.figure_literals([six])
+    assert f"{six:.2f}" in lits and f"{six:.1f}" in lits
 
 
 def test_literal_variants_and_gate():

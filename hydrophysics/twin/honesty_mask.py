@@ -27,34 +27,45 @@ UNIT. A text is masked one unit at a time; terms in one unit never reach a figur
 A unit is a block of BLOCK (claims.sentences's non-period boundaries: a blank line, a new list
 item, a numbered item or a table row start a new block). An inventory statement is masked with
 its block of the pinned file as context (doc statements) or alone (page strings, ledger
-paragraphs). In HTML each string literal and each text between two tags (outside scripts) is
-a unit, a JSON script payload is masked as JSON, and script code outside them is left; log
-files use one line per unit; data tables (CSV), binary files and code files (step 5) are not
-masked. In JSON every string value is a text of its own, and a number is masked when the
-nearest key on its path that names a term names an honesty or a 6-part term
+paragraphs). A block with no letter (a figure alone, say under a heading) is masked with the
+block before it as context. In HTML each string literal and each text between two tags
+(outside scripts) is a unit, a JSON script payload is masked as JSON, and script code outside
+them is left; log files use one line per unit; data tables (CSV), binary files and code files
+(step 5) are not masked. In JSON every string value is a text of its own, and a number is
+masked when the nearest key on its path that names a term names an honesty or a 6-part term
 ("claim_honesty": 71.1; "six_part": {"official": 22.2}).
 
 FIGURE (FIGURE): a number with an optional sign, an optional range end (71.1-71.4, 61-62,
--0.2 to +0.1) and an optional %. Not a figure: part of an identifier, path, version, hash,
-date or time (a letter, digit, _, ., /, #, : or - right before it; a letter, digit, _ or - plus
-a letter or digit right after it), a fraction (5/6), a year, year range or year-month (an
-integer 1900-2100, alone or with a year or two-digit end), a number named by a counter word
-right before it (section 27, step 0, round 9; COUNTER_WORDS), a count (a number followed by a
-count noun or a date unit: 66 findings, 1,649 statements, 95 年; COUNT_NOUNS), a level (a
-percentage followed by range, interval, band or CI: 80 % range), or a band (an integer range
+-0.2 to +0.1), an optional "/100" and an optional %. Not a figure: part of an identifier, path,
+version, hash, date or time (a letter, digit, _, ., /, #, : or - right before it; a letter,
+digit, _ or - plus a letter or digit right after it), a fraction (5/6), a year, year range or
+year-month (an integer 1900-2100, alone or with a year or two-digit end), a number named by a
+counter word right before it (section 27, step 0, round 9; COUNTER_WORDS), a count (a number
+followed by a count noun or a date unit: 66 findings, 1,649 statements, 95 年; COUNT_NOUNS), a
+level (a percentage followed by range, interval, band or CI: 80 % range), a physical quantity
+(a number without % followed by a unit: 71.1 cm/yr; UNIT_WORDS), or a band (an integer range
 at least 5 wide: 90-99).
+
+STATEMENT IDS. An inventory doc id (page, readme, model_card, evidence or ledger, a colon and
+ten hex digits; STATEMENT_ID) hashes the unmasked text of its statement, so a quoted id would
+let a masked figure be found by trying values: every such id in a text is replaced by
+PLACEHOLDERS["id"].
 
 TERMS (EN and ZH, case-insensitive; TERMS):
 * H, honesty: honesty (claim honesty, claim-honesty, claim_honesty), audit or audited figure,
-  re-audit, grader(s); 誠實, 評分者, 複核.
+  re-audit, grader(s), an audit, auditor or grader (auditor-1...) that gave or scored, CH (upper
+  case, a word); 誠實, 評分者, 複核.
+* R, audit source: page, README, MODEL_CARD (model card), evidence, ledger: owns a figure in
+  SOURCE_RANGE [90, 100] right beside it (a per-source audit figure: page 71.1 stands for one).
 * S, 6-part: 6-part, six-part, six_part, 6 part; 六部分, 六項.
 * K: a quoted key "six": (counts for the unit rule only).
 * A, headline: headline (not the headline's interface parts: headline lever, head lever, row,
   tile(s), function, sentence, text, key, string, wording, "headline and tiles", "headline's
   Yunlin/Changhua"), official figure(s), progress as a word (not the progress module or
   progress_map); 總分, 頭條 (not 頭條槓桿), 進度.
-* P: overall.
-* O, other quantity: science, science trust, a bare part(s), coverage; 科學, 涵蓋.
+* P, aggregate: overall, total, composite, combined (figure), mean of the six; 整體.
+* O, other quantity: science, science trust, a bare part(s), coverage, and the part names head
+  response, forecast start, uncertainty band(s), subsidence, Changhua; 科學, 涵蓋.
 * Q, statistic: kappa, agreement; 一致.
 
 A 6-part-sized figure is signed, or a decimal in SIX_RANGE [40, 80], or a decimal right after a
@@ -68,19 +79,26 @@ DECISION, per figure, left to right:
    comma). An H owner masks the figure when it is signed (+, -, −; not ±) or lies in
    HONESTY_RANGE [50, 100); an S owner when it is signed, has a decimal point or is at least
    SMALL_INTEGER (10); an A owner when it is 6-part-sized; a P owner when it is a decimal in
-   [40, 80]; an O or Q owner keeps it (science 22.2 stays).
+   [40, 80]; an R owner when it lies in [90, 100]; an O or Q owner keeps it (science 22.2
+   stays).
 2. Chain. A figure joined to the figure before it only by a connector (CHAIN: ->, →, =>, to,
    /, a comma, and, or, vs) takes that figure's decision when it has no adjacent owner of its
    own (22.2 -> 22.4 stays with science; 71.1 -> 71.4 is masked with the 6-part figure).
+   Parallel list: a chain of k figures none of which has an adjacent owner, after at least k
+   owned figures in the unit whose last k owners mix a keeping (O, Q) and a masking (H, S, A,
+   P) kind, takes the owners of those k figures in order ("science
+   (22.2) and 6-part (71.1) ... (22.4, 71.4)": 22.4 stays, 71.4 is masked). A misreading of
+   the order is caught by the derivation gate.
 3. Scope. The nearest S, A, P, O or Q term before the figure is an S term and the figure is
    signed, at least 10 or a decimal after a change word; or it is an A (P) term at most REACH
    (80) characters before the figure and the figure is 6-part-sized (a decimal in [40, 80]).
    Honesty scope: the nearest H or O term before it is an H term and the figure is signed or
    lies in [50, 100).
 4. Unit. The unit holds an H, S or K term and the figure lies in [50, 100), or it holds an A
-   term and the figure is a decimal in [40, 80]: it is masked unless an O or Q term owns it
-   (step 1) or its chain. A list such as "from 71.1, 22.2 and 33.3" names its 6-part figure
-   far from the term; science trust lies below 50.
+   term and the figure is a decimal in [40, 80] whose nearest S, A, P, O or Q term before it
+   is not an O term: it is masked unless an O or Q term owns it (step 1) or its chain. A list
+   such as "from 71.1, 22.2 and 33.3" names its 6-part figure far from the term; science
+   trust lies below 50.
 5. Code is not masked: Python, shell and JS files are left as they are (registrations hash
    them) and only gated (GATE).
 
@@ -97,29 +115,33 @@ GATE (derivable_pairs). After masking, no unit may hold, within 300 characters o
 or P term, two unmasked figures a and b (at most two decimals, not both integers, not in a data
 series of 5 or more numbers joined only by commas, brackets or space) with a in [40, 80], b in
 [30, 75], |a - b| <= 15 and 6a - 5b in [90, 100]: the workspace builder stops on any such
-pair.
+pair. It also stops on any statement id left (STATEMENT_ID). Without the term condition, pairs
+within 300 characters of each other with 6a - 5b in [94.6, 99.5] are listed for the operator
+to review (free_pairs); they do not stop the build.
 """
 
 RULING = "R11.4 (results/dataprep/rulings/user_rulings_2026-11-08f.json)"
 PLACEHOLDERS = {"honesty": "[masked: claim-honesty figure]",
                 "six_part": "[masked: 6-part figure]",
-                "hash": "[masked: hash of a masked file]"}
+                "hash": "[masked: hash of a masked file]",
+                "id": "[masked: statement id]"}
 HONESTY_RANGE = (50.0, 100.0)
 YEARS = (1900, 2100)
 SMALL_INTEGER = 10
 SIX_RANGE = (40.0, 80.0)
+SOURCE_RANGE = (90.0, 100.0)
 REACH = 80
 BAND_WIDTH = 5
 GAP_MAX = (12, 16)
 GATE = {"a": (40.0, 80.0), "b": (30.0, 75.0), "max_diff": 15.0, "honesty": (90.0, 100.0),
-        "window": 300, "series": 5}
+        "window": 300, "series": 5, "free_honesty": (94.6, 99.5)}
 
 _NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 _SIGN = r"\+/-|\+-|±|[+\-−]"
 FIGURE = (r"(?<![A-Za-z0-9_./#:\-−])"
           rf"(?P<sign>{_SIGN})?(?P<num>{_NUM})"
           rf"(?:\s*(?:-|–|to)\s*(?P<sign2>{_SIGN})?(?P<num2>{_NUM}))?"
-          r"(?P<pct>\s?%)?"
+          r"(?P<over>/100)?(?P<pct>\s?%)?"
           r"(?![A-Za-z0-9_]|/\d|:\d|\.\d|-[A-Za-z0-9])")
 COUNTER_WORDS = ("section", "sections", "step", "steps", "round", "rounds", "stage", "line",
                  "lines", "caveat", "caveats", "set", "sets", "rule", "ruling", "rulings",
@@ -130,12 +152,20 @@ COUNT_NOUNS = ("findings?", "statements?", "wells?", "runs?", "rows?", "claims?"
                "sections?", "graders?", "sentences?", "paragraphs?", "口", "個", "筆", "項",
                "cells?", "年", "月", "日")
 LEVEL_WORDS = ("range", "interval", "band", "CI", "confidence")
+UNIT_WORDS = ("cm", "mm", "m", "km", "Mm3", "m3", "kWh", "GWh", "MW", "kg", "yr", "°C",
+              "公尺", "公分", "公釐", "萬噸")
+STATEMENT_ID = (r"(?<![A-Za-z0-9_])(?:page|readme|model_card|evidence|ledger):[0-9a-f]{10}"
+                r"(?:-\d+)?(?![0-9A-Za-z])")
 CHANGE_WORDS = ("rises", "rose", "rise", "falls", "fell", "fall", "drops", "dropped", "moves",
                 "moved", "changes", "changed", "gains", "gained", "loses", "lost", "by", "up",
                 "down")
 TERMS = {
     "H": [r"(?<![A-Za-z])honesty", r"audit(?:ed)?\s+figures?", r"re-?audit(?:ed|s|ing)?",
-          r"(?<![A-Za-z])graders?(?![A-Za-z])", r"誠實", r"評分者", r"複核"],
+          r"(?<![A-Za-z])(?:audit(?:or)?s?|graders?)(?:-\d+)?\s+(?:gave|gives|scored|scores)"
+          r"(?![A-Za-z])",
+          r"(?<![A-Za-z])graders?(?![A-Za-z])", r"(?<![A-Za-z0-9_-])(?-i:CH)(?![A-Za-z0-9_-])",
+          r"誠實", r"評分者", r"複核"],
+    "R": [r"(?<![A-Za-z_])(?:page|readme|model[_ ]card|evidence|ledger)(?![A-Za-z_])"],
     "S": [r"(?<![A-Za-z0-9])(?:6|six)[-_ ]parts?(?![A-Za-z])", r"六部分", r"六項"],
     "K": [r"(?<=[\"'])six(?=[\"']\s*:)"],
     "A": [r"(?<![A-Za-z0-9_])headline(?![A-Za-z0-9_])(?!'s\s+(?:Yunlin|Changhua)|\s+(?:head\s+)?"
@@ -144,10 +174,15 @@ TERMS = {
           r"(?<![A-Za-z])official\s+figures?(?![A-Za-z])",
           r"(?<![A-Za-z0-9_./-])progress(?![A-Za-z0-9_]|\.[A-Za-z]|-\w)",
           r"總分", r"頭條(?!槓桿)", r"進度"],
-    "P": [r"(?<![A-Za-z0-9_])overall(?![A-Za-z0-9_])"],
+    "P": [r"(?<![A-Za-z0-9_])(?:overall|total)(?![A-Za-z0-9_])",
+          r"(?<![A-Za-z0-9_])composite(?![A-Za-z0-9_])",
+          r"(?<![A-Za-z])combined(?:\s+figures?)?(?![A-Za-z])",
+          r"(?<![A-Za-z])mean\s+of\s+(?:the\s+)?six(?![A-Za-z])", r"整體"],
     "O": [r"(?<![A-Za-z])science(?:[-_ ]trust)?(?![A-Za-z])",
           r"(?<![-_A-Za-z0-9])parts?(?![-A-Za-z0-9])", r"(?<![A-Za-z])coverage(?![A-Za-z])",
-          r"科學", r"涵蓋"],
+          r"(?<![A-Za-z])head\s+response(?![A-Za-z])", r"(?<![A-Za-z])forecast\s+start",
+          r"(?<![A-Za-z])uncertainty\s+bands?", r"(?<![A-Za-z])subsidence(?![A-Za-z])",
+          r"(?<![A-Za-z])Changhua(?![A-Za-z])", r"科學", r"涵蓋"],
     "Q": [r"(?<![A-Za-z])kappa(?![A-Za-z])", r"(?<![A-Za-z])agreement(?![A-Za-z])", r"一致"],
 }
 TRAILING_GAP = r"[^\d;,.|()\[\]{}。；，、]{0,12}"
@@ -179,13 +214,19 @@ _SERIES = re.compile(r"[\s,;\[\]]*")
 _MARKUP = re.compile(MARKUP_UNIT)
 _SCRIPT = re.compile(SCRIPT, re.S | re.I)
 _ANCHORS = ("honest", "audit", "grader", "part", "six", "headline", "progress", "official",
-            "overall", "science", "coverage", "kappa", "agreement", "誠實", "評分者", "複核",
-            "六部分", "六項", "總分", "頭條", "進度", "科學", "涵蓋", "一致")
+            "overall", "total", "composite", "combined", "mean", "science", "coverage", "kappa",
+            "agreement", "head", "forecast", "uncertainty", "subsidence", "changhua", "ch",
+            "page", "readme", "model", "evidence", "ledger", "誠實", "評分者", "複核", "六部分",
+            "六項", "總分", "頭條", "進度", "整體", "科學", "涵蓋", "一致")
 _CAND = re.compile("|".join(re.escape(w) for w in _ANCHORS))
 _COUNTER = re.compile(r"(?:(?<![A-Za-z])(?:" + "|".join(
     re.escape(w) for w in COUNTER_WORDS if w.isascii()) + r")|§|第)\s*$", re.I)
 _COUNT = re.compile(r"\s*(?:" + "|".join(COUNT_NOUNS) + r")(?![A-Za-z])", re.I)
 _LEVEL = re.compile(r"\s*(?:" + "|".join(LEVEL_WORDS) + r")(?![A-Za-z])", re.I)
+_UNIT = re.compile(r"\s*(?:" + "|".join(re.escape(u) for u in UNIT_WORDS)
+                   + r")(?![A-Za-z0-9])")
+_ID = re.compile(STATEMENT_ID)
+_LETTER = re.compile(r"[A-Za-z\u4e00-\u9fff]")
 _CHANGE = re.compile(r"(?<![A-Za-z])(?:" + "|".join(CHANGE_WORDS) + r")\s*(?:about\s*)?$",
                      re.I)
 
@@ -195,10 +236,11 @@ def rules() -> dict:
     return {
         "ruling": RULING, "rule": RULE_TEXT, "placeholders": PLACEHOLDERS,
         "honesty_range": list(HONESTY_RANGE), "small_integer": SMALL_INTEGER,
-        "six_range": list(SIX_RANGE), "reach": REACH,
+        "six_range": list(SIX_RANGE), "source_range": list(SOURCE_RANGE), "reach": REACH,
         "band_width": BAND_WIDTH, "gap_max": list(GAP_MAX), "gate": GATE,
         "years_excluded": list(YEARS), "figure": FIGURE, "counter_words": list(COUNTER_WORDS),
         "count_nouns": list(COUNT_NOUNS), "level_words": list(LEVEL_WORDS),
+        "unit_words": list(UNIT_WORDS), "statement_id": STATEMENT_ID,
         "change_words": list(CHANGE_WORDS), "terms": TERMS, "trailing_gap": TRAILING_GAP,
         "leading_gap": LEADING_GAP, "trailing_break": TRAILING_BREAK, "chain": CHAIN,
         "block": BLOCK, "hash_run": HASH_RUN,
@@ -251,8 +293,9 @@ def _is_figure(m: re.Match, text: str) -> bool:
         return False                          # a year, a year range or a year-month
     if num2 and "." not in num + num2 and abs(_value(num2) - _value(num)) >= BAND_WIDTH:
         return False                          # a band
-    if _COUNT.match(text, m.end()) or (m.group("pct") and _LEVEL.match(text, m.end())):
-        return False                          # a count or a level
+    if _COUNT.match(text, m.end()) or (m.group("pct") and _LEVEL.match(text, m.end())) or \
+            (not m.group("pct") and not m.group("over") and _UNIT.match(text, m.end())):
+        return False                          # a count, a level or a physical quantity
     return not _COUNTER.search(text[max(0, m.start() - 12):m.start()])
 
 
@@ -290,9 +333,29 @@ def _adjacent(m: re.Match, text: str, terms: _Terms) -> str | None:
     return best[0]
 
 
-def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | None:
-    """'honesty', 'six_part', 'keep' (owned by an O or Q term) or None for the figure ``m``,
-    given the decision of the figure before it when the two are chained (DECISION)."""
+def _by_owner(m: re.Match, kind: str) -> str | None:
+    """The decision an owning term of ``kind`` gives the figure (DECISION step 1)."""
+    vals = [_value(m.group("num"))] + ([_value(m.group("num2"))] if m.group("num2") else [])
+    signed = any(s in ("+", "-", "−") for s in (m.group("sign"), m.group("sign2")))
+    decimal = "." in m.group("num") + (m.group("num2") or "")
+    if kind == "H":
+        return "honesty" if signed or any(HONESTY_RANGE[0] <= v < HONESTY_RANGE[1]
+                                          for v in vals) else None
+    if kind == "R":
+        return "honesty" if any(SOURCE_RANGE[0] <= v <= SOURCE_RANGE[1] for v in vals) else None
+    if kind == "S":
+        return "six_part" if signed or decimal or any(v >= SMALL_INTEGER for v in vals) else None
+    if kind in ("A", "P"):
+        level = decimal and any(SIX_RANGE[0] <= v <= SIX_RANGE[1] for v in vals)
+        return "six_part" if level or (kind == "A" and signed) else None
+    return "keep" if kind in ("O", "Q") else None
+
+
+def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None,
+            kind: str | None) -> str | None:
+    """'honesty', 'six_part', 'keep' (owned by an O or Q term) or None for the figure ``m``
+    with adjacent owner ``kind``, given the decision of the figure before it when the two are
+    chained (DECISION)."""
     a = m.start()
     vals = [_value(m.group("num"))] + ([_value(m.group("num2"))] if m.group("num2") else [])
     signed = any(s in ("+", "-", "−") for s in (m.group("sign"), m.group("sign2")))
@@ -300,18 +363,12 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | No
     in_range = any(HONESTY_RANGE[0] <= v < HONESTY_RANGE[1] for v in vals)
     in_six = any(SIX_RANGE[0] <= v <= SIX_RANGE[1] for v in vals)
     change = decimal and _CHANGE.search(text[max(0, a - 20):a]) is not None
-    big = signed or decimal or any(v >= SMALL_INTEGER for v in vals)
-    near = signed or (decimal and in_six) or change
-    level = decimal and in_six
-    kind = _adjacent(m, text, terms)
-    if kind == "H":
-        return "honesty" if signed or in_range else None
-    if kind == "S":
-        return "six_part" if big else None
-    if kind in ("A", "P"):
-        return "six_part" if (near if kind == "A" else level) else None
-    if kind in ("O", "Q"):
-        return "keep"
+    if kind == "A" and change:
+        return "six_part"
+    if kind is not None and kind != "R":
+        return _by_owner(m, kind)
+    if kind == "R" and _by_owner(m, "R"):
+        return "honesty"
     if prev is not None:
         return prev
     t = terms.t
@@ -320,8 +377,10 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | No
     label = "honesty" if i >= 0 and t[i][2] == "H" else "six_part"
     i = terms.last["SAPOQ"][nb]
     k = t[i][2] if i >= 0 else None
+    level = decimal and in_six
     six = (k == "S" and (signed or any(v >= SMALL_INTEGER for v in vals) or change)) or (
-        k in ("A", "P") and a - t[i][1] <= REACH and (near if k == "A" else level))
+        k in ("A", "P") and a - t[i][1] <= REACH and (
+            level or (k == "A" and (signed or change))))
     i = terms.last["HO"][nb]
     hon = i >= 0 and t[i][2] == "H" and (signed or in_range)
     if six and hon:
@@ -330,35 +389,63 @@ def _decide(m: re.Match, text: str, terms: _Terms, prev: str | None) -> str | No
         return "six_part" if six else "honesty"
     if terms.unit and in_range:
         return label
-    return "six_part" if terms.unit_a and decimal and in_six else None
+    return "six_part" if terms.unit_a and level and k != "O" else None
+
+
+_OWNERS = "HSAPOQR"
+
+
+def _decisions(full: str, figs: list) -> list:
+    """The decision for every figure of a unit, left to right (DECISION steps 1-4)."""
+    terms = _Terms(full)
+    adj = [_adjacent(m, full, terms) for m in figs]
+    out: list = [None] * len(figs)
+    groups: list[list[int]] = []
+    for i in range(len(figs)):
+        if i and _CHAIN.fullmatch(full[figs[i - 1].end():figs[i].start()]):
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    owned: list[str] = []                     # adjacent owners met so far, in order
+    for g in groups:
+        last = owned[-len(g):] if len(g) >= 2 and len(owned) >= len(g) else []
+        if last and all(adj[i] is None for i in g) and set(last) & set("OQ") and \
+                set(last) & set("HSAP"):
+            for i, kind in zip(g, last, strict=True):                 # a parallel list
+                out[i] = _by_owner(figs[i], kind)
+            continue
+        prev = None
+        for i in g:
+            out[i] = _decide(figs[i], full, terms, prev, adj[i])
+            if adj[i] in tuple(_OWNERS) and adj[i] != "R":
+                owned.append(adj[i])
+            prev = out[i]
+    return out
 
 
 def mask_text(text: str, before: str = "", after: str = "") -> tuple[str, int]:
-    """(``text`` masked, number of figures masked); ``before`` and ``after`` are the rest of its
-    unit (terms only: their own figures are not touched)."""
+    """(``text`` masked, number of figures and statement ids masked); ``before`` and ``after``
+    are the rest of its unit (terms only: their own figures are not touched)."""
     if not text:
         return text, 0
+    out_text, n = text, 0
     full = before + text + after
     low = full.lower()
-    if not any(w in low for w in _ANCHORS):
-        return text, 0
-    lo, hi = len(before), len(before) + len(text)
-    terms = None
-    out, pos, n, last = [], lo, 0, None             # last: (end, decision) of the last figure
-    for m in _FIG.finditer(full):
-        if not _is_figure(m, full):
-            continue
-        terms = terms or _Terms(full)
-        prev = last[1] if last is not None and last[1] is not None and \
-            _CHAIN.fullmatch(full[last[0]:m.start()]) else None
-        k = _decide(m, full, terms, prev)
-        last = (m.end(), k)
-        if k in (None, "keep") or m.start() < lo or m.end() > hi:
-            continue
-        out += [full[pos:m.start()], PLACEHOLDERS[k]]
-        pos, n = m.end(), n + 1
-    out.append(full[pos:hi])
-    return "".join(out), n
+    if any(w in low for w in _ANCHORS):
+        lo, hi = len(before), len(before) + len(text)
+        figs = [m for m in _FIG.finditer(full) if _is_figure(m, full)]
+        if figs:
+            dec = _decisions(full, figs)
+            out, pos = [], lo
+            for m, k in zip(figs, dec, strict=True):
+                if k in (None, "keep") or m.start() < lo or m.end() > hi:
+                    continue
+                out += [full[pos:m.start()], PLACEHOLDERS[k]]
+                pos, n = m.end(), n + 1
+            out.append(full[pos:hi])
+            out_text = "".join(out)
+    out_text, k = _ID.subn(PLACEHOLDERS["id"], out_text)
+    return out_text, n + k
 
 
 def blocks(text: str) -> list[tuple[int, int]]:
@@ -377,12 +464,13 @@ def mask_blocks(text: str, lines: bool = False) -> tuple[str, int]:
         parts = text.split("\n")
         res = [mask_text(p) for p in parts]
         return "\n".join(r[0] for r in res), sum(r[1] for r in res)
-    out, pos, n = [], 0, 0
+    out, pos, n, prev = [], 0, 0, ""
     for a, b in blocks(text):
         out.append(text[pos:a])
-        s, k = mask_text(text[a:b])
+        blk = text[a:b]
+        s, k = mask_text(blk, "" if _LETTER.search(blk) else prev + "\n")
         out.append(s)
-        pos, n = b, n + k
+        pos, n, prev = b, n + k, blk
     out.append(text[pos:])
     return "".join(out), n
 
@@ -621,3 +709,41 @@ def derivable_pairs(unit: str) -> list[tuple[float, float, float]]:
                     gh[0] <= h <= gh[1] and (a != int(a) or b != int(b)):
                 out.append((a, b, round(h, 3)))
     return out
+
+
+def _gate_figures(unit: str) -> list[re.Match]:
+    """The unmasked figures of a unit the gates look at: one number, at most two decimals, not
+    in a data series."""
+    figs = [m for m in _FIG.finditer(unit) if _is_figure(m, unit) and not m.group("num2")]
+    data, run = set(), []
+    for m in figs:
+        if run and not _SERIES.fullmatch(unit[run[-1].end():m.start()]):
+            if len(run) >= GATE["series"]:
+                data.update(x.start() for x in run)
+            run = []
+        run.append(m)
+    if len(run) >= GATE["series"]:
+        data.update(x.start() for x in run)
+    return [m for m in figs if m.start() not in data
+            and len(m.group("num").partition(".")[2]) <= 2]
+
+
+def free_pairs(unit: str) -> list[tuple[float, float, float]]:
+    """Term-free review list (reported, not a gate): pairs of unmasked figures within
+    GATE["window"] characters of each other with 6a - 5b in GATE["free_honesty"]."""
+    figs = _gate_figures(unit)
+    ga, gb, gh = GATE["a"], GATE["b"], GATE["free_honesty"]
+    out = set()
+    for x in figs:
+        a = _value(x.group("num"))
+        if not ga[0] <= a <= ga[1]:
+            continue
+        for y in figs:
+            b = _value(y.group("num"))
+            if y is x or abs(y.start() - x.start()) > GATE["window"] or not gb[0] <= b <= gb[1]:
+                continue
+            h = 6 * a - 5 * b
+            if abs(a - b) <= GATE["max_diff"] and gh[0] <= h <= gh[1] and \
+                    (a != int(a) or b != int(b)):
+                out.add((a, b, round(h, 3)))
+    return sorted(out)

@@ -544,11 +544,16 @@ def _block_context(text: str, line: int, stmt: str) -> tuple[str, str]:
     pos = 0
     for _ in range(line - 1):
         pos = text.index("\n", pos) + 1
+    prev = ""
     for a, b in M.blocks(text):
         if b > pos:
             blk = " ".join(text[a:b].split())
             i = blk.find(stmt)
-            return (blk[:i], blk[i + len(stmt):]) if i >= 0 else ("", "")
+            if i < 0:
+                return "", ""
+            before = blk[:i] if M._LETTER.search(blk) else prev + "\n" + blk[:i]
+            return before, blk[i + len(stmt):]
+        prev = " ".join(text[a:b].split())
     return "", ""
 
 
@@ -560,11 +565,12 @@ def view_ids(inv: dict) -> dict[str, str]:
     return {r["id"]: f"S{i:0{w}d}" for i, r in enumerate(inv["records"], 1)}
 
 
-def grader_view(inv: dict, root: Path | None = None, post=None) -> dict:
+def grader_view(inv: dict, root: Path | None = None, post=None, excluded=None) -> dict:
     """The masked grader view of ``inv`` (see GRADER VIEW). With ``root``, doc statements are
     masked with their block of the file at ``root`` as context; the file must hash to the
     inventory's input. Without ``root``, every statement is masked alone. ``post`` (text ->
-    (text, n)) runs after the mask on every text (the workspace's hash mask)."""
+    (text, n)) runs after the mask on every text (the workspace's hash mask); ``excluded``
+    (path -> bool) names the records the graders do not receive."""
     docs = {}
     if root is not None:
         for rel in (README, MODEL_CARD, EVIDENCE):
@@ -575,7 +581,7 @@ def grader_view(inv: dict, root: Path | None = None, post=None) -> dict:
             docs[rel] = _strip_fences(p.read_text(encoding="utf-8"))
     ids = view_ids(inv)
     recs, masked, figures, hashes = [], {s: [] for s in SOURCES}, 0, 0
-    mw = 0.0
+    cats: dict[str, list[str]] = {"masked": [], "hash_masked": [], "cites_excluded": []}
     for r in inv["records"]:
         text = dict(r["text"])
         n = 0
@@ -591,24 +597,37 @@ def grader_view(inv: dict, root: Path | None = None, post=None) -> dict:
             if post is not None:
                 text[lang], k2 = post(text[lang])
                 hashes += k2
+                if k2 and ids[r["id"]] not in cats["hash_masked"]:
+                    cats["hash_masked"].append(ids[r["id"]])
         if n:
             masked[r["source"]].append(ids[r["id"]])
+            cats["masked"].append(ids[r["id"]])
             figures += n
-            mw += r["weight"]
+        if excluded is not None and any(excluded(p) for p in r["check_against"]["reports"]):
+            cats["cites_excluded"].append(ids[r["id"]])
         recs.append(dict(r, id=ids[r["id"]], text=text))
     mr = M.rules()
     wsum = sum(r["weight"] for r in recs)
+    weight = {r["id"]: r["weight"] for r in recs}
+    union = sorted(set().union(*cats.values()))
+    mw = sum(weight[i] for i in union)
+    pts = 100 * mw / wsum if wsum else 0.0
+    parts = "; ".join(f"{k.replace('_', ' ')} {len(v)} (weight {sum(weight[i] for i in v):g})"
+                      for k, v in cats.items())
     return {"schema": VIEW_SCHEMA, "sha256": inv["sha256"], "inventory_sha256": inv["sha256"],
             "view_sha256": sha_of(recs), "commit": inv.get("commit"),
             "summary": inv.get("summary"), "rules": inv.get("rules"),
             "rules_sha256": inv.get("rules_sha256"),
             "mask_rules": mr, "mask_rules_sha256": sha_of(mr),
             "masked": {"statements": sum(len(v) for v in masked.values()), "figures": figures,
-                       "weight": mw, "hash_prefixes": hashes, "by_source": masked},
-            "bias_disclosure": f"Masked statements weigh {mw:g} of {wsum:g} "
-                               f"({100 * mw / wsum if wsum else 0:.1f} %); a grade on them can "
-                               f"move the figure by at most {100 * mw / wsum if wsum else 0:.2f}"
-                               " honesty points in all.",
+                       "weight": sum(weight[i] for i in cats["masked"]),
+                       "hash_prefixes": hashes, "by_source": masked},
+            "unverifiable": dict(cats, union_statements=len(union), union_weight=mw,
+                                 max_points=round(pts, 2)),
+            "bias_disclosure": f"Statements the graders cannot fully check: {parts}; together "
+                               f"{len(union)} statements, weight {mw:g} of {wsum:g} "
+                               f"({pts:.1f} %): grades on them can move the figure by at most "
+                               f"{pts:.2f} honesty points in all.",
             "id_scheme": "Statement ids are opaque (S0001... in inventory order); the scorer "
                          "maps them back to the inventory (honesty score --view-ids).",
             "note": "The graders' view of the hashed inventory (user ruling R11.4): statement "
