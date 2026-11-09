@@ -1,0 +1,77 @@
+name: Publish decision page
+
+# Publishes the promoted twin decision page (results/twin/twin_app.html) to GitHub Pages as
+# the site root, so the public link always shows the page main currently promotes.
+#
+# Only that one file ships. It is the public build (aggregates only, no individual wells or
+# benchmarks; viewer_app's default, never --private), self-contained, and makes no network
+# calls. The guard step refuses a page that carries private observations or an IP address.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - results/twin/twin_app.html
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp results/twin/twin_app.html _site/index.html
+          touch _site/.nojekyll
+          sha256sum _site/index.html
+
+      - name: Guard (public build only)
+        run: |
+          page=_site/index.html
+          if grep -qE '([0-9]{1,3}\.){3}[0-9]{1,3}' "$page"; then
+            echo "::error::page contains an IPv4-like address"; exit 1
+          fi
+          python3 - "$page" <<'PY'
+          # Same public conditions as hydrophysics.twin.release.check_payload, stdlib only.
+          import json, re, sys
+          html = open(sys.argv[1], encoding="utf-8").read()
+          m = re.search(r'<script id="payload" type="application/json">(.*?)</script>', html, re.S)
+          if not m:
+              sys.exit("no twin payload in the page")
+          payload = json.loads(m.group(1))
+          errors = []
+          if not payload.get("release", {}).get("public"):
+              errors.append("release.public is not set")
+          if not payload.get("modelcard", {}).get("public"):
+              errors.append("modelcard.public is not set")
+          for key in ("wells", "leveling"):
+              if payload.get(key) is not None:
+                  errors.append(f"payload embeds individual observations: {key}")
+          if errors:
+              sys.exit("not a public build (--private?): " + "; ".join(errors))
+          print("public build: no individual wells or benchmarks")
+          PY
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

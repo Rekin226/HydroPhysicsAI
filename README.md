@@ -223,7 +223,12 @@ python -m hydrophysics.twin.forward --theta results/twin_runs/my_run/stage3_thet
 
 ### The application
 
-To view the committed page without calibration or data downloads:
+**Live page: <https://rekin226.github.io/HydroPhysicsAI/>** is the promoted
+`results/twin/twin_app.html`, republished by `.github/workflows/pages.yml` whenever `main`
+changes it (public build only; the workflow refuses a `--private` page). Feedback on the page
+is welcome as a [GitHub issue](https://github.com/Rekin226/HydroPhysicsAI/issues/new/choose).
+
+To view the committed page locally without calibration or data downloads:
 
 ```bash
 python -m http.server 8000 --bind localhost --directory results/twin
