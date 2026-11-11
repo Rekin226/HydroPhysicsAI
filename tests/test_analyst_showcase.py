@@ -46,7 +46,9 @@ def test_groups_are_declared_and_nonempty(b):
     assert used <= set(ids)
     assert set(ids) - used == set(), "a declared group with no questions"
     for g in lib["groups"]:
-        assert g["title"]["en"] and g["title"]["zh"] and g["desc"]["en"] and g["desc"]["zh"]
+        assert g["title"]["en"] and g["title"]["zh"]
+        if g["desc"] or g["id"] in ("internals", "refusals"):   # these two must explain themselves
+            assert g["desc"]["en"] and g["desc"]["zh"], g["id"]
 
 
 def test_status_legend_quotes_the_ledger(b):

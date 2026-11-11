@@ -10,8 +10,9 @@
 <main id="app" class="fresh" data-tab="chat">
   <nav id="tabs" aria-label="View">
     <button id="tabChat" type="button" aria-pressed="true">Chat</button>
-    <button id="tabPage" type="button" aria-pressed="false">Page</button>
+    <button id="tabPage" type="button" aria-pressed="false">Twin</button>
   </nav>
+  <button id="rail" type="button" aria-controls="chat" aria-expanded="false"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M6 2.5v11M9 6l2 2-2 2"/></svg><span id="railLbl">Show analyst</span></button>
   <section id="chat" aria-label="Analyst">
     <header>
       <div class="brand">
@@ -21,6 +22,7 @@
       <div class="hdr-r">
         <button id="newBtn" type="button">New chat</button>
         <button id="langBtn" type="button" aria-label="Language">中文</button>
+        <button id="hideBtn" type="button" aria-controls="chat" aria-expanded="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M6 2.5v11M11 6 9 8l2 2"/></svg></button>
       </div>
     </header>
     <p id="note" class="note" hidden></p>
@@ -48,10 +50,9 @@
       <textarea id="q" rows="2" maxlength="600"></textarea>
       <button id="send" type="submit">Ask</button>
     </form>
-    <details id="presets"><summary id="presetsSum">Questions this tool answers</summary><ul id="presetList"></ul></details>
   </section>
-  <section id="pagePane" aria-label="Decision page">
-    <iframe id="page" title="Decision page" src="about:blank"></iframe>
+  <section id="pagePane" aria-label="Twin">
+    <iframe id="page" title="Twin" src="about:blank"></iframe>
   </section>
 </main>
 <template id="tplAnswer">
@@ -64,7 +65,7 @@
     <div class="cands"></div>
     <table class="rank" hidden></table>
     <div class="foot"><span class="cites"></span><span class="agree" hidden></span>
-      <button class="open" type="button" hidden></button><span class="aid"></span></div>
+      <button class="open" type="button" hidden></button></div>
   </li>
 </template>
 <script src="/static/shell.js"></script>

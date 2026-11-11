@@ -17,37 +17,22 @@ from __future__ import annotations
 from . import query as Q
 from .page import PageBundle
 
-# (id, title en, title zh, one-line description en, zh). Order is the library's order.
+# (id, title en, title zh, description en, zh). Order is the library's order. A description
+# appears only where the title alone would mislead; empty means none.
 GROUPS = (
-    ("one_use", "Cut one water use", "減少單一用水",
-     "The answer the page supports: the Yunlin head response to a pumping cut.",
-     "頁面支持的答案：減少抽水後雲林的地下水位反應。"),
-    ("size", "How big a cut?", "減抽幅度",
-     "One water use at different cut sizes.",
-     "同一類用水，不同的減抽幅度。"),
-    ("combine", "Combine cuts", "組合減抽",
-     "Several water uses at once, including the page's headline lever.",
-     "同時減少多類用水，包括頁面的主要情境。"),
-    ("timing", "Start now or later", "現在或稍後開始",
-     "The same cut from each start year.",
-     "同樣的減抽，從不同的起始年開始。"),
-    ("sooner", "Earlier years", "較近的年份",
-     "The same cut read at earlier reporting years.",
-     "同樣的減抽，在較早的報告年份檢視。"),
-    ("rank", "Rank the water uses", "比較各類用水",
-     "Which cut moves the head most, and per unit of pumping energy given up.",
-     "哪一類減抽最能提升水位，以及每單位放棄抽水能源的效果。"),
-    ("sure", "How sure is this?", "可信度",
-     "What the registered tests support, and the fully solved runs.",
-     "登記檢驗支持哪些結果，以及完整求解的情境。"),
+    ("one_use", "Cut one water use", "減少單一用水", "", ""),
+    ("combine", "Combine cuts", "組合減抽", "", ""),
+    ("timing", "Timing", "時間點", "", ""),
+    ("rank", "Rank the water uses", "比較各類用水", "", ""),
+    ("sure", "How sure is this?", "可信度", "", ""),
     ("internals", "Model internals", "模型內部數值",
      "Numbers whose size the tests do not support, shown under an amber label.",
      "檢驗不支持其大小的數值，以琥珀色標示。"),
 )
 
 REFUSALS_GROUP = ("refusals", "What it won't answer", "不回答的問題",
-                  "Try one: these are refused by fixed rules, before any language model is called.",
-                  "試試看：這些問題由固定規則拒答，不會呼叫語言模型。")
+                  "Refused by fixed rules, before any language model is called.",
+                  "由固定規則拒答，不會呼叫語言模型。")
 
 # Typed questions the hard guards refuse (changhua_lever, subsidence_size, beyond_horizon,
 # township_head). Text only; the server routes them like any typed question.
@@ -150,16 +135,16 @@ def _items(b: PageBundle) -> list[tuple[str, str, dict]]:
         ("one_use", "policy_head", ph(cut("livestock", 50))),
         ("one_use", "policy_head", ph(cut("industry", 30))),
         ("one_use", "policy_head", ph(cut("domestic", 20))),
-        ("size", "policy_head", ph(cut("irrigation", 10))),
-        ("size", "policy_head", ph(cut("irrigation", 50))),
-        ("size", "policy_head", ph(cut("irrigation", 100))),
+        ("one_use", "policy_head", ph(cut("irrigation", 10))),
+        ("one_use", "policy_head", ph(cut("irrigation", 50))),
+        ("one_use", "policy_head", ph(cut("irrigation", 100))),
         ("combine", "policy_head", ph(every(30))),
         ("combine", "policy_head", ph(every(20))),
         ("combine", "policy_head", ph(cut("irrigation", 20) + cut("aquaculture", 50))),
         ("timing", "start_compare", {"cuts": cut("aquaculture", 100), "year": Y}),
         ("timing", "start_compare", {"cuts": cut("irrigation", 30), "year": Y}),
         ("timing", "policy_head", ph(cut("aquaculture", 30), start=s1)),
-        *[("sooner", "policy_head", ph(cut("irrigation", 30), year=y)) for y in early],
+        *[("timing", "policy_head", ph(cut("irrigation", 30), year=y)) for y in early],
         ("rank", "lever_rank", {"year": Y, "by": "head"}),
         ("rank", "lever_rank", {"year": Y, "by": "gwh"}),
         *[("rank", "lever_rank", {"year": y, "by": "head"}) for y in early[-1:]],
@@ -194,7 +179,8 @@ def library(b: PageBundle) -> dict:
     """Group order and descriptions, try-a-refusal questions and the status legend."""
     codes = b.ledger.get("status_codes", {})
     return {
-        "groups": [{"id": g[0], "title": {"en": g[1], "zh": g[2]}, "desc": {"en": g[3], "zh": g[4]}}
+        "groups": [{"id": g[0], "title": {"en": g[1], "zh": g[2]},
+                    "desc": {"en": g[3], "zh": g[4]} if g[3] else None}
                    for g in GROUPS + (REFUSALS_GROUP,)],
         "refusals": [{"gid": REFUSALS_GROUP[0], "question": {"en": en, "zh": zh}}
                      for en, zh in TRY_REFUSALS],

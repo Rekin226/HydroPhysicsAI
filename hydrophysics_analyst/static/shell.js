@@ -4,26 +4,26 @@
 // through its URL hash. "Page agrees" re-reads the page's own headline after the hash is set.
 const $ = id => document.getElementById(id);
 const UI = {
-  en: {title: "Twin analyst", send: "Ask", ph: "Ask about a policy, e.g. retire aquaculture from 2030 — head by 2032?",
-       note: "Answers are the page's own numbers and sentences, with claim IDs. Edit the interpretation to correct it.",
-       lang: "中文", agree: "page agrees", disagree: "page differs", open: "Open in page", wait: "…",
-       err: "Could not get an answer:", slow: "The page is still loading. If it never appears, open it directly:",
+  en: {title: "Twin analyst", send: "Ask", ph: "e.g. Retire aquaculture from 2030: head by 2032?",
+       lang: "中文", agree: "matches the twin", disagree: "differs from the twin", open: "Show on twin",
+       err: "Could not get an answer:", slow: "The twin is still loading.", direct: "Open it directly",
        examples: "Try a question", year: "Year", value: "Value",
        metaerr: "Cannot reach the analyst server. Is it still running?",
-       beta: "Research beta", newchat: "New chat", tabChat: "Chat", tabPage: "Page",
-       lead: "Ask what a pumping policy does to groundwater in Yunlin. Answers use only the decision page's own numbers and sentences, and say how far each one is tested.",
+       beta: "Research beta", newchat: "New chat", tabChat: "Chat", tabPage: "Twin",
+       hide: "Hide panel", show: "Show analyst", audit: "Audit ID",
+       lead: "Ask how a pumping policy changes groundwater in Yunlin. Each answer uses the twin's own numbers and shows how far they are tested.",
        howto: "How to read an answer",
-       howtoText: "Each answer lists the claims it rests on. The letter after a claim says how well the record supports it:",
+       howtoText: "Each answer lists its claims. The letter after a claim shows how well the record supports it:",
        lib: "Questions to try", libShow: "Show examples", libHide: "Hide examples",
        working: "Working", sending: "Answering…", exBtn: "Examples"},
-  zh: {title: "雙生模型分析助理", send: "提問", ph: "例如：2030年起停止養殖抽水，2032年水位？",
-       note: "答案為頁面本身的數值與文字，並附主張編號。可修改解讀以更正。",
-       lang: "English", agree: "與頁面一致", disagree: "與頁面不同", open: "在頁面中開啟", wait: "…",
-       err: "無法取得答案：", slow: "頁面仍在載入。若一直沒有出現，請直接開啟：",
+  zh: {title: "數位孿生分析助理", send: "提問", ph: "例如：2030年起停止養殖抽水，2032年水位？",
+       lang: "English", agree: "與數位孿生一致", disagree: "與數位孿生不同", open: "在數位孿生中顯示",
+       err: "無法取得答案：", slow: "數位孿生仍在載入。", direct: "直接開啟",
        examples: "試試這些問題", year: "年份", value: "數值",
        metaerr: "無法連線到分析伺服器，請確認它仍在執行。",
-       beta: "研究測試版", newchat: "新對話", tabChat: "對話", tabPage: "頁面",
-       lead: "詢問抽水政策對雲林地下水的影響。答案只使用決策頁面本身的數值與文字，並說明每一項經過多少檢驗。",
+       beta: "研究測試版", newchat: "新對話", tabChat: "對話", tabPage: "數位孿生",
+       hide: "隱藏面板", show: "顯示分析助理", audit: "稽核編號",
+       lead: "詢問抽水政策如何改變雲林的地下水。每個答案都使用數位孿生本身的數值，並標示經過多少檢驗。",
        howto: "如何閱讀答案",
        howtoText: "每個答案都列出所依據的主張。主張後的字母表示紀錄支持的程度：",
        lib: "試試這些問題", libShow: "顯示範例", libHide: "隱藏範例",
@@ -53,7 +53,7 @@ function watchPage() {                     // the page is large; say so if it ha
     if (ok) { setNote(""); return; }
     if (Date.now() - t0 > 45000) {
       setNote(t("slow") + " ");
-      const a = el("a", "", META.page); a.href = META.page; a.target = "_blank"; a.rel = "noopener"; $("note").appendChild(a);
+      const a = el("a", "", t("direct")); a.href = META.page; a.target = "_blank"; a.rel = "noopener"; $("note").appendChild(a);
       return;
     }
     setTimeout(tick, 1000);
@@ -68,14 +68,22 @@ function setLang(l) {
   $("title").textContent = t("title"); $("send").textContent = t("send"); $("q").placeholder = t("ph");
   $("langBtn").textContent = t("lang"); $("beta").textContent = t("beta"); $("newBtn").textContent = t("newchat");
   $("tabChat").textContent = t("tabChat"); $("tabPage").textContent = t("tabPage");
+  $("hideBtn").title = t("hide"); $("hideBtn").setAttribute("aria-label", t("hide")); $("railLbl").textContent = t("show");
   $("lead").textContent = t("lead"); $("howtoSum").textContent = t("howto"); $("howtoText").textContent = t("howtoText");
   $("libTitle").textContent = t("lib"); $("exBtn").textContent = t("exBtn"); libToggleText();
-  if (META) { $("presetsSum").textContent = S("frame_presets"); renderPresets(); renderLegend(); }
+  if (META) { renderChips(); renderLegend(); }
 }
-function renderPresets() {
-  const ul = $("presetList"); ul.textContent = "";
-  for (const p of META.presets) ul.appendChild(el("li", "", S("preset_" + p)));
-  renderChips();
+// ---- hide or show the analyst panel; the choice is remembered in this browser ----------------
+const PANEL_KEY = "twin.panelHidden";
+function panelSaved() { try { return localStorage.getItem(PANEL_KEY) === "1"; } catch (e) { return false; } }
+function applyPanel(hide) {
+  $("app").classList.toggle("panelHidden", hide);
+  $("hideBtn").setAttribute("aria-expanded", String(!hide)); $("rail").setAttribute("aria-expanded", String(!hide));
+}
+function togglePanel(hide) {
+  applyPanel(hide);
+  try { localStorage.setItem(PANEL_KEY, hide ? "1" : "0"); } catch (e) {}
+  (hide ? $("rail") : $("q")).focus();
 }
 // ---- the question library: a click answers a preset directly (no LLM) ---------------------
 // Groups come from META.library (order, descriptions); preset examples answer through
@@ -111,9 +119,8 @@ function renderChips() {
   let n = 0;
   for (const {g, items} of groups.values()) {
     if (!items.length) continue;
-    const d = el("details", "cgroup " + g.id); d.open = n++ < 2;
-    const sm = el("summary", "", g.title[LANG] || g.title.en); sm.appendChild(el("span", "n", String(items.length)));
-    d.appendChild(sm);
+    const d = el("details", "cgroup " + g.id); d.open = n++ < 1;
+    d.appendChild(el("summary", "", g.title[LANG] || g.title.en));
     if (g.desc) d.appendChild(el("p", "desc", g.desc[LANG] || g.desc.en));
     const qs = el("div", "qs");
     for (const it of items) {
@@ -340,7 +347,7 @@ async function show(view, li) {
     const code = c.status.split("+")[0], s = el("span", "cite " + code, `${c.id} ${c.status}`);
     s.title = [c.topic, code + ": " + statusText(code)].filter(Boolean).join("\n"); s.tabIndex = 0; ci.appendChild(s);
   }
-  li.querySelector(".aid").textContent = view.audit_id || "";
+  li.querySelector(".foot").title = view.audit_id ? t("audit") + ": " + view.audit_id : "";
   const op = li.querySelector(".open"), ag = li.querySelector(".agree");
   op.hidden = !view.deep_link; op.textContent = t("open");
   op.onclick = () => { setTab("page"); syncPage(view.deep_link).catch(() => {}); };
@@ -366,14 +373,16 @@ function setTab(tab) {
 }
 
 (async () => {
+  applyPanel(panelSaved());
   try { const r = await fetch("/api/meta"); if (!r.ok) throw new Error("HTTP " + r.status); META = await r.json(); }
-  catch (e) { setLang(LANG); setNote(t("metaerr")); return; }
+  catch (e) { applyPanel(false); setLang(LANG); setNote(t("metaerr")); return; }
   $("page").src = META.page;
   setLang(LANG);
   watchPage();
   $("langBtn").onclick = () => setLang(LANG === "zh" ? "en" : "zh");
   $("ask").onsubmit = e => { e.preventDefault(); const q = $("q").value.trim(); if (q && !BUSY) { $("q").value = ""; ask(q); } };
   $("newBtn").onclick = newChat;
+  $("hideBtn").onclick = () => togglePanel(true); $("rail").onclick = () => togglePanel(false);
   $("libToggle").onclick = () => setLibrary($("library").classList.contains("collapsed"));
   $("exBtn").onclick = () => { setLibrary(true); $("scroll").scrollTo({top: 0}); };
   $("tabChat").onclick = () => setTab("chat"); $("tabPage").onclick = () => setTab("page");
