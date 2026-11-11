@@ -31,6 +31,7 @@ from pathlib import Path
 
 from . import presets as PR
 from . import query as Q
+from . import showcase
 from .page import BindingError, PageBundle
 from .render import S, strings
 from .session import Session
@@ -108,7 +109,7 @@ class App:
                           for i, t in enumerate(c.towns)],
                 "years": c.years[c.YR + 1:], "starts": c.starts, "pct": PR.PCT,
                 "presets": list(routed_presets()), "page": f"/p/{self.b.page_sha256}/",
-                "examples": PR.examples(self.b),
+                "examples": showcase.examples(self.b), "library": showcase.library(self.b),
                 "strings": strings(), "llm": bool(self.use_llm)}
 
     def view(self, ans, rec: dict | None, violations=()) -> dict:
