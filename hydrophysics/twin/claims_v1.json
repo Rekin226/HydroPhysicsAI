@@ -416,6 +416,42 @@
   {
    "id": "user ruling 2026-11-11 (twenty-ninth set) (R11.5a)",
    "text": "Does the twin page text rewrite go into the round-11 label pass? Decision: Yes, include it; numbers and evidence statuses are unchanged and the blinded re-audit grades the new text; the audit report discloses the rewrite with L. Applies to: page, ledger, claim honesty. Source: results/dataprep/rulings/user_rulings_2026-11-11.json (sha256 dbdca574)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.0a)",
+   "text": "Which outcome should round 12 optimise first? Decision: Held-out subsidence skill. Applies to: round 12 scope. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.0b)",
+   "text": "How far may the work depart from the physics twin? Decision: Hybrid: the twin stays the backbone, with learned and statistical components on top. Applies to: round 12 scope. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.0c)",
+   "text": "Does 'no new data' exclude free public downloads? Decision: Open public products are allowed; they stay local and are never committed. Applies to: data. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.0d)",
+   "text": "How does round 12 relate to the registered-test discipline and the paused round-11 audit? Decision: Exploratory track on design-time units; only winners are registered and scored once. Round-11 audit H stays paused. Applies to: process. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.1)",
+   "text": "Accept the pre-2012 heads extracted from the public WRA hydrological yearbooks (2001-2011, 234 wells) as a data product? Decision: Accept with disclosures: product heads/L1_yearbook/v1, uses statistical_layer_history, model_design, validator. Disclose: the 2006 volume holds 3 Yunlin wells; May-December 2009 is marked incomplete by the yearbook; 38 wells lack January 2011; cross-year datum before 2012 is not independently verified. Applies to: heads/L1_yearbook/v1, SL.subsidence_layer.v1. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.2)",
+   "text": "May the official county area sinking faster than 3 cm/yr for survey years 2026-2028 be a prospective scorer for SL1? Decision: Yes, future years only: only editions printed after registration may score. The 2015-2025 values stay validator-only and are disclosed as already read. Applies to: SL1, subsidence_public_reports. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.3)",
+   "text": "SL1 has three yearly points. How is that handled? Decision: Run a synthetic power study first. Register SL1 as gating if power is at least 0.8, otherwise as report-only. Applies to: SL1. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.4)",
+   "text": "If the layer passes its registered tests, may it change the decision page? Decision: Yes: the layer becomes the page's subsidence baseline of record, as E04 is for heads; the physics column stays as the scenario engine for pumping cuts. Applies to: page, C30 pattern. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirtieth set) (R12.5)",
+   "text": "How is Changhua covered by the layer's tests? Decision: SL1 is Yunlin-only; Changhua is covered by SL2 (township leveling, the N3S-L unit). Applies to: SL1, SL2, Changhua. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
   }
  ],
  "page": {
