@@ -443,7 +443,7 @@ def test_previous_model_size_clause_renders_only_under_model_internals(tmp_path,
         g = got[lang]
         assert g["row"] and g["row"].startswith(row_head), (lang, g["row"])
         assert " cm" not in g["row"] and "公分" not in g["row"], (lang, g["row"])
-        assert base not in g["card"] and resp not in g["card"], lang
+        assert base not in g["card"] and resp not in g["row"], lang   # R11.5 labels other card rows
         assert "prev_synth" in g["card"]                         # the comparison stays
         assert g["box"] == "tilesMore" and not g["hidden"], lang
         assert g["mi"].startswith(mi_head), (lang, g["mi"])
@@ -2291,8 +2291,8 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
         pw.stop()
     on, off, odd, zh = got["on"], got["off"], got["odd"], got["zh"]
     # the legend: the scenario label only with FM's report, in its declared case
-    assert ("in this model an average-weather scenario after Nov 2023, not a forecast (start "
-            "memory, FM.origin_memory.v1); not validated") in on["leg"]
+    assert ("in this model an average-weather scenario after Nov 2023, not a forecast. "
+            "Unvalidated") in on["leg"]
     for s in (off, odd):
         assert "average-weather scenario" not in s["leg"] and "not validated" in s["leg"]
     assert "average-weather scenario" not in on["leg0"]          # a fitted year: no label
@@ -2301,7 +2301,7 @@ def test_r8_7_page_names_the_forecast_of_record_and_the_scenario(tmp_path, quiet
     assert "Nov 2023: start memory ends, in this model" in on["ts"]["svg"]
     assert ("After Nov 2023 the head line is this model's average-weather scenario, not a "
             "forecast") in on["ts"]["note"]
-    assert "forecast of record is the registered statistical layer (E04" in on["ts"]["note"]
+    assert "forecast of record is the registered statistical layer (see Evidence)" in on["ts"]["note"]
     for s in (off, odd):
         assert "start memory ends" not in s["ts"]["svg"] and "start memory" not in s["ts"]["note"]
     assert "start memory ends" not in got["fit"]                  # the fitted-only view
@@ -2448,7 +2448,7 @@ def test_page_draws_the_two_part_band_instead_of_the_run_spread(tmp_path, quiet)
         pw.stop()
     off, on, fy, zh = got["off"], got["on"], got["fy"], got["zh"]
     assert off["hidden"] and "no longer drawn" not in off["note"]
-    assert not on["hidden"] and "no longer drawn on the head series" in on["note"]
+    assert not on["hidden"] and "when each part can be tested" in on["note"]
     # the registered coverage line stays under bn_head_pb (lead decision S1)
     assert "The runs' 90 % spread (not a predictive interval) covered" in on["note"]
     assert "decided by a registered test, E02d, 2028" in on["pb"]
@@ -2474,7 +2474,7 @@ def test_page_draws_the_two_part_band_instead_of_the_run_spread(tmp_path, quiet)
     assert "Zones with fewer than 5 wells are not drawn (1)." in got["sm"]["pb"]
     assert "Zones with fewer than 5 wells" not in on["pb"]
     assert "井數少於 5 口的分區不繪製（1 個）。" in got["smzh"]["pb"]
-    assert "不再繪製模擬分布" in zh["note"] and "甲" in zh["pb"] and "丙" in zh["pb"]
+    assert "各部分何時可被檢驗" in zh["note"] and "甲" in zh["pb"] and "丙" in zh["pb"]
     assert "雲林 44 個族群月中有 30 個" in zh["pb"] and "涵蓋率" in zh["pb"]
     assert got["subs"]
     for bad in ("calibrated", "predictive interval passed"):
@@ -2667,14 +2667,13 @@ def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_
     h = got["h"]
     assert got["presets"][0] == "all30"
     b, a, i, a20 = got["base_en"], got["all_en"], got["irr_en"], got["all20_en"]
-    assert ("The headline lever (ruling R8.9) is cutting all pumping 30% (all30, every class "
-            "×0.7) from 2026") in b["hl"]
-    assert f"raises the groundwater head by {h} m" in b["hl"] and "not this size" in b["hl"]
-    assert "measured on the q0c and x5r1 calibrations, not the page model" in b["hl"]
-    assert b["tw"] == "0.00" and b["r"].startswith("headline lever (ruling R8.9)") and h in b["r"]
-    assert a["w30"] and a["tw"] == h and a["d"].startswith("Headline lever: the head at N2's")
-    assert "head at N2's wells: the all-pumping full-model run" in a["chip"]
-    assert "this is the headline lever (ruling R8.9)" in a["hl"] and "Class scenario" not in a["d"]
+    assert "Cutting all pumping 30% from 2026" in b["hl"]
+    assert f"raises the groundwater head by {h} m" in b["hl"] and "likely too small" in b["hl"]
+    assert "sibling calibration" in b["hl"] and "q0c" not in b["hl"]
+    assert b["tw"] == "0.00" and b["r"].startswith("Cutting all pumping 30%") and h in b["r"]
+    assert a["w30"] and a["tw"] == h and a["d"].startswith("The well head comes from a full")
+    assert "well head: full model run" in a["chip"]
+    assert "this cut's own full model run" in a["hl"] and "Class scenario" not in a["d"]
     assert "The headline lever is that all-class ×0.7 cut" in a["def"]
     irr = ("Class scenario: size depends on the pumping conversion (×1.27 Yunlin; "
            "X5.lever_class_share.v1, report-only).")
@@ -2691,8 +2690,8 @@ def test_page_shows_the_all30_headline_lever_and_labels_the_class_scenarios(tmp_
     assert not a20["w30"] and "Class scenario" not in a20["d"]       # uniform, not all30
     assert "1.03" not in a20["hl"] and "1.27" not in a20["hl"]
     zb, za, zi = got["base_zh"], got["all_zh"], got["irr_zh"]
-    assert "頭條槓桿（裁定 R8.9）為自2026年起全部抽水減30%" in zb["hl"] and h in zb["hl"]
-    assert za["tw"] == h and za["d"].startswith("頭條槓桿：")
+    assert "自2026年起全部抽水減30%" in zb["hl"] and h in zb["hl"]
+    assert za["tw"] == h and za["d"].startswith("觀測井水頭取自完整模擬")
     assert zi["d"].startswith("用水類別情境：大小取決於抽水換算（雲林 ×1.27；X5.lever_class_share.v1")
 
 
