@@ -751,10 +751,11 @@ def test_fs_wording_follows_its_declaration_and_waits_for_its_report():
             "restart (S2, model-only declaration FS.start_invariance.v1)") in en["fs_s2_only"]
     assert "depends on the 2022-12 start state by up to {x} %{q} (model-only" in en["fs_fail"]
     # the level shift is gone by 2026-12 (report baseline_level_shift_m): only the early levels
-    assert "first months after it (gone by December 2026), not these policy differences" in en[
-        "start_note_fs"]
-    for k in ("fs_pass", "fs_s2_only", "fs_fail", "start_note_fs"):
+    assert ("first months after it (gone by December 2026) and leaves these policy differences "
+            "unchanged") in en["start_note_fs"]
+    for k in ("fs_pass", "fs_s2_only", "fs_fail"):
         assert "FS.start_invariance.v1" in zh[k], k
+    assert "僅模型" in zh["start_note_fs"]            # R11.5a: the code moved to the evidence line
     gate = C.function_source("fsResult")
     assert "return rg.fs && r ? r : null;" in gate
     words = C.function_source("fsWords")
@@ -1218,7 +1219,7 @@ def test_round8_page_lines_follow_r8_8_and_r8_11_only():
                 "informative, not decisive)") in en[k], k
         assert "（D；含渠道干擾因子時對雲林為弱檢驗，檢定力 0.15：N2 具資訊性但不具決定性）" in zh[k], k
         assert "decidability unknown" not in en[k] and "可判定性未知" not in zh[k], k
-    assert "Size (N, model-only)" in en["def_tW"] and "(D):" in en["def_tW"]
+    assert "Size (N, model-only)" in en["def_tW"] and "(D; weak for Yunlin" in en["def_tW"]
     # C27: registered numbers; the 'other way' / 'constant rate' readings are gone
     assert "{syl}" in en["evc_pr_subs"] and "{scu}" in zh["evc_pr_subs"]
     assert "ratio interval [{lo}, {hi}]" in en["pr_stepb"]
@@ -1315,7 +1316,7 @@ def test_r8_7_page_says_which_line_is_a_forecast_and_which_a_scenario_en_zh():
     assert en["ts_fm_mark"] == "{lm}: start memory ends, in this model"
     assert "本模型中" in zh["ts_fm_mark"]
     assert "average-weather scenario, not a forecast" in en["ts_fm_note"]
-    assert "forecast of record is the registered statistical layer (E04" in en["ts_fm_note"]
+    assert "forecast of record is the registered statistical layer (see Evidence)" in en["ts_fm_note"]
     assert en["evc_hyb_for"].startswith("Forecast of record for {a}–{b}: this registered "
                                         "statistical layer (E04), not the physics model")
     assert "正式預測" in zh["evc_hyb_for"] and "（E04）" in zh["evc_hyb_for"]
@@ -1605,22 +1606,27 @@ def test_r8_9_all30_is_the_headline_lever_and_the_class_levers_are_labelled_en_z
     d = {"en": en, "zh": zh}
     for lang in ("en", "zh"):
         t = d[lang]
-        for k in ("tW_cls_irr", "hl_sz_irr"):                    # irrigation x0.7: the number
-            assert IRR_CLAUSE[lang] in t[k], (lang, k)
+        assert IRR_CLAUSE[lang] in t["tW_cls_irr"], lang           # irrigation x0.7: the number
+        assert "×1.27" in t["hl_sz_irr"], lang                    # R11.5a: the code is on the tile
         for k in ("tW_cls", "hl_sz_cls"):                        # every other class lever: bare
             assert BARE[lang] in t[k] and "1.27" not in t[k] and "1.39" not in t[k], (lang, k)
         for k in ("tW_r", "rank_limit"):                         # at most the irrigation note
             assert AT_MOST[lang] in t[k] and t[k].count("×1.27") == 1, (lang, k)
         assert "1.27" not in t["hl_pol"] and "{sz}" in t["hl_pol"], lang
         assert "{hl}" in t["def_tW"] and "all30" in t["def_tW"], lang
-        for k in ("hl_sz_all", "hl_sz_w30", "hl_w30", "def_tW", "evc_pr_ch_class"):
+        for k in ("hl_sz_all", "def_tW", "evc_pr_ch_class"):      # R11.5a: off the headline sentence
             assert "1.03–1.05" in t[k] and ("all30" in t[k] or "全部抽水減30%" in t[k]), (lang, k)
-        for k in ("hl_w30", "hl_sz_all", "hl_sz_w30"):           # nit: where it was measured
-            assert "q0c" in t[k] and "X5.lever_class_share.v1" in t[k], (lang, k)
+        assert "q0c" in t["def_tW"] and "X5.lever_class_share.v1" in t["def_tW"], lang  # where measured
     for k, v in en.items():                                      # x1.03-1.05 is all30's only
         if "1.03–1.05" in v:
             assert "all30" in v, k
-    assert "N2 decides the within-window response, not this size" in en["hl_w30"]
+    assert "likely too small" in en["hl_w30"] and "sibling calibration" in en["hl_w30"]
+    assert "in Yunlin" in en["hl_w30"] and "model-only comparison" in en["hl_w30"]
+    assert "within-window" in en["hl_pol"] and "does not decide this size" in en["hl_pol"]
+    assert "視窗內" in zh["hl_pol"] and "不判定此大小" in zh["hl_pol"]
+    for k in ("hl_sz_all", "tW_r_w30"):                      # the factor keeps where it was measured
+        assert "not this page's model" in en[k] and "非本頁模型" in zh[k], k
+    assert "N2.policy_response.prospective_2026-11.v1 decides" in en["def_tW"]
     js = C.template_js()
     assert 'const PRESETS = [["all30", [0.7,0.7,0.7,0.7,0.7,0.7]],' in js
     assert 'PRESETS.filter(p => p[0] !== "all30")' in C.function_source("presetsShown")
@@ -2028,6 +2034,8 @@ R11F_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-08f.json (sha2
 R11_9_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09.json (sha256 7c7219b8)."
 R11_9B_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09b.json (sha256 b39cbaa1)."
 R11_9C_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09c.json (sha256 adf5de63)."
+R11_9D_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-09d.json (sha256 b7673ae0)."
+R11_11_SRC = "Source: results/dataprep/rulings/user_rulings_2026-11-11.json (sha256 dbdca574)."
 R11_IDS = {                    # ledger id suffix -> (set, source line, first words of decision)
     "R11.1": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "L + H + analyst tighten"),
     "R11.2": ("2026-11-08 (twenty-fourth set)", R11F_SRC, "Sections 21-27"),
@@ -2042,6 +2050,9 @@ R11_IDS = {                    # ledger id suffix -> (set, source line, first wo
     "R11.7d": ("2026-11-09 (twenty-fifth set)", R11_9_SRC, "No new look entry"),
     "R11.6b": ("2026-11-09 (twenty-sixth set)", R11_9B_SRC, "The user (or the peer session)"),
     "R11.7e": ("2026-11-09 (twenty-seventh set)", R11_9C_SRC, "Accept: regrade C14f to D-weak"),
+    "R11.4a": ("2026-11-09 (twenty-eighth set)", R11_9D_SRC, "Accept and disclose"),
+    "R11.4b": ("2026-11-09 (twenty-eighth set)", R11_9D_SRC, "Keep them"),
+    "R11.5a": ("2026-11-11 (twenty-ninth set)", R11_11_SRC, "Yes, include it"),
 }
 
 

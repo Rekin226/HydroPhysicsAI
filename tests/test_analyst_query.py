@@ -60,7 +60,7 @@ def test_head_where_prefers_n2(b):
     r = Q.headline(b, Q.Policy.from_cuts({0: 30}, 2026), 2032)
     head = r.value("head")
     assert head.region == "n2_yunlin_wells" and head.text.startswith("+")
-    assert "N2's 84 Yunlin" in r.snippets[0].text
+    assert "the 84 Yunlin" in r.snippets[0].text
 
 
 def test_cost_is_the_weighted_class_energy(b):

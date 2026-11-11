@@ -1769,7 +1769,7 @@ Each test below was scored once; the registry sha256 prefix is from
 - **2010-11 backcast (round-8 #12 closure; user ruling R8.15).** `I1.backcast_2010_11.v1` not
   decidable by design: its primary's synthetic G0 gives power 0.53 < 0.6 (false pass 0.06), so
   the whole test would be report-only; by user ruling R8.15 it was stopped before any 2010-11
-  head was read (window unspent). The availability look `I1BC11:ls_cache_dates_2009_2011` had
+  head was read (window unspent then; user ruling R9.1 later closed it, section 27). The availability look `I1BC11:ls_cache_dates_2009_2011` had
   passed (2026-11-06; 32 wells, Yunlin 19, Changhua 13; origin 2010-12 only; sha 1f592b31). G0 g1
   ran on synthetic worlds only (code `dataprep_staging/bc11/`, PR #87; seed 71120611, 500
   replicates per cell, B 2000; `results/twin_runs/chx/backcast_2010_11/g0/g0_g1.json`, sha
@@ -1895,15 +1895,17 @@ scored, and no number on the page is new.
 - **Relabel (EN and ZH).** After the start memory the projection is called what it is. The map
   legend reads "Projected value (year): in this model an average-weather scenario after
   November 2023, not a forecast (start memory, FM.origin_memory.v1); not validated; no
-  uncertainty band, since no held data can calibrate one" (`lg_proj_scen`). The head series
+  uncertainty band, since no held data can calibrate one" (`lg_proj_scen`; since round 11, R11.5a,
+  it reads "... not a forecast. Unvalidated, with no uncertainty band.", and `ts_fm_note` names
+  the statistical layer without the codes). The head series
   draws a marker at November 2023 labelled "start memory ends, in this model" (`ts_fm_mark`),
   and its note says that after that month the head line is this model's average-weather
   scenario and that the first-year forecast of record is the statistical layer (`ts_fm_note`).
-  Subsidence, rate and avoided-subsidence legends keep the earlier wording. The page's own words
+  Subsidence, rate and avoided-subsidence legends keep the earlier wording (since round 11, R11.5,
+  the layer names `ly_abs`, `ly_fwd` and `ly_rate` carry the model-internals label). The page's own words
   no longer call the physics level a forecast in the E02c and external-well lines and in the
-  elastic-split note ("frozen run"); the E01 new-data lines (`evc_nc_fail`, `evc_nc_pass`,
-  `tt_new`, E01's ledger name "frozen forecast") and the PB shared range (`pb_shared_what`,
-  "the frozen forecast (0)") still say "frozen forecast", an exception not changed here;
+  elastic-split note ("frozen run"); the E01 new-data lines (`evc_nc_fail`, `evc_nc_pass`, `tt_new`) say "frozen run" since round 11; E01's ledger name and the PB
+shared range (`pb_shared_what`, "the frozen forecast (0)", PB's registered wording) still say "frozen forecast";
   registered names such as E02c's "the frozen 2022-12 level
   forecast" are quoted as registered, a declared exception. The month and the 11 months come from `FM.origin_memory.v1`'s report (L* = 11 months,
   2023-11; registered sha e2d261fb, report sha d93c0e6d) through the page payload, never typed
@@ -2052,8 +2054,8 @@ registered or scored, and no status changes (C01 S, C01-w D, C01-sz N, C12 L).
   every class x0.7) from 2026, the kind of change N2's test is built on ... That size is
   model-only and likely too small (Evidence); it changes only x1.03-1.05 between two pumping
   conversions (measured on the q0c and x5r1 calibrations, not the page model;
-  X5.lever_class_share.v1, report-only). N2 decides the within-window response, not this
-  size."), the business-as-usual head tile carries it in its range line (`tW_w30`: the number
+  X5.lever_class_share.v1, report-only). N2 decides the within-window response, not this size."; shortened in round 11, R11.5a: the
+  factor, its calibrations and N2's rule are in the tile help and range line), the business-as-usual head tile carries it in its range line (`tW_w30`: the number
   and "size model-only, N", no conversion factor), the all-pumping preset comes first
   (`pr_all30`), and when it is chosen the head at N2's wells is that full-model run
   (`tW_w30_src`, `prov_w30`, `hl_sz_w30`, `def_tW_w30`; the map and the other tiles stay the fast
@@ -2660,3 +2662,12 @@ claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 20
   and 26, and the C14f notes, rulings entries and status note it adds to the ledger, fall
   inside H's inventory (R11.2). They were written before H, after the round-9 audit, so they
   will be disclosed with the label pass (L) as changes made before the re-audit.
+- **Label pass and text clean-up (L; R11.4a, R11.4b, R11.5, R11.5a).** Sizes outside Model internals now carry the label
+  "model internals, size untested": Trust caveats 3, 7, 8 and 12's baseline rate, three model-card rows, the map layers
+  `ly_abs`, `ly_fwd` and `ly_rate`, and their README and MODEL_CARD copies. README's coastal column figure is corrected
+  to 2.15 cm per metre of head (`elastic_split.json`, distal-zone Ske 0.0215). Under R11.5a the page's main view states
+  the result, its status and its main limit, and reference codes and ruling numbers move to the tile help and the Evidence
+  drawer. The two-part head band and the head-gain caveat start collapsed. Copies of round-9 findings were corrected across
+  the five audit sources. Numbers and evidence statuses are unchanged, and the page of record is `twin_app_20261111a`.
+  The re-audit report (H) discloses that L targeted expected findings, and lists R11.4a's workspace exclusions and
+  R11.4b's visible page history.
