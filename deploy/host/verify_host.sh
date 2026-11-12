@@ -33,7 +33,7 @@ fi
 echo "== repository"
 git rev-parse --git-dir >/dev/null 2>&1 && ok "git checkout at $(git rev-parse --short HEAD) [$(git symbolic-ref -q --short HEAD || echo detached)]" || bad "not a git checkout"
 stale=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | while read -r w; do [ -d "$w" ] || echo "$w"; done | wc -l)
-[ "$stale" = 0 ] || note "$stale worktree record(s) from the old host: git worktree prune"
+[ "$stale" = 0 ] || note "$stale worktree record(s) point to old-host paths: git worktree repair <copied worktree dirs>, then git worktree prune"
 
 echo "== inputs (gitignored, copied by transfer.sh)"
 for p in chou-shui-data AMP_V2/data data_fetch_api results/dataprep results/twin results/releases; do

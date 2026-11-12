@@ -17,14 +17,35 @@ say "== main checkout: $REPO"
 git fetch -q --all 2>/dev/null || flag "git fetch failed (offline?): unpushed check uses stale remotes"
 
 say "== worktrees (uncommitted changes / commits on no remote)"
+# content of every blob reachable from a remote branch: a changed file whose exact content is in
+# this set is already safe on GitHub (it was committed on some branch), whatever its path
+remote_blobs="$(mktemp)"; trap 'rm -f "$remote_blobs"' EXIT
+git rev-list --objects --remotes | awk '{print $1}' | sort -u > "$remote_blobs"
 while read -r wt; do
     [ -d "$wt" ] || { flag "$wt: listed but missing (git worktree prune)"; continue; }
     dirty=$(git -C "$wt" status --porcelain --untracked-files=normal 2>/dev/null | wc -l)
     head=$(git -C "$wt" rev-parse --short HEAD 2>/dev/null)
     branch=$(git -C "$wt" symbolic-ref -q --short HEAD || echo "detached")
     local_only=$(git -C "$wt" rev-list --count HEAD --not --remotes 2>/dev/null || echo "?")
-    line="$wt  [$branch @ $head]  changed/untracked files: $dirty  commits on no remote: $local_only"
-    if [ "$dirty" != "0" ] || [ "$local_only" != "0" ]; then flag "$line"; else say "  ok  $line"; fi
+    at_risk=0
+    if [ "$dirty" != "0" ]; then
+        while read -r f; do
+            [ -f "$wt/$f" ] || continue
+            grep -qx "$(git -C "$wt" hash-object "$f")" "$remote_blobs" || at_risk=$((at_risk + 1))
+        done < <(git -C "$wt" status --porcelain --untracked-files=all | cut -c4-)
+    fi
+    line="$wt  [$branch @ $head]  changed/untracked files: $dirty (content on no remote: $at_risk)  commits on no remote: $local_only"
+    if [ "$at_risk" != "0" ] || [ "$local_only" != "0" ]; then flag "$line"; else say "  ok  $line"; fi
+    # gitignored files (results, *.local.md, local data tables) exist only in this directory;
+    # transfer.sh copies them for the main checkout always, for other worktrees with --with-worktrees
+    if [ "$wt" != "$REPO" ]; then
+        ign=$(git -C "$wt" status --porcelain --ignored --untracked-files=all 2>/dev/null | grep '^!!' \
+              | grep -vE '__pycache__|\.py[co]$|\.pytest_cache|\.ruff_cache|\.mypy_cache|egg-info' | cut -c4-)
+        if [ -n "$ign" ]; then
+            kb=$(cd "$wt" && printf '%s\n' "$ign" | tr '\n' '\0' | du -cs --files0-from=- 2>/dev/null | tail -1 | cut -f1)
+            flag "$wt: $(printf '%s\n' "$ign" | wc -l) gitignored path(s), ${kb} KB, copied only with transfer.sh --with-worktrees"
+        fi
+    fi
 done < <(git worktree list --porcelain | awk '/^worktree /{print $2}')
 
 say "== local branches with commits on no remote"
@@ -54,8 +75,9 @@ say "== disk"
 df -h "$REPO" | tail -1 | sed 's/^/  /'
 say ""
 if [ "$warn" -gt 0 ]; then
-    say "$warn item(s) flagged [!]: commit and push them, or rely on transfer.sh (it copies the"
-    say "whole checkout including .git, untracked files and stashes, but not the other worktrees)."
+    say "$warn item(s) flagged [!]. transfer.sh copies the main checkout whole (.git with every"
+    say "branch and stash, untracked and gitignored files); add --with-worktrees for the others."
+    say "Changed files whose content is already on a remote branch are not flagged."
 else
     say "nothing flagged."
 fi

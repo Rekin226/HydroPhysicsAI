@@ -63,9 +63,10 @@
 | `data_fetch_api/` | 5.4 GB | 廠商 API 參考資料與量測資料（永不提交） |
 | `results/` | 41 GB | 資料發布版本、預先登錄（preregistration）、孿生模型輸出、決策頁 |
 | `pi_meeting/` | 30 MB | 會議資料 |
+| 其他 worktree（`~/HydroPhysicsAI-*`） | 約 1 GB | 各 worktree 的 gitignore 檔案：運算結果、`*.local.md` 交接筆記、本機資料表 |
 | `~/hydro_scratch*`（專案目錄外） | 約 20 GB | 長時間運算的暫存輸出（選擇性） |
 
-`transfer.sh` 的完整模式約 50 GB；`--lite` 模式略過可重新產生的大型運算輸出
+`transfer.sh` 的完整模式約 50 GB（加上 `--with-worktrees` 約 51 GB）；`--lite` 模式略過可重新產生的大型運算輸出
 （`results/twin_forward`、`results/surrogate`、`results/twin_runs`），約 25 GB。
 已登錄的測試會以雜湊值核對部分 `results/` 檔案，因此建議使用完整模式，只有在磁碟或頻寬
 受限時才使用 `--lite`。
@@ -97,11 +98,17 @@ Flash Attention 2（詳見 `docs/GPU_SERVER.md`）。若新主機為 Ampere 或�
 bash deploy/host/preflight.sh
 ```
 
-輸出中標示 `[!]` 的項目需要處理：
+每個 worktree 一行，列出變更檔案數與其中「內容不在任何遠端分支上」的檔案數
+（`content on no remote`）。後者為 0 的 worktree 標示 `ok`：其變更內容已以相同內容存在於
+GitHub 某個分支，不需另外提交。標示 `[!]` 的項目處理方式如下：
 
-- **工作目錄有未提交的變更**：提交並推送到 GitHub，或確認由 `transfer.sh` 一併複製
-  （它只複製主要工作目錄；其他 worktree，例如 `~/HydroPhysicsAI-*`，不會被複製）。
-- **只存在本機的分支**（commits on no remote）：`git push origin <分支名稱>`。
+- **變更內容不在任何遠端**（`content on no remote` 大於 0）：提交並推送到 GitHub。
+  主要工作目錄的檔案也會由 `transfer.sh` 原樣複製。
+- **其他 worktree 有 gitignore 檔案**：運算結果、`*.local.md` 等只存在該目錄，
+  傳送時加上 `--with-worktrees`（見 2.3）。
+- **只存在本機的分支**（commits on no remote）：一般以 `git push origin <分支名稱>` 推送。
+  分支若含有不得公開的資料（例如自報告轉錄的資料表），保留在本機即可；所有分支都在 `.git`
+  中，`transfer.sh` 會一併複製。推送前依 `CLAUDE.md` 的規則檢查內容。
 - **stash**：會隨 `.git` 一起複製，但建議先轉成分支：`git stash branch <新分支名稱> stash@{0}`。
 
 ### 2.2 停止執行中的工作
@@ -111,26 +118,30 @@ bash deploy/host/preflight.sh
 
 ### 2.3 傳送
 
-**方式一：rsync 直接傳送（建議，可中斷後續傳）。** 新主機須能以 SSH 登入。
+**方式一：rsync 直接傳送（建議，可中斷後續傳）。** 新主機須能以 SSH 登入，且目標的上層目錄
+可由該帳號寫入（例如先在新主機執行 `sudo mkdir -p /srv && sudo chown "$USER" /srv`）。
 
 ```bash
-bash deploy/host/transfer.sh --to <帳號>@<新主機位址>:/srv/HydroPhysicsAI --dry-run
+bash deploy/host/transfer.sh --to <帳號>@<新主機位址>:/srv/HydroPhysicsAI --with-worktrees --dry-run
 ```
 
 ```bash
-bash deploy/host/transfer.sh --to <帳號>@<新主機位址>:/srv/HydroPhysicsAI
+bash deploy/host/transfer.sh --to <帳號>@<新主機位址>:/srv/HydroPhysicsAI --with-worktrees
 ```
 
-再次執行同一指令只會傳送有變動的檔案，可用於移轉當天的最後一次同步。
+主要工作目錄複製至 `/srv/HydroPhysicsAI`，其他 worktree 複製至同一層
+（`/srv/HydroPhysicsAI-r7` 等）。結束時會印出新主機上要執行的 `git worktree repair` 指令，
+請記下（見 3.3）。再次執行同一指令只會傳送有變動的檔案，可用於移轉當天的最後一次同步。
 加上 `--with-scratch` 會一併傳送 `~/hydro_scratch*`。
 
 **方式二：封存檔（隨身硬碟或兩台主機無法直接連線時）。**
 
 ```bash
-bash deploy/host/transfer.sh --out /mnt/usb/hydro_migration
+bash deploy/host/transfer.sh --out /mnt/usb/hydro_migration --with-worktrees
 ```
 
-產生 `HydroPhysicsAI_<日期>.tar.zst`（未安裝 zstd 時為 `.tar.gz`）與 `SHA256SUMS_<日期>`。
+產生 `HydroPhysicsAI_<日期>.tar.zst`（未安裝 zstd 時為 `.tar.gz`）、
+`worktrees_<日期>.tar.zst` 與 `SHA256SUMS_<日期>`。
 在新主機上：
 
 ```bash
@@ -141,7 +152,11 @@ cd /mnt/usb/hydro_migration && sha256sum -c SHA256SUMS_*
 sudo mkdir -p /srv && sudo chown "$USER" /srv && tar -C /srv -I zstd -xf /mnt/usb/hydro_migration/HydroPhysicsAI_*.tar.zst
 ```
 
-解開後目錄名稱為 `/srv/HydroPhysicsAI`。
+```bash
+tar -C /srv -I zstd -xf /mnt/usb/hydro_migration/worktrees_*.tar.zst
+```
+
+解開後主要工作目錄為 `/srv/HydroPhysicsAI`，其他 worktree 位於同一層。
 
 ### 2.4 機密資料
 
@@ -194,12 +209,17 @@ docker run --rm --gpus all ubuntu:22.04 nvidia-smi
 
 ```bash
 cd /srv/HydroPhysicsAI
+git worktree repair <transfer.sh 印出的 worktree 路徑>
 git worktree prune
 bash deploy/host/verify_host.sh
 ```
 
-`git worktree prune` 會清除舊主機 worktree 的紀錄。`verify_host.sh` 的 `FAIL` 項目須全部排除；
-`--` 為提示訊息。
+`git worktree repair`（git 2.29 以上，Ubuntu 22.04 內建 2.34）將複製過來的 worktree 重新連結到
+新的主要工作目錄，必須在 `prune` 之前執行；`prune` 會刪除路徑已不存在的 worktree 紀錄，
+先執行會使複製過來的 worktree 失去連結。未使用 `--with-worktrees` 時略過 `repair`。
+以 `git worktree list` 確認結果。worktree 的絕對路徑隨新主機改變，筆記或記憶檔中引用的舊路徑
+（例如 `~/HydroPhysicsAI-r7/docs/...`）需對應到新位置。
+`verify_host.sh` 的 `FAIL` 項目須全部排除；`--` 為提示訊息。
 
 新主機需要自己的 GitHub 推送權限：建立新的 SSH 金鑰並加入 GitHub 帳號，或安裝 `gh` 並執行
 `gh auth login`。接著在 `docs/GPU_SERVER.local.md` 記錄新主機的連線資訊。
