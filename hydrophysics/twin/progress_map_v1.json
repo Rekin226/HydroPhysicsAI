@@ -529,6 +529,10 @@
   "Z04": {
    "part": "none",
    "reason": "No science part: payload numbers the page never reads (not displayed)."
+  },
+  "C32": {
+   "part": "subsidence_cut_response",
+   "reason": "Subsidence baseline of record: the constant-rate statistical layer, named by ruling R12.6 (N); retrospective evidence only, no registered test decides it."
   }
  },
  "mappings": {

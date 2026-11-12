@@ -2104,3 +2104,33 @@ def test_round11_rulings_are_recorded():
                 t = text[f"user ruling {R11_IDS[r['id']][0]} ({r['id']})"]
                 assert t.startswith(r["question"] + " Decision: " + r["decision"]
                                     + " Applies to: " + ", ".join(r["applies_to"]) + "."), r["id"]
+
+
+def test_r12_6_names_the_layer_the_subsidence_baseline_on_retrospective_evidence():
+    """User ruling R12.6 (thirty-first set): the constant-rate statistical layer is the page's
+    subsidence baseline of record, after the R8.7 precedent. Row C32 is N and can cite no
+    registered test: its evidence is one retrospective, exploratory run. The page line says so
+    in both languages, carries only the two errors and the benchmark count, and no tile or
+    answer function reads it."""
+    text = {r["id"]: r["text"] for r in L()["rulings"]}
+    t = text["user ruling 2026-11-12 (thirty-first set) (R12.6)"]
+    assert " Decision: Yes: make the layer the baseline." in t
+    assert "results/dataprep/rulings/user_rulings_2026-11-12b.json (sha256 " in t
+    c = CL()["C32"]
+    assert c["status_current"] == "N" and c["ruling"].endswith("(R12.6)")
+    assert not c["cites"]["tests"]
+    for k in ("retrospective", "exploratory", "scored once", "spent unit", "report-only",
+              "never be S or D", "2.56", "3.61", "no override"):
+        assert k in c["notes"] or k in c["wording_en"], k
+    assert L()["display_map"]["i18n"]["evc_sl_base"] == ["C32"]
+    tpl = C.TEMPLATE.read_text(encoding="utf-8")
+    lines = [ln for ln in tpl.splitlines() if ln.startswith("  evc_sl_base: ")]
+    assert len(lines) == 2
+    en, zh = lines
+    for k in ("user ruling R12.6", "retrospective and exploratory", "No registered test decides",
+              "not drawn on the map or the series", "2.56 cm", "3.61 cm", "653 benchmarks"):
+        assert k in en, k
+    for k in ("R12.6", "回溯性", "探索性", "未繪於地圖或時間序列", "2.56", "3.61", "653"):
+        assert k in zh, k
+    assert tpl.count('tr("evc_sl_base")') == 1
+    assert "subsidence baseline of record" in (C.REPO / "README.md").read_text(encoding="utf-8")

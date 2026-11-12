@@ -1,6 +1,6 @@
 """Private deployment bundles: one directory per page, switched atomically when every gate passes.
 
-    python -m hydrophysics_analyst bundle --page results/twin/twin_app_20261111a.local.html \\
+    python -m hydrophysics_analyst bundle --page results/twin/twin_app_20261112a.local.html \\
         --root /srv/twin/bundles --parity results/analyst/parity/parity.json \\
         --eval results/analyst/eval/<date>/summary.json [--run-claims-tests]
 

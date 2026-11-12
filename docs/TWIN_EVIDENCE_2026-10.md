@@ -2731,3 +2731,17 @@ exploratory or retrospective.
   of the whole record. One origin was scored. Under the retry rule no further test of this
   question is run on 2012-2021 leveling, and the result supports no claim until a ruling
   says how retrospective evidence of this kind may be used.
+- **Ruling R12.6 (thirty-first set, 2026-11-12): the layer is the subsidence baseline of
+  record.** After the follow-up above the lead ruled that the constant-rate layer becomes the
+  page's status-quo subsidence baseline, with the physics column kept as the scenario engine
+  for pumping cuts. Applied after the R8.7 precedent: a new ledger row C32 (status N) and the
+  evidence line `evc_sl_base`, which states the ruling, the retrospective and exploratory
+  nature of the evidence, the two 3-year errors and that no registered test decides it. The
+  layer is drawn on no map or series, and no tile or headline reads it. The head term is
+  outside the baseline. `SL.head_layer_companion.v1` and N3S-L's arm SL keep their report-only
+  roles.
+- **Progress after R12.6** (`python -m hydrophysics.twin.progress --honesty 98.3`). C32 is
+  weighted and graded by the official rule with no override: a page line (weight 1) graded N
+  (0.5). Subsidence and cut response 35.57 -> 36.20, science trust 44.07 -> 44.20, 6-part
+  mean 53.11 -> 53.21; the other four parts are unchanged. The movement comes from a ruling on
+  retrospective evidence and from no test.
