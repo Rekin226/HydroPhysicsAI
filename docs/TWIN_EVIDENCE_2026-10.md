@@ -2671,3 +2671,63 @@ claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 20
   the five audit sources. Numbers and evidence statuses are unchanged, and the page of record is `twin_app_20261111a`.
   The re-audit report (H) discloses that L targeted expected findings, and lists R11.4a's workspace exclusions and
   R11.4b's visible page history.
+
+## 30. Round 12 (exploratory track, 2026-11-12)
+
+Round 12 is an exploratory track under rulings R12.0a-d and R12.1-R12.5 (thirtieth set). It
+changes no claim status, no page line and no progress figure. Every number below is labelled
+exploratory or retrospective.
+
+- **Statistical subsidence layer** (`dataprep_staging/r12_layer/model.py`,
+  `SL.subsidence_layer.v1`). Rate field: mean May-to-May leveling increment of 2019-2021 at
+  each benchmark, Gaussian kernel of 3 km with the benchmark's own value weighted 4, mapped
+  to the registered 1 km cells. Head term: rate x (1 + gamma x year-on-year change of the
+  hydrological-year mean head), gamma = -0.127 per metre fitted on leveling years 2007-2021;
+  its year-bootstrap 90 % interval, -0.30 to +0.02, includes zero.
+- **Heads 2001-2011** (`heads/L1_yearbook/v1`, ruling R12.1): monthly means at 234 wells
+  transcribed from the public hydrological yearbooks; overlap years agree with the held
+  record to a median RMSE of 0.008 m. Disclosed defects: the 2006 volume holds 3 Yunlin
+  wells, May-December 2009 is marked incomplete, 38 wells lack January 2011, and the datum
+  before 2012 has no independent check.
+- **Area test, power study** (`r12_layer/power.py`, run once, ruling R12.3). On the official
+  Yunlin area sinking faster than 3 cm/yr over three survey years the head-driven arm passes
+  in 65 % of synthetic worlds where the fitted sensitivity is true and in 19 % where there is
+  none. The bar was 80 %, so the reading is report-only.
+- **Declaration** `SL.head_layer_companion.v1` (sha256 `33d6ec76`), a report-only companion
+  of N3S-L on survey years ROC116-117. ROC115 stays sealed by N3S-L and is never scored. No
+  outcome of the declaration changes a claim, a tile or a page line.
+- **Gating design study** (`r12_layer/gate_power.py`, run once). Unit: the printed township
+  statement, 45 townships, scored by the distance from each arm's township peak to the
+  printed interval; arms: layer, page column, zero. Replay at the prospective lead of 6 and
+  7 years on the pre-origin printed bounds of survey years 2015-2022, with the column fitted
+  on those years: the layer has the lower score in 11 of 14 years (12 of 14 with the head
+  term) and the design's pass rule is met in 1 of 7 replays (2 of 7). With township peaks
+  permuted within county the synthetic pass rate is 0.99, which shows that this unit measures
+  the level of sinking against a column that is near zero in 2027-28. The bar was a replay
+  pass rate of 80 % and a permuted pass rate of 10 % at most. The design is report-only and
+  no gating test is registered.
+- **Retrospective follow-up** (`r12_layer/retro_column.py`, `retro_score.py`; post-failure,
+  exploratory, scored once; rule fixed before the refit). Origin: the spring 2016 survey.
+  The page-recipe column was refitted with every leveling survey from 2017-01 withheld
+  (out-of-fold R2 0.491 on 651 benchmarks; a control refit on the full record reproduces the
+  page column at 0.652). The layer uses the rates of 2014-2016. RMSE of the cumulative drop
+  from 2016, cm:
+
+  | horizon | benchmarks | layer | layer with head term | refitted column | zero |
+  |---|---|---|---|---|---|
+  | 1 yr | 723 | 0.94 | 0.93 | 1.46 | 2.56 |
+  | 3 yr (primary) | 653 | 2.56 | 2.72 | 3.61 | 6.94 |
+  | 5 yr | 610 | 3.58 | 3.91 | 5.21 | 11.48 |
+
+  At 3 years by county: Yunlin 3.00 against 3.92 (382 benchmarks), Changhua 1.74 against
+  3.12 (271). Verdict by the fixed rule: layer ahead; the primary MSE gain is 6.49 cm2 with a
+  10 km block-bootstrap 90 % interval of 3.15 to 9.71, and the interval excludes zero at
+  every horizon and in both counties. The head term gives no gain in this test (Yunlin 3-yr
+  3.25 against 3.00 for the plain layer). The layer over-predicts Yunlin by 1.7 cm at
+  3 years.
+- **Limits of the follow-up.** Leveling 2012-2021 is a spent unit for the layer: its window,
+  kernel and weight were chosen after looking at 2009-2021 scores. The refitted column had
+  five surveys (2012-2016) to fit. The flow model that drives the column was fitted on heads
+  of the whole record. One origin was scored. Under the retry rule no further test of this
+  question is run on 2012-2021 leveling, and the result supports no claim until a ruling
+  says how retrospective evidence of this kind may be used.
