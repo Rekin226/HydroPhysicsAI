@@ -9,6 +9,10 @@
 #   --with-worktrees   also copy the other worktrees (~/HydroPhysicsAI-* etc.) next to the target,
 #                      with their gitignored files (results, *.local.md, local data tables)
 #   --with-scratch     also copy ~/hydro_scratch* (long-run outputs kept outside the repo)
+#   --with-drive-backup  also copy the home-directory cloud backup: ~/drive_backup.sh, the rclone
+#                      binary (~/.local/bin/rclone) and its config (~/.config/rclone/rclone.conf,
+#                      which holds the Drive login token). Files already on the target are kept.
+#                      The upload state (~/.drive_backup_state) belongs to this host and stays.
 #   --dry-run          rsync only: list what would be sent
 #
 # Always copied: the whole main checkout including .git (all branches, stashes, history),
@@ -23,7 +27,7 @@ REPO="$(git -C "$(dirname "$0")" worktree list --porcelain | awk '/^worktree /{p
 LITE_SKIP=(results/twin_forward results/surrogate results/twin_runs)
 EXCLUDES=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.ruff_cache/
           --exclude=.mypy_cache/ --exclude='*.egg-info/' --exclude=/.claude/worktrees/)
-to="" out="" lite=0 scratch=0 worktrees=0 dry=""
+to="" out="" lite=0 scratch=0 worktrees=0 drive=0 dry=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --to) to="${2%/}"; shift 2 ;;
@@ -32,13 +36,26 @@ while [ $# -gt 0 ]; do
         --with-worktrees) worktrees=1; shift ;;
         --with-scratch) scratch=1; shift ;;
         --dry-run) dry="--dry-run"; shift ;;
-        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+        --with-drive-backup) drive=1; shift ;;
+        -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 2 ;;
     esac
 done
 [ -n "$to" ] || [ -n "$out" ] || { echo "need --to or --out (see --help)" >&2; exit 2; }
 if [ "$lite" = 1 ]; then for p in "${LITE_SKIP[@]}"; do EXCLUDES+=("--exclude=/$p/"); done; fi
 name="$(basename "$REPO")"
+
+# home-directory backup files, relative to $HOME; only the ones that exist are sent
+DRIVE_BACKUP=(drive_backup.sh .local/bin/rclone .config/rclone/rclone.conf)
+drive_files() { (cd "$HOME" && for f in "${DRIVE_BACKUP[@]}"; do [ -e "$f" ] && echo "$f"; done); }
+if [ "$drive" = 1 ] && [ ! -f "$HOME/drive_backup.sh" ]; then
+    echo "--with-drive-backup: no ~/drive_backup.sh on this host" >&2; exit 2
+fi
+drive_note() {
+    echo "  drive backup: before its first run here, give it a new Drive folder (REMOTE=...)."
+    echo "    The default folder holds the old host's archives under the same names, and the"
+    echo "    new host's upload would replace them. Check SRC (old home path) and install zstd."
+}
 
 # the other worktrees of this repository (the main checkout and nested .claude/worktrees excluded)
 other_worktrees() {
@@ -68,11 +85,19 @@ if [ -n "$to" ]; then
     if [ "$scratch" = 1 ]; then
         for d in "$HOME"/hydro_scratch*; do [ -d "$d" ] && send "$d/" "$prefix$parent/$(basename "$d")/"; done
     fi
+    if [ "$drive" = 1 ]; then
+        # remote: into the SSH user's home; local target: a home_files/ folder beside it
+        hdest="$prefix"; [ -n "$prefix" ] || { hdest="$parent/home_files/"; [ -n "$dry" ] || mkdir -p "$hdest"; }
+        echo "drive backup -> ${hdest:-remote home}"
+        mapfile -t hf < <(drive_files)
+        (cd "$HOME" && rsync -aR --ignore-existing --partial --info=progress2 $dry "${hf[@]}" "$hdest")
+    fi
     echo "done. On the new host, in $dest:"
     if [ "$worktrees" = 1 ]; then
         echo "  git worktree repair$(other_worktrees | while read -r wt; do printf ' %s' "$parent/$(basename "$wt")"; done)"
     fi
     echo "  git worktree prune && bash deploy/host/verify_host.sh"
+    if [ "$drive" = 1 ]; then drive_note; fi
     exit 0
 fi
 
@@ -99,9 +124,18 @@ if [ "$scratch" = 1 ]; then
         [ -d "$d" ] && tar -C "$HOME" "${comp[@]}" -cf "$out/$(basename "$d")_${stamp}.tar.$ext" "$(basename "$d")"
     done
 fi
+if [ "$drive" = 1 ]; then
+    mapfile -t hf < <(drive_files)
+    echo "writing $out/home_files_${stamp}.tar.$ext (${hf[*]}; holds the Drive token, keep the medium private)"
+    tar -C "$HOME" "${comp[@]}" -cf "$out/home_files_${stamp}.tar.$ext" "${hf[@]}"
+fi
 (cd "$out" && sha256sum ./*_"${stamp}".tar.* > "SHA256SUMS_${stamp}")
 echo "done: $(du -sh "$out" | cut -f1) in $out; verify on the new host with: sha256sum -c SHA256SUMS_${stamp}"
 if [ "$worktrees" = 1 ]; then
     echo "extract worktrees_${stamp}.tar.$ext next to $name, then in $name:"
     echo "  git worktree repair$(other_worktrees | while read -r wt; do printf ' ../%s' "$(basename "$wt")"; done)"
+fi
+if [ "$drive" = 1 ]; then
+    echo "extract home_files_${stamp}.tar.$ext into the new home: tar -C ~ --skip-old-files -xf <archive>"
+    drive_note
 fi
