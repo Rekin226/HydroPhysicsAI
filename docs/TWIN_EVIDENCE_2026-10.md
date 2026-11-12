@@ -2805,3 +2805,60 @@ exploratory or retrospective.
   (0.5). Subsidence and cut response 35.57 -> 36.20, science trust 44.07 -> 44.20, 6-part
   mean 53.11 -> 53.21; the other four parts are unchanged. The movement comes from a ruling on
   retrospective evidence and from no test.
+
+## 31. Round 13: statistical head layer for Changhua (2026-11-12)
+
+**Label: post-failure, exploratory, retrospective.** Heads of 2012-2022 are a spent unit:
+they scored every Changhua pumping rung, `I1_changhua_drivers` and the design study of
+`i1/hybrid_tf`, whose forward-chaining folds covered 2020-2022. Nothing in this section makes
+a claim 'supported', changes a status or changes the page.
+
+- **Why it was run.** The lead asked for a model of the Changhua lever, untested (N2C registered, scored not before 2028-01-15),
+  that clears the bar. `X5.changhua_lever_model.v1`'s F (0.49 against 0.5) is a model-internal
+  quantity, the share of R1c's steady-state Changhua lever, untested (N2C registered, scored not before 2028-01-15), that N2C's one-year estimator recovers. A model tuned to raise F
+  would weaken the cap, so none was built for it. The blocker for a Changhua lever, untested (N2C registered, scored not before 2028-01-15), is that all
+  eleven Changhua pumping models failed at least one registered head gate (sections on the
+  Phase-1 ladder). Ruling R13.1 (thirty-third set, `user_rulings_2026-11-12d.json`, sha256
+  fbddbbaf) chose a statistical head layer among four routes.
+- **Design** (`dataprep_staging/r13_ch_layer/score.py`, script sha256 20171856; rule fixed in
+  the file before the score; run once, the result file is never overwritten). The layer is
+  the transfer-function model of `i1/hybrid_tf` with its frozen hyperparameters (8 drivers,
+  filters of 0, 2, 6 and 18 months, month dummies, ridge alpha 1), one fit per well on head
+  months to 2019-12, predicting 2020-01..2022-12 from recorded drivers. Arms: PR (all drivers
+  recorded), ZR (both electricity drivers at their fit-window seasonal mean from 2020-01), CL
+  (fit-window climatology), Q0 and R1c (their own temporal-holdout fits on heads to 2019-12).
+  Unit: Changhua wells with at least 24 fit months and 24 scored months. Every arm and the
+  observations are re-zeroed per well at the fit-window mean. Uncertainty: 10 km
+  spatial-block bootstrap over wells, seed 20261115.
+- **Result** (`results/dataprep/reports/CHL/retro_2020_2022/result.json`, sha256 cd9fa7b8;
+  63 wells, 2,224 well-months, 12 blocks). RMSE, m:
+
+  | county | wells | PR (layer) | R1c | Q0 | CL | ZR |
+  |---|---|---|---|---|---|---|
+  | Changhua (primary) | 63 | 1.03 | 1.19 | 1.26 | 1.52 | 1.56 |
+  | Yunlin (report-only) | 81 | 1.25 | 2.05 | 2.03 | 2.21 | 2.75 |
+
+  Skill, by the fixed rule: layer ahead. The 95 % lower bounds of the MSE gain over R1c, Q0
+  and CL are 0.07, 0.10 and 0.84 m2. Response: the per-well-demeaned slope of (obs - ZR) on
+  (PR - ZR) is 0.88 with a 90 % interval of 0.67 to 1.11 (contrast RMS 0.39 m), read by the
+  fixed rule as 'response supported, size consistent'.
+- **Placebo (report-only).** With both electricity drivers of each Changhua well replaced by
+  Yunlin's county electricity, the layer scores 1.11 m against its own ZR's 1.59 m, with slope
+  0.75 (0.48 to 1.02). The gain from the electricity term is therefore nearly as large with
+  another county's electricity. The term carries the regional drought signal of 2020-2021, and
+  the result does not separate Changhua pumping from it. This matches I1.CHX.v1's report-only
+  finding at the 23 external screens (row E25).
+- **Lever (report-only, extrapolated).** The layer's linear head change under a sustained
+  30 % cut of both electricity drivers has a median of +1.3 m over the first year
+  (interquartile range 0.6 to 2.0; positive at 86 % of wells) and +2.0 m at steady state
+  (0.6 to 4.0; 79 %), against R1c's 2.1 m in 2026-27. The fit saw county electricity between
+  16 % below and 27 % above its seasonal mean, and the scored months between 3 % below and
+  30 % above, so a 30 % cut lies outside the data and the scored response is a response to
+  increases.
+- **What it supports.** With recorded drivers the layer is a better hindcast of Changhua
+  heads than either physics model on these withheld years. It is no forecast: electricity
+  and canal records are unavailable ahead of time (section on `i1/hybrid_tf`). It gives no Changhua
+  lever, and the lever stays untested (N2C registered, scored not before 2028-01-15). C13a stays capped at N, the F < 0.5 cap is untouched, the map keeps
+  Changhua pooled, and no page, README or MODEL_CARD text changes. Under the retry rule no
+  further test of this question is run on 2012-2022 heads. Progress is unchanged
+  (`python -m hydrophysics.twin.progress --at HEAD --honesty 98.4`: 53.2 / 44.2).
