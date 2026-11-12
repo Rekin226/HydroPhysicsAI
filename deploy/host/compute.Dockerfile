@@ -30,6 +30,7 @@ RUN pip install --no-deps -e . && rm -rf /work/*
 # Runs as the host user (compose passes UID:GID) so files written to the mounted checkout keep
 # the host owner; HOME is a world-writable directory for the Warp / matplotlib caches.
 RUN mkdir -p /home/runner && chmod 1777 /home/runner
-ENV HOME=/home/runner PYTHONPATH=/work MPLBACKEND=Agg
+# USER/LOGNAME: the host UID has no passwd entry here, and getpass.getuser() reads these first.
+ENV HOME=/home/runner USER=runner LOGNAME=runner PYTHONPATH=/work MPLBACKEND=Agg
 
 CMD ["bash"]
