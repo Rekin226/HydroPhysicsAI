@@ -1734,12 +1734,14 @@ Each test below was scored once; the registry sha256 prefix is from
   response is detectable only without that confounder. Ledger: C01 is split (R8.8, following
   C14a -> C14a-r) into C01 (direction, S, design-time), the new row C01-w (N2's within-window
   response, D, decidability measured: "informative"; user ruling R8.16c later graded it D
-  with decidability unknown, section 26) and the new row C01-sz (size, N: "size
+  with decidability unknown, section 26, and user ruling R10.5c, 2026-11-08, graded it D-weak,
+  section 28) and the new row C01-sz (size, N: "size
   likely too small; not gated"). Page: the tile range line, definition and headline label the
   three parts, the x1.27 conversion clause is on the headline, the tile definition and the
   ranking note (C12) (R8.8 wording, superseded on the headline by R8.9: since then the
   headline carries all30's x1.03-1.05 clause and x1.27 stays on the irrigation x0.7 lever's
-  class clause and in tW_r, rank_limit and def_tW; section 24), and an evidence line prints the registered sentence.
+  class clause and in tW_r, rank_limit and def_tW; section 24; in round 11, under R11.5a, the
+  headline was shortened and the x1.03-1.05 clause sits in the tile range line `tW_r_w30`), and an evidence line prints the registered sentence.
 - **`E02z.level_years23.v1`** (612d36fc), tests E02zP.level_2027-11 and E02zP.level_2028-11:
   registered (ruling R8.14; governance `GOV.heads_window_product.v1`, 141c0128, whose code came
   with section 21's step 0). Decidability report
@@ -1749,7 +1751,8 @@ Each test below was scored once; the registry sha256 prefix is from
   New row E30 (D): C30's heads part gets a registered decider beyond 2027-10, scored not before
   2029-01-15 and 2030-01-15. Its expected outcome, from the published 2023-26 record, is the
   pre-worded narrowing (the physics head level stays an average-weather scenario). No page text
-  until the C30 split (R8.7) is wired.
+  until the C30 split (R8.7) is wired. (Wired since, section 23: the page carries E02z's
+  before-scoring line `evc_pro_e02z`.)
 - **`I1.CHX.v1.twocontrast`** (da76b707), I1.CHX.v1's single exploratory follow-up (R8.10),
   narrowing only. Report (`results/dataprep/reports/I1.CHX.v1/twocontrast_report.json`, sha
   8208424d): reproduction pre-gate passed; model-only contrast correlation 0.09; joint twoway
@@ -1855,17 +1858,22 @@ with the command recorded in `results/twin/twin_app_20261102b.build.log`, with `
 to `results/twin/twin_app_20261106c.html` (log beside it; `20261106a` is the build before the
 round-8 review fixes, `20261106b` the one before the coast-share display fix); the ledger names
 the c file, promoted to `results/twin/twin_app.html` after the merge of PR #82 (byte-identical,
-sha256 204985fd; it replaces the round-7 build 20261102b, sha256 956ec5d1).
+sha256 204985fd; it replaces the round-7 build 20261102b, sha256 956ec5d1). (State of
+2026-11-06. Later pages of record are named in sections 24, 28 and 29 and in the ledger's page
+block.)
 
 Progress: an estimate from the round-8 plan's per-action point effects for the outcomes
-obtained; a row-by-row section-21 recount of the ledger is still to be done. It is not a
+obtained; a row-by-row section-21 recount of the ledger is still to be done (done on 2026-11-07:
+the recount of section 26, the official rule under user ruling R8.16a). It is not a
 recomputation from the ledger. The gains (E04 D with measured decidability; C01-w; E02z
 registered with measured decidability; later rulings R8.16c and R8.17b grade C01-w and E04
 D with decidability unknown, and R10.5 grades E02z's row E30 D with decidability unknown too,
 section 28) are shown together with the downgrade the round produced
 (E25 narrowed by the two-contrast check: Changhua -1 against the after-step-0 figure) and with
 the step-0 disclosure downgrades of section 21. The closures (E02x, FB, N2CS, the GNSS screen,
-COLF, FE report-only, CB) add nothing under the official rule.
+COLF, FE report-only, CB) add nothing under the official rule. (Written before the recount:
+under the rule made official by user ruling R8.16a on 2026-11-07, the new N rows C14f-r and E29
+count in the uncertainty-bands part; section 26.)
 
 | part | audited 2026-11-02 | after step-0 fixes | now (estimate) | what moved it |
 |---|---|---|---|---|
@@ -1877,6 +1885,11 @@ COLF, FE report-only, CB) add nothing under the official rule.
 | **science trust** (mean of the 5) | **45.3** | 45.1 | **45.2-45.4** | |
 | **claim honesty** | 95 | 98 | 98 | the step-0 estimate; round 8 adds no re-audit |
 | **6-part mean** (headline) | **53.6** | 53.9 | **54.0-54.2** | |
+
+Note (2026-11-07): user ruling R8.16c decided the open condition of the Yunlin head-response
+row. C01-w is graded D with decidability unknown, because N2's 'informative' reading cannot
+decide under the canal confounder, so the lower end of that row applies (D-weak since user
+ruling R10.5c, 2026-11-08, section 28). The official figures are those of section 26.
 
 The audited Changhua figure was 36.5; the step-0 disclosures took it to 36 before round 8.
 Intended-output variant: 35.7 % at audit; not recomputed. End-goal convention (R8.12b,
@@ -1890,7 +1903,9 @@ User ruling R8.7 (2026-11-03, twelfth set; `results/dataprep/rulings/user_ruling
 sha ec610b69): "Approved: page, ledger, README; C30 -> C30-scen (N) and C30-fc (D via E04);
 post-2028 C30/E02/E21 wording pre-declared for every branch." The ledger records it as
 `user ruling 2026-11-03 (twelfth set) (R8.7)`. This is a ruling, not a test: nothing below was
-scored, and no number on the page is new.
+scored, and no number on the page is new. (Written with the ruling. The rain-year rider
+`FW.rider.v1`, added to this section on 2026-11-06, was registered and scored once; it changes
+no page number and no status.)
 
 - **Relabel (EN and ZH).** After the start memory the projection is called what it is. The map
   legend reads "Projected value (year): in this model an average-weather scenario after
@@ -2056,13 +2071,17 @@ registered or scored, and no status changes (C01 S, C01-w D, C01-sz N, C12 L).
   conversions (measured on the q0c and x5r1 calibrations, not the page model;
   X5.lever_class_share.v1, report-only). N2 decides the within-window response, not this size."; shortened in round 11, R11.5a: the
   factor, its calibrations and N2's rule are in the tile help and range line), the business-as-usual head tile carries it in its range line (`tW_w30`: the number
-  and "size model-only, N", no conversion factor), the all-pumping preset comes first
+  and "size model-only, N", no conversion factor; since round 11, R11.5a, it reads "(full model
+  run; size is model-only)" and the range line `tW_r_w30` carries the N code and the x1.03-1.05
+  clause), the all-pumping preset comes first
   (`pr_all30`), and when it is chosen the head at N2's wells is that full-model run
   (`tW_w30_src`, `prov_w30`, `hl_sz_w30`, `def_tW_w30`; the map and the other tiles stay the fast
   estimate). The ruled label is the bare clause "size depends on the pumping conversion"; the
   x1.27 factor is measured for the irrigation x0.7 cut only, so (lead decision b, 2026-11-06)
   only that lever (factors exactly [0.7, 1, 1, 1, 1, 1]) carries "size depends on the pumping
-  conversion (x1.27 Yunlin; X5.lever_class_share.v1, report-only)" (`hl_sz_irr`, `tW_cls_irr`),
+  conversion (x1.27 Yunlin; X5.lever_class_share.v1, report-only)" (`hl_sz_irr`, `tW_cls_irr`; since round 11, R11.5a,
+  the registration code is carried by `tW_cls_irr` only and `hl_sz_irr` states the x1.27 factor
+  without it),
   retire_aqua and every other class or mixed lever carry the bare label (`hl_sz_cls`,
   `tW_cls`), and the general lines (`tW_r`, `rank_limit` on C12, `def_tW`) carry the bare label
   plus "(irrigation x0.7: x1.27 Yunlin)". x1.03-1.05 is stated only for the all-class x0.7 cut
@@ -2099,7 +2118,9 @@ code (round-8 rank 16, part PB, `dataprep_staging/pb_band/`); when it was writte
 range or LOFO number had been built (see the disclosure below) and nothing on the page, the
 ledger or the claims changed. Since then PB was registered (sha 8cd8c44c), built
 (`results/twin/pb_band/pb_band.json`, sha c23de702) and wired: the promoted page
-`twin_app_20261107a.html` was built with `--pb-band` (section 24).
+`twin_app_20261107a.html` was built with `--pb-band` (section 24). That page was the page of
+record on 2026-11-07; later pages of record are named in sections 28 and 29 and in the ledger's
+page block.
 
 - **Declaration first.** `PB.decomposed_band.v1` (kind declaration) was drafted by
   `prereg_pb.py` and validated with `prereg3.validate_prereg`; it was written after the code
@@ -2150,6 +2171,9 @@ ledger or the claims changed. Since then PB was registered (sha 8cd8c44c), built
   status mapping. FV v2's published per-truth Changhua split already suggests that the two
   Changhua families depart differently, so a low Changhua figure is the expected outcome; a high
   one says the recipes agree with each other, not that the range holds the aquifer's departure.
+  (Built since, `results/twin/pb_band/pb_band.json`, sha c23de702: Changhua pooled 42 of 44
+  family-months inside, 0.95, lowest family X5R1 with 9 of 11, 0.82; Yunlin 44 of 44. This is
+  the high outcome, which says that the recipes agree with each other.)
   Leave-one-forcing-year-out is dropped (plan #16) and never computed.
 - **U7 guard.** In `build_pb.py` and `tests/test_pb_band.py` only (not in
   `hydrophysics/twin/coverage.py`, `bands.py` or `harness/coverage3.py`): no coverage of the
@@ -2157,7 +2181,7 @@ ledger or the claims changed. Since then PB was registered (sha 8cd8c44c), built
   coverage is E02d's and E02y's to score), no coverage of any kind on a month before 2026-12,
   and no observation product among the inputs.
 - **Page.** The wiring, prepared separately after the round-8 #14 page change, is on the
-  promoted page (`twin_app_20261107a.html`, built with `--pb-band`): a two-part band panel on one common vertical scale replaces only the head series' drawn run
+  promoted page (`twin_app_20261107a.html`, built with `--pb-band`; the page of record on 2026-11-07, since replaced: the ledger's page block names the current one): a two-part band panel on one common vertical scale replaces only the head series' drawn run
   band (its note `bn_head`). Beside the shared range the page shows only the forcing-year clause
   of FV v2's registered C14c wording, verbatim (`FV.decidability.v2_postfailure`, sha f7e35a17,
   `readings.reading_2.wording.c14c`; ruling R7.fv_v2_page), without its run-spread sentence; the
@@ -2276,7 +2300,8 @@ The rule:
   98 at 08a6aa7, labelled so; the current input is 98.3 (audited 2026-11-07, R9.3; section
   27), which leaves the 6-part mean at 54.0 (end-goal convention 64.1) before R10.5, 53.3
   (63.3) under R10.5, R10.5b and R10.5c (section 28) and 53.1 (63.1) with R11.7e too (section
-  29).
+  29). (Later steps: ruling R12.6 added row C32, 53.11 -> 53.21, section 30; the
+  re-audit of 2026-11-12 gives the input 98.4 and a 6-part mean of 53.23, section 29.)
 - **Which states refuse.** A ledger state refuses (`MappingError`) when a claim id has no
   mapping entry; when a claim's status carries an S or D code the mapping gives no qualifier
   for at that exact status string (a new S/D-coded status without a qualifier refuses; a change
@@ -2383,7 +2408,8 @@ section 28).
   truth families and the pass rate P0 of an equal-skill null, with three pre-declared outcomes
   (measured: P >= 0.8 and P0 <= 0.2; weak: P < 0.5 or P0 > 0.5; otherwise unchanged). Its right-
   kind worlds are FV v2's own forwards, on which FV.decidability.v2 reading 1 already gives
-  P = 0.736 for E02's own rule (Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992;
+  P = 0.736 for E02's own rule (a report-only figure with no reading attached, from a
+  post-failure, exploratory, model-only study; Q0 0.468, R0 0.492, R1c 0.992, X5R1 0.992;
   `results/dataprep/reports/FV.decidability.v2_postfailure/report_worlds.json`, sha 320ac928),
   so "measured" was out of reach and "unchanged" almost certain. By R9.4b it is not registered
   or run: E02 is not shown decidable and stays D unknown, and no registration is spent on a
@@ -2535,7 +2561,7 @@ sha256 656d778b); twenty-fifth set, R11.7a-d (`user_rulings_2026-11-09.json`, sh
 twenty-sixth set, R11.6b (`user_rulings_2026-11-09b.json`, sha256 b39cbaa1); twenty-seventh set,
 R11.7e (`user_rulings_2026-11-09c.json`, sha256 adf5de63). The ledger records each as
 `user ruling <date> (<set>) (<id>)`. No status has changed so far. The label pass (L) and the
-claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 2026-11-07, R9.3).
+claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 2026-11-07, R9.3). (State of 2026-11-11. Both ran since; the re-audit's result is at the end of this section.)
 
 - **R11.1, scope.** A label pass (L), then a claim-honesty re-audit by the R9.3 method (H), plus
   tighten-only analyst fixes for the v5 LLM routing errors (development only, unscored).
@@ -2671,6 +2697,40 @@ claim-honesty re-audit (H) have not run, so claim honesty stays 98.3 (audited 20
   the five audit sources. Numbers and evidence statuses are unchanged, and the page of record is `twin_app_20261111a`.
   The re-audit report (H) discloses that L targeted expected findings, and lists R11.4a's workspace exclusions and
   R11.4b's visible page history.
+- **Claim-honesty re-audit (H), scored once on 2026-11-12.** Method of R9.3 with the blinding
+  of R11.4. Pin: main d2fef3b (page `twin_app_20261112a`, sha256 4d0a52ae); inventory sha256
+  28f62014 (1,699 statements, weight 1,079.5; sections 21-27 by R11.2); pin manifest sha256
+  f078a7df; grader view 0e559dea; mask rules 9e0d48eb. The audited figure is **98.4** (98.43):
+  page 98.8, README 96.6, MODEL_CARD 97.3, evidence 98.7, ledger 98.2. Findings above grade 0
+  on 58 statements: 47 stale or missing disclosures, 6 overclaims and 5 contradictions (README
+  3, MODEL_CARD 2). Statement bootstrap 90 % interval 98.0 to 98.8. Second grader on a 25 %
+  sample (351 statements, seed 20261112): exact agreement 0.946, weighted kappa 0.48 (linear)
+  and 0.49 (quadratic); on the sample the primary graders give 97.9 and the second grader
+  97.6. A change of less than about 1.5 from the earlier 98.3 lies inside grader variance.
+  Graders could not fully check 53 statements (weight 26.5, 2.5 %; masked figures, masked hash
+  prefixes, citations of records left out), which bounds their effect at 2.45 points.
+- **Disclosures of the re-audit.** (1) The audit was pinned three times: the pin of 2026-11-11
+  (ae6f1aa) was superseded by round 12, which added row C32, the line `evc_sl_base` and
+  section 30 before the audit; the pin at 3ac75d2 failed the workspace's literal gate on one
+  sentence of section 28, which a separate change reworded with its numbers unchanged; the
+  audit ran on the merge of that change. (2) Two page files copied into the audit worktree had
+  their build time restored, after a byte comparison with the committed page, so that the pin
+  guard read it. (3) The operator added one reviewed entry to the gate's allow list (47.2, a
+  part score in section 26's table). (4) A first grader run of four processes was left
+  unscored because one grader stated that it had checked numbers by sampling; user ruling
+  R11.8 (thirty-second set, `user_rulings_2026-11-12c.json`, sha256 fa5a95f3) ordered a rerun in
+  batches before scoring. (5) The scored run used 32 blinded processes of about 60 statements,
+  each in its own copy of the workspace, with no shell, web or sub-agent access; its launch
+  prompt required one explicit grade per statement; the batches were merged mechanically with
+  renumbered finding ids; processes interrupted by a usage limit wrote nothing and were
+  restarted unchanged. (6) All graders ran on one model family. (7) R11.4a and R11.4b apply as
+  ruled. (8) The label pass (L) had targeted expected findings before the audit.
+- **After the re-audit.** Under R11.4 the figure stands: 98.4 is the claim-honesty input, and
+  `python -m hydrophysics.twin.progress --honesty 98.4` gives science trust 44.20 and a 6-part
+  mean of 53.23 (53.21 with the earlier input). A fix change corrects each finding at its
+  location after a check against the cited record, with the second grader's nine additional
+  findings checked the same way; the fixes are left unaudited and raise no estimate. The page
+  of record after the fixes is `twin_app_20261112b`.
 
 ## 30. Round 12 (exploratory track, 2026-11-12)
 

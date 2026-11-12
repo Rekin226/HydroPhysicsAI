@@ -60,7 +60,7 @@ number in this repo is tuned against the test set.
 ## Results
 
 **Simulation.** The operator clears the seasonal climatology comfortably (KGE 0.591 vs
-0.446; NSE 0.49 vs −0.20) and beats the per-well gray-box on 18 of 61 wells, but trails
+0.446; NSE 0.49 vs −0.20) and beats the per-well gray-box on 11 of 61 wells, but trails
 it overall (0.591 vs 0.736). A few hard wells dominate the gap.
 
 **Forecasting.** A single global attribute-aware LSTM adds real skill over persistence at
