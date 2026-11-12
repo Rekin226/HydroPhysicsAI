@@ -1,0 +1,18 @@
+# Reverse proxy in front of the analyst web service (compose profile "public").
+# SITE_ADDRESS (deploy/host/.env):
+#   a domain name, e.g. twin.example.org -> automatic HTTPS (Let's Encrypt); ports 80 and 443
+#                                           must reach this host and DNS must point at it
+#   :80                                  -> plain HTTP on the bare public IP (no certificate)
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy web:7860
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	log {
+		output stdout
+		format console
+	}
+}

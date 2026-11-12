@@ -1,0 +1,9 @@
+# Build context is the repository root (tens of GB of data and results): send only what the
+# compute image copies. Data, results and secrets are bind-mounted at run time, never baked in.
+*
+!pyproject.toml
+!README.md
+!hydrophysics/
+!hydrophysics_analyst/
+!deploy/host/requirements-gpu.lock.txt
+**/__pycache__

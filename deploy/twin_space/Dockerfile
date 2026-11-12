@@ -17,7 +17,7 @@ RUN git init -q app && cd app \
     && git log -1 --format='built from %H'
 
 WORKDIR /home/user/app
-RUN pip install --no-cache-dir --user -e ".[analyst]"
+RUN pip install --no-cache-dir --user -e ".[analyst]" && mkdir -p results/analyst/audit
 COPY --chown=user launch.py /home/user/launch.py
 
 EXPOSE 7860
