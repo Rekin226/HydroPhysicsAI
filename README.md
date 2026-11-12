@@ -307,7 +307,7 @@ python -m hydrophysics.twin.viewer_app \
 These are the inputs of the live page, recovered from the hashes in its source manifest;
 [TWIN_RELEASE.md](docs/TWIN_RELEASE.md#building-and-checking-the-viewer) lists each one.
 The page embeds the corrected ring report `ring_holdout_ref2023` (evidence section 5); every
-build from `twin_app_20261024c` on, including the promoted `twin_app_20261111a`, passes it.
+build from `twin_app_20261024c` on, including `twin_app_20261111a` and the promoted `twin_app_20261112a`, passes it.
 
 `results/twin/twin_app.html` is a research scenario page: one self-contained file of
 about 2.2 MB, with its 3D renderer bundled for offline use. It opens on a basin overview
@@ -325,7 +325,12 @@ ruling R8.7) the page says which line is a forecast and which is a scenario: the
 statistical layer (E04) is the forecast of record for the first year, 2026-11 to 2027-10, and
 after the start memory (2023-11 in this model, `FM.origin_memory.v1`) the physics head levels
 are an average-weather scenario, not a forecast; the head series marks that month and the map
-legend says so. Historical validation
+legend says so. Since 2026-11-12 (user ruling R12.6) the page also names its subsidence baseline of record: a
+statistical layer built from the 2019-2021 leveling rates, smoothed over 3 km. The evidence is
+retrospective and exploratory (from a spring 2016 start its 3-year error was 2.56 cm against
+3.61 cm for the physics column refitted without the later surveys, 653 benchmarks, scored
+once), no registered test decides it, the layer is drawn on no map or series, and the physics
+column stays as the scenario engine for pumping cuts (ledger row C32). Historical validation
 dates remain separate from future projection years. A slider per
 water-use class and a 2026/2030 start set the policy. When the policy matches a solved run
 the page uses the full 36-run fields; otherwise it builds the result from the per-class

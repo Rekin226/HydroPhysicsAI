@@ -452,13 +452,17 @@
   {
    "id": "user ruling 2026-11-12 (thirtieth set) (R12.5)",
    "text": "How is Changhua covered by the layer's tests? Decision: SL1 is Yunlin-only; Changhua is covered by SL2 (township leveling, the N3S-L unit). Applies to: SL1, SL2, Changhua. Source: results/dataprep/rulings/user_rulings_2026-11-12.json (sha256 c644dbf7)."
+  },
+  {
+   "id": "user ruling 2026-11-12 (thirty-first set) (R12.6)",
+   "text": "Should the constant-rate statistical layer become the page's subsidence baseline of record, with the physics column kept for scenarios, on retrospective evidence? Decision: Yes: make the layer the baseline. Applies to: C32, evc_sl_base, README, MODEL_CARD, progress. Source: results/dataprep/rulings/user_rulings_2026-11-12b.json (sha256 d1d203e4)."
   }
  ],
  "page": {
   "template": "hydrophysics/twin/app/template.html",
-  "template_sha256": "0e097c0d6288f47cecc7f13a21a084a4f0b72c16108340d912b6e71e17bd1167",
-  "html": "results/twin/twin_app_20261111a.html",
-  "html_note": "gitignored build of the round-11 label-pass template after its adversarial review: user rulings R11.5 (twenty-fourth set) and R11.5a (twenty-ninth set, results/dataprep/rulings/user_rulings_2026-11-11.json): labels on Trust caveats 3, 7, 8, 12's baseline rate, three model-card rows and the map layers ly_abs, ly_fwd, ly_rate; the main view's text shortened, reference codes and ruling numbers moved to the tile help and the Evidence drawer; the two-part head band and the head-gain caveat start collapsed; copies of round-9 findings corrected. Built with the same inputs and command as twin_app_20261108c, only --out changed; no number, status or input change. The earlier page of record was twin_app_20261108c (sha256 9a9c40f3).",
+  "template_sha256": "43b6b9a31c06c8f434d3d8c9c25134197123e69d04ffecb902d3f1c1d05d1a70",
+  "html": "results/twin/twin_app_20261112a.html",
+  "html_note": "gitignored build of the round-12 template: user ruling R12.6 (thirty-first set, results/dataprep/rulings/user_rulings_2026-11-12b.json) adds the evidence line evc_sl_base (C32), which names the constant-rate statistical layer the subsidence baseline of record on retrospective, exploratory evidence. Built with the same inputs and command as twin_app_20261111a, only --out changed; the line is the only text change and no payload number, status of an earlier row or input changes. The earlier page of record was twin_app_20261111a (sha256 28e61cef), the round-11 label-pass page (user rulings R11.5 and R11.5a).",
   "forward": "datum_gate_innov.npz",
   "forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228",
   "n2_primary_forward_sha256": "cf2c7154160d9e4626d1acc5b5c3abd7866e09c3539a9249c657dd6b39007228"
@@ -3718,6 +3722,40 @@
      ]
     }
    }
+  },
+  {
+   "id": "C32",
+   "where": "page evidence line evc_sl_base; README; MODEL_CARD",
+   "claim": "The page's status-quo subsidence baseline of record is the constant-rate statistical layer (arm C0 of SL.subsidence_layer.v1: 2019-2021 leveling rates, 3 km kernel), named by user ruling R12.6 on retrospective, exploratory evidence; the physics column stays as the scenario engine",
+   "status_before": "N",
+   "status_current": "N",
+   "changes": true,
+   "wording_en": "New row (round 12, ruling R12.6, after the R8.7 precedent of C30-fc). Evidence line evc_sl_base, shown in every build: 'Subsidence baseline of record (user ruling R12.6): a statistical layer built from the 2019–2021 leveling rates, smoothed over 3 km, is the page's status-quo subsidence baseline; it is not drawn on the map or the series. The evidence is retrospective and exploratory: from a spring 2016 start its 3-year error was 2.56 cm against 3.61 cm for the physics column refitted without the later surveys (653 benchmarks, scored once). No registered test decides it. The physics column stays as the scenario engine for pumping cuts.' The two errors and the benchmark count are the line's only numbers. No tile, map layer, series or headline reads the layer.",
+   "ruling": "user ruling 2026-11-12 (thirty-first set) (R12.6)",
+   "cites": {
+    "registrations": [
+     "SL.head_layer_companion.v1"
+    ],
+    "tests": [],
+    "reports": [
+     "results/dataprep/reports/SL/retro_2016/result.json",
+     "results/dataprep/reports/SL/gate_power/result.json",
+     "results/dataprep/reports/SL/freeze/model.json"
+    ],
+    "manifests": []
+   },
+   "notes": "Evidence: evidence document section 30. Retrospective follow-up (post-failure, exploratory, scored once; rule fixed before the refit): origin spring 2016, page-recipe column refitted with surveys from 2017-01 withheld, RMSE of the cumulative drop 0.94 / 2.56 / 3.58 cm (layer) against 1.46 / 3.61 / 5.21 cm (column) at 1 / 3 / 5 years on 723 / 653 / 610 benchmarks; 3-year MSE gain 6.49 cm2, 10 km block-bootstrap 90 % interval 3.15 to 9.71. Limits: leveling 2012-2021 is a spent unit for the layer's design; the refitted column had five surveys; the flow model saw heads of the whole record; one origin. The gating design study on the printed township statement failed its bar (replay pass 1 of 7), so no registered test decides C32 and its status can never be S or D on this evidence. The head term (arm HL) gave no gain in the follow-up and is not part of the baseline. SL.head_layer_companion.v1 (sha 33d6ec76) binds the frozen model and stays report-only; N3S-L's arm SL keeps its fixed report-only role and C26b is unchanged. Progress: the row is weighted and graded by the official rule with no override (page line, weight 1; N, 0.5), which moves subsidence and cut response 35.57 -> 36.20, science trust 44.07 -> 44.20 and the 6-part mean 53.11 -> 53.21 at claim honesty 98.3; the movement comes from a ruling on retrospective evidence and from no test.",
+   "text_keys": [
+    "i18n:evc_sl_base",
+    "doc:README.md"
+   ],
+   "doc_anchors": {
+    "README.md": {
+     "present": [
+      "subsidence baseline of record"
+     ]
+    }
+   }
   }
  ],
  "display_map": {
@@ -5090,6 +5128,9 @@
    "pol_caveat_hg": [
     "C16",
     "C01-sz"
+   ],
+   "evc_sl_base": [
+    "C32"
    ]
   },
   "card_rows": {
@@ -7850,6 +7891,7 @@
   "FB.family_power.v1": "bc8a935a70ebdda1955c33f359a463a2a92dd08f6a55459e31d3130fc7bc61a8",
   "GOV.heads_window_product.v1": "141c012899a67c69eecfd630a6e9a92de3c057f5cfa2d67412adf42608167855",
   "FW.rider.v1": "20e8839d976480aec7e9749f1b72d93b128537bca0c7b0dba7f3bef90556d592",
-  "C14f.coverage_clause.v1": "471923b62b4376cd16dff08ad3f6283cfad4bc38a2211779aaf8177e7f3fb1e6"
+  "C14f.coverage_clause.v1": "471923b62b4376cd16dff08ad3f6283cfad4bc38a2211779aaf8177e7f3fb1e6",
+  "SL.head_layer_companion.v1": "33d6ec7623b47152a061913a1838353e8830d01aea0d333a59e6c46cc0c6ad00"
  }
 }
