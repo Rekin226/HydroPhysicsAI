@@ -2512,8 +2512,8 @@ expected effect of 0 on the official figures. No status changed in the round.
   round-10 ledger at commit f01c44a). No official grade rests on a measured_by qualifier any
   more (map note `measured_by_note`, checked by a test). These were the official figures at
   round 10's close (reproduced by `--mapping pre-R11.7e`); since R11.7e (section 29) the
-  official figures are 53.11 (6-part), 44.07 (science) and 40.56 (uncertainty bands), and 52.6
-  and 53.1 at fd40796 and 08a6aa7.
+  official figures are 53.11 (6-part), 44.07 (science) and 40.56 (uncertainty bands). At
+  fd40796 the 6-part mean is 52.6. At 08a6aa7 the 6-part mean is 53.1.
 - **R10.6, caveat 9 labelled in place.** This model's avoided-subsidence sizes in Trust caveat 9
   carry the "model internals, size untested" label, EN and ZH, where they are printed: the
   post-hoc split's per-policy inelastic and total cm (`cv9_pol`), the cm left after a lifted
