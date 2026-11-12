@@ -1,0 +1,108 @@
+# HydroPhysicsAI on a new Linux host. Full guide: docs/HOST_MIGRATION.md
+#
+#   cp deploy/host/env.template deploy/host/.env      # then edit it
+#   C="docker compose -f deploy/host/docker-compose.yml --env-file deploy/host/.env"
+#   $C up -d --build web                              # analyst + page on 127.0.0.1:7860
+#   $C --profile public up -d                         # + Caddy on 80/443 (public IP / domain)
+#   $C --profile tunnel up -d                         # + Cloudflare named tunnel (no inbound ports)
+#   $C --profile tunnel-quick up -d                   # + Cloudflare quick tunnel (random URL)
+#   $C --profile gpu run --rm compute                 # research shell with the GPU stack
+name: hydrophysics
+
+services:
+  # Analyst chat beside the decision page. Builds one pinned commit of the public repo with the
+  # same Dockerfile and launcher the original server used (deploy/twin_space/).
+  web:
+    build:
+      context: ../twin_space
+      args:
+        REPO_SHA: ${REPO_SHA:-main}
+    image: twin-analyst:${REPO_SHA:-main}
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANALYST_MODEL: ${ANALYST_MODEL:-claude-opus-5-5}
+      ANALYST_DAILY_LLM_CAP: ${ANALYST_DAILY_LLM_CAP:-300}
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-7860}:7860"
+    volumes:
+      - analyst-audit:/home/user/app/results/analyst/audit
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/meta', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Public IP or domain: TLS-terminating reverse proxy. Needs inbound 80/443 on the host.
+  caddy:
+    profiles: ["public"]
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # No public IP (NAT, campus network): outbound-only Cloudflare tunnel with a fixed hostname.
+  tunnel:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+
+  # Same, without a Cloudflare account: random *.trycloudflare.com URL, printed in the log and
+  # changed on every restart (`docker compose logs tunnel-quick | grep trycloudflare`).
+  tunnel-quick:
+    profiles: ["tunnel-quick"]
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    command: tunnel --no-autoupdate --url http://web:7860
+
+  # Research environment: the conda env `hydro` as an image, the checkout bind-mounted live.
+  compute:
+    profiles: ["gpu"]
+    build:
+      context: ../..
+      dockerfile: deploy/host/compute.Dockerfile
+    image: hydrophysics-compute:latest
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /work
+    stdin_open: true
+    tty: true
+    ipc: host
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ../..:/work
+      - ${SCRATCH_DIR:-/tmp/hydro_scratch}:/scratch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  analyst-audit:
+  caddy-data:
+  caddy-config:
