@@ -728,3 +728,14 @@ def test_e02_stays_d_unknown_by_r9_4b_and_the_hook_works_on_the_real_ledger():
         delta = {"D-measured": 0.1, "D-weak": -0.1, "D-unknown": 0.0}[key]
         assert res["parts"]["forecast_start_validation"]["official"] - fc0["official"] == \
             pytest.approx(100 * delta / fc0["weight"]), out
+
+
+def test_round11_reaudit_input_98_4():
+    """Claim-honesty re-audit of 2026-11-12 (R9.3 method, R11.4 blinding, R11.8): the input is
+    98.4. On the current ledger (with row C32 of ruling R12.6) science trust is 44.20 and the
+    6-part mean 53.23; with the earlier input 98.3 it is 53.21 (evidence sections 29 and 30)."""
+    res = P.recount(_ledger(), P.load_map(), honesty=98.4)
+    assert (res["science"]["official"], res["six_part"]["official"]) == pytest.approx(
+        (44.1971, 53.2309), abs=1e-3)
+    old = P.recount(_ledger(), P.load_map(), honesty=98.3)
+    assert old["six_part"]["official"] == pytest.approx(53.2143, abs=1e-3)
