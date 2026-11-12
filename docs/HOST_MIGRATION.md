@@ -132,7 +132,8 @@ bash deploy/host/transfer.sh --to <帳號>@<新主機位址>:/srv/HydroPhysicsAI
 主要工作目錄複製至 `/srv/HydroPhysicsAI`，其他 worktree 複製至同一層
 （`/srv/HydroPhysicsAI-r7` 等）。結束時會印出新主機上要執行的 `git worktree repair` 指令，
 請記下（見 3.3）。再次執行同一指令只會傳送有變動的檔案，可用於移轉當天的最後一次同步。
-加上 `--with-scratch` 會一併傳送 `~/hydro_scratch*`。
+加上 `--with-scratch` 會一併傳送 `~/hydro_scratch*`；加上 `--with-drive-backup` 會一併傳送
+家目錄的雲端硬碟備份腳本與其設定（見 3.4）。
 
 **方式二：封存檔（隨身硬碟或兩台主機無法直接連線時）。**
 
@@ -157,11 +158,14 @@ tar -C /srv -I zstd -xf /mnt/usb/hydro_migration/worktrees_*.tar.zst
 ```
 
 解開後主要工作目錄為 `/srv/HydroPhysicsAI`，其他 worktree 位於同一層。
+使用 `--with-drive-backup` 時另有 `home_files_<日期>.tar.zst`，解開至新主機家目錄（見 3.4）。
 
 ### 2.4 機密資料
 
 `.env` 會隨上述兩種方式一起傳送。若選擇另行傳送，只能使用 `scp` 或 rsync over SSH，
 不得透過 git、電子郵件、聊天軟體或雲端共享連結傳送。抵達後執行 `chmod 600 .env`。
+`--with-drive-backup` 傳送的 `~/.config/rclone/rclone.conf` 含有雲端硬碟的登入 token，處理方式與
+`.env` 相同；封存檔方式下，存放 `home_files_<日期>.tar.zst` 的隨身硬碟應妥善保管。
 
 ---
 
@@ -223,6 +227,37 @@ bash deploy/host/verify_host.sh
 
 新主機需要自己的 GitHub 推送權限：建立新的 SSH 金鑰並加入 GitHub 帳號，或安裝 `gh` 並執行
 `gh auth login`。接著在 `docs/GPU_SERVER.local.md` 記錄新主機的連線資訊。
+
+### 3.4 雲端硬碟備份（`drive_backup.sh`，選擇性）
+
+原主機以家目錄的 `~/drive_backup.sh` 將整個家目錄壓縮後上傳至雲端硬碟（rclone）。
+`transfer.sh --with-drive-backup` 傳送以下三個檔案至新主機家目錄的相同位置；新主機上已存在的同名
+檔案保持不變：
+
+| 檔案 | 用途 |
+|---|---|
+| `~/drive_backup.sh` | 備份腳本 |
+| `~/.local/bin/rclone` | rclone 執行檔 |
+| `~/.config/rclone/rclone.conf` | rclone 設定，含雲端硬碟登入 token（權限 600） |
+
+上傳進度紀錄 `~/.drive_backup_state` 屬於原主機的封存檔，不會傳送。封存檔方式下，以
+`tar -C ~ --skip-old-files -xf home_files_<日期>.tar.zst` 解開。
+
+**首次在新主機執行前**：
+
+1. **指定新的雲端資料夾。** 腳本預設的資料夾存放原主機的封存檔，封存檔名稱以家目錄項目命名，
+   新主機上傳同名封存檔會取代原主機的版本。以環境變數指定新資料夾執行：
+
+   ```bash
+   REMOTE=<遠端名稱>:<新資料夾名稱> ./drive_backup.sh
+   ```
+
+   或直接修改腳本中 `REMOTE` 的預設值。
+2. **確認 `SRC`。** 腳本中的 `SRC` 為原主機家目錄的絕對路徑；新主機帳號或家目錄不同時，改為新路徑。
+3. **確認工具。** `zstd` 已由 3.1 的 apt 指令安裝；`bash deploy/host/verify_host.sh` 會檢查 rclone、
+   rclone 設定與 zstd。以 `~/.local/bin/rclone lsd <遠端名稱>:` 確認 token 仍有效；失效時執行
+   `rclone config reconnect <遠端名稱>:` 重新授權。
+4. **在 tmux 中執行**，與原主機相同：`tmux new -s backup ./drive_backup.sh`。
 
 ---
 

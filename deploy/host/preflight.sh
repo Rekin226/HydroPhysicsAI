@@ -64,6 +64,7 @@ done
 find . -path ./.claude -prune -o -name '*.local.md' -print -o -name '*.local.html' -print \
     -o -name '*.local.json' -print 2>/dev/null | sed 's/^/  local-only: /'
 for d in "$HOME"/hydro_scratch*; do [ -d "$d" ] && say "  $(du -sh "$d" | cut -f1)	$d (scratch, outside the repo)"; done
+[ -f "$HOME/drive_backup.sh" ] && say "  ~/drive_backup.sh + rclone config (cloud backup, outside the repo): transfer.sh --with-drive-backup"
 
 say "== running jobs (finish or stop them before copying results/)"
 command -v tmux >/dev/null && tmux ls 2>/dev/null | sed 's/^/  tmux: /'

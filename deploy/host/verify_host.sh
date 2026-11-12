@@ -50,6 +50,22 @@ done
 n_local=$(find docs -name '*.local.md' 2>/dev/null | wc -l)
 [ "$n_local" -gt 0 ] && ok "$n_local local-only note(s) in docs/" || note "no docs/*.local.md (connection notes for the new host go there)"
 
+echo "== cloud backup (copied with transfer.sh --with-drive-backup)"
+if [ -f "$HOME/drive_backup.sh" ]; then
+    rc="$(command -v rclone || echo "$HOME/.local/bin/rclone")"
+    if [ -x "$rc" ]; then ok "rclone $("$rc" version 2>/dev/null | head -1 | awk '{print $2}') at $rc"
+    else bad "~/drive_backup.sh present, rclone missing"; fi
+    conf="$HOME/.config/rclone/rclone.conf"
+    if [ -f "$conf" ]; then
+        ok "rclone config with $("$rc" listremotes 2>/dev/null | wc -l) remote(s) (token not shown)"
+        [ "$(stat -c %a "$conf")" = 600 ] || note "chmod 600 $conf"
+    else bad "no $conf"; fi
+    command -v zstd >/dev/null && ok "zstd" || bad "zstd missing: sudo apt-get install -y zstd"
+    note "before the first run here, point REMOTE at a new Drive folder (docs/HOST_MIGRATION.md 3.4)"
+else
+    note "no ~/drive_backup.sh"
+fi
+
 echo "== ports"
 for port in 80 443 7860; do
     if ss -ltnH "sport = :$port" 2>/dev/null | grep -q .; then note "port $port already in use"
